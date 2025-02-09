@@ -1,0 +1,2 @@
+Using nanoflann for exact nearest neighbor search
+https://github.com/jlblancoc/nanoflann
