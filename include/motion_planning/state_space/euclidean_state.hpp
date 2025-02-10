@@ -4,15 +4,15 @@
 
 #include "motion_planning/state_space/state.hpp"
 
-class EuclideanState: public State {
+
+class EuclideanState : public State {
  public:
-    explicit EuclideanState(int dimension_);
-    EuclideanState(const std::vector<double>& values);
+    explicit EuclideanState(int dimension);
+    EuclideanState(const Eigen::VectorXd& values);
     std::unique_ptr<State> clone() const override;
     bool equals(const State& other) const override;
     std::string toString() const override;
-
-    std::vector<double> value_;
+    Eigen::VectorXd getValue() const override;
+ private:
+    Eigen::VectorXd value_;
 };
-
-

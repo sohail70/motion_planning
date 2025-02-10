@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <Eigen/Dense>
+
 #include<iostream>
 #include<vector>
 #include<set>
@@ -10,7 +12,13 @@
 #include<unordered_map>
 #include<functional>
 #include<memory>
+#include<string>
+#include<utility>
 
+
+
+#include <cstdlib>
+#include <ctime>
 
 
 

@@ -9,6 +9,7 @@ class State {
     virtual std::unique_ptr<State> clone() const = 0; // Clone the state
     virtual bool equals(const State& other) const = 0; // Compare states
     virtual std::string toString() const = 0; // Serialize to string
+    virtual Eigen::VectorXd getValue() const = 0; // Ensure all states provide vector data
 
     virtual ~State() = default;
  private:
