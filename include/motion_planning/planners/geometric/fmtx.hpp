@@ -6,9 +6,7 @@
 
 class FMTX : public Planner {
  public:
-    FMTX();
-    void setStart(const State& start) override;
-    void setGoal(const State& goal) override;
+    FMTX(std::unique_ptr<StateSpace> statespace);
     void plan() override;
     std::vector<std::shared_ptr<State>> getPath() const override;
 

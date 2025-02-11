@@ -16,13 +16,12 @@ void PlannerFactory::registerPlanner(PlannerType type, Creator creator ) {
     planners_.insert(std::make_pair(type,creator));
 }
 
-std::unique_ptr<Planner> PlannerFactory::createPlanner(PlannerType type) {  
+std::unique_ptr<Planner> PlannerFactory::createPlanner(PlannerType type, std::unique_ptr<StateSpace> statespace) {  
     auto object = planners_.find(type);
     if (object != planners_.end())
     {
-        return object->second();
+        return object->second(std::move(statespace));
     }
     throw std::invalid_argument("Unknown planner type: ");
-
 }
 

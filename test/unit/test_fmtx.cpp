@@ -3,40 +3,63 @@
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
 
+// int main() {
+//     // Step 1: Define the state space (e.g., 2D Euclidean space)
+//     int dimension = 2; // 2D space
+//     EuclideanStateSpace stateSpace(dimension,10);
+
+//     // Step 2: Create start and goal states
+//     std::vector<double> startValues = {0.0, 0.0}; // Start at (0, 0)
+//     std::vector<double> goalValues = {10.0, 10.0};  // Goal at (10, 10)
+
+//     auto startState = std::make_shared<EuclideanState>(startValues);
+//     auto goalState = std::make_shared<EuclideanState>(goalValues);
+
+//     // Step 3: Create a planner (e.g., FMTX)
+//     PlannerFactory& factory = PlannerFactory::getInstance();
+//     auto planner = factory.createPlanner(PlannerType::FMTX);
+
+//     // Step 4: Set the start and goal states for the planner
+//     planner->setStart(*startState);
+//     planner->setGoal(*goalState);
+
+//     // Step 5: Plan the path
+//     planner->plan();
+
+//     // Step 6: Retrieve and print the path
+//     auto path = planner->getPath();
+//     std::cout << "Planned Path:" << std::endl;
+//     for (const auto& state : path) {
+//         auto euclideanState = dynamic_cast<const EuclideanState*>(state.get());
+//         if (euclideanState) {
+//             std::cout << "(" << euclideanState->value_[0] << ", " << euclideanState->value_[1] << ")" << std::endl;
+//         }
+//     }
+
+//     return 0;
+// }
+
 int main() {
-    // // Step 1: Define the state space (e.g., 2D Euclidean space)
-    // int dimension = 2; // 2D space
-    // EuclideanStateSpace stateSpace(dimension);
+    bool using_factory = true;
+    int dim = 2;
+    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 5);
+    statespace->sampleUniform(0, 1, 5);
 
-    // // Step 2: Create start and goal states
-    // std::vector<double> startValues = {0.0, 0.0}; // Start at (0, 0)
-    // std::vector<double> goalValues = {10.0, 10.0};  // Goal at (10, 10)
+    std::unique_ptr<Planner> planner;
 
-    // auto startState = std::make_shared<EuclideanState>(startValues);
-    // auto goalState = std::make_shared<EuclideanState>(goalValues);
+    if (using_factory)
+        planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace));
+    else
+        planner = std::make_unique<FMTX>(std::move(statespace));
 
-    // // Step 3: Create a planner (e.g., FMTX)
-    // PlannerFactory& factory = PlannerFactory::getInstance();
-    // auto planner = factory.createPlanner(PlannerType::FMTX);
+    Eigen::VectorXd start(dim);
+    start << 0, 0;
+    Eigen::VectorXd goal{dim};
+    start << 1, 1;
+ 
+    planner->setStart(start);
+    planner->setGoal(goal);
 
-    // // Step 4: Set the start and goal states for the planner
-    // planner->setStart(*startState);
-    // planner->setGoal(*goalState);
-
-    // // Step 5: Plan the path
-    // planner->plan();
-
-    // // Step 6: Retrieve and print the path
-    // auto path = planner->getPath();
-    // std::cout << "Planned Path:" << std::endl;
-    // for (const auto& state : path) {
-    //     auto euclideanState = dynamic_cast<const EuclideanState*>(state.get());
-    //     if (euclideanState) {
-    //         std::cout << "(" << euclideanState->value_[0] << ", " << euclideanState->value_[1] << ")" << std::endl;
-    //     }
-    // }
-
-    // return 0;
+    std::cout << planner->getStarIndex() << "\n";
+    std::cout << planner->getGoalIndex() << "\n";
 }
-
-

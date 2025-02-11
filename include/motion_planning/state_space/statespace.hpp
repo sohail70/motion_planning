@@ -10,28 +10,25 @@ class StateSpace {
     explicit StateSpace(int dimension, int initial_capacity = 1000)
         : dimension_(dimension), num_states_(0) {
         samples_.resize(initial_capacity, dimension);
-        states_.resize(initial_capacity);
+        states_.reserve(initial_capacity);
     }
 
     virtual ~StateSpace() = default;
-    virtual std::unique_ptr<State> allocState() const = 0;
+    virtual std::unique_ptr<State> allocState(const Eigen::VectorXd& value) const = 0;
     virtual void sampleUniform(double min, double max) = 0;
     virtual void sampleUniform(double min, double max, int k) = 0;
     virtual double distance(const std::unique_ptr<State>& state1, const std::unique_ptr<State>& state2) const = 0;
     virtual std::unique_ptr<State> interpolate(const std::unique_ptr<State>& state1, const std::unique_ptr<State>& state2, double t) const = 0;
-    virtual bool isValid(const std::unique_ptr<State>& state) const = 0; 
+    virtual bool isValid(const std::unique_ptr<State>& state) const = 0;
 
     void addState(std::unique_ptr<State> state) {
         if (num_states_ >= samples_.rows()) {
-            samples_.conservativeResize(samples_.rows() * 2, Eigen::NoChange); // Resize dataset if needed
+            int new_capacity = static_cast<int>(samples_.rows() * 1.5);
+            samples_.conservativeResize(new_capacity, Eigen::NoChange);
+            states_.reserve(new_capacity);
         }
-        samples_.row(num_states_) = state->getValue();  // Store the values in the matrix
-
-        // Resize the states container if needed
-        if (num_states_ >= states_.size()) {
-            states_.resize(states_.size() * 2);
-        }
-        states_[num_states_] = std::move(state);  // Move the actual state object
+        samples_.row(num_states_) = state->getValue();
+        states_.push_back(std::move(state));
         num_states_++;
     }
 
@@ -39,7 +36,7 @@ class StateSpace {
         if (index < 0 || index >= num_states_) {
             throw std::out_of_range("Index out of range");
         }
-        return states_[index];  // Return reference to the unique_ptr<State>
+        return states_[index]; 
     }
 
 

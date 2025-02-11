@@ -2,12 +2,12 @@
 
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 
-EuclideanStateSpace::EuclideanStateSpace(int dimension,int capacity):StateSpace(dimension,capacity) , dimension_(dimension) {
+EuclideanStateSpace::EuclideanStateSpace(int dimension,int capacity):StateSpace(dimension,capacity) {
     std::cout << "Euclidean state space constructor \n";
 }
 
-std::unique_ptr<State> EuclideanStateSpace::allocState() const {
-     return std::make_unique<EuclideanState>(dimension_);
+std::unique_ptr<State> EuclideanStateSpace::allocState(const Eigen::VectorXd& value) const {
+     return std::make_unique<EuclideanState>(value);
 }
 
 // void EuclideanStateSpace::sampleUniform() {

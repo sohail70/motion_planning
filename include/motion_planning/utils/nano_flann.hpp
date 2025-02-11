@@ -13,7 +13,7 @@ class NanoFlann : public KDTree {
     using NFKDTree = nanoflann::KDTreeEigenMatrixAdaptor<Eigen::MatrixXd>;
     explicit NanoFlann(int dimension);
     void addPoint(const std::unique_ptr<State>& state) override;
-    void addPoints(const std::vector<std::shared_ptr<State>>& states) override;
+    void addPoints(const std::vector<std::unique_ptr<State>>& states) override;
     void addPoints(const Eigen::MatrixXd& states) override;
 
     std::vector<std::shared_ptr<State>> knnSearch(const std::unique_ptr<State>& query , int k) const override;

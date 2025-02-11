@@ -12,7 +12,7 @@ class EuclideanStateSpace : public StateSpace {
  public:
     explicit EuclideanStateSpace(int dimension,int capacity);
 
-    std::unique_ptr<State> allocState() const override;
+    std::unique_ptr<State> allocState(const Eigen::VectorXd& value) const override;
     void sampleUniform(double min, double max);
     void sampleUniform(double min, double max, int k);
     
@@ -22,5 +22,4 @@ class EuclideanStateSpace : public StateSpace {
     bool isValid(const std::unique_ptr<State>& state) const override;
 
  private:
-    int dimension_;
 };

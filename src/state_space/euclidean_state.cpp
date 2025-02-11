@@ -5,7 +5,7 @@
 EuclideanState::EuclideanState(int dimension):value_(Eigen::VectorXd::Zero(dimension)) {
     std::cout << "EulideanState Constructor \n";
 }
-EuclideanState::EuclideanState(const Eigen::VectorXd& values): value_(values) {
+EuclideanState::EuclideanState(const Eigen::VectorXd& value): value_(value) {
     std::cout << "EulideanState Constructor 2 \n";
 }
 

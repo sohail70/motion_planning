@@ -8,7 +8,7 @@
 class EuclideanState : public State {
  public:
     explicit EuclideanState(int dimension);
-    EuclideanState(const Eigen::VectorXd& values);
+    EuclideanState(const Eigen::VectorXd& value);
     std::unique_ptr<State> clone() const override;
     bool equals(const State& other) const override;
     std::string toString() const override;

@@ -26,7 +26,7 @@ void NanoFlann::addPoint(const std::unique_ptr<State>& state) {
     std::cout << "Data matrix size: " << data_.rows() << "x" << data_.cols() << std::endl;
 }
 
-void NanoFlann::addPoints(const std::vector<std::shared_ptr<State>>& states) {
+void NanoFlann::addPoints(const std::vector<std::unique_ptr<State>>& states) {
     for (const auto& state : states) {
         Eigen::VectorXd value = state->getValue();
         if (value.size() != dimension_) {
