@@ -10,6 +10,7 @@ class KDTree {
     virtual ~KDTree() = default;
     virtual void addPoint(const std::unique_ptr<State>& state) = 0;
     virtual void addPoints(const std::vector<std::shared_ptr<State>>& states) = 0;
+    virtual void addPoints(const Eigen::MatrixXd& states) = 0;
 
     virtual std::vector<std::shared_ptr<State>> knnSearch(const std::unique_ptr<State>& query , int k) const = 0;
     virtual std::vector<std::shared_ptr<State>> radiusSearch(const std::unique_ptr<State>& query , double radius) const = 0; 

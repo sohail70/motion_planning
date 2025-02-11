@@ -18,7 +18,7 @@ int main() {
     ///////////////////////////////////////////
     std::cout << "Batch Sampling \n";
     std::shared_ptr<EuclideanStateSpace> statespace2 = std::make_shared<EuclideanStateSpace>(dim,4); // 3 means it will be doubled if the 3 column storage gets full
-    statespace2->sampleUniform(10);
+    statespace2->sampleUniform(0, 10, 10);
     std::cout << statespace2->getSamples() << "\n";
     // If you need to access each state in the statespace by the index --> can't think of a reason for you to get it because changing it means messing up the samples_ matrix! maybe i should return a const ref! but thats okay because i don't have access to the value_ in the state!
     for (int i = 0 ; i < 10 ; i++) { 

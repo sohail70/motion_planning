@@ -22,10 +22,13 @@ void EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0) {
     this->addState(std::make_unique<EuclideanState>(values));
 }
 
-void EuclideanStateSpace::sampleUniform(int k) {
-    this->samples_ = Eigen::MatrixXd::Random(dimension_, k);
+void EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0, int k = 1) {
+    this->samples_ = Eigen::MatrixXd::Random(k, dimension_);
+    this->samples_ = min * Eigen::MatrixXd::Ones(k, dimension_) + 
+                     0.5 * (max - min) * (this->samples_ + Eigen::MatrixXd::Ones(k, dimension_));  //Because Random is between -1,1 so you have to shift it to [0,2] then divide it to [0,1] and the scale it to [min,max]
+
     for (int i = 0; i < k; ++i) {
-        Eigen::VectorXd sample = samples_.col(i);
+        Eigen::VectorXd sample = samples_.row(i);
         addState(std::make_unique<EuclideanState>(sample));
     }
 }

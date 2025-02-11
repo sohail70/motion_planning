@@ -14,6 +14,7 @@ class NanoFlann : public KDTree {
     explicit NanoFlann(int dimension);
     void addPoint(const std::unique_ptr<State>& state) override;
     void addPoints(const std::vector<std::shared_ptr<State>>& states) override;
+    void addPoints(const Eigen::MatrixXd& states) override;
 
     std::vector<std::shared_ptr<State>> knnSearch(const std::unique_ptr<State>& query , int k) const override;
     std::vector<std::shared_ptr<State>> radiusSearch(const std::unique_ptr<State>& query , double radius) const override;

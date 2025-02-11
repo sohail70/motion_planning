@@ -14,7 +14,7 @@ class EuclideanStateSpace : public StateSpace {
 
     std::unique_ptr<State> allocState() const override;
     void sampleUniform(double min, double max);
-    void sampleUniform(int k);
+    void sampleUniform(double min, double max, int k);
     
 
     double distance(const std::unique_ptr<State>& state1, const std::unique_ptr<State>& state2) const override;

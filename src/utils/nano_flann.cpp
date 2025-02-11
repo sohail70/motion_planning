@@ -44,6 +44,13 @@ void NanoFlann::addPoints(const std::vector<std::shared_ptr<State>>& states) {
     std::cout << "Data matrix size: " << data_.rows() << "x" << data_.cols() << std::endl;
 }
 
+void NanoFlann::addPoints(const Eigen::MatrixXd& data) {
+    this->data_ = data;
+    kdtree_->index_->buildIndex();
+    std::cout << "Added lots of points \n";
+}
+
+
 std::vector<std::shared_ptr<State>> NanoFlann::knnSearch(const std::unique_ptr<State>& query, int k) const {
     Eigen::VectorXd queryValue = query->getValue();
     if (queryValue.size() != dimension_) {

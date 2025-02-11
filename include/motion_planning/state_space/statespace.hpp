@@ -9,23 +9,23 @@ class StateSpace {
  public:
     explicit StateSpace(int dimension, int initial_capacity = 1000)
         : dimension_(dimension), num_states_(0) {
-        samples_.resize(dimension, initial_capacity);
+        samples_.resize(initial_capacity, dimension);
         states_.resize(initial_capacity);
     }
 
     virtual ~StateSpace() = default;
     virtual std::unique_ptr<State> allocState() const = 0;
     virtual void sampleUniform(double min, double max) = 0;
-    virtual void sampleUniform(int k) = 0;
+    virtual void sampleUniform(double min, double max, int k) = 0;
     virtual double distance(const std::unique_ptr<State>& state1, const std::unique_ptr<State>& state2) const = 0;
     virtual std::unique_ptr<State> interpolate(const std::unique_ptr<State>& state1, const std::unique_ptr<State>& state2, double t) const = 0;
     virtual bool isValid(const std::unique_ptr<State>& state) const = 0; 
 
     void addState(std::unique_ptr<State> state) {
-        if (num_states_ >= samples_.cols()) {
-            samples_.conservativeResize(Eigen::NoChange, samples_.cols() * 2); // Resize dataset if needed
+        if (num_states_ >= samples_.rows()) {
+            samples_.conservativeResize(samples_.rows() * 2, Eigen::NoChange); // Resize dataset if needed
         }
-        samples_.col(num_states_) = state->getValue();  // Store the values in the matrix
+        samples_.row(num_states_) = state->getValue();  // Store the values in the matrix
 
         // Resize the states container if needed
         if (num_states_ >= states_.size()) {
@@ -44,8 +44,8 @@ class StateSpace {
 
 
 
-    const Eigen::MatrixXd& getSamples() const { return samples_;}
-    Eigen::MatrixXd getSamplesCopy() const { return samples_.leftCols(num_states_).eval();}  // eval creates a copy. without eval its just a (reference) view of the first num_states_ columns of the matrix!
+    const Eigen::MatrixXd& getSamples() const { return samples_;} // This one might have zeros in it because of doubling the capacity in the addState function
+    Eigen::MatrixXd getSamplesCopy() const { return samples_.topRows(num_states_).eval();}  // eval creates a copy. without eval its just a (reference) view of the first num_states_ columns of the matrix!
     int getNumStates() const { return num_states_; }
  protected:
     int dimension_;
