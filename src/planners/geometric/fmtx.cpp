@@ -8,35 +8,41 @@ FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::unique_ptr<ProblemDefini
 
 void FMTX::setup(const PlannerParams& params) {
     num_of_samples_ = params.getParam<int>("num_of_samples");
-    lower_bound_ = params.getParam<double>("lower_bound");
-    upper_bound_ = params.getParam<double>("upper_bound");
-    bool use_kdtree = params.getParam<bool>("use_kdtree");
+    // lower_bound_ = params.getParam<double>("lower_bound");
+    // upper_bound_ = params.getParam<double>("upper_bound");
+    lower_bound_ = problem_->getLowerBound();
+    upper_bound_ = problem_->getUpperBound();
+    use_kdtree = params.getParam<bool>("use_kdtree");
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
-    if (use_kdtree==true and kdtree_type=="NanoFlann")
+    if (use_kdtree == true && kdtree_type == "NanoFlann")
         kdtree_ = std::make_shared<NanoFlann>(statespace_->getDimension());
-    else 
+    else
         throw std::runtime_error("Unknown KD-Tree type");
-    
 
-
-    std::cout << "FMTX setup complete: num_of_samples=" << num_of_samples_ 
+    std::cout << "FMTX setup complete: num_of_samples=" << num_of_samples_
                 << ", bounds=[" << lower_bound_ << ", " << upper_bound_ << "]\n";
 
 
     std::cout << "--- \n";
     std::cout << "Taking care of the samples: \n \n";
     setStart(problem_->getStart());
-    kdtree_->addPoint(problem_->getStart());
     std::cout << "--- \n";
-    for (int i = 0 ; i < num_of_samples_ ; i++) { // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
-        
+    for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
         tree_.push_back(std::make_unique<TreeNode>(statespace_->sampleUniform(lower_bound_ , upper_bound_)));
-        kdtree_->addPoint(tree_.at(i)->getStateVlaue());
     }
     std::cout << "--- \n";
     setGoal(problem_->getGoal());
-    kdtree_->addPoint(problem_->getGoal());
 
+    std::cout << "KDTree: \n\n";
+    if (use_kdtree == true) {
+        // Put all the points at once because fmtx doesnt need incremental addition
+        kdtree_->addPoints(statespace_->getSamplesCopy());
+        // Build the tree all at once after we fill the data_ in the KDTree
+        kdtree_->buildTree();
+        kdtree_->radiusSearch(tree_.at(0)->getStateVlaue(), 10);
+        std::cout << "---- \n";
+        kdtree_->knnSearch(tree_.at(0)->getStateVlaue(), 10);
+    }
 
 }
 

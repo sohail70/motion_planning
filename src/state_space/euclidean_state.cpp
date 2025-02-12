@@ -6,7 +6,7 @@ EuclideanState::EuclideanState(int dimension):value_(Eigen::VectorXd::Zero(dimen
     std::cout << "EulideanState Constructor \n";
 }
 EuclideanState::EuclideanState(const Eigen::VectorXd& value): value_(value) {
-    std::cout << "EulideanState Constructor 2 \n";
+    // std::cout << "EulideanState Constructor 2 \n";
 }
 
 std::unique_ptr<State> EuclideanState::clone() const {

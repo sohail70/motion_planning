@@ -72,17 +72,17 @@ int main() {
     int dim = 2;
     auto problem_def = std::make_unique<ProblemDefinition>(dim);
     problem_def->setStart(Eigen::VectorXd::Zero(dim));
-    problem_def->setGoal(Eigen::VectorXd::Ones(dim)*30);
-    problem_def->setBounds(0, 30);
+    problem_def->setGoal(Eigen::VectorXd::Ones(dim)*50);
+    problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 15);
-    params.setParam("lower_bound", 0);
-    params.setParam("upper_bound", 30);
+    params.setParam("num_of_samples", 1000);
+    // params.setParam("lower_bound", 0);
+    // params.setParam("upper_bound", 30);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
-    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 5);
+    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 17);
 
     std::unique_ptr<Planner> planner;
 

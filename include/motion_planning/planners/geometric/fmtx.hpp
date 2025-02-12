@@ -30,11 +30,13 @@ class FMTX : public Planner {
       std::unique_ptr<ProblemDefinition> problem_;
 
       int num_of_samples_;
-      int lower_bound_;
-      int upper_bound_;
+      double lower_bound_;
+      double upper_bound_;
 
       int root_state_index_;
       int robot_state_index_;
+      
+      bool use_kdtree;
 
 };
 

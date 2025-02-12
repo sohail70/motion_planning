@@ -46,6 +46,7 @@ class StateSpace {
     }
 
 
+
     int dimension_;
     int num_states_;
 
