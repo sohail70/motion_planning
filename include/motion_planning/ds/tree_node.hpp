@@ -6,13 +6,13 @@
 
 class TreeNode : public Node {
  public:
-    explicit TreeNode(std::shared_ptr<State> state, std::shared_ptr<Node> parent = nullptr);
+    explicit TreeNode(std::unique_ptr<State> state, std::shared_ptr<Node> parent = nullptr);
     const State& getState() const override;
     double getCost() const override;
     std::shared_ptr<Node> getParent() const;
     void setParent(std::shared_ptr<Node> parent);
 
  private:
-    std::shared_ptr<State> state_;
+    std::unique_ptr<State> state_;
     std::shared_ptr<Node> parent_;
 };

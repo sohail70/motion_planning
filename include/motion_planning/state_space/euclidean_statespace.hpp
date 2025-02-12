@@ -12,8 +12,8 @@ class EuclideanStateSpace : public StateSpace {
  public:
     explicit EuclideanStateSpace(int dimension,int capacity);
 
-    std::unique_ptr<State> allocState(const Eigen::VectorXd& value) const override;
-    void sampleUniform(double min, double max);
+    std::unique_ptr<State> addState(const Eigen::VectorXd& value);
+    std::unique_ptr<State> sampleUniform(double min, double max);
     void sampleUniform(double min, double max, int k);
     
 

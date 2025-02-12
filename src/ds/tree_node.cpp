@@ -2,7 +2,7 @@
 
 #include "motion_planning/ds/tree_node.hpp"
 
-TreeNode::TreeNode(std::shared_ptr<State> state, std::shared_ptr<Node> parent) {
+TreeNode::TreeNode(std::unique_ptr<State> state, std::shared_ptr<Node> parent) {
 
 }
 

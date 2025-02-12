@@ -6,20 +6,15 @@ EuclideanStateSpace::EuclideanStateSpace(int dimension,int capacity):StateSpace(
     std::cout << "Euclidean state space constructor \n";
 }
 
-std::unique_ptr<State> EuclideanStateSpace::allocState(const Eigen::VectorXd& value) const {
-     return std::make_unique<EuclideanState>(value);
+std::unique_ptr<State> EuclideanStateSpace::addState(const Eigen::VectorXd& value) {
+    return StateSpace::addState(std::make_unique<EuclideanState>(value));
 }
 
-// void EuclideanStateSpace::sampleUniform() {
-//     Eigen::VectorXd values = Eigen::VectorXd::Random(dimension_); // Random sample in [-1, 1]
-//     this->addState(std::make_unique<EuclideanState>(values));
-    
-// }
 
-void EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0) {
+std::unique_ptr<State> EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0) {
     Eigen::VectorXd values = Eigen::VectorXd::Random(dimension_); // Generate values in [-1,1]
     values = min + (max - min) * (values.array() + 1) / 2; // Scale to [min, max]
-    this->addState(std::make_unique<EuclideanState>(values));
+    return StateSpace::addState(std::make_unique<EuclideanState>(values));
 }
 
 void EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0, int k = 1) {
@@ -29,7 +24,7 @@ void EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0, int 
 
     for (int i = 0; i < k; ++i) {
         Eigen::VectorXd sample = samples_.row(i);
-        addState(std::make_unique<EuclideanState>(sample));
+        StateSpace::addState(std::make_unique<EuclideanState>(sample));
     }
 }
 

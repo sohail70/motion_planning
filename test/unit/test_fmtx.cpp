@@ -39,27 +39,61 @@
 //     return 0;
 // }
 
+//////////////////////////////////////////////////////////////////
+// int main() {
+//     bool using_factory = true;
+//     int dim = 2;
+//     std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 5);
+//     statespace->sampleUniform(0, 1, 5);
+
+//     std::unique_ptr<Planner> planner;
+
+//     if (using_factory)
+//         planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace));
+//     else
+//         planner = std::make_unique<FMTX>(std::move(statespace));
+
+//     Eigen::VectorXd start(dim);
+//     start << 0, 0;
+//     Eigen::VectorXd goal{dim};
+//     start << 1, 1;
+ 
+//     planner->setStart(start);
+//     planner->setGoal(goal);
+
+//     std::cout << planner->getStarIndex() << "\n";
+//     std::cout << planner->getGoalIndex() << "\n";
+// }
+
+/////////////////////////////////////////////////////////////////
+
 int main() {
     bool using_factory = true;
     int dim = 2;
+    auto problem_def = std::make_unique<ProblemDefinition>(dim);
+    problem_def->setStart(Eigen::VectorXd::Zero(dim));
+    problem_def->setGoal(Eigen::VectorXd::Ones(dim));
+    problem_def->setBounds(0, 30);
+
+    PlannerParams params;
+    params.setParam("num_of_samples", 15);
+    params.setParam("lower_bound", 0);
+    params.setParam("upper_bound", 30);
+
+
     std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 5);
-    statespace->sampleUniform(0, 1, 5);
 
     std::unique_ptr<Planner> planner;
 
     if (using_factory)
-        planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace));
+        planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace), std::move(problem_def));
     else
-        planner = std::make_unique<FMTX>(std::move(statespace));
+        planner = std::make_unique<FMTX>(std::move(statespace), std::move(problem_def));
+    planner->setup(std::move(params));
 
-    Eigen::VectorXd start(dim);
-    start << 0, 0;
-    Eigen::VectorXd goal{dim};
-    start << 1, 1;
- 
-    planner->setStart(start);
-    planner->setGoal(goal);
 
-    std::cout << planner->getStarIndex() << "\n";
-    std::cout << planner->getGoalIndex() << "\n";
+    // std::cout << planner->getStarIndex() << "\n";
+    // std::cout << planner->getGoalIndex() << "\n";
+
+    planner->plan();
 }
