@@ -8,6 +8,7 @@
 #include "motion_planning/utils/problem_definition.hpp"
 #include "motion_planning/utils/planner_params.hpp"
 
+#include "motion_planning/utils/nano_flann.hpp"
 
 enum class PlannerType{
     FMTX,
@@ -22,22 +23,8 @@ class Planner {
     Planner() = default;
     virtual ~Planner() = default;
 
-
-
-    // virtual void setStart(const Eigen::VectorXd& start) {
-    //     this->root_state_index_ = statespace_->getNumStates();
-    //     statespace_->addState(start);
-    // }
-
-    // virtual void setGoal(const Eigen::VectorXd& goal) {
-    //     this->robot_state_index_ = statespace_->getNumStates();
-    //     statespace_->addState(goal);
-    // }
-
     virtual void setStart(const Eigen::VectorXd& start) = 0;
     virtual void setGoal(const Eigen::VectorXd& goal) = 0;
-
-
     
     virtual void setup(const PlannerParams& params) = 0;
     virtual void plan() = 0;

@@ -10,8 +10,8 @@ NanoFlann::NanoFlann(int dimension) : dimension_(dimension), data_(0, dimension)
 
 }
 
-void NanoFlann::addPoint(const std::unique_ptr<State>& state) {
-    Eigen::VectorXd value = state->getValue();
+void NanoFlann::addPoint(const Eigen::VectorXd& stateValue) {
+    Eigen::VectorXd value = stateValue;
     if (value.size() != dimension_) {
         throw std::invalid_argument("State dimension does not match KDTree dimension");
     }
@@ -26,33 +26,63 @@ void NanoFlann::addPoint(const std::unique_ptr<State>& state) {
     std::cout << "Data matrix size: " << data_.rows() << "x" << data_.cols() << std::endl;
 }
 
-void NanoFlann::addPoints(const std::vector<std::unique_ptr<State>>& states) {
-    for (const auto& state : states) {
-        Eigen::VectorXd value = state->getValue();
-        if (value.size() != dimension_) {
-            throw std::invalid_argument("State dimension does not match KDTree dimension");
-        }
+void NanoFlann::addPoints(const std::vector<Eigen::VectorXd>& statesValues) {
+    // for (const auto& state : states) {
+    //     Eigen::VectorXd value = state->getValue();
+    //     if (value.size() != dimension_) {
+    //         throw std::invalid_argument("State dimension does not match KDTree dimension");
+    //     }
 
-        // Resize the data matrix to accommodate the new points
-        data_.conservativeResize(data_.rows() + 1, Eigen::NoChange);
-        data_.row(data_.rows() - 1) = value;
-    }
+    //     // Resize the data matrix to accommodate the new points
+    //     data_.conservativeResize(data_.rows() + 1, Eigen::NoChange);
+    //     data_.row(data_.rows() - 1) = value;
+    // }
 
-    // Rebuild the KDTree index
-    kdtree_->index_->buildIndex();
-    std::cout << "Added " << states.size() << " points." << std::endl;
-    std::cout << "Data matrix size: " << data_.rows() << "x" << data_.cols() << std::endl;
+    // // Rebuild the KDTree index
+    // kdtree_->index_->buildIndex();
+    // std::cout << "Added " << states.size() << " points." << std::endl;
+    // std::cout << "Data matrix size: " << data_.rows() << "x" << data_.cols() << std::endl;
 }
 
 void NanoFlann::addPoints(const Eigen::MatrixXd& data) {
-    this->data_ = data;
-    kdtree_->index_->buildIndex();
-    std::cout << "Added lots of points \n";
+    // this->data_ = data;
+    // kdtree_->index_->buildIndex();
+    // std::cout << "Added lots of points \n";
 }
 
 
-std::vector<std::shared_ptr<State>> NanoFlann::knnSearch(const std::unique_ptr<State>& query, int k) const {
-    Eigen::VectorXd queryValue = query->getValue();
+// std::vector<std::shared_ptr<State>> NanoFlann::knnSearch(const std::shared_ptr<State>& query, int k) const {
+//     Eigen::VectorXd queryValue = query->getValue();
+//     if (queryValue.size() != dimension_) {
+//         throw std::invalid_argument("Query state dimension does not match KDTree dimension");
+//     }
+
+//     std::vector<size_t> ret_indexes(k);
+//     std::vector<double> out_dists_sqr(k);
+
+//     nanoflann::KNNResultSet<double> resultSet(k);
+//     resultSet.init(&ret_indexes[0], &out_dists_sqr[0]);
+
+//     kdtree_->index_->findNeighbors(resultSet, queryValue.data(), nanoflann::SearchParameters(10));
+
+//     std::vector<std::shared_ptr<State>> result;
+//     for (size_t i = 0; i < resultSet.size(); ++i) {
+//         Eigen::VectorXd point = data_.row(ret_indexes[i]);
+//         result.push_back(std::make_shared<EuclideanState>(point));
+//     }
+
+//     std::cout << "knnSearch results for query: " << queryValue.transpose() << std::endl;
+//     for (size_t i = 0; i < result.size(); ++i) {
+//         std::cout << "Neighbor " << i + 1 << ": " << result[i]->getValue().transpose()
+//                   << " (distance squared: " << out_dists_sqr[i] << ")" << std::endl;
+//     }
+
+
+//     return result;
+// }
+
+std::vector<size_t> NanoFlann::knnSearch(const Eigen::VectorXd& query, int k) const { //SHOULDN"T WE CHECK IF QUERY IS EVEN IN THE DATA OR NOT!!!! BECAUSE NANO FLANN MIGHT JUST GIVE THE NEIGHBOR OF EVERYTHING!
+    Eigen::VectorXd queryValue = query;
     if (queryValue.size() != dimension_) {
         throw std::invalid_argument("Query state dimension does not match KDTree dimension");
     }
@@ -65,29 +95,57 @@ std::vector<std::shared_ptr<State>> NanoFlann::knnSearch(const std::unique_ptr<S
 
     kdtree_->index_->findNeighbors(resultSet, queryValue.data(), nanoflann::SearchParameters(10));
 
-    std::vector<std::shared_ptr<State>> result;
-    for (size_t i = 0; i < resultSet.size(); ++i) {
-        Eigen::VectorXd point = data_.row(ret_indexes[i]);
-        result.push_back(std::make_shared<EuclideanState>(point));
-    }
-
+    // Return only the indices of the found neighbors
     std::cout << "knnSearch results for query: " << queryValue.transpose() << std::endl;
-    for (size_t i = 0; i < result.size(); ++i) {
-        std::cout << "Neighbor " << i + 1 << ": " << result[i]->getValue().transpose()
+    for (size_t i = 0; i < resultSet.size(); ++i) {
+        std::cout << "Neighbor " << i + 1 << ": Index " << ret_indexes[i]
                   << " (distance squared: " << out_dists_sqr[i] << ")" << std::endl;
     }
 
-
-    return result;
+    return ret_indexes;  // Return only the indices
 }
 
-std::vector<std::shared_ptr<State>> NanoFlann::radiusSearch(const std::unique_ptr<State>& query, double radius) const {
-    Eigen::VectorXd queryValue = query->getValue();
+
+
+// std::vector<std::shared_ptr<State>> NanoFlann::radiusSearch(const std::shared_ptr<State>& query, double radius) const {
+//     Eigen::VectorXd queryValue = query->getValue();
+//     if (queryValue.size() != dimension_) {
+//         throw std::invalid_argument("Query state dimension does not match KDTree dimension");
+//     }
+
+//     // Use the correct type for ret_matches
+//     std::vector<nanoflann::ResultItem<long int, double>> ret_matches;
+//     nanoflann::SearchParameters params;
+//     params.sorted = true;
+
+//     // Perform the radius search
+//     size_t nMatches = kdtree_->index_->radiusSearch(queryValue.data(), radius * radius, ret_matches, params);
+
+//     // Convert results to shared_ptr<State>
+//     std::vector<std::shared_ptr<State>> result;
+//     for (size_t i = 0; i < nMatches; ++i) {
+//         Eigen::VectorXd point = data_.row(ret_matches[i].first);
+//         result.push_back(std::make_shared<EuclideanState>(point));
+//     }
+
+//     // Debug prints
+//     std::cout << "radiusSearch results for query: " << queryValue.transpose() << " with radius: " << radius << std::endl;
+//     for (size_t i = 0; i < result.size(); ++i) {
+//         std::cout << "Match " << i + 1 << ": " << result[i]->getValue().transpose()
+//                   << " (distance squared: " << ret_matches[i].second << ")" << std::endl;
+//     }
+
+//     return result;
+// }
+
+
+
+std::vector<size_t> NanoFlann::radiusSearch(const Eigen::VectorXd& query, double radius) const {
+    Eigen::VectorXd queryValue = query;
     if (queryValue.size() != dimension_) {
         throw std::invalid_argument("Query state dimension does not match KDTree dimension");
     }
 
-    // Use the correct type for ret_matches
     std::vector<nanoflann::ResultItem<long int, double>> ret_matches;
     nanoflann::SearchParameters params;
     params.sorted = true;
@@ -95,19 +153,18 @@ std::vector<std::shared_ptr<State>> NanoFlann::radiusSearch(const std::unique_pt
     // Perform the radius search
     size_t nMatches = kdtree_->index_->radiusSearch(queryValue.data(), radius * radius, ret_matches, params);
 
-    // Convert results to shared_ptr<State>
-    std::vector<std::shared_ptr<State>> result;
+    // Collect only the indices of the results
+    std::vector<size_t> resultIndices;
     for (size_t i = 0; i < nMatches; ++i) {
-        Eigen::VectorXd point = data_.row(ret_matches[i].first);
-        result.push_back(std::make_shared<EuclideanState>(point));
+        resultIndices.push_back(ret_matches[i].first);
     }
 
     // Debug prints
     std::cout << "radiusSearch results for query: " << queryValue.transpose() << " with radius: " << radius << std::endl;
-    for (size_t i = 0; i < result.size(); ++i) {
-        std::cout << "Match " << i + 1 << ": " << result[i]->getValue().transpose()
+    for (size_t i = 0; i < resultIndices.size(); ++i) {
+        std::cout << "Match " << i + 1 << ": Index " << resultIndices[i]
                   << " (distance squared: " << ret_matches[i].second << ")" << std::endl;
     }
 
-    return result;
+    return resultIndices;  // Return only the indices
 }

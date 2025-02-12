@@ -7,7 +7,7 @@
 class TreeNode : public Node {
  public:
     explicit TreeNode(std::unique_ptr<State> state, std::shared_ptr<Node> parent = nullptr);
-    const State& getState() const override;
+    Eigen::VectorXd getStateVlaue() const override;
     double getCost() const override;
     std::shared_ptr<Node> getParent() const;
     void setParent(std::shared_ptr<Node> parent);

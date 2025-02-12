@@ -24,6 +24,7 @@ class FMTX : public Planner {
       std::shared_ptr<State> goal_;
       std::vector<std::shared_ptr<State>> path_;
       std::vector<std::shared_ptr<TreeNode>> tree_;
+      std::shared_ptr<KDTree> kdtree_;
 
       std::unique_ptr<StateSpace> statespace_;
       std::unique_ptr<ProblemDefinition> problem_;

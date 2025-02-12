@@ -10,17 +10,19 @@
 
 class NanoFlann : public KDTree {
  public:
-    using NFKDTree = nanoflann::KDTreeEigenMatrixAdaptor<Eigen::MatrixXd>;
-    explicit NanoFlann(int dimension);
-    void addPoint(const std::unique_ptr<State>& state) override;
-    void addPoints(const std::vector<std::unique_ptr<State>>& states) override;
-    void addPoints(const Eigen::MatrixXd& states) override;
+      using NFKDTree = nanoflann::KDTreeEigenMatrixAdaptor<Eigen::MatrixXd>;
+      explicit NanoFlann(int dimension);
+      void addPoint(const Eigen::VectorXd& stateValue) override;
+      void addPoints(const std::vector<Eigen::VectorXd>& statesValues) override;
+      void addPoints(const Eigen::MatrixXd& states) override;
 
-    std::vector<std::shared_ptr<State>> knnSearch(const std::unique_ptr<State>& query , int k) const override;
-    std::vector<std::shared_ptr<State>> radiusSearch(const std::unique_ptr<State>& query , double radius) const override;
+      //  std::vector<std::shared_ptr<State>> knnSearch(const std::shared_ptr<State>& query , int k) const override;
+      //  std::vector<std::shared_ptr<State>> radiusSearch(const std::shared_ptr<State>& query , double radius) const override;
+      std::vector<size_t> knnSearch(const Eigen::VectorXd& query , int k) const override;
+      std::vector<size_t> radiusSearch(const Eigen::VectorXd& query , double radius) const override;
 
  private:
-    int dimension_;
-    Eigen::MatrixXd data_;
-    std::unique_ptr<NFKDTree> kdtree_;
+      int dimension_;
+      Eigen::MatrixXd data_;
+      std::unique_ptr<NFKDTree> kdtree_;
 }; 

@@ -29,7 +29,7 @@ class StateSpace {
     const Eigen::MatrixXd& getSamples() const { return samples_;} // This one might have zeros in it because of doubling the capacity in the addState function
     Eigen::MatrixXd getSamplesCopy() const { return samples_.topRows(num_states_).eval();}  // eval creates a copy. without eval its just a (reference) view of the first num_states_ columns of the matrix!
     int getNumStates() const { return num_states_; }
-
+    int getDimension() const { return dimension_; }
 
 
 

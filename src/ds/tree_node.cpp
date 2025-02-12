@@ -2,12 +2,12 @@
 
 #include "motion_planning/ds/tree_node.hpp"
 
-TreeNode::TreeNode(std::unique_ptr<State> state, std::shared_ptr<Node> parent) {
+TreeNode::TreeNode(std::unique_ptr<State> state, std::shared_ptr<Node> parent): state_(std::move(state)) {
 
 }
 
-const State& TreeNode::getState() const {
-
+Eigen::VectorXd TreeNode::getStateVlaue() const {
+    return state_->getValue();
 }
 
 double TreeNode::getCost() const {
