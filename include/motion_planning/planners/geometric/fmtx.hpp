@@ -4,6 +4,8 @@
 #include "motion_planning/pch.hpp"
 #include "motion_planning/planners/planner.hpp"
 #include "motion_planning/ds/tree_node.hpp"
+#include "motion_planning/utils/visualization.hpp"
+
 
 struct NeighborInfo {
     int index;
@@ -14,7 +16,7 @@ struct NeighborInfo {
 class FMTX : public Planner {
  public:
           FMTX(std::unique_ptr<StateSpace> statespace , std::unique_ptr<ProblemDefinition> problem_def);
-          void setup(const PlannerParams& params) override;
+          void setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) override;
           void plan() override;
           std::vector<int> getPathIndex() const override;
           void setStart(const Eigen::VectorXd& start) override;
@@ -24,7 +26,7 @@ class FMTX : public Planner {
           // int getStarIndex() {return root_state_index_;}
 
           std::vector<NeighborInfo> near(int node_index);
-          
+          void visualizeTree();
 
 
  private:
@@ -36,6 +38,8 @@ class FMTX : public Planner {
 
           std::unique_ptr<StateSpace> statespace_;
           std::unique_ptr<ProblemDefinition> problem_;
+          
+          std::shared_ptr<Visualization> visualization_;
 
 
           std::unordered_set<int> v_open_set_;

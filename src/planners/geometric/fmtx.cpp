@@ -6,8 +6,13 @@ FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::unique_ptr<ProblemDefini
 
 }
 
-void FMTX::setup(const PlannerParams& params) {
+void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) {
+
     auto start = std::chrono::high_resolution_clock::now();
+
+    visualization_ = visualization;
+
+
 
     num_of_samples_ = params.getParam<int>("num_of_samples");
     lower_bound_ = problem_->getLowerBound();
@@ -237,4 +242,27 @@ std::vector<NeighborInfo> FMTX::near(int node_index) {
     }
     neighbors_dict_[node_index] = neighbors_info;
     return neighbors_info;
+}
+
+
+void FMTX::visualizeTree() {
+    std::vector<Eigen::VectorXd> nodes;
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+
+    // Add nodes to the list
+    for (const auto& tree_node : tree_) {
+        nodes.push_back(tree_node->getStateVlaue());
+    }
+
+    // Add edges to the list
+    for (const auto& tree_node : tree_) {
+        int parent_index = tree_node->getParentIndex();
+        if (parent_index != -1) {
+            edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_node->getStateVlaue());
+        }
+    }
+
+    // Use the visualization class to visualize nodes and edges
+    visualization_->visualizeNodes(nodes);
+    visualization_->visualizeEdges(edges);
 }

@@ -5,8 +5,14 @@
  */
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
+#include "motion_planning/utils/rviz_visualization.hpp"
+#include <rclcpp/rclcpp.hpp>
+int main(int argc, char **argv) {
+    rclcpp::init(argc, argv);
+    // Create ROS node
+    auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
+    auto visualization = std::make_shared<RVizVisualization>(node);
 
-int main() {
     bool using_factory = true;
     int dim = 2;
     auto problem_def = std::make_unique<ProblemDefinition>(dim);
@@ -15,9 +21,10 @@ int main() {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 5000);
+    params.setParam("num_of_samples", 20000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
+
 
     std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 100);
 
@@ -27,7 +34,9 @@ int main() {
         planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace), std::move(problem_def));
     else
         planner = std::make_unique<FMTX>(std::move(statespace), std::move(problem_def));
-    planner->setup(std::move(params));
+    planner->setup(std::move(params) , visualization);
 
     planner->plan();
+    dynamic_cast<FMTX*>(planner.get())->visualizeTree();
+
 }

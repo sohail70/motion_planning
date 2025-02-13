@@ -6,11 +6,31 @@ set(CMAKE_BUILD_TYPE RelWithDebInfo)
 find_package(Eigen3 REQUIRED)
 find_package(nanoflann)
 
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED) 
+find_package(visualization_msgs REQUIRED) 
+
 
 include_directories(
   include
   ${EIGEN3_INCLUDE_DIRS} 
 )
+
+# Visualization Library (ROS2 dependent)
+add_library(visualization
+    src/utils/rviz_visualization.cpp  # Your ROS2 visualization source code here
+    # other visualization files
+)
+
+target_include_directories(visualization PUBLIC include)
+# target_link_libraries(visualization PUBLIC rclcpp::rclcpp)
+ament_target_dependencies(visualization PUBLIC rclcpp visualization_msgs)
+
+
+
+
+
+
 
 add_library(motion_planning
     src/planners/geometric/fmtx.cpp
@@ -24,7 +44,7 @@ add_library(motion_planning
 target_precompile_headers(motion_planning PRIVATE include/motion_planning/pch.hpp)
 
 target_include_directories(motion_planning PUBLIC include) 
-target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann)
+target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann visualization)
 
 
 
@@ -42,3 +62,8 @@ add_test(NAME test_kdtree COMMAND test_kdtree)
 add_executable(test_state test/unit/test_state.cpp)
 target_link_libraries(test_state  motion_planning)
 add_test(NAME test_state COMMAND test_state)
+
+add_executable(test_visual test/unit/test_visual.cpp)
+target_link_libraries(test_visual  visualization)
+ament_target_dependencies(test_visual rclcpp visualization_msgs)
+add_test(NAME test_visual COMMAND test_visual)

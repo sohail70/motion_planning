@@ -9,6 +9,7 @@
 #include "motion_planning/utils/planner_params.hpp"
 
 #include "motion_planning/utils/nano_flann.hpp"
+#include "motion_planning/utils/visualization.hpp"
 
 enum class PlannerType{
     FMTX,
@@ -26,7 +27,7 @@ class Planner {
     virtual void setStart(const Eigen::VectorXd& start) = 0;
     virtual void setGoal(const Eigen::VectorXd& goal) = 0;
     
-    virtual void setup(const PlannerParams& params) = 0;
+    virtual void setup(const PlannerParams& params , std::shared_ptr<Visualization> visualization) = 0;
     virtual void plan() = 0;
     virtual std::vector<int> getPathIndex() const = 0;
 
