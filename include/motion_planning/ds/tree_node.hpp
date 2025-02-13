@@ -6,13 +6,25 @@
 
 class TreeNode : public Node {
  public:
-    explicit TreeNode(std::unique_ptr<State> state, std::shared_ptr<Node> parent = nullptr);
-    Eigen::VectorXd getStateVlaue() const override;
-    double getCost() const override;
-    std::shared_ptr<Node> getParent() const;
-    void setParent(std::shared_ptr<Node> parent);
+      explicit TreeNode(std::unique_ptr<State> state, std::shared_ptr<Node> parent = nullptr);
+      Eigen::VectorXd getStateVlaue() const override;
+      
+      void setCost(double cost) override;
+      double getCost() const override;
+      
+      void setParentIndex(int index);
+      int getParentIndex() const override;
+      
+      void setChildrenIndex(int index) override;
+      std::vector<int> getChildrenIndices() const override;
+
+
 
  private:
-    std::unique_ptr<State> state_;
-    std::shared_ptr<Node> parent_;
+      std::unique_ptr<State> state_;
+      int parent_index_;
+      std::vector<int> children_indices_;
+      double cost_to_root_;
+
+
 };

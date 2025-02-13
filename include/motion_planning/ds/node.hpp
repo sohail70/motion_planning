@@ -8,7 +8,13 @@ class Node {
  public:
     virtual ~Node() = default;
     virtual Eigen::VectorXd getStateVlaue() const = 0;
+
+    virtual void setCost(double cost) = 0;
     virtual double getCost() const = 0;
+    virtual void setParentIndex(int index) = 0;
+    virtual int getParentIndex() const = 0;
+    virtual void setChildrenIndex(int index) = 0;
+    virtual std::vector<int> getChildrenIndices() const = 0;
 };
 
 

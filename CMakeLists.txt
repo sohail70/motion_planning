@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 project(MotionPlanning)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
 find_package(Eigen3 REQUIRED)
 find_package(nanoflann)
 

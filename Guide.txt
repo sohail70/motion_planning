@@ -1,2 +1,6 @@
 Using nanoflann for exact nearest neighbor search
 https://github.com/jlblancoc/nanoflann
+
+
+valgrind --tool=callgrind ./my_program
+kcachegrind callgrind.out

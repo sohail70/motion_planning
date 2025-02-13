@@ -9,7 +9,7 @@ class StateSpace {
  public:
     explicit StateSpace(int dimension, int initial_capacity = 1000)
         : dimension_(dimension), num_states_(0) {
-        samples_.resize(initial_capacity, dimension);
+        states_.resize(initial_capacity, dimension);
     }
 
     virtual ~StateSpace() = default;
@@ -26,8 +26,8 @@ class StateSpace {
 
 
 
-    const Eigen::MatrixXd& getSamples() const { return samples_;} // This one might have zeros in it because of doubling the capacity in the addState function
-    Eigen::MatrixXd getSamplesCopy() const { return samples_.topRows(num_states_).eval();}  // eval creates a copy. without eval its just a (reference) view of the first num_states_ columns of the matrix!
+    const Eigen::MatrixXd& getSamples() const { return states_;} // This one might have zeros in it because of doubling the capacity in the addState function
+    Eigen::MatrixXd getSamplesCopy() const { return states_.topRows(num_states_).eval();}  // eval creates a copy. without eval its just a (reference) view of the first num_states_ columns of the matrix!
     int getNumStates() const { return num_states_; }
     int getDimension() const { return dimension_; }
 
@@ -36,11 +36,11 @@ class StateSpace {
  protected:
 
     std::unique_ptr<State> addState(std::unique_ptr<State> state) {
-        if (num_states_ >= samples_.rows()) {
-            int new_capacity = static_cast<int>(samples_.rows() * 1.5);
-            samples_.conservativeResize(new_capacity, Eigen::NoChange);
+        if (num_states_ >= states_.rows()) {
+            int new_capacity = static_cast<int>(states_.rows() * 1.5);
+            states_.conservativeResize(new_capacity, Eigen::NoChange);
         }
-        samples_.row(num_states_) = state->getValue();
+        states_.row(num_states_) = state->getValue();
         num_states_++;
         return state;
     }
@@ -50,7 +50,7 @@ class StateSpace {
     int dimension_;
     int num_states_;
 
-    Eigen::MatrixXd samples_;   
+    Eigen::MatrixXd states_;   
 };
 
 

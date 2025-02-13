@@ -18,12 +18,12 @@ std::unique_ptr<State> EuclideanStateSpace::sampleUniform(double min = 0.0, doub
 }
 
 void EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0, int k = 1) {
-    this->samples_ = Eigen::MatrixXd::Random(k, dimension_);
-    this->samples_ = min * Eigen::MatrixXd::Ones(k, dimension_) + 
-                     0.5 * (max - min) * (this->samples_ + Eigen::MatrixXd::Ones(k, dimension_));  //Because Random is between -1,1 so you have to shift it to [0,2] then divide it to [0,1] and the scale it to [min,max]
+    this->states_ = Eigen::MatrixXd::Random(k, dimension_);
+    this->states_ = min * Eigen::MatrixXd::Ones(k, dimension_) + 
+                     0.5 * (max - min) * (this->states_ + Eigen::MatrixXd::Ones(k, dimension_));  //Because Random is between -1,1 so you have to shift it to [0,2] then divide it to [0,1] and the scale it to [min,max]
 
     for (int i = 0; i < k; ++i) {
-        Eigen::VectorXd sample = samples_.row(i);
+        Eigen::VectorXd sample = states_.row(i);
         StateSpace::addState(std::make_unique<EuclideanState>(sample));
     }
 }

@@ -28,7 +28,7 @@ class Planner {
     
     virtual void setup(const PlannerParams& params) = 0;
     virtual void plan() = 0;
-    virtual std::vector<std::shared_ptr<State>> getPath() const = 0;
+    virtual std::vector<int> getPathIndex() const = 0;
 
  protected:
 
