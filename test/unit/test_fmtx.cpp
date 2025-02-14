@@ -1,17 +1,21 @@
 // Copyright 2025 Soheil E.nia
 /**
+ * TODO: Observer design for map. when it updates we need to check obstacle in fmtx
  * TODO: Create solve() and setPlanner() in Problem Definition Class    
  * TODO: Put variables in fmtx in a struct
  */
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
+#include "motion_planning/utils/occupancygrid_obstacle_checker.hpp"
 #include <rclcpp/rclcpp.hpp>
+
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     // Create ROS node
     auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
+
 
     bool using_factory = true;
     int dim = 2;

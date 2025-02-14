@@ -9,11 +9,18 @@ find_package(nanoflann)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED) 
 find_package(visualization_msgs REQUIRED) 
+find_package(nav_msgs REQUIRED) 
+find_package(geometry_msgs REQUIRED) 
+find_package(tf2_ros REQUIRED) 
 
 
 include_directories(
   include
   ${EIGEN3_INCLUDE_DIRS} 
+  ${rclcpp_INCLUDE_DIRS}
+  ${nav_msgs_INCLUDE_DIRS}
+  ${geometry_msgs_INCLUDE_DIRS}
+  ${tf2_ros_INCLUDE_DIRS}
 )
 
 # Visualization Library (ROS2 dependent)
@@ -48,7 +55,6 @@ target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann 
 
 
 
-
 enable_testing()
 add_executable(test_fmtx test/unit/test_fmtx.cpp)
 target_link_libraries(test_fmtx motion_planning)
@@ -67,3 +73,9 @@ add_executable(test_visual test/unit/test_visual.cpp)
 target_link_libraries(test_visual  visualization)
 ament_target_dependencies(test_visual rclcpp visualization_msgs)
 add_test(NAME test_visual COMMAND test_visual)
+
+
+add_executable(test_occupancy test/unit/test_occupancy.cpp)
+target_link_libraries(test_occupancy visualization motion_planning)
+ament_target_dependencies(test_occupancy rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs)
+add_test(NAME test_occupancy COMMAND test_occupancy)

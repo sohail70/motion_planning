@@ -223,7 +223,7 @@ std::vector<NeighborInfo> FMTX::near(int node_index) {
     }
 
     auto indices = kdtree_->radiusSearch(tree_.at(node_index)->getStateVlaue(), neighborhood_radius_);
-    // auto indices = kdtree_->knnSearch(tree_.at(node_index)->getStateVlaue(), 10);
+    // auto indices = kdtree_->knnSearch(tree_.at(node_index)->getStateVlaue(), 54);
 
     if (indices.empty()) {
         neighbors_dict_[node_index] = {};

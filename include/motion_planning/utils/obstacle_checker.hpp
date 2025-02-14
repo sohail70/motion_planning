@@ -1,19 +1,24 @@
-// obstacle_checker.hpp
-#ifndef OBSTACLE_CHECKER_HPP
-#define OBSTACLE_CHECKER_HPP
+// Copyright 2025 Soheil E.nia
+
+/**
+ * TODO: Make this independant of ros2 msgs!
+ */
+
+#pragma once
 
 #include <memory>
 #include <Eigen/Dense>
-
+#include <nav_msgs/msg/occupancy_grid.hpp>
 class ObstacleChecker {
 public:
     virtual ~ObstacleChecker() = default;
 
     // Pure virtual method for obstacle checking
     virtual bool isObstacleFree(const Eigen::VectorXd& start, const Eigen::VectorXd& end) const = 0;
+    virtual void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) = 0;
+
 };
 
-#endif // OBSTACLE_CHECKER_HPP
 
 
 
