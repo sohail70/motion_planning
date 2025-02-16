@@ -8,6 +8,8 @@
 #include "motion_planning/planners/planner_factory.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
 #include "motion_planning/utils/occupancygrid_obstacle_checker.hpp"
+#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+#include "motion_planning/utils/ros2_manager.hpp"
 #include <rclcpp/rclcpp.hpp>
 
 int main(int argc, char **argv) {
@@ -15,6 +17,8 @@ int main(int argc, char **argv) {
     // Create ROS node
     auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
+    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>("tugbot", 5.0); // Robot model name and obstacle radius
+    auto ros2_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization);
 
 
     bool using_factory = true;
@@ -25,7 +29,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 20000);
+    params.setParam("num_of_samples", 1000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
@@ -35,12 +39,15 @@ int main(int argc, char **argv) {
     std::unique_ptr<Planner> planner;
 
     if (using_factory)
-        planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace), std::move(problem_def));
+        planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace), std::move(problem_def) ,obstacle_checker);
     else
-        planner = std::make_unique<FMTX>(std::move(statespace), std::move(problem_def));
+        planner = std::make_unique<FMTX>(std::move(statespace), std::move(problem_def) , obstacle_checker);
     planner->setup(std::move(params) , visualization);
 
     planner->plan();
     dynamic_cast<FMTX*>(planner.get())->visualizeTree();
+
+    rclcpp::spin(ros2_manager);
+    rclcpp::shutdown();
 
 }

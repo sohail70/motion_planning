@@ -16,11 +16,11 @@ void PlannerFactory::registerPlanner(PlannerType type, Creator creator ) {
     planners_.insert(std::make_pair(type,creator));
 }
 
-std::unique_ptr<Planner> PlannerFactory::createPlanner(PlannerType type, std::unique_ptr<StateSpace> statespace, std::unique_ptr<ProblemDefinition> problem) {  
+std::unique_ptr<Planner> PlannerFactory::createPlanner(PlannerType type, std::unique_ptr<StateSpace> statespace, std::unique_ptr<ProblemDefinition> problem, std::shared_ptr<ObstacleChecker> obs_checker ) {  
     auto object = planners_.find(type);
     if (object != planners_.end())
     {
-        return object->second(std::move(statespace) , std::move(problem));
+        return object->second(std::move(statespace) , std::move(problem) , obs_checker);
     }
     throw std::invalid_argument("Unknown planner type: ");
 }

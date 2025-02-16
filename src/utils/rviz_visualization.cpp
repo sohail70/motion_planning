@@ -5,6 +5,8 @@
 RVizVisualization::RVizVisualization(rclcpp::Node::SharedPtr node, const std::string& marker_topic)
     : node_(node) {
     marker_pub_ = node_->create_publisher<visualization_msgs::msg::Marker>(marker_topic, 10);
+    marker_pub_2_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("marker2", 10);
+
 }
 
 void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id) {
@@ -64,4 +66,38 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
 
         // Publish the marker
         marker_pub_->publish(marker);
+}
+
+
+void RVizVisualization::visualizeCylinder(
+    const std::vector<Eigen::VectorXd>& obstacles, 
+    double radius, 
+    const std::string& frame_id) 
+{
+    visualization_msgs::msg::MarkerArray marker_array;
+
+    int id = 0;
+    for (const auto& obstacle : obstacles) {
+        visualization_msgs::msg::Marker marker;
+        marker.header.frame_id = frame_id;
+        marker.header.stamp = node_->now();
+        marker.ns = "obstacle_markers";
+        marker.id = id++;  // Unique ID per marker
+        marker.type = visualization_msgs::msg::Marker::CYLINDER;
+        marker.action = visualization_msgs::msg::Marker::ADD;
+
+        marker.pose.position.x = obstacle.x();
+        marker.pose.position.y = obstacle.y();
+        marker.pose.position.z = 0.05;
+        marker.scale.x = 2 * radius;  // Diameter
+        marker.scale.y = 2 * radius;  // Diameter
+        marker.scale.z = 0.1;         // Height
+        marker.color.b = 1.0;
+        marker.color.a = 0.5;
+
+        marker_array.markers.push_back(marker);
+    }
+
+    // Publish all markers at once
+    marker_pub_2_->publish(marker_array);
 }

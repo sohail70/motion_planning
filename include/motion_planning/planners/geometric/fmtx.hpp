@@ -6,7 +6,6 @@
 #include "motion_planning/ds/tree_node.hpp"
 #include "motion_planning/utils/visualization.hpp"
 
-
 struct NeighborInfo {
     int index;
     double distance;
@@ -15,7 +14,7 @@ struct NeighborInfo {
 
 class FMTX : public Planner {
  public:
-          FMTX(std::unique_ptr<StateSpace> statespace , std::unique_ptr<ProblemDefinition> problem_def);
+          FMTX(std::unique_ptr<StateSpace> statespace , std::unique_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
           void setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) override;
           void plan() override;
           std::vector<int> getPathIndex() const override;
@@ -40,6 +39,7 @@ class FMTX : public Planner {
           std::unique_ptr<ProblemDefinition> problem_;
           
           std::shared_ptr<Visualization> visualization_;
+          std::shared_ptr<ObstacleChecker> obs_checker_;
 
 
           std::unordered_set<int> v_open_set_;

@@ -4,6 +4,8 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <visualization_msgs/msg/marker.hpp>
+#include "visualization_msgs/msg/marker_array.hpp"
+
 #include <Eigen/Dense>
 #include <vector>
 #include "motion_planning/utils/visualization.hpp"
@@ -16,7 +18,12 @@ public:
     
     void visualizeEdges(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id = "map") override;
 
+    void visualizeCylinder(const std::vector<Eigen::VectorXd>& obstacles, double radius, const std::string& frame_id);
+
+
 private:
     rclcpp::Node::SharedPtr node_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_2_;
+
 };

@@ -13,6 +13,11 @@ find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED) 
 find_package(tf2_ros REQUIRED) 
 
+find_package(gz-transport13 REQUIRED)   # Gazebo transport
+find_package(gz-msgs10 REQUIRED)        # Gazebo messages
+find_package(Protobuf REQUIRED)         # Protocol Buffers
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ZeroMQ REQUIRED libzmq)
 
 include_directories(
   include
@@ -21,6 +26,12 @@ include_directories(
   ${nav_msgs_INCLUDE_DIRS}
   ${geometry_msgs_INCLUDE_DIRS}
   ${tf2_ros_INCLUDE_DIRS}
+
+
+  ${gz-transport13_INCLUDE_DIRS}
+  ${gz-msgs10_INCLUDE_DIRS}
+  ${Protobuf_INCLUDE_DIRS}
+  ${ZeroMQ_INCLUDE_DIRS}
 )
 
 # Visualization Library (ROS2 dependent)
@@ -35,6 +46,14 @@ ament_target_dependencies(visualization PUBLIC rclcpp visualization_msgs)
 
 
 
+
+add_library(gz_obs  src/utils/gazebo_obstacle_checker.cpp)
+target_link_libraries(gz_obs
+  gz-transport13
+  gz-msgs10
+  ${Protobuf_LIBRARIES}
+  ${ZeroMQ_LIBRARIES}
+)
 
 
 
@@ -57,7 +76,8 @@ target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann 
 
 enable_testing()
 add_executable(test_fmtx test/unit/test_fmtx.cpp)
-target_link_libraries(test_fmtx motion_planning)
+target_link_libraries(test_fmtx motion_planning gz_obs)
+ament_target_dependencies(test_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs)
 add_test(NAME test_fmtx COMMAND test_fmtx)
 
 
@@ -76,6 +96,13 @@ add_test(NAME test_visual COMMAND test_visual)
 
 
 add_executable(test_occupancy test/unit/test_occupancy.cpp)
-target_link_libraries(test_occupancy visualization motion_planning)
+target_link_libraries(test_occupancy visualization motion_planning gz_obs)
 ament_target_dependencies(test_occupancy rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs)
 add_test(NAME test_occupancy COMMAND test_occupancy)
+
+
+
+add_executable(test_gz test/unit/test_gz.cpp)
+target_link_libraries(test_gz gz_obs visualization motion_planning)
+ament_target_dependencies(test_gz rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs)
+add_test(NAME test_gz COMMAND test_gz)

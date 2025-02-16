@@ -1,7 +1,7 @@
 // Copyright 2025 Soheil E.nia
 #include "motion_planning/planners/geometric/fmtx.hpp"
 
-FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::unique_ptr<ProblemDefinition> problem_def) :  statespace_(std::move(statespace)), problem_(std::move(problem_def)) {
+FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::unique_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(std::move(statespace)), problem_(std::move(problem_def)), obs_checker_(obs_checker) {
     std::cout<< "FMTX Constructor \n";
 
 }
@@ -137,7 +137,9 @@ void FMTX::plan() {
             }
 
             //obstcle check! later!
-            bool obstalce_check = true;
+            // bool obstalce_check = true;
+            bool obstalce_check = obs_checker_->isObstacleFree(tree_.at(xIndex)->getStateVlaue() , tree_.at(best_neighbor_index)->getStateVlaue());
+
             if (obstalce_check) {
                 double newCost = min_cost;
                 if (newCost < tree_.at(xIndex)->getCost()) {
