@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 1000);
+    params.setParam("num_of_samples", 5000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
@@ -44,10 +44,15 @@ int main(int argc, char **argv) {
         planner = std::make_unique<FMTX>(std::move(statespace), std::move(problem_def) , obstacle_checker);
     planner->setup(std::move(params) , visualization);
 
+    // Plan the static one!
     planner->plan();
-    dynamic_cast<FMTX*>(planner.get())->visualizeTree();
 
-    rclcpp::spin(ros2_manager);
+    while (true) {
+        auto obstacles = obstacle_checker->getObstaclePositions();
+        dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
+        dynamic_cast<FMTX*>(planner.get())->visualizeTree();
+        rclcpp::spin_some(ros2_manager);
+    }
     rclcpp::shutdown();
 
 }

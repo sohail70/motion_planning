@@ -14,49 +14,50 @@ struct NeighborInfo {
 
 class FMTX : public Planner {
  public:
-          FMTX(std::unique_ptr<StateSpace> statespace , std::unique_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
-          void setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) override;
-          void plan() override;
-          std::vector<int> getPathIndex() const override;
-          void setStart(const Eigen::VectorXd& start) override;
-          void setGoal(const Eigen::VectorXd& goal) override;
+            FMTX(std::unique_ptr<StateSpace> statespace , std::unique_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
+            void setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) override;
+            void plan() override;
+            std::vector<int> getPathIndex() const override;
+            void setStart(const Eigen::VectorXd& start) override;
+            void setGoal(const Eigen::VectorXd& goal) override;
 
-          // int getGoalIndex() {return robot_state_index_;}
-          // int getStarIndex() {return root_state_index_;}
+            // int getGoalIndex() {return robot_state_index_;}
+            // int getStarIndex() {return root_state_index_;}
 
-          std::vector<NeighborInfo> near(int node_index);
-          void visualizeTree();
-
+            std::vector<NeighborInfo> near(int node_index);
+            void visualizeTree();
+            std::unordered_set<int> findSamplesNearObstacles(const std::vector<Eigen::Vector2d>& obstacles, double obstacle_radius);
+            void updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles);
 
  private:
-          std::shared_ptr<State> start_;
-          std::shared_ptr<State> goal_;
-          std::vector<std::shared_ptr<State>> path_;
-          std::vector<std::shared_ptr<TreeNode>> tree_;
-          std::shared_ptr<KDTree> kdtree_;
+            std::shared_ptr<State> start_;
+            std::shared_ptr<State> goal_;
+            std::vector<std::shared_ptr<State>> path_;
+            std::vector<std::shared_ptr<TreeNode>> tree_;
+            std::shared_ptr<KDTree> kdtree_;
 
-          std::unique_ptr<StateSpace> statespace_;
-          std::unique_ptr<ProblemDefinition> problem_;
-          
-          std::shared_ptr<Visualization> visualization_;
-          std::shared_ptr<ObstacleChecker> obs_checker_;
-
-
-          std::unordered_set<int> v_open_set_;
-          std::unordered_set<int> v_unvisited_set_;
-          std::priority_queue<std::pair<double,int>, std::vector<std::pair<double,int>>, std::greater<>> v_open_heap_;
-
-          std::unordered_map<int, std::vector<NeighborInfo>> neighbors_dict_;
+            std::unique_ptr<StateSpace> statespace_;
+            std::unique_ptr<ProblemDefinition> problem_;
+            
+            std::shared_ptr<Visualization> visualization_;
+            std::shared_ptr<ObstacleChecker> obs_checker_;
 
 
+            std::unordered_set<int> v_open_set_;
+            std::unordered_set<int> v_unvisited_set_;
+            std::priority_queue<std::pair<double,int>, std::vector<std::pair<double,int>>, std::greater<>> v_open_heap_;
 
-          int num_of_samples_;
-          double lower_bound_;
-          double upper_bound_;
-          int root_state_index_;
-          int robot_state_index_;
-          bool use_kdtree;
-          double neighborhood_radius_;
+            std::unordered_map<int, std::vector<NeighborInfo>> neighbors_dict_;
+            std::unordered_set<int> samples_in_obstacles_; // Current samples in obstacles
+
+
+            int num_of_samples_;
+            double lower_bound_;
+            double upper_bound_;
+            int root_state_index_;
+            int robot_state_index_;
+            bool use_kdtree;
+            double neighborhood_radius_;
 
 };
 

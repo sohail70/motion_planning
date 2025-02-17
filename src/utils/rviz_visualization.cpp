@@ -3,7 +3,7 @@
 #include "motion_planning/utils/rviz_visualization.hpp"
 
 RVizVisualization::RVizVisualization(rclcpp::Node::SharedPtr node, const std::string& marker_topic)
-    : node_(node) {
+    : node_(node),marker_id_counter_(0)  {
     marker_pub_ = node_->create_publisher<visualization_msgs::msg::Marker>(marker_topic, 10);
     marker_pub_2_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("marker2", 10);
 

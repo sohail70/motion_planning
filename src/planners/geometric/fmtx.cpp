@@ -265,6 +265,59 @@ void FMTX::visualizeTree() {
     }
 
     // Use the visualization class to visualize nodes and edges
-    visualization_->visualizeNodes(nodes);
+    // visualization_->visualizeNodes(nodes);
     visualization_->visualizeEdges(edges);
+}
+
+std::unordered_set<int> FMTX::findSamplesNearObstacles(
+    const std::vector<Eigen::Vector2d>& obstacles, 
+    double obstacle_radius
+) {
+    std::unordered_set<int> conflicting_samples;
+    
+    for (const auto& obstacle : obstacles) {
+        // Query samples within obstacle radius (5 units)
+        auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
+        conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
+    }
+    
+    return conflicting_samples;
+}
+
+void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) {
+    // Find current samples in obstacles
+    auto current = findSamplesNearObstacles(obstacles, 5.0);
+    
+    // Compute added/removed samples
+    std::vector<int> added, removed;
+    std::set_difference(
+        current.begin(), current.end(),
+        samples_in_obstacles_.begin(), samples_in_obstacles_.end(),
+        std::back_inserter(added)
+    );
+    std::set_difference(
+        samples_in_obstacles_.begin(), samples_in_obstacles_.end(),
+        current.begin(), current.end(),
+        std::back_inserter(removed)
+    );
+    
+    // Handle changes
+    // handleAddedObstacleSamples(added);
+    // handleRemovedObstacleSamples(removed);
+    
+    // Update the tracked set
+    samples_in_obstacles_ = std::move(current);
+
+
+    std::vector<Eigen::VectorXd> samples_in_obstalce_position;
+    for (const auto& sample : samples_in_obstacles_) {
+        Eigen::VectorXd vec(2);
+        vec << tree_.at(sample)->getStateVlaue();
+        samples_in_obstalce_position.push_back(vec);
+    }
+
+    // Visualize obstacles in RViz
+    visualization_->visualizeNodes(samples_in_obstalce_position, "map");
+
+
 }

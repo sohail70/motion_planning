@@ -74,8 +74,8 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
 
 
             
-        } else if (pose.name() == std::string("moving_cylinder")) {
-            // obstacle_positions_.push_back(position); //TODO: Later!
+        } else if (pose.name().find("moving_cylinder_") != std::string::npos) {
+            obstacle_positions_.push_back(position); //TODO: Later!
 
             // // Print pose information
             // std::cout << "  Pose " << i << ":" << std::endl;
