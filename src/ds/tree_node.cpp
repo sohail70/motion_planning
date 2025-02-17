@@ -31,6 +31,6 @@ void TreeNode::setChildrenIndex(int index) {
     children_indices_.push_back(index);
 }
 
-std::vector<int> TreeNode::getChildrenIndices() const {
+std::vector<int>& TreeNode::getChildrenIndices() {
     return children_indices_;
 }

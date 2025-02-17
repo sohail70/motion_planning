@@ -14,7 +14,7 @@ class Node {
     virtual void setParentIndex(int index) = 0;
     virtual int getParentIndex() const = 0;
     virtual void setChildrenIndex(int index) = 0;
-    virtual std::vector<int> getChildrenIndices() const = 0;
+    virtual std::vector<int>& getChildrenIndices() = 0; 
 };
 
 

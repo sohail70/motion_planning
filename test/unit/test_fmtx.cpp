@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 5000);
+    params.setParam("num_of_samples", 2500);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 

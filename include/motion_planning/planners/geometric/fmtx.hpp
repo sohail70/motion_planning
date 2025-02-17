@@ -28,6 +28,9 @@ class FMTX : public Planner {
             void visualizeTree();
             std::unordered_set<int> findSamplesNearObstacles(const std::vector<Eigen::Vector2d>& obstacles, double obstacle_radius);
             void updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles);
+            std::unordered_set<int> getDescendants(int node_index);
+            void handleAddedObstacleSamples(const std::vector<int>& added);
+            void handleRemovedObstacleSamples(const std::vector<int>& removed);
 
  private:
             std::shared_ptr<State> start_;
@@ -50,6 +53,13 @@ class FMTX : public Planner {
             std::unordered_map<int, std::vector<NeighborInfo>> neighbors_dict_;
             std::unordered_set<int> samples_in_obstacles_; // Current samples in obstacles
 
+            struct MaxEdge {
+                double length = 0.0;    // Length of the largest edge
+                int from = -1;          // Parent node index
+                int to = -1;            // Child node index
+            } max_edge_;                // Instance of the struct
+
+            MaxEdge getLargestEdge() const { return max_edge_; }
 
             int num_of_samples_;
             double lower_bound_;

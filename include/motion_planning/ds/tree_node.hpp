@@ -16,7 +16,7 @@ class TreeNode : public Node {
       int getParentIndex() const override;
       
       void setChildrenIndex(int index) override;
-      std::vector<int> getChildrenIndices() const override;
+      std::vector<int>& getChildrenIndices() override; // Its not const and it return a reference so that i can change it in the planner! whats a better a way to handle the change here?
 
 
 
