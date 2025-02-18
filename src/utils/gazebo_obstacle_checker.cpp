@@ -107,9 +107,9 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
 }
 
 bool GazeboObstacleChecker::lineIntersectsCircle(const Eigen::Vector2d& start,
-                                               const Eigen::Vector2d& end,
-                                               const Eigen::Vector2d& center,
-                                               double radius) {
+                                                 const Eigen::Vector2d& end,
+                                                 const Eigen::Vector2d& center,
+                                                 double radius) {
     const Eigen::Vector2d d = end - start;
     const Eigen::Vector2d f = start - center;
     
@@ -117,12 +117,18 @@ bool GazeboObstacleChecker::lineIntersectsCircle(const Eigen::Vector2d& start,
     const double b = 2 * f.dot(d);
     const double c = f.dot(f) - radius * radius;
 
-    double discriminant = b*b - 4*a*c;
+    double discriminant = b * b - 4 * a * c;
+    
+    // If the discriminant is negative, no intersection
     if (discriminant < 0) return false;
 
+    // Compute the square root of the discriminant
     discriminant = std::sqrt(discriminant);
-    const double t1 = (-b - discriminant)/(2*a);
-    const double t2 = (-b + discriminant)/(2*a);
 
+    // Calculate the parametric intersection points
+    const double t1 = (-b - discriminant) / (2 * a);
+    const double t2 = (-b + discriminant) / (2 * a);
+
+    // Check if either intersection point lies within the bounds of the segment
     return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
 }

@@ -81,14 +81,14 @@ void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    std::cout << "Time taken by setup: " << duration.count() << " milliseconds\n";
-    std::cout << "---\n";
+    // std::cout << "Time taken by setup: " << duration.count() << " milliseconds\n";
+    // std::cout << "---\n";
 
 
 }
 
 void FMTX::plan() {
-    std::cout<< "Plan FMTX \n";
+    // std::cout<< "Plan FMTX \n";
     auto start = std::chrono::high_resolution_clock::now();
 
     while (! v_open_heap_.empty()) {
@@ -106,10 +106,23 @@ void FMTX::plan() {
             } else if (tree_.at(xIndex)->getCost() > tree_.at(zIndex)->getCost() + cost_to_neighbor) {
                 v_unvisited_set_.insert(xIndex);
 
-                if (v_open_set_.find(tree_.at(xIndex)->getParentIndex()) == v_open_set_.end()) {
-                    auto parent_of_xIndex = tree_.at(xIndex)->getParentIndex();
+                auto parent_of_xIndex = tree_.at(xIndex)->getParentIndex();
+                // TODO: Think about the second condition for the below if! and also read the comments below! --> you can indeed set parent and delete chldren but for the early exit you might find problem
+                // and rememerb the reason for the following if! -->you might invalid some node but later lose the best vOpen that it already has! --? because vOPen for dynamic obstalce is made by hand by me! it doesnt cover everything and it around the current changes in the environemtn --> but you are actually in this code tracking all the obstalces!!!! so its not incremental so you might even doesnt need the following if! --> in python removing and adding was consecutive but here i simultanelusy check both of them! --> does it even matter for this problem --> im just babbling!
+                if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && tree_[parent_of_xIndex]->getCost()!=std::numeric_limits<double>::infinity()) {
                     v_open_heap_.push({tree_.at(parent_of_xIndex)->getCost() , parent_of_xIndex});
                     v_open_set_.insert(parent_of_xIndex);
+
+                    if (tree_[parent_of_xIndex]->getCost() == std::numeric_limits<double>::infinity()) {
+                        std::cout<<parent_of_xIndex<< "\n";
+                        std::cout<<"why 2\n";
+                    }
+                    // sometimes i make a node's cost to inf in here but i don't delete its children and parent index so later their children might again be in this loop and when i want to put their parent in the vOpen then i'd put inf node to vOpen but vOpen nodes are for expaning and it measn they are visisted once and ready to expand other but cost of inf means unvisted!
+                    // I remember not delting chld and parent was only because of early exit! --> maybe there is a better solution
+                    // But is this really a problem? wouldn't they eventually update! --> i put the parent inf check in the if but not much though about it --> weirdly this doesnt happen when i make the circle bigger for findnearestnodesaroundobstalce
+
+
+
                 }
                 tree_.at(xIndex)->setCost(std::numeric_limits<double>::infinity());
             } else {
@@ -206,8 +219,8 @@ void FMTX::plan() {
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    std::cout << "Time taken by while loop: " << duration.count() << " milliseconds\n";
-    std::cout << "The End \n";
+    // std::cout << "Time taken by while loop: " << duration.count() << " milliseconds\n";
+    // std::cout << "The End \n";
 
 
     // // Write tree nodes to text file after planning is complete
@@ -305,6 +318,7 @@ void FMTX::visualizeTree() {
     visualization_->visualizeEdges(edges);
 }
 
+// TODO: This should only be on dynamic obstacles! --> But how do we know maybe some static obstalce become dynamic! --> not motion planning concern maybe some method to classify static and dynamic obstalces!
 std::unordered_set<int> FMTX::findSamplesNearObstacles(
     const std::vector<Eigen::Vector2d>& obstacles, 
     double obstacle_radius
@@ -337,20 +351,46 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
         std::back_inserter(removed)
     );
     
-    // Handle changes first remove then add, why vice versa is bad? rrtx also first removes.
-    handleRemovedObstacleSamples(removed);
-    handleAddedObstacleSamples(added);
+    // Handle changes first. whic one should be first?
+    if (!added.empty()) {
+        handleAddedObstacleSamples(added);  // Only call if added has elements
+    }
+    if (!removed.empty()) {
+        handleRemovedObstacleSamples(removed);  // Only call if removed has elements
+    }
+
+
     
     // Update the tracked set
     samples_in_obstacles_ = std::move(current);
 
 
-    std::vector<Eigen::VectorXd> samples_in_obstalce_position;
-    for (const auto& sample : samples_in_obstacles_) {
-        Eigen::VectorXd vec(2);
-        vec << tree_.at(sample)->getStateVlaue();
-        samples_in_obstalce_position.push_back(vec);
+    for (int node : v_unvisited_set_) {
+        auto neighbors = near(node);
+        for (const auto& neighbor : neighbors) {
+            if (v_open_set_.count(neighbor.index) == 0 &&
+                v_unvisited_set_.count(neighbor.index) == 0 &&
+                samples_in_obstacles_.count(neighbor.index) == 0 ) {
+                v_open_set_.insert(neighbor.index);
+                v_open_heap_.push({tree_[neighbor.index]->getCost(), neighbor.index});
+                
+                if (tree_[neighbor.index]->getCost() == std::numeric_limits<double>::infinity()) {
+                    std::cout<<neighbor.index<< "\n";
+                    std::cout<<"why \n";
+                }
+            }
+        }
     }
+
+
+    plan();
+
+    // std::vector<Eigen::VectorXd> samples_in_obstalce_position;
+    // for (const auto& sample : samples_in_obstacles_) {
+    //     Eigen::VectorXd vec(2);
+    //     vec << tree_.at(sample)->getStateVlaue();
+    //     samples_in_obstalce_position.push_back(vec);
+    // }
 
     // Visualize obstacles in RViz
     // visualization_->visualizeNodes(samples_in_obstalce_position, "map");
@@ -432,18 +472,24 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
     //     }
     // }
 
-    // Step 3: Add valid nodes to v_open_set_ and v_open_heap_
-    for (int node : v_unvisited_set_) {
-        auto neighbors = near(node);
-        for (const auto& neighbor : neighbors) {
-            if (v_open_set_.count(neighbor.index) == 0 &&
-                v_unvisited_set_.count(neighbor.index) == 0 &&
-                orphan_nodes.count(neighbor.index) == 0) {
-                v_open_set_.insert(neighbor.index);
-                v_open_heap_.push({tree_[neighbor.index]->getCost(), neighbor.index});
-            }
-        }
-    }
+    // // Step 3: Add valid nodes to v_open_set_ and v_open_heap_
+    // for (int node : v_unvisited_set_) {
+    //     auto neighbors = near(node);
+    //     for (const auto& neighbor : neighbors) {
+    //         if (v_open_set_.count(neighbor.index) == 0 &&
+    //             v_unvisited_set_.count(neighbor.index) == 0 &&
+    //             orphan_nodes.count(neighbor.index) == 0 &&
+    //             samples_in_obstacles_.count(neighbor.index) == 0) {
+    //             v_open_set_.insert(neighbor.index);
+    //             v_open_heap_.push({tree_[neighbor.index]->getCost(), neighbor.index});
+    //             if (tree_[neighbor.index]->getCost() == std::numeric_limits<double>::infinity())
+    //             {
+    //                 std::cout<<neighbor.index<< "\n";
+    //                 std::cout<<"why \n";
+    //             }
+    //         }
+    //     }
+    // }
 
 
     // // Step 4: Visualization before planning
@@ -470,57 +516,104 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 
 
     // plan again!;
-    plan();
+    // plan();
 }
 
 
 
 // TODO: THis function shoudln't try to reconnect the nodes but it works weirdly!
 void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
-    // Step 1: Revalidate nodes that are no longer in obstacles
-    for (int idx : removed) {
-        // Check if the node is still valid
-        if (!obs_checker_->isObstacleFree(
-            tree_[idx]->getStateVlaue(), 
-            tree_[idx]->getStateVlaue() // Self-check
-        )) {
-            continue;
-        }
 
-        // Reconnect the node to the tree
-        auto neighbors = near(idx);
-        double min_cost = std::numeric_limits<double>::infinity();
-        int best_parent = -1;
+    // TODO: is erase necessary???
+//     for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
+//     v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
+// }
+    v_unvisited_set_.insert(removed.begin() , removed.end());
 
-        for (const auto& neighbor : neighbors) {
-            if (obs_checker_->isObstacleFree(
-                tree_[neighbor.index]->getStateVlaue(), 
-                tree_[idx]->getStateVlaue()
-            )) {
-                double cost = tree_[neighbor.index]->getCost() + neighbor.distance;
-                if (cost < min_cost) {
-                    min_cost = cost;
-                    best_parent = neighbor.index;
-                }
-            }
-        }
 
-        if (best_parent != -1) {
-            tree_[idx]->setParentIndex(best_parent);
-            tree_[idx]->setCost(min_cost);
-            v_open_set_.insert(idx);
-            v_open_heap_.push({min_cost, idx});
-        }
+    // // Step 1: Revalidate nodes that are no longer in obstacles
+    // for (int idx : removed) {
+    //     // Check if the node is still valid
+    //     if (!obs_checker_->isObstacleFree(
+    //         tree_[idx]->getStateVlaue(), 
+    //         tree_[idx]->getStateVlaue() // Self-check
+    //     )) {
+    //         continue;
+    //     }
 
-        // Remove the node from v_unvisited_set
-        v_unvisited_set_.erase(idx);
-    }
+    //     // Reconnect the node to the tree
+    //     auto neighbors = near(idx);
+    //     double min_cost = std::numeric_limits<double>::infinity();
+    //     int best_parent = -1;
 
-    // Step 2: Update v_open_set and v_unvisited_set
-    for (int idx : removed) {
-        if (v_unvisited_set_.find(idx) != v_unvisited_set_.end()) {
-            v_unvisited_set_.erase(idx);
-        }
-    }
-    plan();
+    //     for (const auto& neighbor : neighbors) {
+    //         if (obs_checker_->isObstacleFree(
+    //             tree_[neighbor.index]->getStateVlaue(), 
+    //             tree_[idx]->getStateVlaue()
+    //         )) {
+    //             double cost = tree_[neighbor.index]->getCost() + neighbor.distance;
+    //             if (cost < min_cost) {
+    //                 min_cost = cost;
+    //                 best_parent = neighbor.index;
+    //             }
+    //         }
+    //     }
+
+    //     if (best_parent != -1) {
+    //         tree_[idx]->setParentIndex(best_parent);
+    //         tree_[idx]->setCost(min_cost);
+    //         v_open_set_.insert(idx);
+    //         v_open_heap_.push({min_cost, idx});
+    //     }
+
+    //     // Remove the node from v_unvisited_set
+    //     v_unvisited_set_.erase(idx);
+    // }
+
+    // // Step 2: Update v_open_set and v_unvisited_set
+    // for (int idx : removed) {
+    //     if (v_unvisited_set_.find(idx) != v_unvisited_set_.end()) {
+    //         v_unvisited_set_.erase(idx);
+    //     }
+    // }
+
+
+    // for (int node : v_unvisited_set_) {
+    //     auto neighbors = near(node);
+    //     for (const auto& neighbor : neighbors) {
+    //         if (v_open_set_.count(neighbor.index) == 0 &&
+    //             v_unvisited_set_.count(neighbor.index) == 0 &&
+    //             samples_in_obstacles_.count(neighbor.index) == 0 ) {
+    //             v_open_set_.insert(neighbor.index);
+    //             v_open_heap_.push({tree_[neighbor.index]->getCost(), neighbor.index});
+                
+    //             if (tree_[neighbor.index]->getCost() == std::numeric_limits<double>::infinity()) {
+    //                 std::cout<<neighbor.index<< "\n";
+    //                 std::cout<<"why \n";
+    //             }
+    //         }
+    //     }
+    // }
+
+    // // std::make_heap(v_open_heap_.begin(), v_open_heap_.end(), std::greater<>{}); // Equivalent to heapq.heapify(vOpen) in Python
+
+    // for (int node : v_unvisited_set_) {
+    //     auto neighbors_info = near(v, v[node], rn, Obs, tree); // Assuming near() returns a vector of neighbor information
+    //     for (const auto& neighbor : neighbors_info) {
+    //         int neighbor_index = neighbor.index;
+    //         if (v_open_set_.count(neighbor_index) == 0 &&
+    //             v_unvisited_set_.count(neighbor_index) == 0 &&
+    //             samples_in_obstacle.count(neighbor_index) == 0) {
+    //             // Add to the open set and heap
+    //             double cost = tree_[neighbor_index]->getCost(); // Equivalent to costToInit[neighbor_index] in Python
+    //             v_open_heap_.push_back({cost, neighbor_index}); // Equivalent to vOpen.append(...) in Python
+    //             v_open_set_.insert(neighbor_index); // Equivalent to vOpen_set.add(...) in Python
+    //         }
+    //     }
+    // }
+
+    // // Heapify v_open_heap_ to maintain the heap property
+
+
+
 }

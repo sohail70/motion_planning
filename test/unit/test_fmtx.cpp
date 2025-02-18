@@ -3,6 +3,11 @@
  * TODO: Observer design for map. when it updates we need to check obstacle in fmtx
  * TODO: Create solve() and setPlanner() in Problem Definition Class    
  * TODO: Put variables in fmtx in a struct
+ * TODO: instead of vUnvitesd in handleadd obstacle for vopen u need to track the vopens! or elseif the vunivsted gets large you are gonna have problems
+ * TODO: why the problem with visual happens? --> oh its the problem with handleremoveobstalce which shoudlnt attach on its own! i guess
+ * TODO: Implement Sensor range for obstalce detection otherwise its too demanding to keep amending the tree!
+ * TODO: Add the obstalce hash map to the plan algorithm!
+ * TODO: trakc the vOpen nodes so that you wouldn't loop over vUnvisted in the handleAdd/Remove functions
  */
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
@@ -29,7 +34,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 2500);
+    params.setParam("num_of_samples", 5000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
