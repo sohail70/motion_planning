@@ -91,6 +91,7 @@ void FMTX::plan() {
     // std::cout<< "Plan FMTX \n";
     auto start = std::chrono::high_resolution_clock::now();
 
+    std::vector<Eigen::VectorXd> positions;
     while (! v_open_heap_.empty()) {
         auto [cost, zIndex] = v_open_heap_.top();
         v_open_heap_.pop();
@@ -100,6 +101,9 @@ void FMTX::plan() {
 
             // std::cout<<"1270 is zIndex \n";
         }
+
+
+
         auto zNeighborsInfo = near(zIndex);
         for (const auto& [xIndex, cost_to_neighbor]: zNeighborsInfo) {
 
@@ -115,6 +119,9 @@ void FMTX::plan() {
                     // std::cout<<"GOT PROMISING  with zIndex: "<<zIndex <<"\n";
                     // fflush(stdout);
                 }
+                Eigen::VectorXd vec(2);
+                vec << tree_.at(xIndex)->getStateVlaue();
+                positions.push_back(vec);
 
 
                 v_unvisited_set_.insert(xIndex);
@@ -206,8 +213,8 @@ void FMTX::plan() {
 
             if (obstalce_check) {
                 double newCost = min_cost; // newCost is the cost from the best neighbor
-                // if (newCost < tree_.at(xIndex)->getCost()) {
-                if (newCost < tree_.at(xIndex)->getCost() + 1e-9) {
+                if (newCost < tree_.at(xIndex)->getCost()) {
+                // if (newCost < tree_.at(xIndex)->getCost() + 1e-9) {
                     // If the node has a parent, remove it from the parent's children list
                     int parentIndex = tree_.at(xIndex)->getParentIndex();
                     if (parentIndex != -1) {
@@ -258,6 +265,7 @@ void FMTX::plan() {
 
         }
 
+
         v_open_set_.erase(zIndex);
         if (v_unvisited_set_.find(zIndex) != v_unvisited_set_.end()) {
             v_unvisited_set_.erase(zIndex);
@@ -268,6 +276,8 @@ void FMTX::plan() {
         }
 
     }
+    std::string color_str = "0.0,1.0,1.0"; // Blue color
+    // visualization_->visualizeNodes(positions,"map",color_str);
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -388,7 +398,7 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
 
 void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) {
     // Find current samples in obstacles
-    auto current = findSamplesNearObstacles(obstacles, 1.5*5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+    auto current = findSamplesNearObstacles(obstacles, 2.2*5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
     
     // Compute added/removed samples
     // std::vector<int> added, removed;
@@ -418,8 +428,16 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     }
 
 
-
-
+    // std::vector<Eigen::VectorXd> positions;
+    // for (int node : v_unvisited_set_) {
+    //     if (tree_[node]->getCost() == std::numeric_limits<double>::infinity()) {
+    //         std::cout << "Node " << node << " has infinite cost!\n";
+    //         // Eigen::VectorXd vec(2);
+    //         // vec << tree_.at(y)->getStateVlaue();
+    //         // positions.push_back(vec);
+    //         // visualization_->visualizeNodes(positions,"map");
+    //     }
+    // }
 
     v_unvisited_set_.clear();  //TODO: should i clear?
     // Handle changes first. whic one should be first?
@@ -459,22 +477,32 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     // }
     // visualization_->visualizeNodes(positions0,"map");
 
+    // std::vector<Eigen::VectorXd> positions;
     for (int node : v_unvisited_set_) {
         auto neighbors = near(node);
         for (const auto& neighbor : neighbors) {
             if (v_open_set_.count(neighbor.index) == 0 &&
                 v_unvisited_set_.count(neighbor.index) == 0 &&
                 samples_in_obstacles_.count(neighbor.index) == 0 ) {
+                if (tree_[neighbor.index]->getCost() == std::numeric_limits<double>::infinity()) { //TODO: Think about this --> i guess since you clear the vunvisted you gotta use cost inf to avoid putting thme in vOpen instead of vunsietd check in the above if condition --> think about this more! --> because later when you want to add early exit you might not even clear the vunvisted so this might be usesless later! --> maybe think about what should be in vOpen! --> the nodes that cleary have a cost other than inf!
+                    continue; //TODO: the reason why some vunvisted remains that got not connected and also they are not promising but just pure vunvisted (have cost of inf) --> it means on the last pahse they got put in the vunvisted in the handle add obstalce! but later in the plan function they didn't get connected --> but you may ask why they didn't get connected?
+                } //TODO: continuation of the above comment --> the reason it happens is this --> imagine a scenraio that you have removed nodes that gets into v unvisted but all the vOpen are not on samples on obstacles! so that v unvisted doest get the chance to get connected to any thing else!
+                
                 v_open_set_.insert(neighbor.index);
                 v_open_heap_.push({tree_[neighbor.index]->getCost(), neighbor.index});
                 
                 if (tree_[neighbor.index]->getCost() == std::numeric_limits<double>::infinity()) {
                     std::cout<<neighbor.index<< "\n";
                     std::cout<<"why \n";
+                    // Eigen::VectorXd vec(2);
+                    // vec << tree_.at(neighbor.index)->getStateVlaue();
+                    // positions.push_back(vec);
                 }
             }
         }
     }
+
+    // visualization_->visualizeNodes(positions,"map");
 
     // std::vector<Eigen::VectorXd> positions;
     // for (const auto& y: v_unvisited_set_) {
@@ -482,7 +510,8 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     //     vec << tree_.at(y)->getStateVlaue();
     //     positions.push_back(vec);
     // }
-    // visualization_->visualizeNodes(positions,"map");
+    // std::string color_str = "1.0,1.0,0.0"; // Blue color
+    // visualization_->visualizeNodes(positions,"map",color_str);
 
     // std::vector<Eigen::VectorXd> positions2;
     // for (const auto& y: v_open_set_) {

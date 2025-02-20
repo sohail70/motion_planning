@@ -17,8 +17,8 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
         marker.id = 0;
         marker.type = visualization_msgs::msg::Marker::POINTS;
         marker.action = visualization_msgs::msg::Marker::ADD;
-        marker.scale.x = 0.1; // Point width
-        marker.scale.y = 0.1; // Point height
+        marker.scale.x = 0.2; // Point width
+        marker.scale.y = 0.2; // Point height
         marker.color.r = 0.0; // Red
         marker.color.g = 1.0; // Green
         marker.color.b = 0.0; // Blue
@@ -36,6 +36,53 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
         // Publish the marker
         marker_pub_->publish(marker);
 }
+
+void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id, const std::string& color_str) {
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = frame_id;
+    marker.header.stamp = node_->now();
+    marker.ns = "fmtx_nodes";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::POINTS;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.scale.x = 0.1; // Point width
+    marker.scale.y = 0.1; // Point height
+
+    // Parse the color string
+    std::stringstream ss(color_str);
+    std::string token;
+    std::vector<float> color_components;
+    while (std::getline(ss, token, ',')) {
+        color_components.push_back(std::stof(token));
+    }
+
+    // Set the color components
+    if (color_components.size() == 3) {
+        marker.color.r = color_components[0]; // Red
+        marker.color.g = color_components[1]; // Green
+        marker.color.b = color_components[2]; // Blue
+        marker.color.a = 1.0; // Fully opaque
+    } else {
+        // Default color (green) if the input is invalid
+        marker.color.r = 0.0;
+        marker.color.g = 1.0;
+        marker.color.b = 0.0;
+        marker.color.a = 1.0;
+    }
+
+    // Add nodes to the marker
+    for (const auto& node : nodes) {
+        geometry_msgs::msg::Point point;
+        point.x = node.x();
+        point.y = node.y();
+        point.z = 0.0; // Assuming 2D
+        marker.points.push_back(point);
+    }
+
+    // Publish the marker
+    marker_pub_->publish(marker);
+}
+
 
 void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id) {
        visualization_msgs::msg::Marker marker;

@@ -10,7 +10,8 @@ public:
     RVizVisualization(rclcpp::Node::SharedPtr node, const std::string& marker_topic = "fmtx_markers");
 
     void visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id = "map") override;
-    
+    void visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id, const std::string& color_str);
+ 
     void visualizeEdges(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id = "map") override;
 
     void visualizeCylinder(const std::vector<Eigen::VectorXd>& obstacles, double radius, const std::string& frame_id);
