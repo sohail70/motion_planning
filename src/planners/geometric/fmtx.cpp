@@ -388,7 +388,7 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
 
 void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) {
     // Find current samples in obstacles
-    auto current = findSamplesNearObstacles(obstacles, 5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+    auto current = findSamplesNearObstacles(obstacles, 1.5*5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
     
     // Compute added/removed samples
     // std::vector<int> added, removed;
