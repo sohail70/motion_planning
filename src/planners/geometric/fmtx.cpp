@@ -94,7 +94,12 @@ void FMTX::plan() {
     while (! v_open_heap_.empty()) {
         auto [cost, zIndex] = v_open_heap_.top();
         v_open_heap_.pop();
+        // if (v_open_set_.find(zIndex)==v_open_set_.end()) //TODO: should i?
+        //     continue;
+        if (zIndex==1270){
 
+            // std::cout<<"1270 is zIndex \n";
+        }
         auto zNeighborsInfo = near(zIndex);
         for (const auto& [xIndex, cost_to_neighbor]: zNeighborsInfo) {
 
@@ -102,29 +107,49 @@ void FMTX::plan() {
                 continue;
 
             if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end()) {
+
                 // std::cout<<"Proces \n";
             } else if (tree_.at(xIndex)->getCost() > tree_.at(zIndex)->getCost() + cost_to_neighbor) {
+
+                if (xIndex==1270) {
+                    // std::cout<<"GOT PROMISING  with zIndex: "<<zIndex <<"\n";
+                    // fflush(stdout);
+                }
+
+
                 v_unvisited_set_.insert(xIndex);
+                // if (v_open_set_.find(xIndex)!=v_open_set_.end()) //TODO: should i?
+                //     v_open_set_.erase(xIndex);
 
                 auto parent_of_xIndex = tree_.at(xIndex)->getParentIndex();
                 // TODO: Think about the second condition for the below if! and also read the comments below! --> you can indeed set parent and delete chldren but for the early exit you might find problem
                 // and rememerb the reason for the following if! -->you might invalid some node but later lose the best vOpen that it already has! --? because vOPen for dynamic obstalce is made by hand by me! it doesnt cover everything and it around the current changes in the environemtn --> but you are actually in this code tracking all the obstalces!!!! so its not incremental so you might even doesnt need the following if! --> in python removing and adding was consecutive but here i simultanelusy check both of them! --> does it even matter for this problem --> im just babbling!
-                if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && tree_[parent_of_xIndex]->getCost()!=std::numeric_limits<double>::infinity()) {
-                    v_open_heap_.push({tree_.at(parent_of_xIndex)->getCost() , parent_of_xIndex});
-                    v_open_set_.insert(parent_of_xIndex);
+                // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && tree_[parent_of_xIndex]->getCost()!=std::numeric_limits<double>::infinity()) {
+                // // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && v_unvisited_set_.find(parent_of_xIndex) == v_unvisited_set_.end()) { //the second condition means the parent is in vUnvisted then later it will be in the vOpen so no need to rush it ! (you can not use it any as  vopen any way because the cost is inf! but their child parent relationship is valid because of the early exit problem i had in python)
+                //     v_open_heap_.push({tree_.at(parent_of_xIndex)->getCost() , parent_of_xIndex});
+                //     v_open_set_.insert(parent_of_xIndex);
 
-                    if (tree_[parent_of_xIndex]->getCost() == std::numeric_limits<double>::infinity()) {
-                        std::cout<<parent_of_xIndex<< "\n";
-                        std::cout<<"why 2\n";
-                    }
-                    // sometimes i make a node's cost to inf in here but i don't delete its children and parent index so later their children might again be in this loop and when i want to put their parent in the vOpen then i'd put inf node to vOpen but vOpen nodes are for expaning and it measn they are visisted once and ready to expand other but cost of inf means unvisted!
-                    // I remember not delting chld and parent was only because of early exit! --> maybe there is a better solution
-                    // But is this really a problem? wouldn't they eventually update! --> i put the parent inf check in the if but not much though about it --> weirdly this doesnt happen when i make the circle bigger for findnearestnodesaroundobstalce
+                //     if (tree_[parent_of_xIndex]->getCost() == std::numeric_limits<double>::infinity()) {
+                //         std::cout<<parent_of_xIndex<< "\n";
+                //         std::cout<<"why 2\n";
+                //     }
+                //     // sometimes i make a node's cost to inf in here but i don't delete its children and parent index so later their children might again be in this loop and when i want to put their parent in the vOpen then i'd put inf node to vOpen but vOpen nodes are for expaning and it measn they are visisted once and ready to expand other but cost of inf means unvisted!
+                //     // I remember not delting chld and parent was only because of early exit! --> maybe there is a better solution
+                //     // But is this really a problem? wouldn't they eventually update! --> i put the parent inf check in the if but not much though about it --> weirdly this doesnt happen when i make the circle bigger for findnearestnodesaroundobstalce
+                    
 
 
+                // }
+                // if(v_unvisited_set_.find(1270) != v_unvisited_set_.end() && xIndex==1270)
+                //     std::cout<<"1270 is in vUnivsted \n";
 
-                }
-                tree_.at(xIndex)->setCost(std::numeric_limits<double>::infinity());
+                // if (parent_of_xIndex != -1) {
+                //     std::vector<int>& childs = tree_.at(parent_of_xIndex)->getChildrenIndices();
+                //     childs.erase(std::remove(childs.begin(), childs.end(), xIndex),childs.end());
+                // }
+                // tree_.at(xIndex)->setParentIndex(-1);
+
+                // tree_.at(xIndex)->setCost(std::numeric_limits<double>::infinity()); //TODO: WTF ? why by commenting this it works now! but it gets slower!
             } else {
                 continue;
             }
@@ -157,12 +182,32 @@ void FMTX::plan() {
             //     continue;
             // }
             //obstcle check! later!
+
             // bool obstalce_check = true;
+            // if (best_neighbor_index==-1) {
+            //     std::vector<Eigen::VectorXd> positions;
+            //     for (const auto& y: Ynear) {
+            //         Eigen::VectorXd vec(2);
+            //         vec << tree_.at(y.index)->getStateVlaue();
+            //         positions.push_back(vec);
+            //         visualization_->visualizeNodes(positions,"map");
+            //         std::cout<<"not good"<<y.index << "\n";
+            //     }
+            // }
+            
+            // std::vector<Eigen::VectorXd> positions;
+            // Eigen::VectorXd vec(2);
+            // vec << tree_.at(best_neighbor_index)->getStateVlaue();
+            // positions.push_back(vec);
+            // visualization_->visualizeNodes(positions,"map");
+
+
             bool obstalce_check = obs_checker_->isObstacleFree(tree_.at(xIndex)->getStateVlaue() , tree_.at(best_neighbor_index)->getStateVlaue());
 
             if (obstalce_check) {
                 double newCost = min_cost; // newCost is the cost from the best neighbor
-                if (newCost < tree_.at(xIndex)->getCost()) {
+                // if (newCost < tree_.at(xIndex)->getCost()) {
+                if (newCost < tree_.at(xIndex)->getCost() + 1e-9) {
                     // If the node has a parent, remove it from the parent's children list
                     int parentIndex = tree_.at(xIndex)->getParentIndex();
                     if (parentIndex != -1) {
@@ -183,6 +228,9 @@ void FMTX::plan() {
                     }
 
                     // Remove the node from v_unvisited_set_
+                    if (xIndex==1270) {
+                        // std::cout<<"1270 erased from vUnvisted (connected) to: " << best_neighbor_index <<"\n";
+                    }
                     v_unvisited_set_.erase(xIndex);
 
                     // Update the node's parent and add it to the new parent's children list
@@ -213,13 +261,17 @@ void FMTX::plan() {
         v_open_set_.erase(zIndex);
         if (v_unvisited_set_.find(zIndex) != v_unvisited_set_.end()) {
             v_unvisited_set_.erase(zIndex);
+            if (zIndex==1270){
+                // std::cout<<"1270 got deleted from vUNvisted \n";
+
+            }
         }
 
     }
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    // std::cout << "Time taken by while loop: " << duration.count() << " milliseconds\n";
+    std::cout << "Time taken by while loop: " << duration.count() << " milliseconds\n";
     // std::cout << "The End \n";
 
 
@@ -336,21 +388,40 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
 
 void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) {
     // Find current samples in obstacles
-    auto current = findSamplesNearObstacles(obstacles, 2.2*5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+    auto current = findSamplesNearObstacles(obstacles, 5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
     
     // Compute added/removed samples
-    std::vector<int> added, removed;
-    std::set_difference(
-        current.begin(), current.end(),
-        samples_in_obstacles_.begin(), samples_in_obstacles_.end(),
-        std::back_inserter(added)
-    );
-    std::set_difference(
-        samples_in_obstacles_.begin(), samples_in_obstacles_.end(),
-        current.begin(), current.end(),
-        std::back_inserter(removed)
-    );
-    
+    // std::vector<int> added, removed;
+    // std::set_difference(
+    //     current.begin(), current.end(),
+    //     samples_in_obstacles_.begin(), samples_in_obstacles_.end(),
+    //     std::back_inserter(added)
+    // );
+    // std::set_difference(
+    //     samples_in_obstacles_.begin(), samples_in_obstacles_.end(),
+    //     current.begin(), current.end(),
+    //     std::back_inserter(removed)
+    // );
+
+    std::vector<int> added;
+    for (int sample : current) {
+        if (samples_in_obstacles_.find(sample) == samples_in_obstacles_.end()) {
+            added.push_back(sample); 
+        }
+    }
+
+    std::vector<int> removed;
+    for (int sample : samples_in_obstacles_) {
+        if (current.find(sample) == current.end()) {
+            removed.push_back(sample); 
+        }
+    }
+
+
+
+
+
+    v_unvisited_set_.clear();  //TODO: should i clear?
     // Handle changes first. whic one should be first?
     if (!added.empty()) {
         handleAddedObstacleSamples(added);  // Only call if added has elements
@@ -364,6 +435,29 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     // Update the tracked set
     samples_in_obstacles_ = std::move(current);
 
+    // for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
+    //     v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
+    // }
+    
+    // int a = 1270;
+    // if (samples_in_obstacles_.find(a) != samples_in_obstacles_.end())
+    //     std::cout<<"Makes sense1!"<<"\n";
+    // if (v_unvisited_set_.find(a) != v_unvisited_set_.end())
+    //     std::cout<<"Makes sense2!"<<"\n";
+    ////////////////////////////////////////////////////////////////////////////////
+    // std::unordered_set<int> difference;
+    // for (int num : v_unvisited_set_) {
+    //     if (samples_in_obstacles_.find(num) == samples_in_obstacles_.end()) {
+    //         difference.insert(num);
+    //     }
+    // }
+    // std::vector<Eigen::VectorXd> positions0;
+    // for (const auto& y: difference) {
+    //     Eigen::VectorXd vec(2);
+    //     vec << tree_.at(y)->getStateVlaue();
+    //     positions0.push_back(vec);
+    // }
+    // visualization_->visualizeNodes(positions0,"map");
 
     for (int node : v_unvisited_set_) {
         auto neighbors = near(node);
@@ -382,8 +476,22 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
         }
     }
 
+    // std::vector<Eigen::VectorXd> positions;
+    // for (const auto& y: v_unvisited_set_) {
+    //     Eigen::VectorXd vec(2);
+    //     vec << tree_.at(y)->getStateVlaue();
+    //     positions.push_back(vec);
+    // }
+    // visualization_->visualizeNodes(positions,"map");
 
-    plan();
+    // std::vector<Eigen::VectorXd> positions2;
+    // for (const auto& y: v_open_set_) {
+    //     Eigen::VectorXd vec(2);
+    //     vec << tree_.at(y)->getStateVlaue();
+    //     positions2.push_back(vec);
+    // }
+    // visualization_->visualizeNodes(positions2,"map");
+    plan(); //lets put it outside!
 
     // std::vector<Eigen::VectorXd> samples_in_obstalce_position;
     // for (const auto& sample : samples_in_obstacles_) {
@@ -416,6 +524,40 @@ std::unordered_set<int> FMTX::getDescendants(int node_index) {
 
     return descendants;
 }
+
+// std::unordered_set<int> FMTX::getDescendants(int node_index) {
+//     std::unordered_set<int> descendants;
+//     std::queue<int> queue;
+//     queue.push(node_index);
+
+//     // Debugging: Track the number of iterations
+//     int iteration_count = 0;
+//     const int max_iterations = 3000; // Set a reasonable threshold
+
+//     while (!queue.empty()) {
+//         // Check if the loop is running for too long
+//         if (iteration_count > max_iterations) {
+//             std::cerr << "WARNING: Potential cyclic bug detected in getDescendants!\n";
+//             std::cerr << "Current node: " << queue.front() << "\n";
+//             std::cerr << "Descendants collected so far: " << descendants.size() << "\n";
+//             std::cerr << "Breaking out of the loop to avoid infinite execution.\n";
+//             // break; // Exit the loop to prevent infinite execution
+//         }
+
+//         int current = queue.front();
+//         queue.pop();
+//         descendants.insert(current);
+
+//         for (int child : tree_[current]->getChildrenIndices()) {
+//             queue.push(child);
+//         }
+
+//         iteration_count++; // Increment the iteration counter
+//     }
+
+//     return descendants;
+// }
+
 
 
 void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {

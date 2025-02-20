@@ -1,7 +1,6 @@
 
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
-#include <gz/msgs/pose_v.pb.h>
-#include <iostream>
+
 
 GazeboObstacleChecker::GazeboObstacleChecker(const std::string& robot_model_name,
                                            double obstacle_radius,
@@ -33,9 +32,7 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start,
     return true;
 }
 
-void GazeboObstacleChecker::updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid>) {
-    // Intentionally empty - not using grid data
-}
+
 
 Eigen::Vector2d GazeboObstacleChecker::getRobotPosition() const {
     std::lock_guard<std::mutex> lock(data_mutex_);

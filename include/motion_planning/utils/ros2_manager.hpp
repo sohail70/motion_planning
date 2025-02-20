@@ -1,11 +1,7 @@
 // Copyright 2025 Soheil E.nia
 #pragma once
 
-#include <rclcpp/rclcpp.hpp>
-#include <nav_msgs/msg/occupancy_grid.hpp>
-#include <geometry_msgs/msg/pose_stamped.hpp>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_ros/buffer.h>
+
 #include "motion_planning/utils/obstacle_checker.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
 #include "motion_planning/utils/occupancygrid_obstacle_checker.hpp"
@@ -37,7 +33,7 @@ public:
 
     void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         // Update the grid in the obstacle checker (if it uses the grid)
-        obstacle_checker_->updateGrid(msg);
+        dynamic_cast<OccupancyGridObstacleChecker*>(obstacle_checker_.get())->updateGrid(msg);
 
         // Get robot pose from TF
         updateRobotPose();

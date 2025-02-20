@@ -2,8 +2,7 @@
 
 #pragma once
 
-#include <Eigen/Dense>
-#include <vector>
+#include "motion_planning/pch.hpp"
 
 // Abstract base class for visualization
 class Visualization {

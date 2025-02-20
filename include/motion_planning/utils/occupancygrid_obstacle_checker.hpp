@@ -3,13 +3,8 @@
 #pragma once
 
 #include "motion_planning/utils/obstacle_checker.hpp"
-#include <nav_msgs/msg/occupancy_grid.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <Eigen/Dense>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility> // for std::pair
-#include <functional> // for std::hash
+
+
 
 // Custom hash function for std::pair<double, double>
 struct PairHash {
@@ -45,7 +40,7 @@ public:
         return isLineObstacleFree(start_x, start_y, end_x, end_y);
     }
 
-    void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) override {
+    void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) {
         grid_ = grid;
     }
 

@@ -1,11 +1,6 @@
 #pragma once
 
-#include <memory>
-#include <Eigen/Dense>
-#include <gz/transport/Node.hh>
-#include <gz/msgs/pose_v.pb.h>
-#include <mutex>
-#include <vector>
+
 #include "motion_planning/utils/obstacle_checker.hpp"
 
 class GazeboObstacleChecker : public ObstacleChecker {
@@ -17,7 +12,6 @@ public:
 
     bool isObstacleFree(const Eigen::VectorXd& start, 
                        const Eigen::VectorXd& end) const override;
-    void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) override;
 
     Eigen::Vector2d getRobotPosition() const;
     std::vector<Eigen::Vector2d> getObstaclePositions() const;

@@ -14,12 +14,29 @@ find_package(visualization_msgs REQUIRED)
 find_package(nav_msgs REQUIRED) 
 find_package(geometry_msgs REQUIRED) 
 find_package(tf2_ros REQUIRED) 
+find_package(type_description_interfaces REQUIRED)
+
 
 find_package(gz-transport13 REQUIRED)   # Gazebo transport
 find_package(gz-msgs10 REQUIRED)        # Gazebo messages
 find_package(Protobuf REQUIRED)         # Protocol Buffers
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZeroMQ REQUIRED libzmq)
+
+# include_directories(
+#   include
+#   ${EIGEN3_INCLUDE_DIRS} 
+#   ${rclcpp_INCLUDE_DIRS}
+#   ${nav_msgs_INCLUDE_DIRS}
+#   ${geometry_msgs_INCLUDE_DIRS}
+#   ${tf2_ros_INCLUDE_DIRS}
+
+
+#   ${gz-transport13_INCLUDE_DIRS}
+#   ${gz-msgs10_INCLUDE_DIRS}
+#   ${Protobuf_INCLUDE_DIRS}
+#   ${ZeroMQ_INCLUDE_DIRS}
+# )
 
 include_directories(
   include
@@ -28,13 +45,16 @@ include_directories(
   ${nav_msgs_INCLUDE_DIRS}
   ${geometry_msgs_INCLUDE_DIRS}
   ${tf2_ros_INCLUDE_DIRS}
-
-
   ${gz-transport13_INCLUDE_DIRS}
   ${gz-msgs10_INCLUDE_DIRS}
+  ${gz-utils2_INCLUDE_DIRS}  # Added
   ${Protobuf_INCLUDE_DIRS}
   ${ZeroMQ_INCLUDE_DIRS}
+  ${type_description_interfaces_INCLUDE_DIRS}
+  ${visualization_msgs_INCLUDE_DIRS}
+
 )
+
 
 # Visualization Library (ROS2 dependent)
 add_library(visualization
@@ -42,14 +62,20 @@ add_library(visualization
     # other visualization files
 )
 
+target_precompile_headers(visualization PRIVATE include/motion_planning/pch.hpp)
 target_include_directories(visualization PUBLIC include)
 # target_link_libraries(visualization PUBLIC rclcpp::rclcpp)
+target_link_libraries(visualization
+  PUBLIC
+  gz-utils2::gz-utils2  # Add this line
+)
 ament_target_dependencies(visualization PUBLIC rclcpp visualization_msgs)
 
 
 
 
 add_library(gz_obs  src/utils/gazebo_obstacle_checker.cpp)
+target_precompile_headers(gz_obs PRIVATE include/motion_planning/pch.hpp)
 target_link_libraries(gz_obs
   gz-transport13
   gz-msgs10
