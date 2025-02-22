@@ -15,7 +15,7 @@
  *       but the above idea makes sense because when we add obstalce we need to make the children's cost to inf because now the newCost most certainly is more than their previous cost! but in remove obstalce the new cost is most certainly is less than their previous cost so we don't need to invalidate any thing and if they arelucky they'll be updated anyways
  *       about the keep tracking of the vUnvisted: tracking the addobstacle nodes is easy! --> they are already in the vunvisted for that pass (or you can loop thorugh them to see whihc node has cost of inf! which you don't have to since as i told you ahve them and can store them!) , but about the remove obstalce parts its hard since you find them as you go so nothing to store and you would hope if you need those parts of the map the while loop handles them! --> and also you end up clearing the vPromsing to not running the algoithm for no reason! --> also for this idea you can't v_unvisted_set.clear() because you need them --> or maybe you can create another set to store the not updated ones! --> but according to my experience don't create new variables because you'll end up doing redundant works in other places
  * TODO: to implement the above idea forget about using a robot. just change the goal place randomly on different nodes and see the tree! --> sometimes near the root to make the algorithm to store and sometimes on the end of the leaves to test the stored!
- * 
+ * TODO: make all of this independent of ros2 (is visualization marker can be replaced with direct rviz api) 
  */
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"

@@ -12,6 +12,9 @@ class TreeNode : public Node {
       void setCost(double cost) override;
       double getCost() const override;
       
+      void setLMC(double lmc) override;
+      double getLMC() const override;
+
       void setParentIndex(int index);
       int getParentIndex() const override;
       
@@ -24,7 +27,9 @@ class TreeNode : public Node {
       std::unique_ptr<State> state_;
       int parent_index_;
       std::vector<int> children_indices_;
-      double cost_to_root_;
+      double cost_to_root_ = std::numeric_limits<double>::infinity(); // TODO: i hope it doesnt mess up fmtx!
+      double look_ahead_ = std::numeric_limits<double>::infinity(); //TODO: should i ? in the find parent in rrtx it doesnt go to the if condtion if the lmc is initialized to zero!
+
 
 
 };

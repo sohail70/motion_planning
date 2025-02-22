@@ -20,8 +20,8 @@ void NanoFlann::addPoint(const Eigen::VectorXd& stateValue) {
     data_.conservativeResize(data_.rows() + 1, Eigen::NoChange);
     data_.row(data_.rows() - 1) = value;
 
-    std::cout << "Added point: " << value.transpose() << std::endl;
-    std::cout << "Data matrix size: " << data_.rows() << "x" << data_.cols() << std::endl;
+    // std::cout << "Added point: " << value.transpose() << std::endl;
+    // std::cout << "Data matrix size: " << data_.rows() << "x" << data_.cols() << std::endl;
 }
 
 void NanoFlann::addPoints(const std::vector<Eigen::VectorXd>& statesValues) {
@@ -49,7 +49,7 @@ void NanoFlann::addPoints(const Eigen::MatrixXd& data) {
 
 
 void NanoFlann::buildTree() {
-    std::cout << "Building KDTREE \n";
+    // std::cout << "Building KDTREE \n";
     // Rebuild the KDTree index
     kdtree_->index_->buildIndex();
 }

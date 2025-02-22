@@ -478,6 +478,8 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     // visualization_->visualizeNodes(positions0,"map");
 
     // std::vector<Eigen::VectorXd> positions;
+
+    // TODO: maybe an easier way instead of solving looping the over the v_unvisted_set thorugh tracking is to loop over the v_unvisted that are their heuristic is less than the current robots costToRoot! --> or if that doesnt work we can use the tracking that i used in python!
     for (int node : v_unvisited_set_) {
         auto neighbors = near(node);
         for (const auto& neighbor : neighbors) {

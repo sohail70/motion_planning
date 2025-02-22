@@ -33,6 +33,20 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start,
 }
 
 
+bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
+    std::lock_guard<std::mutex> lock(data_mutex_);
+    
+    // Extract the 2D position of the point
+    Eigen::Vector2d point2d = point.head<2>();
+
+    // Iterate through all obstacles and check if the point intersects with any of them
+    for (const auto& obstacle : obstacle_positions_) {
+        if (pointIntersectsCircle(point2d, obstacle, obstacle_radius_)) {
+            return false; // The point is inside or on an obstacle
+        }
+    }
+    return true; // The point is obstacle-free
+}
 
 Eigen::Vector2d GazeboObstacleChecker::getRobotPosition() const {
     std::lock_guard<std::mutex> lock(data_mutex_);
@@ -128,4 +142,14 @@ bool GazeboObstacleChecker::lineIntersectsCircle(const Eigen::Vector2d& start,
 
     // Check if either intersection point lies within the bounds of the segment
     return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
+}
+
+bool GazeboObstacleChecker::pointIntersectsCircle(const Eigen::Vector2d& point,
+                                                  const Eigen::Vector2d& center,
+                                                  double radius) {
+    // Calculate the squared distance between the point and the center of the circle
+    const double squaredDistance = (point - center).squaredNorm();
+
+    // Check if the squared distance is less than or equal to the squared radius
+    return squaredDistance <= (radius * radius);
 }

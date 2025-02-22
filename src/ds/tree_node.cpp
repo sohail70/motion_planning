@@ -19,6 +19,14 @@ double TreeNode::getCost() const {
     return cost_to_root_;
 }
 
+void TreeNode::setLMC(double lmc) {
+    look_ahead_ = lmc;
+}
+double TreeNode::getLMC() const {
+    return look_ahead_;
+}
+
+
 void TreeNode::setParentIndex(int index) {
     parent_index_ = index;
 }

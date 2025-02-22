@@ -12,6 +12,8 @@ public:
 
     bool isObstacleFree(const Eigen::VectorXd& start, 
                        const Eigen::VectorXd& end) const override;
+    
+    bool isObstacleFree(const Eigen::VectorXd& point)const override;
 
     Eigen::Vector2d getRobotPosition() const;
     std::vector<Eigen::Vector2d> getObstaclePositions() const;
@@ -22,7 +24,9 @@ private:
                                     const Eigen::Vector2d& end,
                                     const Eigen::Vector2d& center,
                                     double radius);
-
+    static bool pointIntersectsCircle(const Eigen::Vector2d& point,
+                                                  const Eigen::Vector2d& center,
+                                                  double radius);
     std::string robot_model_name_;
     double obstacle_radius_;
     mutable std::mutex data_mutex_;

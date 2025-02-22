@@ -40,6 +40,11 @@ public:
         return isLineObstacleFree(start_x, start_y, end_x, end_y);
     }
 
+    bool isObstacleFree(const Eigen::VectorXd& point) const override {
+
+    }
+
+
     void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) {
         grid_ = grid;
     }

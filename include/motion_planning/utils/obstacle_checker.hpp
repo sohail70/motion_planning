@@ -12,6 +12,7 @@ public:
 
     // Pure virtual method for obstacle checking
     virtual bool isObstacleFree(const Eigen::VectorXd& start, const Eigen::VectorXd& end) const = 0;
+    virtual bool isObstacleFree(const Eigen::VectorXd& point) const = 0;
     // virtual void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) = 0;
 
 };

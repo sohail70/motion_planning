@@ -11,6 +11,8 @@ class Node {
 
     virtual void setCost(double cost) = 0;
     virtual double getCost() const = 0;
+    virtual void setLMC(double lmc) = 0;
+    virtual double getLMC() const = 0;
     virtual void setParentIndex(int index) = 0;
     virtual int getParentIndex() const = 0;
     virtual void setChildrenIndex(int index) = 0;

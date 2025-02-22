@@ -4,6 +4,7 @@
 
 #include "motion_planning/planners/planner.hpp"
 #include "motion_planning/planners/geometric/fmtx.hpp"
+#include "motion_planning/planners/geometric/rrtx.hpp"
 
 class PlannerFactory {
  public:
@@ -28,5 +29,5 @@ class AutorRegisterPlanners {
 };
 
 
-static AutorRegisterPlanners<FMTX> autoRegisterFmtx(PlannerType::FMTX);
-// static AutorRegisterPlanners<RRTX> autoRegisterFmtx(PlannerType::RRTX);
+static AutorRegisterPlanners<FMTX> autoRegisterFMTx(PlannerType::FMTX);
+static AutorRegisterPlanners<RRTX> autoRegisterRRTx(PlannerType::RRTX);
