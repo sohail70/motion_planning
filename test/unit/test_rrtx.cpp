@@ -1,5 +1,8 @@
 // Copyright 2025 Soheil E.nia
-
+/**
+ * TODO: cullNeighbor makes the tree to have sub-optimal connections! 
+ * TODO: the only difference in my versrion is using samples_in_obstalce_ in the removeObstalce and etc. also i didin't create  the statespace after checking the parent in extent function (because weirdly the algorithm demands an lmc beofre deciding to have the sample as a tree node or not!)
+ */
 
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
@@ -41,18 +44,17 @@ int main(int argc, char **argv) {
     planner->setup(std::move(params) , visualization);
 
     // Plan the static one!
-    // planner->plan();
+    planner->plan();
 
     while (true) {
         auto obstacles = obstacle_checker->getObstaclePositions();
-        dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
 
         ////////// PLAN //////////
         auto start = std::chrono::high_resolution_clock::now();
-        planner->plan();
+        dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        std::cout << "Time taken by while loop: " << duration.count() << " milliseconds\n";
+        std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
         ////////// VISUALIZE /////
         dynamic_cast<RRTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);

@@ -2,7 +2,7 @@
 
 RRTX::RRTX(std::unique_ptr<StateSpace> statespace, 
     std::unique_ptr<ProblemDefinition> problem_def,
-    std::shared_ptr<ObstacleChecker> obs_checker): statespace_(std::move(statespace)), problem_(std::move(problem_def)), obs_checker_(obs_checker){
+    std::shared_ptr<ObstacleChecker> obs_checker): statespace_(std::move(statespace)), problem_(std::move(problem_def)), obs_checker_(obs_checker) ,inconsistency_queue_(50){
         std::cout<<"RRTX constructor \n";
 }
 
@@ -10,12 +10,12 @@ RRTX::RRTX(std::unique_ptr<StateSpace> statespace,
 void RRTX::setStart(const Eigen::VectorXd& start) {
     robot_state_index_ = statespace_->getNumStates();
     tree_.push_back(std::make_shared<TreeNode>(statespace_->addState(start)));
-    std::cout << "FMTX: Start node created on Index: " << robot_state_index_ << "\n";
+    std::cout << "RRTX: Start node created on Index: " << robot_state_index_ << "\n";
 }
 void RRTX::setGoal(const Eigen::VectorXd& goal) {
     root_state_index_ = statespace_->getNumStates();
     tree_.push_back(std::make_shared<TreeNode>(statespace_->addState(goal)));
-    std::cout << "FMTX: Goal node created on Index: " << root_state_index_ << "\n";
+    std::cout << "RRTX: Goal node created on Index: " << root_state_index_ << "\n";
 }
 
 
@@ -50,7 +50,7 @@ void RRTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
     else
         throw std::runtime_error("Unknown KD-Tree type");
 
-    std::cout << "FMTX setup complete: num_of_samples=" << num_of_samples_
+    std::cout << "RRTX setup complete: num_of_samples=" << num_of_samples_
                 << ", bounds=[" << lower_bound_ << ", " << upper_bound_ << "]\n";
 
 
@@ -81,7 +81,7 @@ void RRTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
     tree_.at(0)->setCost(0);
     tree_.at(0)->setLMC(0);
     v_indices_.insert(0);
-    v_indices_.insert(1); // TODO: whihc one to add to the v_indices which is the big V in the rrtx paper?
+    // v_indices_.insert(1); // TODO: whihc one to add to the v_indices which is the big V in the rrtx paper?
     ///////////////////Neighborhood Radius////////////////////////////////
     dimension_ = statespace_->getDimension();
     int d = dimension_;
@@ -110,6 +110,7 @@ void RRTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
 
 void RRTX::plan() {
 
+    auto start = std::chrono::high_resolution_clock::now();
 
     // while (nodes_[vbot_index_].parent != vgoal_index_ and sample_counter < num_of_samples_) {
     
@@ -118,7 +119,8 @@ void RRTX::plan() {
     // }
     
     // Sample new node
-    if (cap_samples_==true && sample_counter < num_of_samples_) { // TODO: later when you add the robot you can put the condtion of the while loop here and we use the while true outside because we want it to always work to update the gazebo obstale positions
+    // if (cap_samples_==true && sample_counter < num_of_samples_) { // TODO: later when you add the robot you can put the condtion of the while loop here and we use the while true outside because we want it to always work to update the gazebo obstale positions
+    while ( sample_counter < num_of_samples_) { // TODO: later when you add the robot you can put the condtion of the while loop here and we use the while true outside because we want it to always work to update the gazebo obstale positions
         neighborhood_radius_ = shrinkingBallRadius();
         Eigen::VectorXd v = Eigen::VectorXd::Random(dimension_);
         v = lower_bound_ + (upper_bound_ - lower_bound_) * (v.array() + 1) / 2; // TODO: need to add a raw unfirom sampling without creating state! in the euclidean state space class!
@@ -146,6 +148,9 @@ void RRTX::plan() {
             reduceInconsistency();
         }
     }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "Time taken by while loop: " << duration.count() << " milliseconds\n";
 }
 
 
@@ -178,7 +183,8 @@ void RRTX::extend(Eigen::VectorXd v) {
             continue;
         }
         const Eigen::VectorXd& u_state = tree_.at(u_index)->getStateVlaue();
-        bool is_path_free = obs_checker_->isObstacleFree(v, u_state); // TODO implement later because you need to add another function or an overload to see if a point is in obstalces or not!
+        // TODO: for now i don't distinguish between bidirectional paths between v,u and u,v
+        bool is_path_free = obs_checker_->isObstacleFree(v, u_state); 
 
         if (is_path_free) {
             // Update original and running neighbors
@@ -209,8 +215,8 @@ void RRTX::findParent(Eigen::VectorXd v, const std::vector<size_t>& candidate_in
 
         // Compute trajectory and distance between v and u
         double distance = (v_state - u_state).norm();
-        // bool is_path_free = obs_checker_->isObstacleFree(v_state, u_state); //TODO: later
-        bool is_path_free = true;
+        bool is_path_free = obs_checker_->isObstacleFree(v_state, u_state); //TODO: later
+        // bool is_path_free = true;
 
         // Check conditions for valid parent
         if (distance <= neighborhood_radius_ && 
@@ -277,21 +283,35 @@ void RRTX::rewireNeighbors(int v_index) {
     }
 }
 
+// TODO: put the v_bot in Q in the or sections!
 void RRTX::reduceInconsistency() {
     while (!inconsistency_queue_.empty() &&
-           (inconsistency_queue_.top().first < tree_[vbot_index_]->getCost() ||
+           (inconsistency_queue_.top().min_key < tree_[vbot_index_]->getCost() ||
             tree_[vbot_index_]->getLMC() != tree_[vbot_index_]->getCost() ||
             tree_[vbot_index_]->getCost() == std::numeric_limits<double>::infinity())) {
-        auto [_, v_index] = inconsistency_queue_.top();
+        QueueElement top_element = inconsistency_queue_.top();
         inconsistency_queue_.pop();
 
+        int v_index = top_element.index;
+
+        // // Skip the node if it is in the orphan set (Vc_T_) --> why remove from the Q in verify orphan when i can ignore it here?
+        // if (Vc_T_.find(v_index) != Vc_T_.end()) {
+        //     continue;
+        // }
+
+        // Process the node if it is inconsistent
         if (tree_[v_index]->getCost() - tree_[v_index]->getLMC() > epsilon_) {
             updateLMC(v_index);
             rewireNeighbors(v_index);
-            tree_[v_index]->setCost(tree_[v_index]->getLMC());
         }
+
+        // Set the cost of the node to its LMC
+        tree_[v_index]->setCost(tree_[v_index]->getLMC());
     }
 }
+
+
+
 
 
 double RRTX::shrinkingBallRadius() const {
@@ -406,36 +426,33 @@ void RRTX::updateLMC(int v_index) {
 
 
 void RRTX::cullNeighbors(int v_index) {
-    // Merge Nr_in and Nr_out into a single set
-    std::unordered_set<int> all_neighbors = Nr_in_[v_index];
-    all_neighbors.insert(Nr_out_[v_index].begin(), Nr_out_[v_index].end());
+    // Loop over outgoing neighbors (Nr_out)
+    if (cap_samples_ == true && sample_counter > num_of_samples_)
+        return; // to not waste time when we put a cap on the number of samples!
+    for (auto it = Nr_out_[v_index].begin(); it != Nr_out_[v_index].end();) {
+        int u_index = *it;
 
-    // Loop over all neighbors
-    for (int u_index : all_neighbors) {
-        // Check if the neighbor is in Nr_out (outgoing)
-        bool is_outgoing = (Nr_out_[v_index].find(u_index) != Nr_out_[v_index].end());
-
-        // Get the distance based on the direction
-        double distance = is_outgoing ? distance_[v_index][u_index] : distance_[u_index][v_index];
+        // Get the distance between v and u
+        double distance = distance_[v_index][u_index];
 
         // Check if the distance is greater than the neighborhood radius
         // and u is not the parent of v
         if (distance > neighborhood_radius_ &&
             tree_[v_index]->getParentIndex() != u_index) {
-            // Remove u from Nr_out of v (if outgoing)
-            if (is_outgoing) {
-                Nr_out_[v_index].erase(u_index);
-            }
+            // Remove u from Nr_out of v
+            it = Nr_out_[v_index].erase(it);
 
-            // Remove v from Nr_in of u (if incoming)
-            if (Nr_in_[u_index].find(v_index) != Nr_in_[u_index].end()) {
-                Nr_in_[u_index].erase(v_index);
+            // Remove v from Nr_in of u
+            auto& nr_in_u = Nr_in_[u_index];
+            auto it_u = nr_in_u.find(v_index);
+            if (it_u != nr_in_u.end()) {
+                nr_in_u.erase(it_u);
             }
+        } else {
+            ++it;
         }
     }
 }
-
-
 
 void RRTX::makeParentOf(int child_index, int parent_index) {
     // Remove child from its current parent's children
@@ -456,10 +473,24 @@ void RRTX::makeParentOf(int child_index, int parent_index) {
         tree_[parent_index]->getChildrenIndices().push_back(child_index);
     }
 }
+// This is wrong! it should also be able to update it instead of just add it! we should change the structure!
+// void RRTX::verifyQueue(int u_index) {
+//     double min_key = std::min(tree_[u_index]->getCost(), tree_[u_index]->getLMC());
+//     inconsistency_queue_.emplace(min_key, u_index);
+// }
 
-void RRTX::verifyQueue(int u_index) {
-    double priority = std::min(tree_[u_index]->getCost(), tree_[u_index]->getLMC());
-    inconsistency_queue_.emplace(priority, u_index);
+void RRTX::verifyQueue(int v_index) {
+    double min_key = std::min(tree_[v_index]->getCost(), tree_[v_index]->getLMC());
+    double g_value = tree_[v_index]->getCost();
+    QueueElement new_element = {min_key, g_value, v_index};
+
+    if (inconsistency_queue_.contains(v_index)) {
+        inconsistency_queue_.update(v_index, new_element);
+        // std::cout << "UPDATE QUEUE \n";
+    } else {
+        inconsistency_queue_.add(new_element);
+        // std::cout << "ADD QUEUE \n";
+    }
 }
 
 
@@ -553,10 +584,18 @@ void RRTX::addNewObstacle(const std::vector<int>& added_samples) {
     }
 }
 
-void RRTX::verifyOrphan(int v_index) {
-    Vc_T_.insert(v_index);
-}
+// TODO: how to delete that from the Q !!!???? i skipped it in reduceinconsisteny!
+// void RRTX::verifyOrphan(int v_index) {
+//     Vc_T_.insert(v_index);
+// }
 
+void RRTX::verifyOrphan(int v_index) {
+    if (inconsistency_queue_.contains(v_index)) {
+        inconsistency_queue_.remove(v_index);
+        // std::cout << "DELETE FROM QUEUE \n";
+    }
+    Vc_T_.insert(v_index);  // Add v to Vc_T
+}
 
 
 void RRTX::propagateDescendants() {
@@ -587,9 +626,23 @@ void RRTX::propagateDescendants() {
 
     // Step 2: Update costs and verify queue for affected nodes
     for (int v_index : Vc_T_) {
-        for (int u_index : N0_out_[v_index]) {
+        // Step 1: Merge N0_out and Nr_out into a single set (N+(v))
+        std::unordered_set<int> outgoing_neighbors = N0_out_[v_index];
+        outgoing_neighbors.insert(Nr_out_[v_index].begin(), Nr_out_[v_index].end());
+
+        // Step 2: Include the parent of v (p+_T(v)) in the set of neighbors
+        int parent_index = tree_[v_index]->getParentIndex();
+        if (parent_index != -1) {
+            outgoing_neighbors.insert(parent_index);
+        }
+
+        // Step 3: Process all neighbors in (N+(v) ∪ {p+_T(v)}) \ Vc_T
+        for (int u_index : outgoing_neighbors) {
             if (Vc_T_.find(u_index) == Vc_T_.end()) {
+                // Step 4: Set g(u) to infinity
                 tree_[u_index]->setCost(std::numeric_limits<double>::infinity());
+
+                // Step 5: Verify the queue for u
                 verifyQueue(u_index);
             }
         }
