@@ -285,10 +285,13 @@ void RRTX::rewireNeighbors(int v_index) {
 
 // TODO: put the v_bot in Q in the or sections!
 void RRTX::reduceInconsistency() {
-    while (!inconsistency_queue_.empty() &&
-           (inconsistency_queue_.top().min_key < tree_[vbot_index_]->getCost() ||
-            tree_[vbot_index_]->getLMC() != tree_[vbot_index_]->getCost() ||
-            tree_[vbot_index_]->getCost() == std::numeric_limits<double>::infinity())) {
+    while (!inconsistency_queue_.empty() 
+            // &&
+        //    (inconsistency_queue_.top().min_key < tree_[vbot_index_]->getCost() ||
+            // tree_[vbot_index_]->getLMC() != tree_[vbot_index_]->getCost() ||
+            // tree_[vbot_index_]->getCost() == std::numeric_limits<double>::infinity())
+    ){
+    // while (!inconsistency_queue_.empty() ) {
         QueueElement top_element = inconsistency_queue_.top();
         inconsistency_queue_.pop();
 
@@ -345,7 +348,7 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
 
 void RRTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) {
     // Similar obstacle sampling to FMTX but with RRTX propagation
-    auto current = findSamplesNearObstacles(obstacles, 1.5*5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+    auto current = findSamplesNearObstacles(obstacles, 2.2*5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
 
 
     // std::vector<Eigen::VectorXd> positions;
@@ -374,6 +377,16 @@ void RRTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     }
 
     samples_in_obstacles_ = std::move(current);
+
+
+
+    // std::vector<Eigen::VectorXd> nodes;
+    // for (const auto& sample_ : samples_in_obstacles_) {
+    //     nodes.push_back(tree_[sample_]->getStateVlaue());
+    // }
+    // visualization_->visualizeNodes(nodes);
+
+
 
     // Handle added and removed samples
     if (!added.empty()) {
@@ -434,13 +447,15 @@ void RRTX::cullNeighbors(int v_index) {
 
         // Get the distance between v and u
         double distance = distance_[v_index][u_index];
-
         // Check if the distance is greater than the neighborhood radius
         // and u is not the parent of v
-        if (distance > neighborhood_radius_ &&
+
+        // or if you don't wwant to check infinity you can directly find the distance without using the distnace map
+        if (distance != std::numeric_limits<double>::infinity() &&
+            distance > neighborhood_radius_ &&
             tree_[v_index]->getParentIndex() != u_index) {
             // Remove u from Nr_out of v
-            it = Nr_out_[v_index].erase(it);
+            it = Nr_out_[v_index].erase(it); //TODO: this line creates sub-optimal solutions! right after removeObstalce happens!
 
             // Remove v from Nr_in of u
             auto& nr_in_u = Nr_in_[u_index];
@@ -529,37 +544,35 @@ void RRTX::removeObstacle(const std::vector<int>& removed_samples) {
 }
 
 
-
 void RRTX::addNewObstacle(const std::vector<int>& added_samples) {
-
-
-
+    // Step 1: Add the new obstacle samples to the obstacle set
     for (int sample_index : added_samples) {
-        // Mark the sample as being in an obstacle
-        // samples_in_obstacles_.insert(sample_index);
+        samples_in_obstacles_.insert(sample_index);
+    }
 
+    // Step 2: Invalidate all edges connected to the obstacle samples
+    for (int sample_index : added_samples) {
+        // Get all neighbors of the sample (both incoming and outgoing)
         std::unordered_set<int> all_neighbors;
-        // Add N0_in neighbors
         all_neighbors.insert(N0_in_[sample_index].begin(), N0_in_[sample_index].end());
-        // Add N0_out neighbors
         all_neighbors.insert(N0_out_[sample_index].begin(), N0_out_[sample_index].end());
-        // Add Nr_in neighbors
         all_neighbors.insert(Nr_in_[sample_index].begin(), Nr_in_[sample_index].end());
-        // Add Nr_out neighbors
         all_neighbors.insert(Nr_out_[sample_index].begin(), Nr_out_[sample_index].end());
-
-
-
-
 
         // Invalidate edges connected to this sample
         for (int neighbor_index : all_neighbors) {
+            // Invalidate the edge cost bidirectionally
             distance_[sample_index][neighbor_index] = std::numeric_limits<double>::infinity();
             distance_[neighbor_index][sample_index] = std::numeric_limits<double>::infinity();
 
             // If the neighbor is the parent of this sample, mark it as orphaned
             if (tree_[neighbor_index]->getParentIndex() == sample_index) {
                 verifyOrphan(neighbor_index);
+            }
+
+            // If this sample is the parent of the neighbor, mark the neighbor as orphaned
+            if (tree_[sample_index]->getParentIndex() == neighbor_index) {
+                verifyOrphan(sample_index);
             }
         }
 
@@ -597,9 +610,8 @@ void RRTX::verifyOrphan(int v_index) {
     Vc_T_.insert(v_index);  // Add v to Vc_T
 }
 
-
 void RRTX::propagateDescendants() {
-    // Use a queue for breadth-first processing
+    // Step 1: Propagate orphan status to descendants
     std::queue<int> to_process;
 
     // Initialize the queue with nodes in Vc_T_
@@ -607,18 +619,15 @@ void RRTX::propagateDescendants() {
         to_process.push(v_index);
     }
 
-    // Step 1: Propagate orphan status to descendants
+    // Process all descendants of nodes in Vc_T_
     while (!to_process.empty()) {
         int v_index = to_process.front();
         to_process.pop();
 
-        // Process all children of the current node
+        // Add all children of v_index to Vc_T_ and the queue
         for (int child_index : tree_[v_index]->getChildrenIndices()) {
             if (Vc_T_.find(child_index) == Vc_T_.end()) {
-                // Mark the child as orphaned
                 Vc_T_.insert(child_index);
-
-                // Add the child to the queue for further processing
                 to_process.push(child_index);
             }
         }
@@ -626,23 +635,23 @@ void RRTX::propagateDescendants() {
 
     // Step 2: Update costs and verify queue for affected nodes
     for (int v_index : Vc_T_) {
-        // Step 1: Merge N0_out and Nr_out into a single set (N+(v))
+        // Merge N0_out and Nr_out into a single set (N+(v))
         std::unordered_set<int> outgoing_neighbors = N0_out_[v_index];
         outgoing_neighbors.insert(Nr_out_[v_index].begin(), Nr_out_[v_index].end());
 
-        // Step 2: Include the parent of v (p+_T(v)) in the set of neighbors
+        // Include the parent of v (p+_T(v)) in the set of neighbors
         int parent_index = tree_[v_index]->getParentIndex();
         if (parent_index != -1) {
             outgoing_neighbors.insert(parent_index);
         }
 
-        // Step 3: Process all neighbors in (N+(v) ∪ {p+_T(v)}) \ Vc_T
+        // Process all neighbors in (N+(v) ∪ {p+_T(v)}) \ Vc_T
         for (int u_index : outgoing_neighbors) {
             if (Vc_T_.find(u_index) == Vc_T_.end()) {
-                // Step 4: Set g(u) to infinity
+                // Set g(u) to infinity
                 tree_[u_index]->setCost(std::numeric_limits<double>::infinity());
 
-                // Step 5: Verify the queue for u
+                // Verify the queue for u
                 verifyQueue(u_index);
             }
         }
@@ -650,6 +659,7 @@ void RRTX::propagateDescendants() {
 
     // Step 3: Reset orphaned nodes
     for (int v_index : Vc_T_) {
+        // Set g(v) and lmc(v) to infinity
         tree_[v_index]->setCost(std::numeric_limits<double>::infinity());
         tree_[v_index]->setLMC(std::numeric_limits<double>::infinity());
 
@@ -667,6 +677,7 @@ void RRTX::propagateDescendants() {
         tree_[v_index]->setParentIndex(-1);
     }
 
+    // Clear Vc_T_ after processing
     Vc_T_.clear();
 }
 
