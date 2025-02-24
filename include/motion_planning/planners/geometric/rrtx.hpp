@@ -1,4 +1,4 @@
-// Modified RRTX header (rrtx.hpp)
+// Copyright 2025 Soheil E.nia
 #pragma once
 
 #include "motion_planning/pch.hpp"
@@ -6,12 +6,6 @@
 #include "motion_planning/ds/tree_node.hpp"
 #include "motion_planning/utils/visualization.hpp"
 
-
-
-// struct NeighborInfo {
-//     int index;
-//     double distance;
-// };
 
 struct QueueElement {
     double min_key;  // Priority value (key)
@@ -84,32 +78,6 @@ public:
         return index >= 0 && index < elementIndex.size() && elementIndex[index] != -1;
     }
 
-    // void remove(int index) {
-    //     // std::cout << "Removing index: " << index << std::endl;
-    //     if (!contains(index)) {
-    //         throw std::runtime_error("Element not found");
-    //     }
-    //     size_t heap_index = elementIndex[index];
-    //     // std::cout << "Heap index: " << heap_index << std::endl;
-    //     if (heap_index >= heap.size()) {
-    //         throw std::runtime_error("Invalid heap index");
-    //     }
-
-    //     int last_index = heap.back().index;
-    //     // std::cout << "Last index: " << last_index << std::endl;
-
-    //     heap[heap_index] = heap.back();
-    //     elementIndex[last_index] = heap_index;
-    //     heap.pop_back();
-    //     elementIndex[index] = -1;
-
-    //     // std::cout << "Heap size after removal: " << heap.size() << std::endl;
-
-    //     if (heap_index < heap.size()) {
-    //         heapifyUp(heap_index);
-    //         heapifyDown(heap_index);
-    //     }
-    // }
 
     void remove(int index) {
         if (!contains(index)) {
@@ -212,7 +180,6 @@ class RRTX : public Planner {
     void setStart(const Eigen::VectorXd& start) override;
     void setGoal(const Eigen::VectorXd& goal) override;
 
-    // RRTX-specific interface
     void updateRobotPosition(const Eigen::VectorXd& new_position);
     void updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles);
 
@@ -221,7 +188,6 @@ class RRTX : public Planner {
     void setRobotIndex(const Eigen::VectorXd& robot_position);
 
  private:
-    // Core data structures
     std::vector<std::shared_ptr<TreeNode>> tree_;
     std::shared_ptr<KDTree> kdtree_;
     std::shared_ptr<Visualization> visualization_;
@@ -230,15 +196,14 @@ class RRTX : public Planner {
     std::unique_ptr<ProblemDefinition> problem_;
     std::unordered_set<int> v_indices_;
 
-    std::unordered_set<int> samples_in_obstacles_; // Current samples in obstacles
+    std::unordered_set<int> samples_in_obstacles_; 
 
     std::unordered_map<int, QueueElement> handle_map_; 
 
-    // Algorithm state
-    int vbot_index_;          // Robot's current node
-    int vgoal_index_;         // Goal node index
+    int vbot_index_;
+    int vgoal_index_;
     double neighborhood_radius_;
-    double epsilon_ = 1e-6;   // Consistency threshold
+    double epsilon_ = 1e-6; 
 
     int num_of_samples_;
     double lower_bound_;
@@ -252,25 +217,6 @@ class RRTX : public Planner {
     bool cap_samples_ = true;
     double delta = 10.0; // Step size limit
 
-
-    // struct QueueComparator {
-    //     const RRTX& rrtx;  // Reference to the RRTX instance
-
-    //     // Constructor to initialize the reference
-    //     explicit QueueComparator(const RRTX& rrtx_instance) : rrtx(rrtx_instance) {}
-
-    //     bool operator()(const std::pair<double, int>& a, const std::pair<double, int>& b) const {
-    //         // Compare min(g(v), lmc(v)) first
-    //         if (a.first != b.first) {
-    //             return a.first > b.first;  // Smaller min(g(v), lmc(v)) has higher priority
-    //         }
-    //         // If min(g(v), lmc(v)) is equal, compare g(v)
-    //         return rrtx.tree_[a.second]->getCost() > rrtx.tree_[b.second]->getCost();
-    //     }
-    // };
-    // // Priority queue for inconsistency propagation
-    // using QueueElement = std::pair<double, int>;  // (min(g(v), lmc(v)), node index)
-    // std::priority_queue<QueueElement, std::vector<QueueElement>, QueueComparator> inconsistency_queue_;
 
     UpdatablePriorityQueue inconsistency_queue_;
 
@@ -294,7 +240,7 @@ class RRTX : public Planner {
 
 
 
-    // Helper functions
+    // RRTX functions
     double shrinkingBallRadius() const;
     void extend(Eigen::VectorXd v);
     void rewireNeighbors(int v_index);

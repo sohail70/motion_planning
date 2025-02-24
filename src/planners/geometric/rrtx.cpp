@@ -66,22 +66,12 @@ void RRTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
     std::cout << "Taking care of the samples: \n \n";
     setStart(problem_->getStart());
     std::cout << "--- \n";
-    // for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
-    //     tree_.push_back(std::make_unique<TreeNode>(statespace_->sampleUniform(lower_bound_ , upper_bound_)));
-    // }
-    std::cout << "--- \n";
     setGoal(problem_->getGoal()); //robots current position
 
-    // std::cout << "KDTree: \n\n";
+    // put the start and goal node in kdtree
     if (use_kdtree == true) {
-        // Put all the points at once because fmtx doesnt need incremental addition
-        // std::cout<<statespace_->getSamplesCopy()<<"\n";
         kdtree_->addPoints(statespace_->getSamplesCopy());
-        // Build the tree all at once after we fill the data_ in the KDTree
         kdtree_->buildTree();
-        // kdtree_->radiusSearch(tree_.at(0)->getStateVlaue(), 10);
-        // std::cout << "---- \n";
-        // kdtree_->knnSearch(tree_.at(0)->getStateVlaue(), 10);
     }
 
     /////////////////////////SETTING UP DS//////////////
@@ -89,7 +79,7 @@ void RRTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
     tree_.at(0)->setCost(0);
     tree_.at(0)->setLMC(0);
     v_indices_.insert(0);
-    // v_indices_.insert(1); // TODO: whihc one to add to the v_indices which is the big V in the rrtx paper?
+    // v_indices_.insert(1); 
     ///////////////////Neighborhood Radius////////////////////////////////
     dimension_ = statespace_->getDimension();
     int d = dimension_;
@@ -97,38 +87,21 @@ void RRTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
     double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
     gamma_ = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
 
-    ////////////////// Test Neighborhood////////////////////////
-    // near(0); // Create
-    // std::cout << "-------- \n";
-    // auto indices = near(0);  // Get from the cache
-    // for  (auto index : indices) {
-    //     std::cout << index.index <<",";
-    // }
-
-
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    // std::cout << "Time taken by setup: " << duration.count() << " milliseconds\n";
-    // std::cout << "---\n";
+    std::cout << "Time taken by setup: " << duration.count() << " milliseconds\n";
+    std::cout << "---\n";
 
 
 }
 
 
-
+// Well for now I use this for the first tree creation
 void RRTX::plan() {
 
     auto start = std::chrono::high_resolution_clock::now();
-
-    // while (nodes_[vbot_index_].parent != vgoal_index_ and sample_counter < num_of_samples_) {
-    
-    // if (obs_checker_->obstacles_changed()) {
-    //     handleObstacleChanges();
-    // }
-    
-    // Sample new node
     // if (cap_samples_==true && sample_counter < num_of_samples_) { // TODO: later when you add the robot you can put the condtion of the while loop here and we use the while true outside because we want it to always work to update the gazebo obstale positions
-    while ( sample_counter < num_of_samples_) { // TODO: later when you add the robot you can put the condtion of the while loop here and we use the while true outside because we want it to always work to update the gazebo obstale positions
+    while ( cap_samples_==true && sample_counter < num_of_samples_) { // TODO: later when you add the robot you can put the condtion of the while loop here and we use the while true outside because we want it to always work to update the gazebo obstale positions
         neighborhood_radius_ = shrinkingBallRadius();
         Eigen::VectorXd v = Eigen::VectorXd::Random(dimension_);
         v = lower_bound_ + (upper_bound_ - lower_bound_) * (v.array() + 1) / 2; // TODO: need to add a raw unfirom sampling without creating state! in the euclidean state space class!
@@ -145,8 +118,7 @@ void RRTX::plan() {
         }
 
         // since i don't want to ignore the v i don't implement the obstalce chekc on the point because later that point could be useful and since i want to put a cap on number of samples then this seems more useful
-        // if v is not in obstalce then do this: // TODO: implement later because obs checker need a function to check if a point in on obstalce!
-        // Extend and rewiree
+        // if v is not in obstalce then do this:
         if (obs_checker_->isObstacleFree(v))
             extend(v);
         int current_index = tree_.size() -1;
@@ -163,7 +135,10 @@ void RRTX::plan() {
 
 
 void RRTX::extend(Eigen::VectorXd v) {
-    // Add the new node to the tree
+    /*
+        Add the new node to the tree --> i do this a little bit earlier than rrtx since i need to use lmc in find parent!
+        or else i have to create a separate lmc set for all the samples that im creating. pros and cons! because this one also feels a bit redundant if we have static obstalces and its like we are creating a treenode that will be useless forever!
+    */
     tree_.push_back(std::make_shared<TreeNode>(statespace_->addState(v)));
     int current_index = tree_.size() - 1;
     kdtree_->addPoint(v);
@@ -177,12 +152,10 @@ void RRTX::extend(Eigen::VectorXd v) {
 
     // If no parent is found, remove the node and return
     if (tree_.at(current_index)->getParentIndex() == -1) {
-        // tree_.pop_back();
-        // kdtree_->removePoint(v);
         return;
     }
 
-    // Add the new node to the set of valid nodes
+    // Add the new node to the set of TREE nodes. This is tau in rrtx (not my treenode!)
     v_indices_.insert(current_index);
 
     // Update neighbor relationships
@@ -191,7 +164,7 @@ void RRTX::extend(Eigen::VectorXd v) {
             continue;
         }
         const Eigen::VectorXd& u_state = tree_.at(u_index)->getStateVlaue();
-        // TODO: for now i don't distinguish between bidirectional paths between v,u and u,v
+        // TODO: For now i don't distinguish between bidirectional paths between v,u and u,v. Later when we have to deal with dynamics and trajectory we'll deal with this.
         bool is_path_free = obs_checker_->isObstacleFree(v, u_state); 
 
         if (is_path_free) {
@@ -202,7 +175,7 @@ void RRTX::extend(Eigen::VectorXd v) {
             Nr_out_[u_index].insert(current_index);   // Nr_out for u
             N0_in_[current_index].insert(u_index);    // N0_in for v
 
-            // Store distances
+            // Store distances --> rrtx didn't mention that in pseudo code explicitly but it uses this (I guess) and weirdly you shouldn't use this map in cullNeighbors (because it could be inf and goes to the if condition)
             double distance = (v - u_state).norm();
             distance_[current_index][u_index] = distance;
             distance_[u_index][current_index] = distance;
@@ -224,7 +197,6 @@ void RRTX::findParent(Eigen::VectorXd v, const std::vector<size_t>& candidate_in
         // Compute trajectory and distance between v and u
         double distance = (v_state - u_state).norm();
         bool is_path_free = obs_checker_->isObstacleFree(v_state, u_state); //TODO: later
-        // bool is_path_free = true;
 
         // Check conditions for valid parent
         if (distance <= neighborhood_radius_ && 
@@ -245,7 +217,7 @@ void RRTX::findParent(Eigen::VectorXd v, const std::vector<size_t>& candidate_in
         tree_.at(current_index_)->setParentIndex(best_parent);
         tree_.at(current_index_)->setLMC(min_cost);
         tree_.at(best_parent)->setChildrenIndex(current_index_); // i don't know why rrtx pseudo code updates the children in the extend
-        // TODO: should i update the gvalue (costtoroot) here or wait so that in the rewire neighbor and reduce inconsistency to do it!?
+        // Should i update the gvalue (costtoroot) here or wait so that in the rewire neighbor and reduce inconsistency to do it!? I put it in the plan function after reduceInconsistency
     }
 
 }
@@ -268,7 +240,7 @@ void RRTX::rewireNeighbors(int v_index) {
                 continue;  // Skip the parent
             }
 
-            // Get the trajectory cost from the distance dictionary
+            // Get the trajectory cost from the distance map
             double trajectory_cost = std::numeric_limits<double>::infinity();
             if (distance_.count(v_index) && distance_[v_index].count(u_index)) {
                 trajectory_cost = distance_[v_index][u_index];
@@ -276,10 +248,7 @@ void RRTX::rewireNeighbors(int v_index) {
 
             // Check if the path through v is better
             if (tree_[u_index]->getLMC() > trajectory_cost + tree_[v_index]->getLMC()) {
-                // Update the look-ahead cost (lmc) of u
                 tree_[u_index]->setLMC(trajectory_cost + tree_[v_index]->getLMC());
-
-                // Make v the new parent of u
                 makeParentOf(u_index, v_index);
 
                 // If u is inconsistent, add it to the queue
@@ -291,15 +260,13 @@ void RRTX::rewireNeighbors(int v_index) {
     }
 }
 
-// TODO: put the v_bot in Q in the or sections!
 void RRTX::reduceInconsistency() {
     while (!inconsistency_queue_.empty() 
-            &&
-           (inconsistency_queue_.top().min_key < tree_[vbot_index_]->getCost() ||
-            tree_[vbot_index_]->getLMC() != tree_[vbot_index_]->getCost() ||
-            tree_[vbot_index_]->getCost() == std::numeric_limits<double>::infinity())
+            && (inconsistency_queue_.top().min_key < tree_[vbot_index_]->getCost() ||
+                tree_[vbot_index_]->getLMC() != tree_[vbot_index_]->getCost() ||
+                tree_[vbot_index_]->getCost() == std::numeric_limits<double>::infinity() ||
+                inconsistency_queue_.contains(vbot_index_))
     ){
-    // while (!inconsistency_queue_.empty() ) {
         QueueElement top_element = inconsistency_queue_.top();
         inconsistency_queue_.pop();
 
@@ -318,9 +285,6 @@ void RRTX::reduceInconsistency() {
         // Set the cost of the node to its LMC
         tree_[v_index]->setCost(tree_[v_index]->getLMC());
     }
-    // if (inconsistency_queue_.size() > 0) {
-    //     std::cout << "size \n";
-    // }
 
 }
 
@@ -330,15 +294,12 @@ void RRTX::reduceInconsistency() {
 
 double RRTX::shrinkingBallRadius() const {
     double factor = 2.0;
-    // const double gamma = 2.0 * pow((1 + 1.0/d) * (volume / zetaD), 1.0/d);
-    // neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
     auto rad = factor * gamma_ * pow(log(tree_.size()) / tree_.size(), 1.0/dimension_);
     return std::min(rad, delta);;
 
 }
 
 
-// TODO: This should only be on dynamic obstacles! --> But how do we know maybe some static obstalce become dynamic! --> not motion planning concern maybe some method to classify static and dynamic obstalces!
 std::unordered_set<int> RRTX::findSamplesNearObstacles(
     const std::vector<Eigen::Vector2d>& obstacles, 
     double obstacle_radius
@@ -357,20 +318,12 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
 
 
 
+// To handle changes in the environment
 void RRTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) {
 
     // Similar obstacle sampling to FMTX but with RRTX propagation
+    // TODO: Later i need to implement the max length of and edge to find the scaling paramter accurately
     auto current = findSamplesNearObstacles(obstacles, 2.2*5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
-
-
-    // std::vector<Eigen::VectorXd> positions;
-    // for (const auto& y: current) {
-    //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
-    //     positions.push_back(vec);
-    // }
-    // std::string color_str = "1.0,0.0,0.0"; // Blue color
-    // visualization_->visualizeNodes(positions,"map",color_str);
 
 
 
@@ -388,16 +341,9 @@ void RRTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
         }
     }
 
+    // I update here because in removeObstalce i need to avoid samples that are still on obstalces
+    // Update the set of samples in obstacles
     samples_in_obstacles_ = std::move(current);
-
-
-
-    // std::vector<Eigen::VectorXd> nodes;
-    // for (const auto& sample_ : samples_in_obstacles_) {
-    //     nodes.push_back(tree_[sample_]->getStateVlaue());
-    // }
-    // visualization_->visualizeNodes(nodes);
-
 
 
     // Handle added and removed samples
@@ -411,17 +357,8 @@ void RRTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     }
 
     reduceInconsistency();
-    // Update the set of samples in obstacles
 }
 
-void RRTX::handleObstacleChanges() {
-    // Implementation similar to FMTX's updateObstacleSamples but with:
-    // - propagateDescendants()
-    // - verifyQueue() calls
-    // - Obstacle edge management
-}
-
-// Updated RRTX implementation with fixed TreeNode usage
 
 void RRTX::updateLMC(int v_index) {
     cullNeighbors(v_index);
@@ -457,18 +394,17 @@ void RRTX::cullNeighbors(int v_index) {
     for (auto it = Nr_out_[v_index].begin(); it != Nr_out_[v_index].end();) {
         int u_index = *it;
 
-        // Get the distance between v and u
+        // Do not use the distance map because it might have inf value and culls uneccessary neighbors! or if you want ot use the map just add another condtion to avoid neighbors that have cost of inf
         // double distance = distance_[v_index][u_index];
 
         double distance = (tree_.at(v_index)->getStateVlaue() - tree_.at(u_index)->getStateVlaue()).norm(); // for cullNeighbor we don't use the distance map because that map sometimes has inf in it!
         // Check if the distance is greater than the neighborhood radius
         // and u is not the parent of v
 
-        // or if you don't wwant to check infinity you can directly find the distance without using the distnace map
         if ( distance > neighborhood_radius_ &&
             tree_[v_index]->getParentIndex() != u_index) {
             // Remove u from Nr_out of v
-            it = Nr_out_[v_index].erase(it); //TODO: this line creates sub-optimal solutions! right after removeObstalce happens!
+            it = Nr_out_[v_index].erase(it); 
 
             // Remove v from Nr_in of u
             auto& nr_in_u = Nr_in_[u_index];
@@ -501,11 +437,6 @@ void RRTX::makeParentOf(int child_index, int parent_index) {
         tree_[parent_index]->getChildrenIndices().push_back(child_index);
     }
 }
-// This is wrong! it should also be able to update it instead of just add it! we should change the structure!
-// void RRTX::verifyQueue(int u_index) {
-//     double min_key = std::min(tree_[u_index]->getCost(), tree_[u_index]->getLMC());
-//     inconsistency_queue_.emplace(min_key, u_index);
-// }
 
 void RRTX::verifyQueue(int v_index) {
     double min_key = std::min(tree_[v_index]->getCost(), tree_[v_index]->getLMC());
@@ -514,17 +445,14 @@ void RRTX::verifyQueue(int v_index) {
 
     if (inconsistency_queue_.contains(v_index)) {
         inconsistency_queue_.update(v_index, new_element);
-        // std::cout << "UPDATE QUEUE \n";
     } else {
         inconsistency_queue_.add(new_element);
-        // std::cout << "ADD QUEUE \n";
     }
 }
 
 
 void RRTX::removeObstacle(const std::vector<int>& removed_samples) {
     for (int sample_index : removed_samples) {
-        // Mark the sample as no longer being in an obstacle
         // samples_in_obstacles_.erase(sample_index);
         std::unordered_set<int> all_neighbors;
         // Add N0_in neighbors
@@ -558,12 +486,12 @@ void RRTX::removeObstacle(const std::vector<int>& removed_samples) {
 
 
 void RRTX::addNewObstacle(const std::vector<int>& added_samples) {
-    // Step 1: Add the new obstacle samples to the obstacle set
+    // Add the new obstacle samples to the obstacle set
     for (int sample_index : added_samples) {
         samples_in_obstacles_.insert(sample_index);
     }
 
-    // Step 2: Invalidate all edges connected to the obstacle samples
+    // Invalidate all edges connected to the obstacle samples
     for (int sample_index : added_samples) {
         // Get all neighbors of the sample (both incoming and outgoing)
         std::unordered_set<int> all_neighbors;
@@ -610,21 +538,16 @@ void RRTX::addNewObstacle(const std::vector<int>& added_samples) {
     }
 }
 
-// TODO: how to delete that from the Q !!!???? i skipped it in reduceinconsisteny!
-// void RRTX::verifyOrphan(int v_index) {
-//     Vc_T_.insert(v_index);
-// }
 
 void RRTX::verifyOrphan(int v_index) {
     if (inconsistency_queue_.contains(v_index)) {
         inconsistency_queue_.remove(v_index);
-        // std::cout << "DELETE FROM QUEUE \n";
     }
     Vc_T_.insert(v_index);  // Add v to Vc_T
 }
 
 void RRTX::propagateDescendants() {
-    // Step 1: Propagate orphan status to descendants
+    // Propagate orphan status to descendants
     std::queue<int> to_process;
 
     // Initialize the queue with nodes in Vc_T_
@@ -694,27 +617,6 @@ void RRTX::propagateDescendants() {
     Vc_T_.clear();
 }
 
-// void RRTX::visualizeTree() {
-//     std::vector<Eigen::VectorXd> nodes;
-//     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-
-//     // Add nodes to the list
-//     for (const auto& tree_node : tree_) {
-//         nodes.push_back(tree_node->getStateVlaue());
-//     }
-
-//     // Add edges to the list
-//     for (const auto& tree_node : tree_) {
-//         int parent_index = tree_node->getParentIndex();
-//         if (parent_index != -1) {
-//             edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_node->getStateVlaue());
-//         }
-//     }
-
-//     // Use the visualization class to visualize nodes and edges
-//     // visualization_->visualizeNodes(nodes);
-//     visualization_->visualizeEdges(edges);
-// }
 
 void RRTX::visualizeTree() {
     std::vector<Eigen::VectorXd> nodes;
@@ -741,6 +643,7 @@ void RRTX::visualizeTree() {
     }
 
     // Visualize nodes and edges
+    // visualization_->visualizeNodes(nodes);
     visualization_->visualizeEdges(edges);
 }
 

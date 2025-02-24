@@ -13,7 +13,6 @@
 
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
-    // Create ROS node
     auto node = std::make_shared<rclcpp::Node>("rrtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>("tugbot", 5.0); // Robot model name and obstacle radius
@@ -21,6 +20,7 @@ int main(int argc, char **argv) {
 
 
     bool using_factory = true;
+    bool use_robot = true;
     int dim = 2;
     auto problem_def = std::make_unique<ProblemDefinition>(dim);
     problem_def->setStart(Eigen::VectorXd::Zero(dim));
@@ -48,14 +48,14 @@ int main(int argc, char **argv) {
     while (true) {
         auto obstacles = obstacle_checker->getObstaclePositions();
         auto robot = obstacle_checker->getRobotPosition();
-        if (robot(0) != 0.0 && robot(1) != 0.0)
+        if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
             dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot);
         ////////// PLAN //////////
         auto start = std::chrono::high_resolution_clock::now();
         dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        // std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
+        std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
         
         ////////// VISUALIZE /////
         dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
