@@ -90,8 +90,10 @@ void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
 void FMTX::plan() {
     // std::cout<< "Plan FMTX \n";
     auto start = std::chrono::high_resolution_clock::now();
-
+    std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
     std::vector<Eigen::VectorXd> positions;
+    int uncached = 0;
+    int cached = 0;
     while (! v_open_heap_.empty()) {
         auto [cost, zIndex] = v_open_heap_.top();
         v_open_heap_.pop();
@@ -207,11 +209,34 @@ void FMTX::plan() {
             // vec << tree_.at(best_neighbor_index)->getStateVlaue();
             // positions.push_back(vec);
             // visualization_->visualizeNodes(positions,"map");
+            /////////////////////////////////////////
+             bool obstacle_free;
+            // Create a key for the cache
+            if (obs_cache == true) {
+                // Create a key for the cache
+                auto edge_key = (best_neighbor_index < xIndex) ? std::make_pair(best_neighbor_index, xIndex) : std::make_pair(xIndex, best_neighbor_index);
+
+                // Check if the obstacle check result is already in the cache
+                bool obstacle_free;
+                if (obstacle_check_cache.find(edge_key) != obstacle_check_cache.end()) {
+                    obstacle_free = obstacle_check_cache[edge_key];
+                    cached++;
+                } else {
+                    // Perform the obstacle check and store the result in the cache
+                    obstacle_free = obs_checker_->isObstacleFree(tree_.at(xIndex)->getStateVlaue(), tree_.at(best_neighbor_index)->getStateVlaue());
+                    obstacle_check_cache[edge_key] = obstacle_free;
+                    uncached++;
+                }
+            }
+            else {
+                obstacle_free = obs_checker_->isObstacleFree(tree_.at(xIndex)->getStateVlaue() , tree_.at(best_neighbor_index)->getStateVlaue());
+            }
+            ///////////////////////////////////////
 
 
-            bool obstalce_check = obs_checker_->isObstacleFree(tree_.at(xIndex)->getStateVlaue() , tree_.at(best_neighbor_index)->getStateVlaue());
 
-            if (obstalce_check) {
+
+            if (obstacle_free) {
                 double newCost = min_cost; // newCost is the cost from the best neighbor
                 if (newCost < tree_.at(xIndex)->getCost()) {
                 // if (newCost < tree_.at(xIndex)->getCost() + 1e-9) {
@@ -276,12 +301,19 @@ void FMTX::plan() {
         }
 
     }
+
+    std::cout<<"------ \n";
+    std::cout<<"uncached: "<<uncached <<"\n";
+    std::cout<<"cached: "<<cached <<"\n";
+    std::cout<<"------ \n";
+
+
     std::string color_str = "0.0,1.0,1.0"; // Blue color
     // visualization_->visualizeNodes(positions,"map",color_str);
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    std::cout << "Time taken by while loop: " << duration.count() << " milliseconds\n";
+    // std::cout << "Time taken by while loop: " << duration.count() << " milliseconds\n";
     // std::cout << "The End \n";
 
 
@@ -316,13 +348,22 @@ std::vector<int> FMTX::getPathIndex() const {
     return path;
 }
 
+void FMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
+    std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, 1);
+    int nearest = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]);  
+
+    robot_state_index_ = nearest;
+}
+
+
+
 void FMTX::setStart(const Eigen::VectorXd& start) {
-    robot_state_index_ = statespace_->getNumStates();
+    root_state_index_ = statespace_->getNumStates();
     tree_.push_back(std::make_shared<TreeNode>(statespace_->addState(start)));
     std::cout << "FMTX: Start node created on Index: " << robot_state_index_ << "\n";
 }
 void FMTX::setGoal(const Eigen::VectorXd& goal) {
-    root_state_index_ = statespace_->getNumStates();
+    robot_state_index_ = statespace_->getNumStates();
     tree_.push_back(std::make_shared<TreeNode>(statespace_->addState(goal)));
     std::cout << "FMTX: Goal node created on Index: " << root_state_index_ << "\n";
 }
@@ -386,11 +427,16 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
     double obstacle_radius
 ) {
     std::unordered_set<int> conflicting_samples;
-    
+    bool use_range = true;
+    double robot_range = 20.0;    
+    Eigen::Vector2d robot_position;
+    robot_position << tree_.at(robot_state_index_)->getStateVlaue();
     for (const auto& obstacle : obstacles) {
-        // Query samples within obstacle radius (5 units)
-        auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
-        conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
+        if (use_range==true && (obstacle - robot_position).norm() <= robot_range) {
+            // Query samples within obstacle radius (5 units)
+            auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
+            conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
+        }
     }
     
     return conflicting_samples;

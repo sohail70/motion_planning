@@ -10,7 +10,15 @@ struct NeighborInfo {
     int index;
     double distance;
 };
-
+// Define the hash function for std::pair<int, int>
+struct pair_hash {
+    template <class T1, class T2>
+    std::size_t operator() (const std::pair<T1, T2>& p) const {
+        auto hash1 = std::hash<T1>{}(p.first);
+        auto hash2 = std::hash<T2>{}(p.second);
+        return hash1 ^ (hash2 << 1); // Combine the two hash values
+    }
+};
 
 class FMTX : public Planner {
  public:
@@ -20,6 +28,7 @@ class FMTX : public Planner {
             std::vector<int> getPathIndex() const override;
             void setStart(const Eigen::VectorXd& start) override;
             void setGoal(const Eigen::VectorXd& goal) override;
+            void setRobotIndex(const Eigen::VectorXd& robot_position);
 
             // int getGoalIndex() {return robot_state_index_;}
             // int getStarIndex() {return root_state_index_;}
@@ -68,6 +77,7 @@ class FMTX : public Planner {
             int robot_state_index_;
             bool use_kdtree;
             double neighborhood_radius_;
+            bool obs_cache = true;
 
 };
 

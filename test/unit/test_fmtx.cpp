@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>("tugbot", 5.0); // Robot model name and obstacle radius
     auto ros2_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization);
 
-
+    bool use_robot = true; 
     bool using_factory = true;
     int dim = 2;
     auto problem_def = std::make_unique<ProblemDefinition>(dim);
@@ -61,6 +61,9 @@ int main(int argc, char **argv) {
 
     while (true) {
         auto obstacles = obstacle_checker->getObstaclePositions();
+        auto robot = obstacle_checker->getRobotPosition();
+        if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
+            dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
         dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
         // planner->plan();
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
