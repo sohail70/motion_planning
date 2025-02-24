@@ -450,3 +450,25 @@ void RRTX::visualizeTree() {
     // visualization_->visualizeNodes(nodes);
     visualization_->visualizeEdges(edges);
 }
+
+void RRTX::visualizePath(std::vector<int> path_indices) {
+    std::vector<Eigen::VectorXd> nodes;
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+
+    // Add nodes to the list
+    for (const auto& index : path_indices) {
+        nodes.push_back(tree_.at(index)->getStateVlaue());
+    }
+
+    // Add edges to the list
+    for (const auto& index : path_indices) {
+        int parent_index = tree_.at(index)->getParentIndex();
+        if (parent_index != -1) {
+            edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_.at(index)->getStateVlaue());
+        }
+    }
+
+    // Use the visualization class to visualize nodes and edges
+    // visualization_->visualizeNodes(nodes);
+    visualization_->visualizeEdges(edges,"map","1.0,0.0,0.0");
+}

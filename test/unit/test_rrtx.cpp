@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 5000);
+    params.setParam("num_of_samples", 3000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
@@ -45,18 +45,22 @@ int main(int argc, char **argv) {
 
     // Plan the static one!
     planner->plan();
-
     while (true) {
         auto obstacles = obstacle_checker->getObstaclePositions();
-
+        auto robot = obstacle_checker->getRobotPosition();
+        if (robot(0) != 0.0 && robot(1) != 0.0)
+            dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot);
         ////////// PLAN //////////
         auto start = std::chrono::high_resolution_clock::now();
         dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
+        // std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
+        
         ////////// VISUALIZE /////
+        dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
         dynamic_cast<RRTX*>(planner.get())->visualizeTree();
+
         rclcpp::spin_some(ros2_manager);
     }
 

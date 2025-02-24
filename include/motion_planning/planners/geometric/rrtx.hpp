@@ -21,9 +21,9 @@ struct QueueElement {
     // Comparator to define the heap order
     bool operator<(const QueueElement& other) const {
         if (min_key != other.min_key) {
-            return min_key > other.min_key;  // Min heap: smaller key is higher priority
+            return min_key < other.min_key;  // Min heap: smaller key has higher priority
         }
-        return g_value > other.g_value;  // If keys are equal, compare g_value
+        return g_value < other.g_value;  // If keys are equal, compare g_value
     }
 };
 
@@ -37,41 +37,41 @@ private:
         }
     }
 
-    void heapifyUp(size_t index) {
-        while (index > 0) {
-            size_t parent = (index - 1) / 2;
-            if (heap[parent] < heap[index]) {
-                std::swap(heap[parent], heap[index]);
-                std::swap(elementIndex[heap[parent].index], elementIndex[heap[index].index]);
-                index = parent;
-            } else {
-                break;
-            }
+void heapifyUp(size_t index) {
+    while (index > 0) {
+        size_t parent = (index - 1) / 2;
+        if (heap[index] < heap[parent]) {  // Min-heap: child must be smaller
+            std::swap(heap[parent], heap[index]);
+            std::swap(elementIndex[heap[parent].index], elementIndex[heap[index].index]);
+            index = parent;
+        } else {
+            break;
         }
     }
+}
 
-    void heapifyDown(size_t index) {
-        size_t left, right, largest;
-        while (true) {
-            left = 2 * index + 1;
-            right = 2 * index + 2;
-            largest = index;
+void heapifyDown(size_t index) {
+    size_t left, right, smallest;
+    while (true) {
+        left = 2 * index + 1;
+        right = 2 * index + 2;
+        smallest = index;
 
-            if (left < heap.size() && heap[largest] < heap[left]) {
-                largest = left;
-            }
-            if (right < heap.size() && heap[largest] < heap[right]) {
-                largest = right;
-            }
-            if (largest != index) {
-                std::swap(heap[index], heap[largest]);
-                std::swap(elementIndex[heap[index].index], elementIndex[heap[largest].index]);
-                index = largest;
-            } else {
-                break;
-            }
+        if (left < heap.size() && heap[left] < heap[smallest]) {
+            smallest = left;
+        }
+        if (right < heap.size() && heap[right] < heap[smallest]) {
+            smallest = right;
+        }
+        if (smallest != index) {
+            std::swap(heap[index], heap[smallest]);
+            std::swap(elementIndex[heap[index].index], elementIndex[heap[smallest].index]);
+            index = smallest;
+        } else {
+            break;
         }
     }
+}
 
 public:
     UpdatablePriorityQueue(size_t capacity) {
@@ -84,32 +84,55 @@ public:
         return index >= 0 && index < elementIndex.size() && elementIndex[index] != -1;
     }
 
+    // void remove(int index) {
+    //     // std::cout << "Removing index: " << index << std::endl;
+    //     if (!contains(index)) {
+    //         throw std::runtime_error("Element not found");
+    //     }
+    //     size_t heap_index = elementIndex[index];
+    //     // std::cout << "Heap index: " << heap_index << std::endl;
+    //     if (heap_index >= heap.size()) {
+    //         throw std::runtime_error("Invalid heap index");
+    //     }
+
+    //     int last_index = heap.back().index;
+    //     // std::cout << "Last index: " << last_index << std::endl;
+
+    //     heap[heap_index] = heap.back();
+    //     elementIndex[last_index] = heap_index;
+    //     heap.pop_back();
+    //     elementIndex[index] = -1;
+
+    //     // std::cout << "Heap size after removal: " << heap.size() << std::endl;
+
+    //     if (heap_index < heap.size()) {
+    //         heapifyUp(heap_index);
+    //         heapifyDown(heap_index);
+    //     }
+    // }
+
     void remove(int index) {
-        // std::cout << "Removing index: " << index << std::endl;
         if (!contains(index)) {
             throw std::runtime_error("Element not found");
         }
         size_t heap_index = elementIndex[index];
-        // std::cout << "Heap index: " << heap_index << std::endl;
         if (heap_index >= heap.size()) {
             throw std::runtime_error("Invalid heap index");
         }
 
         int last_index = heap.back().index;
-        // std::cout << "Last index: " << last_index << std::endl;
-
         heap[heap_index] = heap.back();
         elementIndex[last_index] = heap_index;
         heap.pop_back();
         elementIndex[index] = -1;
 
-        // std::cout << "Heap size after removal: " << heap.size() << std::endl;
-
+        // Fix: Ensure proper heap restoration
         if (heap_index < heap.size()) {
             heapifyUp(heap_index);
             heapifyDown(heap_index);
         }
     }
+
 
     void add(const QueueElement& element) {
         ensureCapacity(element.index);  // Ensure capacity for the new element
@@ -130,11 +153,15 @@ public:
         QueueElement old_value = heap[heap_index];
         heap[heap_index] = new_value;
 
-        if (new_value < old_value) {
-            heapifyUp(heap_index);  // New value is smaller, move it up
-        } else {
-            heapifyDown(heap_index);  // New value is larger, move it down
-        }
+        // if (new_value < old_value) {
+        //     heapifyUp(heap_index);  // New value is smaller, move it up
+        // } else {
+        //     heapifyDown(heap_index);  // New value is larger, move it down
+        // }
+
+        heapifyUp(heap_index);
+        heapifyDown(heap_index);
+
     }
 
     QueueElement top() const {
@@ -190,7 +217,8 @@ class RRTX : public Planner {
     void updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles);
 
     void visualizeTree();
-
+    void visualizePath(std::vector<int> path_indices);
+    void setRobotIndex(const Eigen::VectorXd& robot_position);
 
  private:
     // Core data structures

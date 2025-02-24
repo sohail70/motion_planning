@@ -27,6 +27,8 @@ class RRTX : public Planner {
     void updateRobotPosition(const Eigen::VectorXd& new_position);
     void updateObstacles(const std::vector<Eigen::Vector2d>& new_obstacles);
     void visualizeTree();
+    void visualizePath(std::vector<int> path_indices);
+
 
 
  private:
