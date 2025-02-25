@@ -35,6 +35,8 @@ class FMTX : public Planner {
 
             std::vector<NeighborInfo> near(int node_index);
             void visualizeTree();
+            void visualizePath(std::vector<int> path_indices);
+
             std::unordered_set<int> findSamplesNearObstacles(const std::vector<Eigen::Vector2d>& obstacles, double obstacle_radius);
             void updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles);
             std::unordered_set<int> getDescendants(int node_index);
@@ -78,6 +80,7 @@ class FMTX : public Planner {
             bool use_kdtree;
             double neighborhood_radius_;
             bool obs_cache = true;
+            bool use_range = false; 
 
 };
 

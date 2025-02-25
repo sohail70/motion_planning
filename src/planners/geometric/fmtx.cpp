@@ -302,10 +302,12 @@ void FMTX::plan() {
 
     }
 
-    std::cout<<"------ \n";
-    std::cout<<"uncached: "<<uncached <<"\n";
-    std::cout<<"cached: "<<cached <<"\n";
-    std::cout<<"------ \n";
+    // std::cout<<"------ \n";
+    // std::cout<<"uncached: "<<uncached <<"\n";
+    if (cached!=0)
+        std::cout<<"cached: "<<cached <<"\n";
+
+    // std::cout<<"------ \n";
 
 
     std::string color_str = "0.0,1.0,1.0"; // Blue color
@@ -421,21 +423,50 @@ void FMTX::visualizeTree() {
     visualization_->visualizeEdges(edges);
 }
 
+void FMTX::visualizePath(std::vector<int> path_indices) {
+    std::vector<Eigen::VectorXd> nodes;
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+
+    // Add nodes to the list
+    for (const auto& index : path_indices) {
+        nodes.push_back(tree_.at(index)->getStateVlaue());
+    }
+
+    // Add edges to the list
+    for (const auto& index : path_indices) {
+        int parent_index = tree_.at(index)->getParentIndex();
+        if (parent_index != -1) {
+            edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_.at(index)->getStateVlaue());
+        }
+    }
+
+    // Use the visualization class to visualize nodes and edges
+    // visualization_->visualizeNodes(nodes);
+    visualization_->visualizeEdges(edges,"map","0.0,1.0,0.0");
+}
+
+
 // TODO: This should only be on dynamic obstacles! --> But how do we know maybe some static obstalce become dynamic! --> not motion planning concern maybe some method to classify static and dynamic obstalces!
 std::unordered_set<int> FMTX::findSamplesNearObstacles(
     const std::vector<Eigen::Vector2d>& obstacles, 
     double obstacle_radius
 ) {
     std::unordered_set<int> conflicting_samples;
-    bool use_range = true;
     double robot_range = 20.0;    
     Eigen::Vector2d robot_position;
     robot_position << tree_.at(robot_state_index_)->getStateVlaue();
     for (const auto& obstacle : obstacles) {
-        if (use_range==true && (obstacle - robot_position).norm() <= robot_range) {
-            // Query samples within obstacle radius (5 units)
-            auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
-            conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
+        if (use_range==true) {
+            if ((obstacle - robot_position).norm() <= robot_range) {
+                // Query samples within obstacle radius (5 units)
+                auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
+                conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
+            }
+        }
+        else {
+                // Query samples within obstacle radius (5 units)
+                auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
+                conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
         }
     }
     

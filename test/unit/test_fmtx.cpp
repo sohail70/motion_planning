@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 5000);
+    params.setParam("num_of_samples", 4000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
@@ -66,6 +66,8 @@ int main(int argc, char **argv) {
             dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
         dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
         // planner->plan();
+
+        dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
     }
