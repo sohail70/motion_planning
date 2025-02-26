@@ -160,23 +160,23 @@ void FMTX::plan() {
                 // if (v_open_set_.find(xIndex)!=v_open_set_.end()) //TODO: should i?
                 //     v_open_set_.erase(xIndex);
 
-                // auto parent_of_xIndex = tree_.at(xIndex)->getParentIndex();
-                // // TODO: Think about the second condition for the below if! and also read the comments below! --> you can indeed set parent and delete chldren but for the early exit you might find problem
-                // // and rememerb the reason for the following if! -->you might invalid some node but later lose the best vOpen that it already has! --? because vOPen for dynamic obstalce is made by hand by me! it doesnt cover everything and it around the current changes in the environemtn --> but you are actually in this code tracking all the obstalces!!!! so its not incremental so you might even doesnt need the following if! --> in python removing and adding was consecutive but here i simultanelusy check both of them! --> does it even matter for this problem --> im just babbling!
-                // // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && tree_[parent_of_xIndex]->getCost()!=std::numeric_limits<double>::infinity()) {
-                // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end()) {
-                // // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && v_unvisited_set_.find(parent_of_xIndex) == v_unvisited_set_.end()) { //the second condition means the parent is in vUnvisted then later it will be in the vOpen so no need to rush it ! (you can not use it any as  vopen any way because the cost is inf! but their child parent relationship is valid because of the early exit problem i had in python)
-                //     v_open_heap_.push({tree_.at(parent_of_xIndex)->getCost() , parent_of_xIndex});
-                //     v_open_set_.insert(parent_of_xIndex);
+                auto parent_of_xIndex = tree_.at(xIndex)->getParentIndex();
+                // TODO: Think about the second condition for the below if! and also read the comments below! --> you can indeed set parent and delete chldren but for the early exit you might find problem
+                // and rememerb the reason for the following if! -->you might invalid some node but later lose the best vOpen that it already has! --? because vOPen for dynamic obstalce is made by hand by me! it doesnt cover everything and it around the current changes in the environemtn --> but you are actually in this code tracking all the obstalces!!!! so its not incremental so you might even doesnt need the following if! --> in python removing and adding was consecutive but here i simultanelusy check both of them! --> does it even matter for this problem --> im just babbling!
+                // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && tree_[parent_of_xIndex]->getCost()!=std::numeric_limits<double>::infinity()) {
+                if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end()) {
+                // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && v_unvisited_set_.find(parent_of_xIndex) == v_unvisited_set_.end()) { //the second condition means the parent is in vUnvisted then later it will be in the vOpen so no need to rush it ! (you can not use it any as  vopen any way because the cost is inf! but their child parent relationship is valid because of the early exit problem i had in python)
+                    v_open_heap_.push({tree_.at(parent_of_xIndex)->getCost() , parent_of_xIndex});
+                    v_open_set_.insert(parent_of_xIndex);
 
-                //     if (tree_[parent_of_xIndex]->getCost() == std::numeric_limits<double>::infinity()) {
-                //         std::cout<<parent_of_xIndex<< "\n";
-                //         std::cout<<"why 2\n";
-                //     }
-                //     // sometimes i make a node's cost to inf in here but i don't delete its children and parent index so later their children might again be in this loop and when i want to put their parent in the vOpen then i'd put inf node to vOpen but vOpen nodes are for expaning and it measn they are visisted once and ready to expand other but cost of inf means unvisted!
-                //     // I remember not delting chld and parent was only because of early exit! --> maybe there is a better solution
-                //     // But is this really a problem? wouldn't they eventually update! --> i put the parent inf check in the if but not much though about it --> weirdly this doesnt happen when i make the circle bigger for findnearestnodesaroundobstalce
-                // }
+                    if (tree_[parent_of_xIndex]->getCost() == std::numeric_limits<double>::infinity()) {
+                        std::cout<<parent_of_xIndex<< "\n";
+                        std::cout<<"why 2\n";
+                    }
+                    // sometimes i make a node's cost to inf in here but i don't delete its children and parent index so later their children might again be in this loop and when i want to put their parent in the vOpen then i'd put inf node to vOpen but vOpen nodes are for expaning and it measn they are visisted once and ready to expand other but cost of inf means unvisted!
+                    // I remember not delting chld and parent was only because of early exit! --> maybe there is a better solution
+                    // But is this really a problem? wouldn't they eventually update! --> i put the parent inf check in the if but not much though about it --> weirdly this doesnt happen when i make the circle bigger for findnearestnodesaroundobstalce
+                }
 
 
                 // if(v_unvisited_set_.find(1270) != v_unvisited_set_.end() && xIndex==1270)
@@ -222,12 +222,12 @@ void FMTX::plan() {
             
 
             // METHOD 2 in conjunction with putting the parent node in the else if part!
-            // if (best_neighbor_index == tree_.at(xIndex)->getParentIndex()) // This is usefull for promising nodes so that we don't obstalce check them because they were not promsing as they appeared and ended up finding their own parents again! --> this line is useful only when you add the promising parents to the vOpen
-            // {
-            //     v_unvisited_set_.erase(xIndex);
-            //     tree_.at(xIndex)->setCost(min_cost); //TODO OOOOOOOOO:----> is this enough? should i add children and stuff? because we update because zIndex cost has changed! and 99 percent that changed is caused by removeObstalce and the else if part so we didn't delete any children  so i guess we shouldn't need to handle those here --> you can compare what happens in the main cost update and this --> or if you are not sure maybe just use the main if --> one obstalce check is not that important :)
-            //     continue;
-            // }
+            if (best_neighbor_index == tree_.at(xIndex)->getParentIndex()) // This is usefull for promising nodes so that we don't obstalce check them because they were not promsing as they appeared and ended up finding their own parents again! --> this line is useful only when you add the promising parents to the vOpen
+            {
+                v_unvisited_set_.erase(xIndex);
+                tree_.at(xIndex)->setCost(min_cost); //TODO OOOOOOOOO:----> is this enough? should i add children and stuff? because we update because zIndex cost has changed! and 99 percent that changed is caused by removeObstalce and the else if part so we didn't delete any children  so i guess we shouldn't need to handle those here --> you can compare what happens in the main cost update and this --> or if you are not sure maybe just use the main if --> one obstalce check is not that important :)
+                continue;
+            }
 
             // // I change the position of handleAdd and handleRemove in update and i don't need the below check! --> look further into this!
             // if (best_neighbor_index==-1) {
@@ -580,7 +580,7 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     //     }
     // }
 
-    v_unvisited_set_.clear();  //TODO: should i clear? yes because sometimes the promising nodes will never get updated because you are making thme promising because of the zIndex and in the end you might never pass the obstalce check of the xIndex and that promsing node (even if it did the cost might not get better necessarily or even be the same so floating point error!) --> so you need to find a way to handle these nodes
+    // v_unvisited_set_.clear();  //TODO: should i clear? yes because sometimes the promising nodes will never get updated because you are making thme promising because of the zIndex and in the end you might never pass the obstalce check of the xIndex and that promsing node (even if it did the cost might not get better necessarily or even be the same so floating point error!) --> so you need to find a way to handle these nodes
     // Handle changes first. whic one should be first?
     if (!added.empty()) {
         handleAddedObstacleSamples(added);  // Only call if added has elements
@@ -627,9 +627,9 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
             if (v_open_set_.count(neighbor.index) == 0 &&
                 v_unvisited_set_.count(neighbor.index) == 0 &&
                 samples_in_obstacles_.count(neighbor.index) == 0 ) {
-                if (tree_[neighbor.index]->getCost() == std::numeric_limits<double>::infinity()) { //TODO: Think about this --> i guess since you clear the vunvisted you gotta use cost inf to avoid putting thme in vOpen instead of vunsietd check in the above if condition --> think about this more! --> because later when you want to add early exit you might not even clear the vunvisted so this might be usesless later! --> maybe think about what should be in vOpen! --> the nodes that cleary have a cost other than inf!
-                    continue; //TODO: the reason why some vunvisted remains that got not connected and also they are not promising but just pure vunvisted (have cost of inf) --> it means on the last pahse they got put in the vunvisted in the handle add obstalce! but later in the plan function they didn't get connected --> but you may ask why they didn't get connected?
-                } //TODO: continuation of the above comment --> the reason it happens is this --> imagine a scenraio that you have removed nodes that gets into v unvisted but all the vOpen are not on samples on obstacles! so that v unvisted doest get the chance to get connected to any thing else!
+                // if (tree_[neighbor.index]->getCost() == std::numeric_limits<double>::infinity()) { //TODO: Think about this --> i guess since you clear the vunvisted you gotta use cost inf to avoid putting thme in vOpen instead of vunsietd check in the above if condition --> think about this more! --> because later when you want to add early exit you might not even clear the vunvisted so this might be usesless later! --> maybe think about what should be in vOpen! --> the nodes that cleary have a cost other than inf!
+                //     continue; //TODO: the reason why some vunvisted remains that got not connected and also they are not promising but just pure vunvisted (have cost of inf) --> it means on the last pahse they got put in the vunvisted in the handle add obstalce! but later in the plan function they didn't get connected --> but you may ask why they didn't get connected?
+                // } //TODO: continuation of the above comment --> the reason it happens is this --> imagine a scenraio that you have removed nodes that gets into v unvisted but all the vOpen are not on samples on obstacles! so that v unvisted doest get the chance to get connected to any thing else!
                 
                 v_open_set_.insert(neighbor.index);
                 v_open_heap_.push({tree_[neighbor.index]->getCost(), neighbor.index});
@@ -664,10 +664,10 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     // }
     // visualization_->visualizeNodes(positions2,"map");
 
-    // // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
-    //  for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
-    //     v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
-    // }
+    // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
+     for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
+        v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
+    }
    
     plan(); //lets put it outside!
 
