@@ -127,71 +127,74 @@ void FMTX::plan() {
             if (samples_in_obstacles_.find(xIndex) != samples_in_obstacles_.end())
                 continue;
 
-            if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end()) {
+            if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end() || (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9)) {
 
                 // std::cout<<"Proces \n";
             // } else if (tree_.at(xIndex)->getCost() > (tree_.at(zIndex)->getCost() + cost_to_neighbor )) {
-            } else if (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9) {
-                // if (tree_[xIndex]->getParentIndex() == zIndex) //NO WHAT!!!!! ZINDEX MIGHT CHANGE HENCE IT MIGHT PROMOTE ITS CHILDREN WHATS THE PROBLEM???
-                //     std::cout<<"wat " << zIndex <<" with xIndex " <<xIndex << " With parent[xIndex] " << tree_[xIndex]->getParentIndex() <<" Zcost:" << tree_.at(zIndex)->getCost() << " Xcost:" << tree_.at(xIndex)->getCost() <<" NeighCost: "<<cost_to_neighbor <<"\n";
+            }
+            //  else if (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9) {
+            //     // if (tree_[xIndex]->getParentIndex() == zIndex) //NO WHAT!!!!! ZINDEX MIGHT CHANGE HENCE IT MIGHT PROMOTE ITS CHILDREN WHATS THE PROBLEM???
+            //     //     std::cout<<"wat " << zIndex <<" with xIndex " <<xIndex << " With parent[xIndex] " << tree_[xIndex]->getParentIndex() <<" Zcost:" << tree_.at(zIndex)->getCost() << " Xcost:" << tree_.at(xIndex)->getCost() <<" NeighCost: "<<cost_to_neighbor <<"\n";
 
 
-                // Track occurrences of zIndex in this block
-                zIndexCount[zIndex]++;
-                if (zIndexCount[zIndex] > 1) {
-                    // std::cout << "WARNING: zIndex " << zIndex <<" with xIndex " <<xIndex << " With parent[xIndex] " << tree_[xIndex]->getParentIndex() <<" Zcost:" << tree_.at(zIndex)->getCost() << " Xcost:" << tree_.at(xIndex)->getCost() <<" NeighCost: "<<cost_to_neighbor <<"\n";
-                }
+            //     // Track occurrences of zIndex in this block
+            //     zIndexCount[zIndex]++;
+            //     if (zIndexCount[zIndex] > 1) {
+            //         // std::cout << "WARNING: zIndex " << zIndex <<" with xIndex " <<xIndex << " With parent[xIndex] " << tree_[xIndex]->getParentIndex() <<" Zcost:" << tree_.at(zIndex)->getCost() << " Xcost:" << tree_.at(xIndex)->getCost() <<" NeighCost: "<<cost_to_neighbor <<"\n";
+            //     }
 
 
 
-                if (xIndex==1270) {
-                    // std::cout<<"GOT PROMISING  with zIndex: "<<zIndex <<"\n";
-                    // fflush(stdout);
-                }
-                // Eigen::VectorXd vec(2);
-                // vec << tree_.at(xIndex)->getStateVlaue();
-                // vec << tree_.at(zIndex)->getStateVlaue();
-                // positions.push_back(vec);
-                // std::string color_str = "0.0,1.0,1.0"; // Blue color
-                // std::string color_str = getRandomColor();
-                // visualization_->visualizeNodes(positions,"map",color_str);
-                // positions.clear();
-                v_unvisited_set_.insert(xIndex);
-                // if (v_open_set_.find(xIndex)!=v_open_set_.end()) //TODO: should i?
-                //     v_open_set_.erase(xIndex);
+            //     if (xIndex==1270) {
+            //         // std::cout<<"GOT PROMISING  with zIndex: "<<zIndex <<"\n";
+            //         // fflush(stdout);
+            //     }
+            //     // Eigen::VectorXd vec(2);
+            //     // vec << tree_.at(xIndex)->getStateVlaue();
+            //     // vec << tree_.at(zIndex)->getStateVlaue();
+            //     // positions.push_back(vec);
+            //     // std::string color_str = "0.0,1.0,1.0"; // Blue color
+            //     // std::string color_str = getRandomColor();
+            //     // visualization_->visualizeNodes(positions,"map",color_str);
+            //     // positions.clear();
+            //     v_unvisited_set_.insert(xIndex);
+            //     // if (v_open_set_.find(xIndex)!=v_open_set_.end()) //TODO: should i?
+            //     //     v_open_set_.erase(xIndex);
 
-                auto parent_of_xIndex = tree_.at(xIndex)->getParentIndex();
-                // TODO: Think about the second condition for the below if! and also read the comments below! --> you can indeed set parent and delete chldren but for the early exit you might find problem
-                // and rememerb the reason for the following if! -->you might invalid some node but later lose the best vOpen that it already has! --? because vOPen for dynamic obstalce is made by hand by me! it doesnt cover everything and it around the current changes in the environemtn --> but you are actually in this code tracking all the obstalces!!!! so its not incremental so you might even doesnt need the following if! --> in python removing and adding was consecutive but here i simultanelusy check both of them! --> does it even matter for this problem --> im just babbling!
-                // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && tree_[parent_of_xIndex]->getCost()!=std::numeric_limits<double>::infinity()) {
-                if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end()) {
-                // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && v_unvisited_set_.find(parent_of_xIndex) == v_unvisited_set_.end()) { //the second condition means the parent is in vUnvisted then later it will be in the vOpen so no need to rush it ! (you can not use it any as  vopen any way because the cost is inf! but their child parent relationship is valid because of the early exit problem i had in python)
-                    v_open_heap_.push({tree_.at(parent_of_xIndex)->getCost() , parent_of_xIndex});
-                    v_open_set_.insert(parent_of_xIndex);
+            //     // auto parent_of_xIndex = tree_.at(xIndex)->getParentIndex();
+            //     // // TODO: Think about the second condition for the below if! and also read the comments below! --> you can indeed set parent and delete chldren but for the early exit you might find problem
+            //     // // and rememerb the reason for the following if! -->you might invalid some node but later lose the best vOpen that it already has! --? because vOPen for dynamic obstalce is made by hand by me! it doesnt cover everything and it around the current changes in the environemtn --> but you are actually in this code tracking all the obstalces!!!! so its not incremental so you might even doesnt need the following if! --> in python removing and adding was consecutive but here i simultanelusy check both of them! --> does it even matter for this problem --> im just babbling!
+            //     // // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && tree_[parent_of_xIndex]->getCost()!=std::numeric_limits<double>::infinity()) {
+            //     // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end()) {
+            //     // // if (v_open_set_.find(parent_of_xIndex) == v_open_set_.end() && v_unvisited_set_.find(parent_of_xIndex) == v_unvisited_set_.end()) { //the second condition means the parent is in vUnvisted then later it will be in the vOpen so no need to rush it ! (you can not use it any as  vopen any way because the cost is inf! but their child parent relationship is valid because of the early exit problem i had in python)
+            //     //     v_open_heap_.push({tree_.at(parent_of_xIndex)->getCost() , parent_of_xIndex});
+            //     //     v_open_set_.insert(parent_of_xIndex);
 
-                    if (tree_[parent_of_xIndex]->getCost() == std::numeric_limits<double>::infinity()) {
-                        std::cout<<parent_of_xIndex<< "\n";
-                        std::cout<<"why 2\n";
-                    }
-                    // sometimes i make a node's cost to inf in here but i don't delete its children and parent index so later their children might again be in this loop and when i want to put their parent in the vOpen then i'd put inf node to vOpen but vOpen nodes are for expaning and it measn they are visisted once and ready to expand other but cost of inf means unvisted!
-                    // I remember not delting chld and parent was only because of early exit! --> maybe there is a better solution
-                    // But is this really a problem? wouldn't they eventually update! --> i put the parent inf check in the if but not much though about it --> weirdly this doesnt happen when i make the circle bigger for findnearestnodesaroundobstalce
-                }
+            //     //     if (tree_[parent_of_xIndex]->getCost() == std::numeric_limits<double>::infinity()) {
+            //     //         std::cout<<parent_of_xIndex<< "\n";
+            //     //         std::cout<<"why 2\n";
+            //     //     }
+            //     //     // sometimes i make a node's cost to inf in here but i don't delete its children and parent index so later their children might again be in this loop and when i want to put their parent in the vOpen then i'd put inf node to vOpen but vOpen nodes are for expaning and it measn they are visisted once and ready to expand other but cost of inf means unvisted!
+            //     //     // I remember not delting chld and parent was only because of early exit! --> maybe there is a better solution
+            //     //     // But is this really a problem? wouldn't they eventually update! --> i put the parent inf check in the if but not much though about it --> weirdly this doesnt happen when i make the circle bigger for findnearestnodesaroundobstalce
+            //     // }
 
 
-                // if(v_unvisited_set_.find(1270) != v_unvisited_set_.end() && xIndex==1270)
-                //     std::cout<<"1270 is in vUnivsted \n";
+            //     // if(v_unvisited_set_.find(1270) != v_unvisited_set_.end() && xIndex==1270)
+            //     //     std::cout<<"1270 is in vUnivsted \n";
 
-                // if (parent_of_xIndex != -1) {
-                //     std::vector<int>& childs = tree_.at(parent_of_xIndex)->getChildrenIndices();
-                //     childs.erase(std::remove(childs.begin(), childs.end(), xIndex),childs.end());
-                // }
-                // tree_.at(xIndex)->setParentIndex(-1);
+            //     // if (parent_of_xIndex != -1) {
+            //     //     std::vector<int>& childs = tree_.at(parent_of_xIndex)->getChildrenIndices();
+            //     //     childs.erase(std::remove(childs.begin(), childs.end(), xIndex),childs.end());
+            //     // }
+            //     // tree_.at(xIndex)->setParentIndex(-1);
 
-                // tree_.at(xIndex)->setCost(std::numeric_limits<double>::infinity()); //TODO: WTF ? why by commenting this it works now! but it gets slower!
-            } else {
+            //     // tree_.at(xIndex)->setCost(std::numeric_limits<double>::infinity()); //TODO: WTF ? why by commenting this it works now! but it gets slower!
+            // }
+             else {
                 continue;
             }
+            v_unvisited_set_.erase(xIndex); // DO YOU KNOW WHY THIS WORKS BECAUSE LATER IT WILL GO TO THE ELSE IF AND GOT REEVALUATED AGAIN AND BE PUT IN THE ELSE IF!
 
             auto xNeighborInfo = near(xIndex);
             std::vector<NeighborInfo> Ynear;
@@ -221,13 +224,19 @@ void FMTX::plan() {
                 
             
 
-            // METHOD 2 in conjunction with putting the parent node in the else if part!
-            if (best_neighbor_index == tree_.at(xIndex)->getParentIndex()) // This is usefull for promising nodes so that we don't obstalce check them because they were not promsing as they appeared and ended up finding their own parents again! --> this line is useful only when you add the promising parents to the vOpen
-            {
-                v_unvisited_set_.erase(xIndex);
-                tree_.at(xIndex)->setCost(min_cost); //TODO OOOOOOOOO:----> is this enough? should i add children and stuff? because we update because zIndex cost has changed! and 99 percent that changed is caused by removeObstalce and the else if part so we didn't delete any children  so i guess we shouldn't need to handle those here --> you can compare what happens in the main cost update and this --> or if you are not sure maybe just use the main if --> one obstalce check is not that important :)
-                continue;
-            }
+            // // METHOD 2 in conjunction with putting the parent node in the else if part!
+            // if (best_neighbor_index == tree_.at(xIndex)->getParentIndex()) // This is usefull for promising nodes so that we don't obstalce check them because they were not promsing as they appeared and ended up finding their own parents again! --> this line is useful only when you add the promising parents to the vOpen
+            // {
+            //     // if (v_open_set_.find(xIndex) == v_open_set_.end()) {
+            //     //     v_open_heap_.push({tree_.at(xIndex)->getCost(), xIndex});
+            //     //     v_open_set_.insert(xIndex);
+            //     // }
+
+            //     v_unvisited_set_.erase(xIndex);
+            //     tree_.at(xIndex)->setCost(min_cost); //TODO OOOOOOOOO:----> is this enough? should i add children and stuff? because we update because zIndex cost has changed! and 99 percent that changed is caused by removeObstalce and the else if part so we didn't delete any children  so i guess we shouldn't need to handle those here --> you can compare what happens in the main cost update and this --> or if you are not sure maybe just use the main if --> one obstalce check is not that important :)
+            //     // break;
+            //     continue;
+            // }
 
             // // I change the position of handleAdd and handleRemove in update and i don't need the below check! --> look further into this!
             // if (best_neighbor_index==-1) {
@@ -297,16 +306,16 @@ void FMTX::plan() {
                     tree_.at(xIndex)->setCost(newCost);
 
                     // Add the node to v_open_heap_ and v_open_set_ if it's not already there
-                    if (v_open_set_.find(xIndex) == v_open_set_.end()) {
-                        v_open_heap_.push({newCost, xIndex});
-                        v_open_set_.insert(xIndex);
-                    }
+                    // if (v_open_set_.find(xIndex) == v_open_set_.end()) {
+                    v_open_heap_.push({newCost, xIndex});
+                    v_open_set_.insert(xIndex);
+                    // }
 
                     // Remove the node from v_unvisited_set_
-                    if (xIndex==1270) {
-                        // std::cout<<"1270 erased from vUnvisted (connected) to: " << best_neighbor_index <<"\n";
-                    }
-                    v_unvisited_set_.erase(xIndex);
+                    // if (xIndex==1270) {
+                    //     // std::cout<<"1270 erased from vUnvisted (connected) to: " << best_neighbor_index <<"\n";
+                    // }
+                    // v_unvisited_set_.erase(xIndex);
 
                     // Update the node's parent and add it to the new parent's children list
                     tree_.at(xIndex)->setParentIndex(best_neighbor_index);
@@ -372,7 +381,7 @@ void FMTX::plan() {
     if (duration.count()>0){
         if (v_unvisited_set_.empty())
         {
-            // std::cout << "Time taken by while loop: " << duration.count() << " milliseconds"<<" vUnvisted is EMPTY \n";
+            std::cout << "Time taken by while loop: " << duration.count() << " milliseconds"<<" vUnvisted is EMPTY \n";
         }
         else {
             std::cout << "Time taken by while loop: " << duration.count() << " milliseconds"<<" vUnvisted is  NOT  \n";
