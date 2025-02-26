@@ -16,6 +16,11 @@
  *       about the keep tracking of the vUnvisted: tracking the addobstacle nodes is easy! --> they are already in the vunvisted for that pass (or you can loop thorugh them to see whihc node has cost of inf! which you don't have to since as i told you ahve them and can store them!) , but about the remove obstalce parts its hard since you find them as you go so nothing to store and you would hope if you need those parts of the map the while loop handles them! --> and also you end up clearing the vPromsing to not running the algoithm for no reason! --> also for this idea you can't v_unvisted_set.clear() because you need them --> or maybe you can create another set to store the not updated ones! --> but according to my experience don't create new variables because you'll end up doing redundant works in other places
  * TODO: to implement the above idea forget about using a robot. just change the goal place randomly on different nodes and see the tree! --> sometimes near the root to make the algorithm to store and sometimes on the end of the leaves to test the stored!
  * TODO: make all of this independent of ros2 (is visualization marker can be replaced with direct rviz api) 
+ * 
+ * 
+ * 
+ * 
+ * WARN: some nodes might not get the chance to connect so they'll stay in vUnvisited (and they are not on sample on obstalces!) ---> the  reason they stay is because of object inflation you put not because of persistent vPromising
  */
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
@@ -41,7 +46,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 4000);
+    params.setParam("num_of_samples", 5000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
@@ -67,7 +72,7 @@ int main(int argc, char **argv) {
         dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
         // planner->plan();
 
-        dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
+        dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<FMTX*>(planner.get())->getPathIndex());
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
     }

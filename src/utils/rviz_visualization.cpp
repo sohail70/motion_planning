@@ -45,8 +45,8 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
     marker.id = 0;
     marker.type = visualization_msgs::msg::Marker::POINTS;
     marker.action = visualization_msgs::msg::Marker::ADD;
-    marker.scale.x = 0.1; // Point width
-    marker.scale.y = 0.1; // Point height
+    marker.scale.x = 1.1; // Point width
+    marker.scale.y = 1.1; // Point height
 
     // Parse the color string
     std::stringstream ss(color_str);
