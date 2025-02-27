@@ -59,7 +59,11 @@ class FMTX : public Planner {
 
             std::unordered_set<int> v_open_set_;
             std::unordered_set<int> v_unvisited_set_;
-            std::priority_queue<std::pair<double,int>, std::vector<std::pair<double,int>>, std::greater<>> v_open_heap_;
+            // std::priority_queue<std::pair<double,int>, std::vector<std::pair<double,int>>, std::greater<>> v_open_heap_;
+
+            PriorityQueue v_open_heap_;
+
+
 
             std::unordered_map<int, std::vector<NeighborInfo>> neighbors_dict_;
             std::unordered_set<int> samples_in_obstacles_; // Current samples in obstacles
@@ -81,7 +85,7 @@ class FMTX : public Planner {
             double neighborhood_radius_;
             bool obs_cache = true;
             bool use_range = false; // THIS SHOULD BE USED IN THE OBSTALCE CHECKER LEVEL NOT IN THE PLANNER LEVEL! --> LATER REMOVE THIS
-            bool partial_plot = false;
+            bool partial_plot = true;
 
 };
 

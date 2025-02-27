@@ -14,7 +14,7 @@ std::string getRandomColor() {
     ss << std::fixed << std::setprecision(2) << r << "," << g << "," << b;
     return ss.str();
 }
-FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::unique_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(std::move(statespace)), problem_(std::move(problem_def)), obs_checker_(obs_checker),v_open_heap_(50) {
+FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::unique_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(std::move(statespace)), problem_(std::move(problem_def)), obs_checker_(obs_checker) {
     std::cout<< "FMTX Constructor \n";
 
 }
@@ -73,10 +73,7 @@ void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
     // for (auto i : v_unvisited_set_)
     //     std::cout<<i<<",";
 
-    // v_open_heap_.push({0, 0});
-    
-    QueueElement2 new_element ={0,0};
-    v_open_heap_.add(new_element);
+    v_open_heap_.push({0, 0});
     ///////////////////Neighborhood Radius////////////////////////////////
     int d = statespace_->getDimension();
     double mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
@@ -118,10 +115,7 @@ void FMTX::plan() {
             std::cout<<v_open_heap_.size() <<" "<<v_open_set_.size()<<"\n";
         }
 
-        // auto [cost, zIndex] = v_open_heap_.top();
-        auto top_element = v_open_heap_.top();
-        double cost = top_element.min_key;
-        int zIndex = top_element.index;
+        auto [cost, zIndex] = v_open_heap_.top();
         v_open_heap_.pop();
         // if (v_open_set_.find(zIndex)==v_open_set_.end()) //TODO: should i?
         //     continue;
@@ -133,9 +127,7 @@ void FMTX::plan() {
         // EARLY EXIT???
         // std::cout<<zIndex<<"   " << robot_state_index_<<"\n";
         if (zIndex==robot_state_index_){
-            // v_open_heap_.push({tree_.at(zIndex)->getCost(), zIndex});
-            QueueElement2 new_element ={tree_.at(zIndex)->getCost(), zIndex};
-            v_open_heap_.add(new_element);
+            v_open_heap_.push({tree_.at(zIndex)->getCost(), zIndex});
             break;
         }
         
@@ -170,9 +162,9 @@ void FMTX::plan() {
                     what=false;
                 }
 
-                // if (v_open_set_.count(xIndex)!=0) {
-                //     v_open_set_.erase(xIndex);
-                // }
+                if (v_open_set_.count(xIndex)!=0) {
+                    v_open_set_.erase(xIndex);
+                }
 
 
                 auto xNeighborInfo = near(xIndex);
@@ -257,17 +249,7 @@ void FMTX::plan() {
                         // Update the node's cost
                         tree_.at(xIndex)->setCost(newCost);
                         // if (v_open_set_.count(xIndex)==0){
-                            // v_open_heap_.push({newCost, xIndex});
-
-
-
-                        QueueElement2 new_element = {newCost, xIndex};
-                        if (v_open_heap_.contains(xIndex)){
-                            v_open_heap_.update(xIndex, newCost);
-
-                        } else{
-                            v_open_heap_.add(new_element);
-                        }
+                            v_open_heap_.push({newCost, xIndex});
                             v_open_set_.insert(xIndex);
                         // }
                         // else{
@@ -580,10 +562,7 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
                 // } //TODO: continuation of the above comment --> the reason it happens is this --> imagine a scenraio that you have removed nodes that gets into v unvisted but all the vOpen are not on samples on obstacles! so that v unvisted doest get the chance to get connected to any thing else!
                 
                 v_open_set_.insert(neighbor.index);
-                // v_open_heap_.push({tree_[neighbor.index]->getCost(), neighbor.index});
-
-                QueueElement2 new_element ={tree_[neighbor.index]->getCost(), neighbor.index};
-                v_open_heap_.add(new_element);
+                v_open_heap_.push({tree_[neighbor.index]->getCost(), neighbor.index});
             }
         }
     }
@@ -661,10 +640,6 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
     // Step 2: Update the tree structure
     for (int orphan : orphan_nodes) {
         v_open_set_.erase(orphan);
-        if (v_open_heap_.contains(orphan))
-            v_open_heap_.remove(orphan);
-
-
         int parent_idx = tree_[orphan]->getParentIndex();
         if (parent_idx != -1) {
             // Remove the orphan from its parent's children list

@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
 
 
     bool using_factory = true;
-    bool use_robot = true;
+    bool use_robot = false;
     int dim = 2;
     auto problem_def = std::make_unique<ProblemDefinition>(dim);
     problem_def->setStart(Eigen::VectorXd::Zero(dim));
@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 5000);
+    params.setParam("num_of_samples", 10000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
@@ -55,7 +55,8 @@ int main(int argc, char **argv) {
         dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
+        if (duration.count()>0)
+            std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
         
         ////////// VISUALIZE /////
         dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());

@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>("tugbot", 5.0); // Robot model name and obstacle radius
     auto ros2_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization);
 
-    bool use_robot = true; 
+    bool use_robot = false; 
     bool using_factory = true;
     int dim = 2;
     auto problem_def = std::make_unique<ProblemDefinition>(dim);
@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 5000);
+    params.setParam("num_of_samples", 10000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
