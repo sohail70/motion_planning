@@ -61,6 +61,9 @@ int main(int argc, char **argv) {
         planner = std::make_unique<FMTX>(std::move(statespace), std::move(problem_def) , obstacle_checker);
     planner->setup(std::move(params) , visualization);
 
+    // auto robot = obstacle_checker->getRobotPosition();
+    // if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
+    //     dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
     // Plan the static one!
     planner->plan();
 

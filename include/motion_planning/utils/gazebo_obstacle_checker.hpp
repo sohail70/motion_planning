@@ -34,5 +34,5 @@ private:
     std::vector<Eigen::Vector2d> obstacle_positions_;
     gz::transport::Node gz_node_;
     bool use_range = true;
-    double sensor_range = 20.0;
+    double sensor_range = 40.0;
 };

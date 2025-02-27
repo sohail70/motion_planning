@@ -104,18 +104,38 @@ void FMTX::plan() {
     // std::cout<< "Plan FMTX \n";
     auto start = std::chrono::high_resolution_clock::now();
     std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
-    std::vector<Eigen::VectorXd> positions;
     int uncached = 0;
     int cached = 0;
+
+
 
     while (! v_open_heap_.empty()) {
         auto [cost, zIndex] = v_open_heap_.top();
         v_open_heap_.pop();
-        // if (v_open_set_.find(zIndex)==v_open_set_.end()) //TODO: should i?
-        //     continue;
+        if (v_open_set_.find(zIndex)==v_open_set_.end()) //TODO: should i?
+            continue;
 
+
+        // EARLY EXIT???
+        // std::cout<<zIndex<<"   " << robot_state_index_<<"\n";
+        if (zIndex==robot_state_index_){
+            v_open_heap_.push({tree_.at(zIndex)->getCost(), zIndex});
+            break;
+        }
+        
+
+
+        // if (samples_in_obstacles_.find(zIndex) != samples_in_obstacles_.end())
+        // {
+        //     v_open_set_.erase(zIndex);
+        //     std::cout<<"OHOHOHOHOH \n";
+        //     continue;
+        // }
+
+        std::vector<Eigen::VectorXd> positions;
 
         auto zNeighborsInfo = near(zIndex);
+        bool what;
         for (const auto& [xIndex, cost_to_neighbor]: zNeighborsInfo) {
 
             if (samples_in_obstacles_.find(xIndex) != samples_in_obstacles_.end())
@@ -124,16 +144,31 @@ void FMTX::plan() {
             if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end() || (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9)) {
                 
                 // because of the second condtion in the above if sometimes the xIndex is not present in the v unvisited
-                v_unvisited_set_.erase(xIndex); 
+                // if (v_open_set_.count(xIndex)!=0 && tree_.at(xIndex)->getCost()==std::numeric_limits<double>::infinity() && (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9)){
+                //     std::cout<<"SOMETIMESBAD \n";
+                // }
+                if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end()) {
+                    what = true;
+                }
+                else {
+                    what=false;
+                }
+
+                if (v_open_set_.count(xIndex)!=0) {
+                    v_open_set_.erase(xIndex);
+                }
+
 
                 auto xNeighborInfo = near(xIndex);
                 std::vector<NeighborInfo> Ynear;
                 for (const auto& info : xNeighborInfo) {
                     if (v_open_set_.find(info.index) != v_open_set_.end()) {
+                    // if (samples_in_obstacles_.count(info.index)==0 && v_unvisited_set_.count(info.index)==0 && v_open_set_.find(info.index) != v_open_set_.end()) {
                         Ynear.push_back(info);
                     }
                 }
 
+                // v_unvisited_set_.erase(xIndex);  //NOT GOOD TO DO IT HERE FOR THE REAL UNVISTED NODES! IT WAS GOOD FOR PROMISING BUT NOW YOU DECIED TO NOT EVEN PUT THEM IN VUNIVSTED AND JUST RECHECK THEM WITHOUT EVEN PUTTING THEM IN VUNVISTED! AND IF THEY CHANGE WE JUST PUT THEM IN VOPEN FOR THE CASCADE!
                 if (Ynear.empty()) {
                     continue;
                 }
@@ -141,12 +176,32 @@ void FMTX::plan() {
                 double min_cost = std::numeric_limits<double>::infinity();
                 int best_neighbor_index = -1;
                 for (const auto& y : Ynear) {
+                    if (tree_.at(y.index)->getCost()==std::numeric_limits<double>::infinity()) {
+                        Eigen::VectorXd vec(2);
+                        vec << tree_.at(y.index)->getStateVlaue();
+                        positions.push_back(vec);
+                    }
                     double total_cost = tree_.at(y.index)->getCost() + y.distance;
                     if (total_cost < min_cost) {
                         min_cost = total_cost;
                         best_neighbor_index = y.index;
                     }
                 }
+
+                std::string color_str = "1.0,1.0,0.0"; // Blue color
+                visualization_->visualizeNodes(positions,"map",color_str);
+
+                // positions.clear();
+                // Eigen::VectorXd vec(2);
+                // vec << tree_.at(zIndex)->getStateVlaue();
+                // positions.push_back(vec);
+                // visualization_->visualizeNodes(positions,"map");
+
+
+
+                // if(best_neighbor_index==-1) {
+                //     continue;
+                // }
 
                 bool obstacle_free;
                 // Create a key for the cache
@@ -185,11 +240,16 @@ void FMTX::plan() {
 
                         // Update the node's cost
                         tree_.at(xIndex)->setCost(newCost);
-                        v_open_heap_.push({newCost, xIndex});
-                        v_open_set_.insert(xIndex);
+                        if (v_open_set_.count(xIndex)==0){
+                            v_open_heap_.push({newCost, xIndex});
+                            v_open_set_.insert(xIndex);
+                        }
+                        else{
+                            std::cout<<"IT WAS THERE \n";
+                        }
 
                         // Remove the node from v_unvisited_set_
-                        // v_unvisited_set_.erase(xIndex); // I do this earlier!
+                        v_unvisited_set_.erase(xIndex); // I do this earlier!
 
                         // Update the node's parent and add it to the new parent's children list
                         tree_.at(xIndex)->setParentIndex(best_neighbor_index);
@@ -219,6 +279,10 @@ void FMTX::plan() {
             v_unvisited_set_.erase(zIndex);
         }
 
+
+
+
+        
     }
 
 
@@ -338,25 +402,56 @@ std::vector<NeighborInfo> FMTX::near(int node_index) {
 
 
 void FMTX::visualizeTree() {
-    std::vector<Eigen::VectorXd> nodes;
-    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+    if (partial_plot==true) {
+        std::vector<Eigen::VectorXd> nodes;
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+        double goal_node_cost = tree_.at(robot_state_index_)->getCost();
+        
+        // Create a set to store valid nodes based on cost
+        std::unordered_set<int> valid_node_indices;
 
-    // Add nodes to the list
-    for (const auto& tree_node : tree_) {
-        nodes.push_back(tree_node->getStateVlaue());
-    }
-
-    // Add edges to the list
-    for (const auto& tree_node : tree_) {
-        int parent_index = tree_node->getParentIndex();
-        if (parent_index != -1) {
-            edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_node->getStateVlaue());
+        // Collect valid nodes
+        for (size_t i = 0; i < tree_.size(); ++i) {
+            if (tree_[i]->getCost() <= goal_node_cost) {
+                nodes.push_back(tree_[i]->getStateVlaue());
+                valid_node_indices.insert(i);
+            }
         }
+
+        // Generate edges only for valid nodes
+        for (int index : valid_node_indices) {
+            int parent_index = tree_[index]->getParentIndex();
+            if (parent_index != -1) {
+                edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_.at(index)->getStateVlaue());
+            }
+        }
+        // Visualize nodes and edges
+        // visualization_->visualizeNodes(nodes);
+        visualization_->visualizeEdges(edges);
+    }
+    else {
+        std::vector<Eigen::VectorXd> nodes;
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+    
+        // Add nodes to the list
+        for (const auto& tree_node : tree_) {
+            nodes.push_back(tree_node->getStateVlaue());
+        }
+    
+        // Add edges to the list
+        for (const auto& tree_node : tree_) {
+            int parent_index = tree_node->getParentIndex();
+            if (parent_index != -1) {
+                edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_node->getStateVlaue());
+            }
+        }
+    
+        // Use the visualization class to visualize nodes and edges
+        // visualization_->visualizeNodes(nodes);
+        visualization_->visualizeEdges(edges);
     }
 
-    // Use the visualization class to visualize nodes and edges
-    // visualization_->visualizeNodes(nodes);
-    visualization_->visualizeEdges(edges);
+
 }
 
 void FMTX::visualizePath(std::vector<int> path_indices) {
@@ -466,14 +561,14 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     // std::string color_str = "1.0,1.0,0.0"; // Blue color
     // visualization_->visualizeNodes(positions,"map",color_str);
 
-    // std::vector<Eigen::VectorXd> positions;
-    // for (const auto& y: v_unvisited_set_) {
-    //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
-    //     positions.push_back(vec);
-    // }
-    // std::string color_str = "1.0,1.0,0.0"; // Blue color
-    // visualization_->visualizeNodes(positions,"map",color_str);
+    std::vector<Eigen::VectorXd> positions;
+    for (const auto& y: v_unvisited_set_) {
+        Eigen::VectorXd vec(2);
+        vec << tree_.at(y)->getStateVlaue();
+        positions.push_back(vec);
+    }
+    std::string color_str = "0.0,0.0,1.0"; // Blue color
+    visualization_->visualizeNodes(positions,"map",color_str);
 
     // std::vector<Eigen::VectorXd> positions2;
     // for (const auto& y: v_open_set_) {
@@ -482,6 +577,14 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     //     positions2.push_back(vec);
     // }
     // visualization_->visualizeNodes(positions2,"map");
+
+    // std::vector<Eigen::VectorXd> positions3;
+    // for (const auto& y: samples_in_obstacles_) {
+    //     Eigen::VectorXd vec(2);
+    //     vec << tree_.at(y)->getStateVlaue();
+    //     positions3.push_back(vec);
+    // }
+    // visualization_->visualizeNodes(positions3,"map");
 
     // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
     for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
@@ -528,6 +631,7 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
     v_unvisited_set_.insert(orphan_nodes.begin() , orphan_nodes.end());
     // Step 2: Update the tree structure
     for (int orphan : orphan_nodes) {
+        v_open_set_.erase(orphan);
         int parent_idx = tree_[orphan]->getParentIndex();
         if (parent_idx != -1) {
             // Remove the orphan from its parent's children list

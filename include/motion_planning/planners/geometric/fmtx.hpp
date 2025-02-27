@@ -81,6 +81,7 @@ class FMTX : public Planner {
             double neighborhood_radius_;
             bool obs_cache = true;
             bool use_range = false; // THIS SHOULD BE USED IN THE OBSTALCE CHECKER LEVEL NOT IN THE PLANNER LEVEL! --> LATER REMOVE THIS
+            bool partial_plot = false;
 
 };
 
