@@ -80,7 +80,7 @@ class FMTX : public Planner {
             bool use_kdtree;
             double neighborhood_radius_;
             bool obs_cache = true;
-            bool use_range = false; 
+            bool use_range = false; // THIS SHOULD BE USED IN THE OBSTALCE CHECKER LEVEL NOT IN THE PLANNER LEVEL! --> LATER REMOVE THIS
 
 };
 

@@ -13,7 +13,7 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
         visualization_msgs::msg::Marker marker;
         marker.header.frame_id = frame_id;
         marker.header.stamp = node_->now();
-        marker.ns = "fmtx_nodes";
+        marker.ns = "default_nodes";
         marker.id = 0;
         marker.type = visualization_msgs::msg::Marker::POINTS;
         marker.action = visualization_msgs::msg::Marker::ADD;
@@ -41,7 +41,7 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = frame_id;
     marker.header.stamp = node_->now();
-    marker.ns = "fmtx_nodes";
+    marker.ns = "colored_nodes";
     marker.id = 0;
     marker.type = visualization_msgs::msg::Marker::POINTS;
     marker.action = visualization_msgs::msg::Marker::ADD;

@@ -238,6 +238,10 @@ void FMTX::plan() {
     // visualization_->visualizeNodes(positions2,"map",color_str2);
 
 
+    // if (cached !=0) {
+    //     std::cout << "Cached: " << cached << "\n";
+    // }
+
     if (duration.count()>0){
         if (v_unvisited_set_.empty())
         {
@@ -439,6 +443,7 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     samples_in_obstacles_ = std::move(current);
 
 
+    // std::vector<Eigen::VectorXd> positions;
     // TODO: maybe an easier way instead of solving looping the over the v_unvisted_set thorugh tracking is to loop over the v_unvisted that are their heuristic is less than the current robots costToRoot! --> or if that doesnt work we can use the tracking that i used in python!
     for (int node : v_unvisited_set_) {
         auto neighbors = near(node);
@@ -447,6 +452,9 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
                 v_unvisited_set_.count(neighbor.index) == 0 &&
                 samples_in_obstacles_.count(neighbor.index) == 0 ) {
                 // if (tree_[neighbor.index]->getCost() == std::numeric_limits<double>::infinity()) { //TODO: Think about this --> i guess since you clear the vunvisted you gotta use cost inf to avoid putting thme in vOpen instead of vunsietd check in the above if condition --> think about this more! --> because later when you want to add early exit you might not even clear the vunvisted so this might be usesless later! --> maybe think about what should be in vOpen! --> the nodes that cleary have a cost other than inf!
+                //     Eigen::VectorXd vec(2);
+                //     vec << tree_.at(neighbor.index)->getStateVlaue();
+                //     positions.push_back(vec);
                 //     continue; //TODO: the reason why some vunvisted remains that got not connected and also they are not promising but just pure vunvisted (have cost of inf) --> it means on the last pahse they got put in the vunvisted in the handle add obstalce! but later in the plan function they didn't get connected --> but you may ask why they didn't get connected?
                 // } //TODO: continuation of the above comment --> the reason it happens is this --> imagine a scenraio that you have removed nodes that gets into v unvisted but all the vOpen are not on samples on obstacles! so that v unvisted doest get the chance to get connected to any thing else!
                 
@@ -455,7 +463,8 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
             }
         }
     }
-
+    // std::string color_str = "1.0,1.0,0.0"; // Blue color
+    // visualization_->visualizeNodes(positions,"map",color_str);
 
     // std::vector<Eigen::VectorXd> positions;
     // for (const auto& y: v_unvisited_set_) {

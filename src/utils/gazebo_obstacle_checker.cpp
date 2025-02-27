@@ -86,7 +86,14 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
 
             
         } else if (pose.name().find("moving_cylinder_") != std::string::npos) {
-            obstacle_positions_.push_back(position); //TODO: Later!
+            // if the position is in range of the robot then add it to obstalces else don't add it!
+            if (use_range==true){
+                if ((robot_position_-position).norm() < sensor_range){
+                    obstacle_positions_.push_back(position); 
+                }
+            } else {
+                obstacle_positions_.push_back(position);
+            }
 
             // // Print pose information
             // std::cout << "  Pose " << i << ":" << std::endl;
@@ -102,8 +109,17 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
             //         << pose.orientation().z() << std::endl;
 
         } else if (pose.name().find("static_cylinder_") != std::string::npos) {
+
+            if (use_range==true){
+                if ((robot_position_-position).norm() < sensor_range){
+                    obstacle_positions_.push_back(position); 
+                }
+            } else {
+                obstacle_positions_.push_back(position);
+            }
+
         // Check if the name contains "static_cylinder_" (any number after it)
-        obstacle_positions_.push_back(position);
+        // obstacle_positions_.push_back(position);
 
         // // Optional: Print the static cylinder pose information
         // std::cout << "Static cylinder " << pose.name() << " at position: "

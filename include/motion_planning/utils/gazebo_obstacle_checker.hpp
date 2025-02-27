@@ -33,4 +33,6 @@ private:
     Eigen::Vector2d robot_position_;
     std::vector<Eigen::Vector2d> obstacle_positions_;
     gz::transport::Node gz_node_;
+    bool use_range = true;
+    double sensor_range = 20.0;
 };
