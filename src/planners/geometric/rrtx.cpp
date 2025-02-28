@@ -119,7 +119,7 @@ void RRTX::plan() {
 
         // since i don't want to ignore the v i don't implement the obstalce chekc on the point because later that point could be useful and since i want to put a cap on number of samples then this seems more useful
         // if v is not in obstalce then do this:
-        if (obs_checker_->isObstacleFree(v))
+        if (obs_checker_->isObstacleFree(v)) // TODO OR NOT TODO --> mostly depends on your assumption if all obstalces are dynamic or not! because in the end the question is if those samples that are in the obstalce right now is gonna be useful or not in the later stages!. you can also keep the simulation running so that dynamic obstalces move and random samples fill those void areas if you don't want to comment this line.
             extend(v);
         int current_index = tree_.size() -1;
         if (v_indices_.find(current_index) != v_indices_.end()) {

@@ -17,7 +17,7 @@
  * TODO: to implement the above idea forget about using a robot. just change the goal place randomly on different nodes and see the tree! --> sometimes near the root to make the algorithm to store and sometimes on the end of the leaves to test the stored!
  * TODO: make all of this independent of ros2 (is visualization marker can be replaced with direct rviz api) 
  * 
- * 
+ * TODO: one thing about your implementation is that you can add new nodes but you just have to add it to kdtree and the neighbors need to be calculated in near on itw own. all in all you can add a feature to add a node to the scene if you want just and it doesnt have to be random and can be considered as users help in narrow corridor!
  * 
  * 
  * WARN: some nodes might not get the chance to connect so they'll stay in vUnvisited (and they are not on sample on obstalces!) ---> the  reason they stay is because of object inflation you put not because of persistent vPromising
@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 10000);
+    params.setParam("num_of_samples", 5000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
@@ -64,16 +64,31 @@ int main(int argc, char **argv) {
     // auto robot = obstacle_checker->getRobotPosition();
     // if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
     //     dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
+
+
+    auto start = std::chrono::high_resolution_clock::now();
     // Plan the static one!
     planner->plan();
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    if (duration.count()>0)
+        std::cout << "Time taken for the Static env: " << duration.count() << " milliseconds\n";
+
 
     while (true) {
         auto obstacles = obstacle_checker->getObstaclePositions();
         auto robot = obstacle_checker->getRobotPosition();
         if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
             dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
+
+        auto start = std::chrono::high_resolution_clock::now();
         dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
         // planner->plan();
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        if (duration.count()>0)
+            std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
+
 
         dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<FMTX*>(planner.get())->getPathIndex());
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
@@ -87,11 +102,14 @@ int main(int argc, char **argv) {
     // // Run the loop for 20 seconds
     // while (std::chrono::duration_cast<std::chrono::seconds>(
     //         std::chrono::high_resolution_clock::now() - start_time).count() < 20) {
-    //     // Your existing code
     //     auto obstacles = obstacle_checker->getObstaclePositions();
+    //     auto robot = obstacle_checker->getRobotPosition();
+    //     if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
+    //         dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
     //     dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
-    //     planner->plan();
-    //     dynamic_cast<FMTX*>(planner.get())->visualizeTree();
+
+    //     // dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<FMTX*>(planner.get())->getPathIndex());
+    //     // dynamic_cast<FMTX*>(planner.get())->visualizeTree();
     //     rclcpp::spin_some(ros2_manager);
     // }
 

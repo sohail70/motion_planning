@@ -157,7 +157,8 @@ void FMTX::plan() {
             if (samples_in_obstacles_.find(xIndex) != samples_in_obstacles_.end())
                 continue;
 
-            if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end() || (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9)) {
+            // if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end() || (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9)) {
+            if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end() || tree_.at(xIndex)->getCost() > (tree_.at(zIndex)->getCost() + cost_to_neighbor ) ){
                 
                 // because of the second condtion in the above if sometimes the xIndex is not present in the v unvisited
                 // if (v_open_set_.count(xIndex)!=0 && tree_.at(xIndex)->getCost()==std::numeric_limits<double>::infinity() && (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9)){
@@ -315,8 +316,8 @@ void FMTX::plan() {
     std::string color_str = "0.0,1.0,1.0"; // Blue color
     // visualization_->visualizeNodes(positions,"map",color_str);
 
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    // auto end = std::chrono::high_resolution_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
     // std::vector<Eigen::VectorXd> positions2;
     // for (const auto& y: v_unvisited_set_) {
@@ -332,15 +333,15 @@ void FMTX::plan() {
     //     std::cout << "Cached: " << cached << "\n";
     // }
 
-    if (duration.count()>0){
-        if (v_unvisited_set_.empty())
-        {
-            std::cout << "Time taken by while loop: " << duration.count() << " milliseconds"<<" vUnvisted is EMPTY \n";
-        }
-        else {
-            std::cout << "Time taken by while loop: " << duration.count() << " milliseconds"<<" vUnvisted is  NOT  \n";
-        }
-    }
+    // if (duration.count()>0){
+    //     if (v_unvisited_set_.empty())
+    //     {
+    //         std::cout << "Time taken by while loop: " << duration.count() << " milliseconds"<<" vUnvisted is EMPTY \n";
+    //     }
+    //     else {
+    //         std::cout << "Time taken by while loop: " << duration.count() << " milliseconds"<<" vUnvisted is  NOT  \n";
+    //     }
+    // }
 
 
 
@@ -533,7 +534,10 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
 void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) {
     // Find current samples in obstacles
     auto current = findSamplesNearObstacles(obstacles, 2.2*5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
-    
+
+    if (current==samples_in_obstacles_) // TODO: I think this should be doen in gazeboObstalceChecker level not here! the obstacleChecker needs to be able to report if obstalces has changed.
+        return; //because nothing has changed! 
+
     std::vector<int> added;
     for (int sample : current) {
         if (samples_in_obstacles_.find(sample) == samples_in_obstacles_.end()) {
@@ -564,9 +568,27 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     samples_in_obstacles_ = std::move(current);
 
 
+
+
+
+
+
+    // std::set<int> changed_set(added.begin(), added.end());
+    // changed_set.insert(removed.begin(), removed.end());
+
+
+
+    // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
+    for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
+        v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
+    }
+
+
+
     // std::vector<Eigen::VectorXd> positions;
     // TODO: maybe an easier way instead of solving looping the over the v_unvisted_set thorugh tracking is to loop over the v_unvisted that are their heuristic is less than the current robots costToRoot! --> or if that doesnt work we can use the tracking that i used in python!
     for (int node : v_unvisited_set_) {
+    // for (int node : changed_set) { // WARN: THIS IS A VALID STARTING POINT TO TRIGGER THE EPXNASION BUT IT DOESN'T ALLOW CONNECTION TO OTHER SIDE OF THE TREE BRANCHES--> SO YOU NEED TO COVER ALL THE V UNVISITED NEIGHBORS INTO V OPEN  (UNTIL YOU FIND A BETTER SOLUTION!)--> you can test it and see the top left corner where the circly obstalce tries to move and the one that tries to move to the right move at the same time makes the tree to become weird because v opens are not fully covering them and that circly obstalces removed nodes tries to put some nearby nodes in the vicinity and helps a little but not --> i think since we do not remove the nodes from vopen this loop shouldn't take long and only calculated once in a while fully!
         auto neighbors = near(node);
         for (const auto& neighbor : neighbors) {
             if (v_open_set_.count(neighbor.index) == 0 &&
@@ -590,22 +612,22 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     // std::string color_str = "1.0,1.0,0.0"; // Blue color
     // visualization_->visualizeNodes(positions,"map",color_str);
 
-    // std::vector<Eigen::VectorXd> positions;
-    // for (const auto& y: v_unvisited_set_) {
-    //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
-    //     positions.push_back(vec);
-    // }
-    // std::string color_str = "0.0,0.0,1.0"; // Blue color
-    // visualization_->visualizeNodes(positions,"map",color_str);
+    std::vector<Eigen::VectorXd> positions;
+    for (const auto& y: v_unvisited_set_) {
+        Eigen::VectorXd vec(2);
+        vec << tree_.at(y)->getStateVlaue();
+        positions.push_back(vec);
+    }
+    std::string color_str = "0.0,0.0,1.0"; // Blue color
+    visualization_->visualizeNodes(positions,"map",color_str);
 
-    // std::vector<Eigen::VectorXd> positions2;
-    // for (const auto& y: v_open_set_) {
-    //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
-    //     positions2.push_back(vec);
-    // }
-    // visualization_->visualizeNodes(positions2,"map");
+    std::vector<Eigen::VectorXd> positions2;
+    for (const auto& y: v_open_set_) {
+        Eigen::VectorXd vec(2);
+        vec << tree_.at(y)->getStateVlaue();
+        positions2.push_back(vec);
+    }
+    visualization_->visualizeNodes(positions2,"map");
 
     // std::vector<Eigen::VectorXd> positions3;
     // for (const auto& y: samples_in_obstacles_) {
@@ -615,10 +637,10 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     // }
     // visualization_->visualizeNodes(positions3,"map");
 
-    // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
-    for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
-        v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
-    }
+    // // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
+    // for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
+    //     v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
+    // }
    
     plan(); //lets put it outside!
 
@@ -657,7 +679,19 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 
     }
 
-    v_unvisited_set_.insert(orphan_nodes.begin() , orphan_nodes.end());
+    /*
+        one might ask why do you put orphan nodes into v_unvisited_set when you have a mechanism in the main loop to find these automatically?! 
+        The reason is these help the finding of the v open nodes later in the update obstalce sample function
+        If we only rely on that mechansim we can't find connections to other branches because we are blind to see other branches! like on the other side of the tree
+        Imagine the one side of the plier and some nodes get better cost if they get connected to the other tip of the plier but since we didn't put the other side nodes into v open we never know!
+
+        So that condtion in the main loop is just for one direction expansion and is good for the nodes that gor removed from the obstalce--> Although its a reasonable question here also to ask ourselves why its not the case
+        for the remove obstlace to now know their v open at first!
+        the difference between addObstalce and removeObstalce is adding and obstalce most certainly adds cost to orphan nodes
+        but removing an obstlace most certainly reduces cost of the neighbor nodes! and reducing happens in the current branch and direction of the expansion that happens in dijkstra like (like fmtx) algorithm 
+        so we don't need to worry about the other side of plier (per say!) because they are gonna connect to us! not us connecting to them (and by "us" i mean the current direction of the expansion)
+    */
+    v_unvisited_set_.insert(orphan_nodes.begin() , orphan_nodes.end()); 
     // Step 2: Update the tree structure
     for (int orphan : orphan_nodes) {
         v_open_set_.erase(orphan);
