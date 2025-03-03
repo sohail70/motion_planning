@@ -91,6 +91,14 @@ void RRTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
     double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
     gamma_ = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
 
+
+    // Since i want to put a cap on the number of samples and i want RRTX to be as close as to FMTX im gonna set step size (delta) to this:
+    double factor = 2.0;
+    delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
+    std::cout << "Computed value of delta: " << delta << std::endl;
+
+
+
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Time taken by setup: " << duration.count() << " milliseconds\n";
