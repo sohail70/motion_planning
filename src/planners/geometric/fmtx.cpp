@@ -284,16 +284,7 @@ void FMTX::plan() {
                         tree_.at(best_neighbor_index)->setChildrenIndex(xIndex);
                         
                         edge_length_[xIndex] = best_edge_length;
-                        // Eigen::VectorXd parent_state = tree_.at(best_neighbor_index)->getStateVlaue();
-                        // Eigen::VectorXd child_state = tree_.at(xIndex)->getStateVlaue();
-                        // double edge_length = (parent_state - child_state).norm();
 
-                        // // Update max_edge_ if this is the largest edge so far
-                        // if (edge_length > max_edge_.length) {
-                        //     max_edge_.length = edge_length;
-                        //     max_edge_.from = best_neighbor_index;
-                        //     max_edge_.to = xIndex;
-                        // }
                     }
                 }
 
@@ -555,16 +546,15 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNea
 }
 void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 
-    // TODO: make it so when the max length edge modifies it calcs themax element or else do not waste time in finding it!
-    if (edge_length_[max_length_edge_ind] != max_length)
+    // Calculating the max length when the max_length edge is updated or the obstalce is on the previous max_length edge!
+    if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
     {
         auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
             return a.second < b.second;
         });
         max_length = max_it->second;
         max_length_edge_ind = max_it->first;
-
-        std::cout<<max_it->first << "  " << max_it->second <<" \n"; 
+        // std::cout<<max_it->first << "  " << max_it->second <<" \n"; 
 
     }
     // // Visualizing the maximum length node
@@ -784,7 +774,7 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
         tree_[orphan]->getChildrenIndices().clear();
         tree_[orphan]->setCost(std::numeric_limits<double>::infinity());
         tree_[orphan]->setParentIndex(-1);
-        edge_length_[orphan] = -std::numeric_limits<double>::infinity();
+        edge_length_[orphan] = -std::numeric_limits<double>::infinity(); // Good trick to ignore this in max_element call
     }
 
 }

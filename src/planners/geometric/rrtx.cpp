@@ -78,6 +78,10 @@ void RRTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
     vbot_index_ = 1;
     tree_.at(0)->setCost(0);
     tree_.at(0)->setLMC(0);
+
+    edge_length_[0] = -std::numeric_limits<double>::infinity();
+    edge_length_[1] = -std::numeric_limits<double>::infinity();
+
     v_indices_.insert(0);
     // v_indices_.insert(1); 
     ///////////////////Neighborhood Radius////////////////////////////////
@@ -191,6 +195,7 @@ void RRTX::findParent(Eigen::VectorXd v, const std::vector<size_t>& candidate_in
     int best_parent = -1;
     int current_index_ = tree_.size()-1;
     // Iterate through all candidate nodes
+    double best_parent_distance;
     for (int u_index : candidate_indices) {
         const Eigen::VectorXd& u_state = tree_.at(u_index)->getStateVlaue();
 
@@ -208,6 +213,7 @@ void RRTX::findParent(Eigen::VectorXd v, const std::vector<size_t>& candidate_in
             if (total_cost < min_cost) {
                 min_cost = total_cost;
                 best_parent = u_index;
+                best_parent_distance = distance;
             }
         }
     }
@@ -218,6 +224,7 @@ void RRTX::findParent(Eigen::VectorXd v, const std::vector<size_t>& candidate_in
         tree_.at(current_index_)->setLMC(min_cost);
         tree_.at(best_parent)->setChildrenIndex(current_index_); // i don't know why rrtx pseudo code updates the children in the extend
         // Should i update the gvalue (costtoroot) here or wait so that in the rewire neighbor and reduce inconsistency to do it!? I put it in the plan function after reduceInconsistency
+        edge_length_[current_index_] = best_parent_distance;
     }
 
 }
@@ -250,6 +257,7 @@ void RRTX::rewireNeighbors(int v_index) {
             if (tree_[u_index]->getLMC() > trajectory_cost + tree_[v_index]->getLMC()) {
                 tree_[u_index]->setLMC(trajectory_cost + tree_[v_index]->getLMC());
                 makeParentOf(u_index, v_index);
+                edge_length_[u_index] = trajectory_cost;
 
                 // If u is inconsistent, add it to the queue
                 if (tree_[u_index]->getCost() - tree_[u_index]->getLMC() > epsilon_) {
@@ -302,13 +310,15 @@ double RRTX::shrinkingBallRadius() const {
 
 std::unordered_set<int> RRTX::findSamplesNearObstacles(
     const std::vector<Obstacle>& obstacles, 
-    double scale_factor
+    double max_length
 ) {
     std::unordered_set<int> conflicting_samples;
     
     for (const auto& obstacle : obstacles) {
         // Query samples within obstacle radius (5 units)
-        auto sample_indices = kdtree_->radiusSearch(obstacle.position, scale_factor * obstacle.radius);
+        // auto sample_indices = kdtree_->radiusSearch(obstacle.position, scale_factor * obstacle.radius);
+        auto sample_indices = kdtree_->radiusSearch(obstacle.position, std::sqrt(std::pow(obstacle.radius, 2) + std::pow(max_length / 2.0, 2)));
+
         conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
     }
     
@@ -321,9 +331,31 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
 // To handle changes in the environment
 void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 
+    if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
+    {
+        auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
+            return a.second < b.second;
+        });
+        max_length = max_it->second;
+        max_length_edge_ind = max_it->first;
+        // std::cout<<max_it->first << "  " << max_it->second <<" \n"; 
+
+    }
+    // // Visualizing the maximum length node
+    // if (max_length_edge_ind !=-1){
+    //     std::string color_str = "0.0,0.0,1.0"; // Blue color
+    //     std::vector<Eigen::VectorXd> positions4;
+    //     Eigen::VectorXd vec(2);
+    //     vec << tree_.at(max_length_edge_ind)->getStateVlaue();
+    //     positions4.push_back(vec);
+    //     visualization_->visualizeNodes(positions4,"map",color_str);
+
+    // }
+
+
     // Similar obstacle sampling to FMTX but with RRTX propagation
     // TODO: Later i need to implement the max length of and edge to find the scaling paramter accurately
-    auto current = findSamplesNearObstacles(obstacles, 2.2); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+    auto current = findSamplesNearObstacles(obstacles, max_length); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
 
 
 
@@ -525,7 +557,8 @@ void RRTX::addNewObstacle(const std::vector<int>& added_samples) {
         // Invalidate the sample's cost and LMC
         tree_[sample_index]->setCost(std::numeric_limits<double>::infinity());
         tree_[sample_index]->setLMC(std::numeric_limits<double>::infinity());
-
+        edge_length_[sample_index] = -std::numeric_limits<double>::infinity();
+        
         // Remove the sample from the tree structure
         if (tree_[sample_index]->getParentIndex() != -1) {
             auto& parent_children = tree_[tree_[sample_index]->getParentIndex()]->getChildrenIndices();
@@ -586,7 +619,7 @@ void RRTX::propagateDescendants() {
             if (Vc_T_.find(u_index) == Vc_T_.end()) {
                 // Set g(u) to infinity
                 tree_[u_index]->setCost(std::numeric_limits<double>::infinity());
-
+                edge_length_[u_index] = -std::numeric_limits<double>::infinity();
                 // Verify the queue for u
                 verifyQueue(u_index);
             }
@@ -598,6 +631,7 @@ void RRTX::propagateDescendants() {
         // Set g(v) and lmc(v) to infinity
         tree_[v_index]->setCost(std::numeric_limits<double>::infinity());
         tree_[v_index]->setLMC(std::numeric_limits<double>::infinity());
+        edge_length_[v_index] = -std::numeric_limits<double>::infinity();
 
         // Remove v_index from its parent's children list
         int parent_index = tree_[v_index]->getParentIndex();

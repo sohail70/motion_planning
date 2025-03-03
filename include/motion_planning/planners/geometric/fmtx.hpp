@@ -80,17 +80,11 @@ class FMTX : public Planner {
             std::unordered_set<int> samples_in_obstacles_; // Current samples in obstacles
             std::unordered_set<int> samples_in_obstacles_2_; // Current samples in obstacles
             std::unordered_set<int> inflated_samples_;
-            // struct MaxEdge {
-            //     double length = 0.0;    // Length of the largest edge
-            //     int from = -1;          // Parent node index
-            //     int to = -1;            // Child node index
-            // } max_edge_;                // Instance of the struct
+
 
             std::unordered_map<int , double> edge_length_;
             int max_length_edge_ind = -1;
             double max_length = -std::numeric_limits<double>::infinity();
-            // std::unordered_map<int, double> max_it;
-            // MaxEdge getLargestEdge() const { return max_edge_; }
 
             int num_of_samples_;
             double lower_bound_;

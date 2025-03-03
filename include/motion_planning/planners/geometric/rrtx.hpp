@@ -55,7 +55,7 @@ class RRTX : public Planner {
     double gamma_;
     size_t sample_counter;
     bool cap_samples_ = true;
-    double delta = 10.0; // Step size limit
+    double delta = 20.0; // Step size limit
 
 
     UpdatablePriorityQueue inconsistency_queue_;
@@ -77,7 +77,9 @@ class RRTX : public Planner {
 
     std::unordered_set<int> Vc_T_;
 
-
+    std::unordered_map<int , double> edge_length_;
+    int max_length_edge_ind = -1;
+    double max_length = -std::numeric_limits<double>::infinity();
 
 
     // RRTX functions
