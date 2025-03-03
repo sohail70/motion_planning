@@ -14,7 +14,7 @@ std::string getRandomColor() {
     ss << std::fixed << std::setprecision(2) << r << "," << g << "," << b;
     return ss.str();
 }
-FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::unique_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(std::move(statespace)), problem_(std::move(problem_def)), obs_checker_(obs_checker) {
+FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::unique_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(std::move(statespace)), problem_(std::move(problem_def)), obs_checker_(obs_checker),v_open_heap_(50) {
     std::cout<< "FMTX Constructor \n";
 
 }
@@ -73,7 +73,10 @@ void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
     // for (auto i : v_unvisited_set_)
     //     std::cout<<i<<",";
 
-    v_open_heap_.push({0, 0});
+    // v_open_heap_.push({0, 0});
+    
+    QueueElement2 new_element ={0,0};
+    v_open_heap_.add(new_element);
     ///////////////////Neighborhood Radius////////////////////////////////
     int d = statespace_->getDimension();
     double mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
@@ -115,7 +118,10 @@ void FMTX::plan() {
             std::cout<<v_open_heap_.size() <<" "<<v_open_set_.size()<<"\n";
         }
 
-        auto [cost, zIndex] = v_open_heap_.top();
+        // auto [cost, zIndex] = v_open_heap_.top();
+        auto top_element = v_open_heap_.top();
+        double cost = top_element.min_key;
+        int zIndex = top_element.index;
         v_open_heap_.pop();
         // if (v_open_set_.find(zIndex)==v_open_set_.end()) //TODO: should i?
         //     continue;
@@ -127,7 +133,9 @@ void FMTX::plan() {
         // EARLY EXIT???
         // std::cout<<zIndex<<"   " << robot_state_index_<<"\n";
         if (zIndex==robot_state_index_){
-            v_open_heap_.push({tree_.at(zIndex)->getCost(), zIndex});
+            // v_open_heap_.push({tree_.at(zIndex)->getCost(), zIndex});
+            QueueElement2 new_element ={tree_.at(zIndex)->getCost(), zIndex};
+            v_open_heap_.add(new_element);
             break;
         }
         
@@ -149,7 +157,8 @@ void FMTX::plan() {
             if (samples_in_obstacles_.find(xIndex) != samples_in_obstacles_.end())
                 continue;
 
-            if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end() || (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9)) {
+            // if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end() || (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9)) {
+            if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end() || tree_.at(xIndex)->getCost() > (tree_.at(zIndex)->getCost() + cost_to_neighbor ) ){
                 
                 // because of the second condtion in the above if sometimes the xIndex is not present in the v unvisited
                 // if (v_open_set_.count(xIndex)!=0 && tree_.at(xIndex)->getCost()==std::numeric_limits<double>::infinity() && (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9)){
@@ -162,9 +171,9 @@ void FMTX::plan() {
                     what=false;
                 }
 
-                if (v_open_set_.count(xIndex)!=0) {
-                    v_open_set_.erase(xIndex);
-                }
+                // if (v_open_set_.count(xIndex)!=0) {
+                //     v_open_set_.erase(xIndex);
+                // }
 
 
                 auto xNeighborInfo = near(xIndex);
@@ -183,6 +192,7 @@ void FMTX::plan() {
 
                 double min_cost = std::numeric_limits<double>::infinity();
                 int best_neighbor_index = -1;
+                double best_edge_length = std::numeric_limits<double>::infinity();
                 for (const auto& y : Ynear) {
                     if (tree_.at(y.index)->getCost()==std::numeric_limits<double>::infinity()) {
                         Eigen::VectorXd vec(2);
@@ -193,6 +203,7 @@ void FMTX::plan() {
                     if (total_cost < min_cost) {
                         min_cost = total_cost;
                         best_neighbor_index = y.index;
+                        best_edge_length = y.distance;
                     }
                 }
 
@@ -249,7 +260,17 @@ void FMTX::plan() {
                         // Update the node's cost
                         tree_.at(xIndex)->setCost(newCost);
                         // if (v_open_set_.count(xIndex)==0){
-                            v_open_heap_.push({newCost, xIndex});
+                            // v_open_heap_.push({newCost, xIndex});
+
+
+
+                        QueueElement2 new_element = {newCost, xIndex};
+                        if (v_open_heap_.contains(xIndex)){
+                            v_open_heap_.update(xIndex, newCost);
+
+                        } else{
+                            v_open_heap_.add(new_element);
+                        }
                             v_open_set_.insert(xIndex);
                         // }
                         // else{
@@ -258,11 +279,11 @@ void FMTX::plan() {
 
                         // Remove the node from v_unvisited_set_
                         v_unvisited_set_.erase(xIndex); // I do this earlier!
-
                         // Update the node's parent and add it to the new parent's children list
                         tree_.at(xIndex)->setParentIndex(best_neighbor_index);
                         tree_.at(best_neighbor_index)->setChildrenIndex(xIndex);
-
+                        
+                        edge_length_[xIndex] = best_edge_length;
                         // Eigen::VectorXd parent_state = tree_.at(best_neighbor_index)->getStateVlaue();
                         // Eigen::VectorXd child_state = tree_.at(xIndex)->getStateVlaue();
                         // double edge_length = (parent_state - child_state).norm();
@@ -297,8 +318,8 @@ void FMTX::plan() {
     std::string color_str = "0.0,1.0,1.0"; // Blue color
     // visualization_->visualizeNodes(positions,"map",color_str);
 
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    // auto end = std::chrono::high_resolution_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
     // std::vector<Eigen::VectorXd> positions2;
     // for (const auto& y: v_unvisited_set_) {
@@ -314,15 +335,15 @@ void FMTX::plan() {
     //     std::cout << "Cached: " << cached << "\n";
     // }
 
-    if (duration.count()>0){
-        if (v_unvisited_set_.empty())
-        {
-            std::cout << "Time taken by while loop: " << duration.count() << " milliseconds"<<" vUnvisted is EMPTY \n";
-        }
-        else {
-            std::cout << "Time taken by while loop: " << duration.count() << " milliseconds"<<" vUnvisted is  NOT  \n";
-        }
-    }
+    // if (duration.count()>0){
+    //     if (v_unvisited_set_.empty())
+    //     {
+    //         std::cout << "Time taken by while loop: " << duration.count() << " milliseconds"<<" vUnvisted is EMPTY \n";
+    //     }
+    //     else {
+    //         std::cout << "Time taken by while loop: " << duration.count() << " milliseconds"<<" vUnvisted is  NOT  \n";
+    //     }
+    // }
 
 
 
@@ -491,44 +512,99 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
     double obstacle_radius
 ) {
     std::unordered_set<int> conflicting_samples;
-    double robot_range = 20.0;    
-    Eigen::Vector2d robot_position;
-    robot_position << tree_.at(robot_state_index_)->getStateVlaue();
+    // double robot_range = 20.0;    
+    // Eigen::Vector2d robot_position;
+    // robot_position << tree_.at(robot_state_index_)->getStateVlaue();
     for (const auto& obstacle : obstacles) {
-        if (use_range==true) {
-            if ((obstacle - robot_position).norm() <= robot_range) {
+        // if (use_range==true) {
+        //     if ((obstacle - robot_position).norm() <= robot_range) {
+        //         // Query samples within obstacle radius (5 units)
+        //         auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
+        //         conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
+        //     }
+        // }
+        // else {
                 // Query samples within obstacle radius (5 units)
                 auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
                 conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
-            }
-        }
-        else {
-                // Query samples within obstacle radius (5 units)
-                auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
-                conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
-        }
+        // }
     }
     
     return conflicting_samples;
 }
 
+std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNearObstacles(
+    const std::vector<Eigen::Vector2d>& obstacles, 
+    double obstacle_radius_inflated, double obstacle_radius
+) {
+    std::unordered_set<int> conflicting_samples_inflated;
+    std::unordered_set<int> conflicting_samples;
+
+    for (const auto& obstacle : obstacles) {
+        // Call the radiusSearchDual function
+        auto [sample_indices1, sample_indices2] = kdtree_->radiusSearchDual(obstacle, obstacle_radius_inflated, obstacle_radius);
+
+        // Insert the results into the unordered_sets
+        conflicting_samples_inflated.insert(sample_indices1.begin(), sample_indices1.end());
+        conflicting_samples.insert(sample_indices2.begin(), sample_indices2.end());
+    }
+
+    return {conflicting_samples_inflated, conflicting_samples};
+}
 void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) {
+
+    // auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
+    //     return a.second < b.second;
+    // });
+    // std::cout<<max_it->first << "  " << max_it->second <<" \n";
+    // std::string color_str = "0.0,0.0,1.0"; // Blue color
+    // std::vector<Eigen::VectorXd> positions4;
+    // Eigen::VectorXd vec(2);
+    // vec << tree_.at(max_it->first)->getStateVlaue();
+    // positions4.push_back(vec);
+    // visualization_->visualizeNodes(positions4,"map",color_str);
+
+
+
+    // int inflate = max_it->second;
+
     // Find current samples in obstacles
-    auto current = findSamplesNearObstacles(obstacles, 2.2*5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
-    
+    // auto current = findSamplesNearObstacles(obstacles, 2.2* 5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+    auto [current,current2] = findSamplesNearObstacles(obstacles, 2.2 * 5.0, 5.0); 
+
+    if (current==samples_in_obstacles_) // TODO: I think this should be doen in gazeboObstalceChecker level not here! the obstacleChecker needs to be able to report if obstalces has changed.
+        return; //because nothing has changed! 
+
     std::vector<int> added;
     for (int sample : current) {
-        if (samples_in_obstacles_.find(sample) == samples_in_obstacles_.end()) {
+        // if (samples_in_obstacles_2_.find(sample) == samples_in_obstacles_2_.end()) {
             added.push_back(sample); 
-        }
+        // }
     }
+
+
 
     std::vector<int> removed;
     for (int sample : samples_in_obstacles_) {
-        if (current.find(sample) == current.end()) {
+        if (current2.find(sample) == current2.end()) {
             removed.push_back(sample); 
         }
     }
+
+
+    // std::vector<int> added_inflated;
+    // for (int sample : current) {
+    //     if (samples_in_obstacles_2_.find(sample) == samples_in_obstacles_2_.end()) {
+    //         added_inflated.push_back(sample); 
+    //     }
+    // }
+
+    /*
+        handling the problem of reconnecion to the inflation zone is not easy! you can't just keep track of the difference between added and current
+        and you have to use current everytime in the handleAddedObstalceSamples because if you don't the added will only go forward (with a distance to the obstalce ofcourse)
+        and the obstalce might move and end up on top of a edge but since the added is just a difference between previous and current iteration it doesnt cover the nodes on that edge
+        so the timeline is this --> added --> then plan takes care of the nodes in the inflation zone --> obstalce move and end up on some long edge --> the added is far away and doesnt invalidate those long edge because it invalidated it in previous iteraion and moved on!
+    */
 
 
 
@@ -536,6 +612,9 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     if (!added.empty()) {
         handleAddedObstacleSamples(added);  // Only call if added has elements
     }
+    // if (!added_inflated.empty()) {
+    //     handleAddedObstacleSamples(added_inflated);  // Only call if added has elements
+    // }
     if (!removed.empty()) {
         handleRemovedObstacleSamples(removed);  // Only call if removed has elements
     }
@@ -543,7 +622,20 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
 
     
     // Update the tracked set
-    samples_in_obstacles_ = std::move(current);
+    samples_in_obstacles_ = std::move(current2);
+    samples_in_obstacles_2_ = std::move(current);
+
+
+
+
+
+
+    // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
+    for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
+        v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
+    }
+
+    // std::cout<<boundary_.size() << " "<<v_unvisited_set_.size() <<"\n";
 
 
     // std::vector<Eigen::VectorXd> positions;
@@ -562,12 +654,16 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
                 // } //TODO: continuation of the above comment --> the reason it happens is this --> imagine a scenraio that you have removed nodes that gets into v unvisted but all the vOpen are not on samples on obstacles! so that v unvisted doest get the chance to get connected to any thing else!
                 
                 v_open_set_.insert(neighbor.index);
-                v_open_heap_.push({tree_[neighbor.index]->getCost(), neighbor.index});
+                // v_open_heap_.push({tree_[neighbor.index]->getCost(), neighbor.index});
+
+                QueueElement2 new_element ={tree_[neighbor.index]->getCost(), neighbor.index};
+                v_open_heap_.add(new_element);
             }
         }
     }
     // std::string color_str = "1.0,1.0,0.0"; // Blue color
     // visualization_->visualizeNodes(positions,"map",color_str);
+
 
     // std::vector<Eigen::VectorXd> positions;
     // for (const auto& y: v_unvisited_set_) {
@@ -585,6 +681,7 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     //     positions2.push_back(vec);
     // }
     // visualization_->visualizeNodes(positions2,"map");
+    
 
     // std::vector<Eigen::VectorXd> positions3;
     // for (const auto& y: samples_in_obstacles_) {
@@ -594,10 +691,10 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     // }
     // visualization_->visualizeNodes(positions3,"map");
 
-    // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
-    for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
-        v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
-    }
+    // // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
+    // for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
+    //     v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
+    // }
    
     plan(); //lets put it outside!
 
@@ -625,6 +722,7 @@ std::unordered_set<int> FMTX::getDescendants(int node_index) {
 }
 
 
+
 void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
     std::unordered_set<int> orphan_nodes;
     // Step 1: Identify orphan nodes (nodes now in obstacles)
@@ -636,10 +734,26 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 
     }
 
-    v_unvisited_set_.insert(orphan_nodes.begin() , orphan_nodes.end());
+    /*
+        one might ask why do you put orphan nodes into v_unvisited_set when you have a mechanism in the main loop to find these automatically?! 
+        The reason is these help the finding of the v open nodes later in the update obstalce sample function
+        If we only rely on that mechansim we can't find connections to other branches because we are blind to see other branches! like on the other side of the tree
+        Imagine the one side of the plier and some nodes get better cost if they get connected to the other tip of the plier but since we didn't put the other side nodes into v open we never know!
+
+        So that condtion in the main loop is just for one direction expansion and is good for the nodes that gor removed from the obstalce--> Although its a reasonable question here also to ask ourselves why its not the case
+        for the remove obstlace to now know their v open at first!
+        the difference between addObstalce and removeObstalce is adding and obstalce most certainly adds cost to orphan nodes
+        but removing an obstlace most certainly reduces cost of the neighbor nodes! and reducing happens in the current branch and direction of the expansion that happens in dijkstra like (like fmtx) algorithm 
+        so we don't need to worry about the other side of plier (per say!) because they are gonna connect to us! not us connecting to them (and by "us" i mean the current direction of the expansion)
+    */
+    v_unvisited_set_.insert(orphan_nodes.begin() , orphan_nodes.end()); 
     // Step 2: Update the tree structure
     for (int orphan : orphan_nodes) {
         v_open_set_.erase(orphan);
+        if (v_open_heap_.contains(orphan))
+            v_open_heap_.remove(orphan);
+
+
         int parent_idx = tree_[orphan]->getParentIndex();
         if (parent_idx != -1) {
             // Remove the orphan from its parent's children list
@@ -653,13 +767,13 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
         tree_[orphan]->getChildrenIndices().clear();
         tree_[orphan]->setCost(std::numeric_limits<double>::infinity());
         tree_[orphan]->setParentIndex(-1);
+        edge_length_[orphan] = -std::numeric_limits<double>::infinity();
     }
 
 }
 
 
 
-// TODO: THis function shoudln't try to reconnect the nodes but it works weirdly!
 void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
     v_unvisited_set_.insert(removed.begin() , removed.end());
 }

@@ -38,10 +38,20 @@ class FMTX : public Planner {
             void visualizePath(std::vector<int> path_indices);
 
             std::unordered_set<int> findSamplesNearObstacles(const std::vector<Eigen::Vector2d>& obstacles, double obstacle_radius);
+            std::pair<std::unordered_set<int>,std::unordered_set<int>> findSamplesNearObstacles(const std::vector<Eigen::Vector2d>& obstacles, double obstacle_radius_inflated, double obstalce_radius);
+
             void updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles);
             std::unordered_set<int> getDescendants(int node_index);
+            // std::unordered_set<int> getDescendants(const std::vector<int>& node_index);
+
+
+
             void handleAddedObstacleSamples(const std::vector<int>& added);
             void handleRemovedObstacleSamples(const std::vector<int>& removed);
+
+            void handleInflatedZoneAdditions(const std::vector<int>& added_inflated);
+
+
 
  private:
             std::shared_ptr<State> start_;
@@ -63,16 +73,21 @@ class FMTX : public Planner {
 
             PriorityQueue v_open_heap_;
 
+            std::unordered_set<int> boundary_;
 
 
             std::unordered_map<int, std::vector<NeighborInfo>> neighbors_dict_;
             std::unordered_set<int> samples_in_obstacles_; // Current samples in obstacles
-
+            std::unordered_set<int> samples_in_obstacles_2_; // Current samples in obstacles
+            std::unordered_set<int> inflated_samples_;
             // struct MaxEdge {
             //     double length = 0.0;    // Length of the largest edge
             //     int from = -1;          // Parent node index
             //     int to = -1;            // Child node index
             // } max_edge_;                // Instance of the struct
+
+            std::unordered_map<int , double> edge_length_;
+
 
             // MaxEdge getLargestEdge() const { return max_edge_; }
 
@@ -84,8 +99,9 @@ class FMTX : public Planner {
             bool use_kdtree;
             double neighborhood_radius_;
             bool obs_cache = true;
-            bool use_range = false; // THIS SHOULD BE USED IN THE OBSTALCE CHECKER LEVEL NOT IN THE PLANNER LEVEL! --> LATER REMOVE THIS
+            // bool use_range = false; // THIS SHOULD BE USED IN THE OBSTALCE CHECKER LEVEL NOT IN THE PLANNER LEVEL! --> LATER REMOVE THIS
             bool partial_plot = true;
+            bool inflation = false;
 
 };
 

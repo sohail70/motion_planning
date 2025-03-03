@@ -19,6 +19,8 @@ class NanoFlann : public KDTree {
           void buildTree() override; 
           std::vector<size_t> knnSearch(const Eigen::VectorXd& query , int k) const override;
           std::vector<size_t> radiusSearch(const Eigen::VectorXd& query , double radius) const override;
+          std::pair<std::vector<size_t>, std::vector<size_t>> radiusSearchDual(const Eigen::VectorXd& query, double radius1, double radius2) const override;
+
 
  private:
           int dimension_;

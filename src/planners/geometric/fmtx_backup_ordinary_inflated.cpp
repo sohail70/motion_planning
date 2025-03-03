@@ -569,35 +569,18 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     // int inflate = max_it->second;
 
     // Find current samples in obstacles
-    auto current = findSamplesNearObstacles(obstacles, 2.2 * 5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+    auto current = findSamplesNearObstacles(obstacles, 2.2* 5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
     // auto [current,current2] = findSamplesNearObstacles(obstacles, 2.2 * 5.0, 5.0); 
 
     if (current==samples_in_obstacles_) // TODO: I think this should be doen in gazeboObstalceChecker level not here! the obstacleChecker needs to be able to report if obstalces has changed.
         return; //because nothing has changed! 
 
     std::vector<int> added;
-
     for (int sample : current) {
         if (samples_in_obstacles_.find(sample) == samples_in_obstacles_.end()) {
             added.push_back(sample); 
         }
     }
-
-
-    // for (int sample : current) {
-    //     // Loop through each child of the current sample
-    //     for (int child : tree_[sample]->getChildrenIndices()) {
-    //         // Check if the connection from 'sample' to 'child' is obstacle-free
-    //         bool obstacle_free = obs_checker_->isObstacleFree(
-    //             tree_.at(sample)->getStateVlaue(), 
-    //             tree_.at(child)->getStateVlaue()
-    //         );
-    //         if (obstacle_free) {
-    //             added.push_back(child);
-    //         }
-    //     }
-    // }
-
 
     std::vector<int> removed;
     for (int sample : samples_in_obstacles_) {
@@ -626,7 +609,6 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
 
     
     // Update the tracked set
-    // samples_in_obstacles_ = std::move(current2); // for reconnection in inflation zone acitvate the for loop with obstalce check above and uncomment this line als use the dual radius search
     samples_in_obstacles_ = std::move(current);
 
 

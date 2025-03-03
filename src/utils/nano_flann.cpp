@@ -111,3 +111,35 @@ std::vector<size_t> NanoFlann::radiusSearch(const Eigen::VectorXd& query, double
 
     return resultIndices;  // Return only the indices
 }
+
+// I use this for inflation!
+// Radius 1 must be bigger than radius 2 for this to work
+std::pair<std::vector<size_t>, std::vector<size_t>> NanoFlann::radiusSearchDual(const Eigen::VectorXd& query, double radius1, double radius2) const {
+    Eigen::VectorXd queryValue = query;
+    if (queryValue.size() != dimension_) {
+        throw std::invalid_argument("Query state dimension does not match KDTree dimension");
+    }
+
+    std::vector<nanoflann::ResultItem<long int, double>> ret_matches;
+    nanoflann::SearchParameters params;
+    params.sorted = true;
+
+    // Perform the radius search for the larger radius
+    size_t nMatches = kdtree_->index_->radiusSearch(queryValue.data(), radius1 * radius1, ret_matches, params);
+
+    // Collect indices for both radii
+    std::vector<size_t> resultIndices1; // Nodes within radius1
+    std::vector<size_t> resultIndices2; // Nodes within radius2
+
+    for (size_t i = 0; i < nMatches; ++i) {
+        double distanceSquared = ret_matches[i].second;
+        if (distanceSquared <= radius2 * radius2) {
+            resultIndices2.push_back(ret_matches[i].first);
+            resultIndices1.push_back(ret_matches[i].first);
+        }else{
+            resultIndices1.push_back(ret_matches[i].first);
+        }
+    }
+
+    return {resultIndices1, resultIndices2};
+}

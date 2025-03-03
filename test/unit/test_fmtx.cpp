@@ -74,7 +74,6 @@ int main(int argc, char **argv) {
     if (duration.count()>0)
         std::cout << "Time taken for the Static env: " << duration.count() << " milliseconds\n";
 
-
     while (true) {
         auto obstacles = obstacle_checker->getObstaclePositions();
         auto robot = obstacle_checker->getRobotPosition();
@@ -88,6 +87,7 @@ int main(int argc, char **argv) {
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         if (duration.count()>0)
             std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
+
 
 
         dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<FMTX*>(planner.get())->getPathIndex());
