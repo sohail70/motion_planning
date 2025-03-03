@@ -301,14 +301,14 @@ double RRTX::shrinkingBallRadius() const {
 
 
 std::unordered_set<int> RRTX::findSamplesNearObstacles(
-    const std::vector<Eigen::Vector2d>& obstacles, 
-    double obstacle_radius
+    const std::vector<Obstacle>& obstacles, 
+    double scale_factor
 ) {
     std::unordered_set<int> conflicting_samples;
     
     for (const auto& obstacle : obstacles) {
         // Query samples within obstacle radius (5 units)
-        auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
+        auto sample_indices = kdtree_->radiusSearch(obstacle.position, scale_factor * obstacle.radius);
         conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
     }
     
@@ -319,11 +319,11 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
 
 
 // To handle changes in the environment
-void RRTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) {
+void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 
     // Similar obstacle sampling to FMTX but with RRTX propagation
     // TODO: Later i need to implement the max length of and edge to find the scaling paramter accurately
-    auto current = findSamplesNearObstacles(obstacles, 2.2*5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+    auto current = findSamplesNearObstacles(obstacles, 2.2); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
 
 
 

@@ -23,6 +23,7 @@
 #include <stack>
 
 
+#include <tinyxml2.h>
 
 
 #include <cstdlib>

@@ -85,7 +85,7 @@ private:
     void visualizeObstacles(double robot_x, double robot_y) {
         // Get obstacles in range (in world coordinates)
         std::vector<Eigen::VectorXd> obstacles;
-
+        std::vector<double> radii;
         // Check if the obstacle checker is of type OccupancyGridObstacleChecker
         if (auto grid_checker = std::dynamic_pointer_cast<OccupancyGridObstacleChecker>(obstacle_checker_)) {
             obstacles = grid_checker->getObstaclesInRange(robot_x, robot_y);
@@ -94,8 +94,10 @@ private:
         else if (auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_)) {
             for (const auto& obstacle_pos : gazebo_checker->getObstaclePositions()) {
                 Eigen::VectorXd vec(2);
-                vec << obstacle_pos.x(), obstacle_pos.y();
+                // vec << obstacle_pos.x(), obstacle_pos.y();
+                vec << obstacle_pos.position;
                 obstacles.push_back(vec);
+                radii.push_back(obstacle_pos.radius);
             }
             // Eigen::Vector2d robot_pos = gazebo_checker->getRobotPosition();
             // obstacles.push_back(robot_pos); //Visualizing robot!
@@ -107,7 +109,7 @@ private:
         visualizer_->visualizeNodes(obstacles, "map");
 
         // Visualize obstacles in RViz by drawing a circle for each obstacle
-        visualizer_->visualizeCylinder(obstacles, 5.0, "map");
+        visualizer_->visualizeCylinder(obstacles, radii, "map");
 
 
 

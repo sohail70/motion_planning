@@ -508,8 +508,8 @@ void FMTX::visualizePath(std::vector<int> path_indices) {
 
 // TODO: This should only be on dynamic obstacles! --> But how do we know maybe some static obstalce become dynamic! --> not motion planning concern maybe some method to classify static and dynamic obstalces!
 std::unordered_set<int> FMTX::findSamplesNearObstacles(
-    const std::vector<Eigen::Vector2d>& obstacles, 
-    double obstacle_radius
+    const std::vector<Obstacle>& obstacles, 
+    double scale_factor
 ) {
     std::unordered_set<int> conflicting_samples;
     // double robot_range = 20.0;    
@@ -525,7 +525,7 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
         // }
         // else {
                 // Query samples within obstacle radius (5 units)
-                auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
+                auto sample_indices = kdtree_->radiusSearch(obstacle.position, scale_factor* obstacle.radius);
                 conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
         // }
     }
@@ -533,16 +533,16 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
     return conflicting_samples;
 }
 
-std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNearObstacles(
-    const std::vector<Eigen::Vector2d>& obstacles, 
-    double obstacle_radius_inflated, double obstacle_radius
+std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNearObstaclesDual(
+    const std::vector<Obstacle>& obstacles, 
+    double scale_factor
 ) {
     std::unordered_set<int> conflicting_samples_inflated;
     std::unordered_set<int> conflicting_samples;
 
     for (const auto& obstacle : obstacles) {
         // Call the radiusSearchDual function
-        auto [sample_indices1, sample_indices2] = kdtree_->radiusSearchDual(obstacle, obstacle_radius_inflated, obstacle_radius);
+        auto [sample_indices1, sample_indices2] = kdtree_->radiusSearchDual(obstacle.position, scale_factor*obstacle.radius, obstacle.radius);
 
         // Insert the results into the unordered_sets
         conflicting_samples_inflated.insert(sample_indices1.begin(), sample_indices1.end());
@@ -551,7 +551,7 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNea
 
     return {conflicting_samples_inflated, conflicting_samples};
 }
-void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) {
+void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 
     // auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
     //     return a.second < b.second;
@@ -569,8 +569,8 @@ void FMTX::updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles) 
     // int inflate = max_it->second;
 
     // Find current samples in obstacles
-    auto current = findSamplesNearObstacles(obstacles, 2.2 * 5.0); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
-    // auto [current,current2] = findSamplesNearObstacles(obstacles, 2.2 * 5.0, 5.0); 
+    auto current = findSamplesNearObstacles(obstacles, 2.2); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+    // auto [current,current2] = findSamplesNearObstaclesDual(obstacles, 2.2); 
 
     if (current==samples_in_obstacles_) // TODO: I think this should be doen in gazeboObstalceChecker level not here! the obstacleChecker needs to be able to report if obstalces has changed.
         return; //because nothing has changed! 

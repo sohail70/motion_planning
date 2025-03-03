@@ -37,10 +37,10 @@ class FMTX : public Planner {
             void visualizeTree();
             void visualizePath(std::vector<int> path_indices);
 
-            std::unordered_set<int> findSamplesNearObstacles(const std::vector<Eigen::Vector2d>& obstacles, double obstacle_radius);
-            std::pair<std::unordered_set<int>,std::unordered_set<int>> findSamplesNearObstacles(const std::vector<Eigen::Vector2d>& obstacles, double obstacle_radius_inflated, double obstalce_radius);
+            std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& obstacles, double scale_factor);
+            std::pair<std::unordered_set<int>,std::unordered_set<int>> findSamplesNearObstaclesDual(const std::vector<Obstacle>& obstacles, double scale_factor);
 
-            void updateObstacleSamples(const std::vector<Eigen::Vector2d>& obstacles);
+            void updateObstacleSamples(const std::vector<Obstacle>& obstacles);
             std::unordered_set<int> getDescendants(int node_index);
             // std::unordered_set<int> getDescendants(const std::vector<int>& node_index);
 

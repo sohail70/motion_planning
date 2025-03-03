@@ -165,12 +165,23 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
 
 void RVizVisualization::visualizeCylinder(
     const std::vector<Eigen::VectorXd>& obstacles, 
-    double radius, 
+    const std::vector<double>& radii, 
     const std::string& frame_id) 
 {
+    if (obstacles.size() != radii.size()) {
+        RCLCPP_ERROR(node_->get_logger(), 
+                     "Mismatch between number of obstacles (%zu) and radii (%zu).", 
+                     obstacles.size(), radii.size());
+        return;
+    }
+
     visualization_msgs::msg::MarkerArray marker_array;
     int id = 0;
-    for (const auto& obstacle : obstacles) {
+    // Iterate through obstacles and radii simultaneously
+    for (size_t i = 0; i < obstacles.size(); ++i) {
+        const auto& obstacle = obstacles[i];
+        double radius = radii[i];  // Get the radius for this obstacle
+
         visualization_msgs::msg::Marker marker;
         marker.header.frame_id = frame_id;
         marker.header.stamp = node_->now();
@@ -179,15 +190,21 @@ void RVizVisualization::visualizeCylinder(
         marker.type = visualization_msgs::msg::Marker::CYLINDER;
         marker.action = visualization_msgs::msg::Marker::ADD;
 
+        // Set the position of the marker
         marker.pose.position.x = obstacle.x();
         marker.pose.position.y = obstacle.y();
-        marker.pose.position.z = 0.05;
-        marker.scale.x = 2 * radius;  // Diameter
-        marker.scale.y = 2 * radius;  // Diameter
-        marker.scale.z = 0.1;         // Height
-        marker.color.b = 1.0;
-        marker.color.a = 0.5;
+        marker.pose.position.z = 0.05;  // Slightly above the ground
 
+        // Set the scale of the marker (diameter = 2 * radius)
+        marker.scale.x = 2 * radius;  // Diameter in x
+        marker.scale.y = 2 * radius;  // Diameter in y
+        marker.scale.z = 0.1;         // Height in z
+
+        // Set the color of the marker
+        marker.color.b = 1.0;  // Blue color
+        marker.color.a = 0.5;   // Semi-transparent
+
+        // Add the marker to the array
         marker_array.markers.push_back(marker);
     }
 

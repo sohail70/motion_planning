@@ -6,6 +6,15 @@
 
 #include <memory>
 #include "motion_planning/pch.hpp"
+
+// Add this structure to store obstacle information
+struct Obstacle {
+    Eigen::Vector2d position;
+    double radius;
+};
+
+
+
 class ObstacleChecker {
 public:
     virtual ~ObstacleChecker() = default;

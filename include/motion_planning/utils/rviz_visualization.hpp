@@ -15,7 +15,7 @@ public:
     void visualizeEdges(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id = "map") override;
     void visualizeEdges(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id, const std::string& color_str) override;
 
-    void visualizeCylinder(const std::vector<Eigen::VectorXd>& obstacles, double radius, const std::string& frame_id);
+    void visualizeCylinder(const std::vector<Eigen::VectorXd>& obstacles, const std::vector<double>& radii, const std::string& frame_id);
 
 
 private:

@@ -3,11 +3,14 @@
 
 #include "motion_planning/utils/obstacle_checker.hpp"
 
+
 class GazeboObstacleChecker : public ObstacleChecker {
 public:
-    GazeboObstacleChecker(const std::string& robot_model_name, 
-                         double obstacle_radius,
-                         const std::string& world_name = "default");
+
+    GazeboObstacleChecker(const std::string& robot_model_name,
+                        const std::unordered_map<std::string, double>& obstacle_radii,
+                        const std::string& world_name = "default");
+
     ~GazeboObstacleChecker();
 
     bool isObstacleFree(const Eigen::VectorXd& start, 
@@ -16,7 +19,7 @@ public:
     bool isObstacleFree(const Eigen::VectorXd& point)const override;
 
     Eigen::Vector2d getRobotPosition() const;
-    std::vector<Eigen::Vector2d> getObstaclePositions() const;
+    std::vector<Obstacle> getObstaclePositions() const;
 
 private:
     void poseInfoCallback(const gz::msgs::Pose_V& msg);
@@ -29,10 +32,22 @@ private:
                                                   double radius);
     std::string robot_model_name_;
     double obstacle_radius_;
-    mutable std::mutex data_mutex_;
+    mutable std::mutex data_mutex_; // mutable allows locking in const methods
     Eigen::Vector2d robot_position_;
-    std::vector<Eigen::Vector2d> obstacle_positions_;
+    // std::vector<Eigen::Vector2d> obstacle_positions_;
     gz::transport::Node gz_node_;
     bool use_range = false;
     double sensor_range = 40.0;
+
+
+
+
+
+    // Change this member variable
+    std::vector<Obstacle> obstacle_positions_;
+    
+    // Add this member to store radii
+    std::unordered_map<std::string, double> obstacle_radii_;
+
+    
 };
