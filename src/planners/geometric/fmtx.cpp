@@ -509,7 +509,7 @@ void FMTX::visualizePath(std::vector<int> path_indices) {
 // TODO: This should only be on dynamic obstacles! --> But how do we know maybe some static obstalce become dynamic! --> not motion planning concern maybe some method to classify static and dynamic obstalces!
 std::unordered_set<int> FMTX::findSamplesNearObstacles(
     const std::vector<Obstacle>& obstacles, 
-    double scale_factor
+    double max_length
 ) {
     std::unordered_set<int> conflicting_samples;
     // double robot_range = 20.0;    
@@ -525,7 +525,9 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
         // }
         // else {
                 // Query samples within obstacle radius (5 units)
-                auto sample_indices = kdtree_->radiusSearch(obstacle.position, scale_factor* obstacle.radius);
+                // auto sample_indices = kdtree_->radiusSearch(obstacle.position, inflation + obstacle.radius);
+                auto sample_indices = kdtree_->radiusSearch(obstacle.position, std::sqrt(std::pow(obstacle.radius, 2) + std::pow(max_length / 2.0, 2)));
+                
                 conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
         // }
     }
@@ -553,23 +555,33 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNea
 }
 void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 
-    // auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
-    //     return a.second < b.second;
-    // });
-    // std::cout<<max_it->first << "  " << max_it->second <<" \n";
-    // std::string color_str = "0.0,0.0,1.0"; // Blue color
-    // std::vector<Eigen::VectorXd> positions4;
-    // Eigen::VectorXd vec(2);
-    // vec << tree_.at(max_it->first)->getStateVlaue();
-    // positions4.push_back(vec);
-    // visualization_->visualizeNodes(positions4,"map",color_str);
+    // TODO: make it so when the max length edge modifies it calcs themax element or else do not waste time in finding it!
+    if (edge_length_[max_length_edge_ind] != max_length)
+    {
+        auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
+            return a.second < b.second;
+        });
+        max_length = max_it->second;
+        max_length_edge_ind = max_it->first;
+
+        std::cout<<max_it->first << "  " << max_it->second <<" \n"; 
+
+    }
+    // // Visualizing the maximum length node
+    // if (max_length_edge_ind !=-1){
+    //     std::string color_str = "0.0,0.0,1.0"; // Blue color
+    //     std::vector<Eigen::VectorXd> positions4;
+    //     Eigen::VectorXd vec(2);
+    //     vec << tree_.at(max_length_edge_ind)->getStateVlaue();
+    //     positions4.push_back(vec);
+    //     visualization_->visualizeNodes(positions4,"map",color_str);
+
+    // }
 
 
-
-    // int inflate = max_it->second;
 
     // Find current samples in obstacles
-    auto current = findSamplesNearObstacles(obstacles, 2.2); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+    auto current = findSamplesNearObstacles(obstacles, max_length); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
     // auto [current,current2] = findSamplesNearObstaclesDual(obstacles, 2.2); 
 
     if (current==samples_in_obstacles_) // TODO: I think this should be doen in gazeboObstalceChecker level not here! the obstacleChecker needs to be able to report if obstalces has changed.

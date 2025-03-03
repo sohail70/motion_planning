@@ -87,8 +87,9 @@ class FMTX : public Planner {
             // } max_edge_;                // Instance of the struct
 
             std::unordered_map<int , double> edge_length_;
-
-
+            int max_length_edge_ind = -1;
+            double max_length = -std::numeric_limits<double>::infinity();
+            // std::unordered_map<int, double> max_it;
             // MaxEdge getLargestEdge() const { return max_edge_; }
 
             int num_of_samples_;

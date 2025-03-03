@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
     auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/my_world2.sdf");
+    auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/my_world2_dr.sdf");
     for (auto& el : obstacle_radii) {
         std::cout<<el.first <<"  " << el.second << "\n";
     }
@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 5000);
+    params.setParam("num_of_samples", 1000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
@@ -92,8 +92,8 @@ int main(int argc, char **argv) {
         // planner->plan();
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        if (duration.count()>0)
-            std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
+        // if (duration.count()>0)
+        //     std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
 
 
 

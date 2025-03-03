@@ -18,7 +18,7 @@ int main(int argc, char **argv) {
     auto node = std::make_shared<rclcpp::Node>("rrtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/my_world2.sdf");
+    auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/my_world2_dr.sdf");
     for (auto& el : obstacle_radii) {
         std::cout<<el.first <<"  " << el.second << "\n";
     }
