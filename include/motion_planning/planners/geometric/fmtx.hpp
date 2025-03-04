@@ -20,6 +20,9 @@ struct pair_hash {
     }
 };
 
+
+
+
 class FMTX : public Planner {
  public:
             FMTX(std::unique_ptr<StateSpace> statespace , std::unique_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
@@ -51,7 +54,17 @@ class FMTX : public Planner {
 
             void handleInflatedZoneAdditions(const std::vector<int>& added_inflated);
 
-
+            // bool isValidYnear(int index, 
+            //       const std::unordered_set<int>& v_open_set, 
+            //       const std::unordered_map<int, std::unordered_set<int>>& invalid_best_neighbors, 
+            //       int xIndex, 
+            //       bool use_heuristic);
+            
+                  bool isValidYnear(int index, 
+                    const std::unordered_set<int>& v_open_set, 
+                    const std::vector<std::vector<bool>>& invalid_best_neighbors, 
+                    int xIndex, 
+                    bool use_heuristic);
 
  private:
             std::shared_ptr<State> start_;
@@ -96,7 +109,14 @@ class FMTX : public Planner {
             bool obs_cache = true;
             // bool use_range = false; // THIS SHOULD BE USED IN THE OBSTALCE CHECKER LEVEL NOT IN THE PLANNER LEVEL! --> LATER REMOVE THIS
             bool partial_plot = true;
-            bool inflation = false;
+            // bool inflation = false;
+            bool use_heuristic = true;
+
+
+            // std::vector<std::vector<bool>> invalid_best_neighbors;
+            std::vector<std::vector<bool>> invalid_best_neighbors;
+            // int current_timestamp = 0; 
+            
 
 };
 

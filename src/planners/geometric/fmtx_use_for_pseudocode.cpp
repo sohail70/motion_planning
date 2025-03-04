@@ -95,80 +95,35 @@ void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
     // }
 
 
-    invalid_best_neighbors.resize(num_of_samples_+2, std::vector<bool>(num_of_samples_+2, false));
-    // invalid_best_neighbors.resize(num_of_samples_ + 2, std::vector<int>(num_of_samples_ + 2, -1));
-
-
-
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     // std::cout << "Time taken by setup: " << duration.count() << " milliseconds\n";
     // std::cout << "---\n";
 
 
-
-
-
 }
 
-
-// bool FMTX::isValidYnear(int index, 
-//                   const std::unordered_set<int>& v_open_set, 
-//                   const std::unordered_map<int, std::unordered_set<int>>& invalid_best_neighbors, 
-//                   int xIndex, 
-//                   bool use_heuristic) {
-//     bool inOpenSet = (v_open_set.find(index) != v_open_set.end());
-//     if (!use_heuristic) {
-//         return inOpenSet;
-//     }
-    
-//     auto it = invalid_best_neighbors.find(xIndex);
-//     bool notInInvalidNeighbors = (it == invalid_best_neighbors.end()) || 
-//                                  (it->second.find(index) == it->second.end());
-    
-//     return inOpenSet && notInInvalidNeighbors;
-// }
 
 bool FMTX::isValidYnear(int index, 
-                        const std::unordered_set<int>& v_open_set, 
-                        const std::vector<std::vector<bool>>& invalid_best_neighbors, 
-                        int xIndex, 
-                        bool use_heuristic) {
+                  const std::unordered_set<int>& v_open_set, 
+                  const std::unordered_map<int, std::unordered_set<int>>& invalid_best_neighbors, 
+                  int xIndex, 
+                  bool use_heuristic) {
     bool inOpenSet = (v_open_set.find(index) != v_open_set.end());
-    if (!use_heuristic) {
-        return inOpenSet; // Early exit if heuristic is not used
-    }
-    
-    // Check if the pair (xIndex, index) exists in invalid_best_neighbors
-    // bool notInInvalidNeighbors = (invalid_best_neighbors.find({xIndex, index}) == invalid_best_neighbors.end());
-    bool notInInvalidNeighbors = !invalid_best_neighbors[xIndex][index];
-
-
-    // Check if the pair (xIndex, index) was marked invalid in the current loop
-    // bool notInInvalidNeighbors = (invalid_best_neighbors[xIndex][index] != current_timestamp);
-
-
-    
+    bool notInInvalidNeighbors = (!use_heuristic || invalid_best_neighbors.at(xIndex).find(index) == invalid_best_neighbors.at(xIndex).end());
     return inOpenSet && notInInvalidNeighbors;
 }
+
+
 void FMTX::plan() {
     // std::cout<< "Plan FMTX \n";
     auto start = std::chrono::high_resolution_clock::now();
     std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
     int uncached = 0;
     int cached = 0;
-    // std::unordered_map<int, std::unordered_set<int>> invalid_best_neighbors;
-    // std::unordered_set<std::pair<int, int>, pair_hash> invalid_best_neighbors;
-
-    if (use_heuristic==true) {
-        // for (auto& row : invalid_best_neighbors) {
-        //     std::fill(row.begin(), row.end(), false);
-        // }
-        invalid_best_neighbors.resize(num_of_samples_+2, std::vector<bool>(num_of_samples_+2, false));
-    }
+    std::unordered_map<int, std::unordered_set<int>> invalid_best_neighbors;
 
 
-    // current_timestamp++;
 
 
     while (!v_open_heap_.empty() && v_open_heap_.top().index != robot_state_index_) {
@@ -237,29 +192,16 @@ void FMTX::plan() {
                 //     v_open_set_.erase(xIndex);
                 // }
 
-                // if (use_heuristic && invalid_best_neighbors.find(xIndex) == invalid_best_neighbors.end()) {
-                //     invalid_best_neighbors[xIndex] = std::unordered_set<int>(); 
-                // }
-
-
 
                 auto xNeighborInfo = near(xIndex);
                 std::vector<NeighborInfo> Ynear;
-                // for (const auto& info : xNeighborInfo) {
-                //     // if (v_open_set_.find(info.index) != v_open_set_.end()) {
-                //     if (isValidYnear(info.index , v_open_set_ , invalid_best_neighbors , xIndex , use_heuristic)) {
-                //     // if (samples_in_obstacles_.count(info.index)==0 && v_unvisited_set_.count(info.index)==0 && v_open_set_.find(info.index) != v_open_set_.end()) {
-                //         Ynear.push_back(info);
-                //     }
-                // }
-
                 for (const auto& info : xNeighborInfo) {
-                    if (isValidYnear(info.index, v_open_set_, invalid_best_neighbors, xIndex, use_heuristic)) {
+                    if (v_open_set_.find(info.index) != v_open_set_.end()) {
+                    // if (isValidYnear(info.index , v_open_set_ , invalid_best_neighbors , xIndex , use_heuristic)) {
+                    // if (samples_in_obstacles_.count(info.index)==0 && v_unvisited_set_.count(info.index)==0 && v_open_set_.find(info.index) != v_open_set_.end()) {
                         Ynear.push_back(info);
                     }
                 }
-
-
 
                 // v_unvisited_set_.erase(xIndex);  //NOT GOOD TO DO IT HERE FOR THE REAL UNVISTED NODES! IT WAS GOOD FOR PROMISING BUT NOW YOU DECIED TO NOT EVEN PUT THEM IN VUNIVSTED AND JUST RECHECK THEM WITHOUT EVEN PUTTING THEM IN VUNVISTED! AND IF THEY CHANGE WE JUST PUT THEM IN VOPEN FOR THE CASCADE!
                 if (Ynear.empty()) {
@@ -360,16 +302,6 @@ void FMTX::plan() {
                         tree_.at(best_neighbor_index)->setChildrenIndex(xIndex);
                         
                         edge_length_[xIndex] = best_edge_length;
-
-                    }
-                }else{
-                    if (use_heuristic==true) {
-                        // invalid_best_neighbors[xIndex].insert(best_neighbor_index);
-                        // invalid_best_neighbors.insert({xIndex, best_neighbor_index});
-                        invalid_best_neighbors[xIndex][best_neighbor_index] = true;
-                        // invalid_best_neighbors[xIndex][best_neighbor_index] = current_timestamp;
-
-
 
                     }
                 }

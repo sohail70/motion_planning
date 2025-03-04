@@ -18,7 +18,11 @@
  * TODO: make all of this independent of ros2 (is visualization marker can be replaced with direct rviz api) 
  * 
  * TODO: one thing about your implementation is that you can add new nodes but you just have to add it to kdtree and the neighbors need to be calculated in near on itw own. all in all you can add a feature to add a node to the scene if you want just and it doesnt have to be random and can be considered as users help in narrow corridor!
- * 
+ *       But it seems easier to just connect the newly added node fast instead of heappush to vopen and leave it to plan function
+ *       maybe we should add batch of nodes so that fmtx would be useful i don't know
+ *       im merely thinking about the narrow pathway problem
+ * TODO: You can add hold static obstalce in gazeboObstacleChecker for static envrionment with use_range and use_robot test!
+ *       for dynamic obstalce we ignore their last know location 
  * 
  * WARN: some nodes might not get the chance to connect so they'll stay in vUnvisited (and they are not on sample on obstalces!) ---> the  reason they stay is because of object inflation you put not because of persistent vPromising
  */
@@ -53,7 +57,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 1000);
+    params.setParam("num_of_samples", 50000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
