@@ -95,8 +95,11 @@ void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
     // }
 
 
-    invalid_best_neighbors.resize(num_of_samples_+2, std::vector<bool>(num_of_samples_+2, false));
+    // invalid_best_neighbors.resize(num_of_samples_+2, std::vector<bool>(num_of_samples_+2, false));
     // invalid_best_neighbors.resize(num_of_samples_ + 2, std::vector<int>(num_of_samples_ + 2, -1));
+
+    invalid_best_neighbors.resize(num_of_samples_ + 2);
+
 
 
 
@@ -111,27 +114,15 @@ void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
 
 }
 
-
-// bool FMTX::isValidYnear(int index, 
-//                   const std::unordered_set<int>& v_open_set, 
-//                   const std::unordered_map<int, std::unordered_set<int>>& invalid_best_neighbors, 
-//                   int xIndex, 
-//                   bool use_heuristic) {
-//     bool inOpenSet = (v_open_set.find(index) != v_open_set.end());
-//     if (!use_heuristic) {
-//         return inOpenSet;
-//     }
-    
-//     auto it = invalid_best_neighbors.find(xIndex);
-//     bool notInInvalidNeighbors = (it == invalid_best_neighbors.end()) || 
-//                                  (it->second.find(index) == it->second.end());
-    
-//     return inOpenSet && notInInvalidNeighbors;
-// }
+double FMTX::heuristic(int current_index) {
+    Eigen::VectorXd current_position = tree_.at(current_index)->getStateVlaue();
+    Eigen::VectorXd goal_position = tree_.at(robot_state_index_)->getStateVlaue();
+    return (goal_position-current_position).norm();
+}
 
 bool FMTX::isValidYnear(int index, 
                         const std::unordered_set<int>& v_open_set, 
-                        const std::vector<std::vector<bool>>& invalid_best_neighbors, 
+                        const std::vector<std::unordered_set<int>>& invalid_connections, 
                         int xIndex, 
                         bool use_heuristic) {
     bool inOpenSet = (v_open_set.find(index) != v_open_set.end());
@@ -139,18 +130,14 @@ bool FMTX::isValidYnear(int index,
         return inOpenSet; // Early exit if heuristic is not used
     }
     
-    // Check if the pair (xIndex, index) exists in invalid_best_neighbors
-    // bool notInInvalidNeighbors = (invalid_best_neighbors.find({xIndex, index}) == invalid_best_neighbors.end());
-    bool notInInvalidNeighbors = !invalid_best_neighbors[xIndex][index];
-
-
-    // Check if the pair (xIndex, index) was marked invalid in the current loop
-    // bool notInInvalidNeighbors = (invalid_best_neighbors[xIndex][index] != current_timestamp);
-
-
+    // Check if the pair (xIndex, index) exists in invalid_connections
+    bool notInInvalidNeighbors = (invalid_connections.at(xIndex).find(index) == invalid_connections.at(xIndex).end());
+    // bool notInInvalidNeighbors = true;
     
     return inOpenSet && notInInvalidNeighbors;
 }
+
+
 void FMTX::plan() {
     // std::cout<< "Plan FMTX \n";
     auto start = std::chrono::high_resolution_clock::now();
@@ -164,7 +151,11 @@ void FMTX::plan() {
         // for (auto& row : invalid_best_neighbors) {
         //     std::fill(row.begin(), row.end(), false);
         // }
-        invalid_best_neighbors.resize(num_of_samples_+2, std::vector<bool>(num_of_samples_+2, false));
+        // invalid_best_neighbors.resize(num_of_samples_+2, std::vector<bool>(num_of_samples_+2, false));
+        for (auto& invalid_set : invalid_best_neighbors) {
+            invalid_set.clear();
+        }
+        invalid_best_neighbors.resize(num_of_samples_+2);
     }
 
 
@@ -172,6 +163,7 @@ void FMTX::plan() {
 
 
     while (!v_open_heap_.empty() && v_open_heap_.top().index != robot_state_index_) {
+    // while (!v_open_heap_.empty() && v_unvisited_set_.find(robot_state_index_) != v_unvisited_set_.end() ) {
 
         // if (v_open_heap_.size() != v_open_set_.size()) {
         //     std::cout<<v_open_heap_.size() <<" "<<v_open_set_.size()<<"\n";
@@ -191,6 +183,18 @@ void FMTX::plan() {
 
         // if (v_open_set_.find(zIndex)==v_open_set_.end()) //TODO: should i?
         //     continue;
+
+
+
+        // std::vector<Eigen::VectorXd> positions2;
+        // Eigen::VectorXd vec(2);
+        // vec << tree_.at(zIndex)->getStateVlaue();
+        // positions2.push_back(vec);
+        // visualization_->visualizeNodes(positions2,"map");
+
+        // // Add a small delay for  clarity
+        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
 
 
         // if (v_open_set_.find(zIndex) == v_open_set_.end() || 
@@ -219,6 +223,15 @@ void FMTX::plan() {
             if (samples_in_obstacles_.find(xIndex) != samples_in_obstacles_.end())
                 continue;
 
+            // std::vector<Eigen::VectorXd> positions2;
+            // Eigen::VectorXd vec(2);
+            // vec << tree_.at(xIndex)->getStateVlaue();
+            // positions2.push_back(vec);
+            // visualization_->visualizeNodes(positions2,"map");
+
+            // // Add a small delay for  clarity
+            // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            
             // if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end() || (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9)) {
             if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end() || tree_.at(xIndex)->getCost() > (tree_.at(zIndex)->getCost() + cost_to_neighbor ) ){
                 
@@ -226,11 +239,17 @@ void FMTX::plan() {
                 // if (v_open_set_.count(xIndex)!=0 && tree_.at(xIndex)->getCost()==std::numeric_limits<double>::infinity() && (tree_.at(xIndex)->getCost() -(tree_.at(zIndex)->getCost() + cost_to_neighbor ) > 1e-9)){
                 //     std::cout<<"SOMETIMESBAD \n";
                 // }
+
+
+
+
+
                 if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end()) {
                     what = true;
                 }
                 else {
                     what=false;
+                    // v_unvisited_set_.insert(xIndex);
                 }
 
                 // if (v_open_set_.count(xIndex)!=0) {
@@ -338,16 +357,32 @@ void FMTX::plan() {
                         // if (v_open_set_.count(xIndex)==0){
                             // v_open_heap_.push({newCost, xIndex});
 
+                        ////////////////////////////////////////////////
+                        double h_value = use_heuristic ? heuristic(xIndex) : 0.0;
+                        double priorityCost = newCost + h_value;
 
-
-                        QueueElement2 new_element = {newCost, xIndex};
+                        QueueElement2 new_element = {priorityCost, xIndex};
                         if (v_open_heap_.contains(xIndex)){
-                            v_open_heap_.update(xIndex, newCost);
-
+                            v_open_heap_.update(xIndex, priorityCost);
                         } else{
                             v_open_heap_.add(new_element);
                         }
+
+
+
+                        //////////////////////////////////////////////////
+                        // QueueElement2 new_element = {newCost, xIndex};
+                        // if (v_open_heap_.contains(xIndex)){
+                        //     v_open_heap_.update(xIndex, newCost);
+
+                        // } else{
+                        //     v_open_heap_.add(new_element);
+                        // }
+                        ////////////////////////////////////////////////
+
+
                             v_open_set_.insert(xIndex);
+                        
                         // }
                         // else{
                         //     std::cout<<"IT WAS THERE \n";
@@ -366,8 +401,10 @@ void FMTX::plan() {
                     if (use_heuristic==true) {
                         // invalid_best_neighbors[xIndex].insert(best_neighbor_index);
                         // invalid_best_neighbors.insert({xIndex, best_neighbor_index});
-                        invalid_best_neighbors[xIndex][best_neighbor_index] = true;
+                        // invalid_best_neighbors[xIndex][best_neighbor_index] = true;
                         // invalid_best_neighbors[xIndex][best_neighbor_index] = current_timestamp;
+                        // invalid_best_neighbors[xIndex][best_neighbor_index] = current_timestamp;
+                        invalid_best_neighbors.at(xIndex).insert(best_neighbor_index);
 
 
 
@@ -749,8 +786,25 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
                 v_open_set_.insert(neighbor.index);
                 // v_open_heap_.push({tree_[neighbor.index]->getCost(), neighbor.index});
 
-                QueueElement2 new_element ={tree_[neighbor.index]->getCost(), neighbor.index};
+                // QueueElement2 new_element ={tree_[neighbor.index]->getCost(), neighbor.index};
+                // v_open_heap_.add(new_element);
+
+
+                double h_value = use_heuristic ? heuristic(neighbor.index) : 0.0;
+                double priorityCost = tree_[neighbor.index]->getCost() + h_value;
+                QueueElement2 new_element = {priorityCost, neighbor.index};
                 v_open_heap_.add(new_element);
+
+
+                // if (v_open_heap_.contains(neighbor.index)){
+                //     v_open_heap_.update(neighbor.index, priorityCost);
+                // } else{
+                //     v_open_heap_.add(new_element);
+                // }
+
+
+
+
             }
         }
     }
@@ -767,13 +821,14 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     // std::string color_str = "0.0,0.0,1.0"; // Blue color
     // visualization_->visualizeNodes(positions,"map",color_str);
 
-    // std::vector<Eigen::VectorXd> positions2;
-    // for (const auto& y: v_open_set_) {
-    //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
-    //     positions2.push_back(vec);
-    // }
-    // visualization_->visualizeNodes(positions2,"map");
+    std::vector<Eigen::VectorXd> positions2;
+    for (const auto& y: v_open_set_) {
+        Eigen::VectorXd vec(2);
+        vec << tree_.at(y)->getStateVlaue();
+        positions2.push_back(vec);
+    }
+    std::string color_str = "0.0,0.0,1.0"; // Blue color
+    visualization_->visualizeNodes(positions2,"map",color_str);
     
 
     // std::vector<Eigen::VectorXd> positions3;

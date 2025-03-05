@@ -21,7 +21,7 @@
 #include <chrono>
 #include <mutex>
 #include <stack>
-
+#include <array>
 
 #include <tinyxml2.h>
 

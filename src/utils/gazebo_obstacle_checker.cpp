@@ -163,6 +163,17 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
                     else if (!use_range) {
                         obstacle_positions_.push_back(obstacle);
                     }
+                } else { //Default radius!
+                    Obstacle obstacle;
+                    obstacle.position = position;
+                    obstacle.radius = 5;
+                    
+                    if (use_range && (robot_position_ - position).norm() < sensor_range) {
+                        obstacle_positions_.push_back(obstacle);
+                    }
+                    else if (!use_range) {
+                        obstacle_positions_.push_back(obstacle);
+                    }
                 }
             }
         }

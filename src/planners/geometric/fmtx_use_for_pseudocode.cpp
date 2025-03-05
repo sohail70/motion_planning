@@ -104,17 +104,6 @@ void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> vis
 }
 
 
-bool FMTX::isValidYnear(int index, 
-                  const std::unordered_set<int>& v_open_set, 
-                  const std::unordered_map<int, std::unordered_set<int>>& invalid_best_neighbors, 
-                  int xIndex, 
-                  bool use_heuristic) {
-    bool inOpenSet = (v_open_set.find(index) != v_open_set.end());
-    bool notInInvalidNeighbors = (!use_heuristic || invalid_best_neighbors.at(xIndex).find(index) == invalid_best_neighbors.at(xIndex).end());
-    return inOpenSet && notInInvalidNeighbors;
-}
-
-
 void FMTX::plan() {
     // std::cout<< "Plan FMTX \n";
     auto start = std::chrono::high_resolution_clock::now();
@@ -197,7 +186,6 @@ void FMTX::plan() {
                 std::vector<NeighborInfo> Ynear;
                 for (const auto& info : xNeighborInfo) {
                     if (v_open_set_.find(info.index) != v_open_set_.end()) {
-                    // if (isValidYnear(info.index , v_open_set_ , invalid_best_neighbors , xIndex , use_heuristic)) {
                     // if (samples_in_obstacles_.count(info.index)==0 && v_unvisited_set_.count(info.index)==0 && v_open_set_.find(info.index) != v_open_set_.end()) {
                         Ynear.push_back(info);
                     }

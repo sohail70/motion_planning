@@ -25,6 +25,13 @@
  *       for dynamic obstalce we ignore their last know location 
  * 
  * WARN: some nodes might not get the chance to connect so they'll stay in vUnvisited (and they are not on sample on obstalces!) ---> the  reason they stay is because of object inflation you put not because of persistent vPromising
+ * 
+ * 
+ * TODO: CAN I go back and forth between the main plan function and the for loop that pushes nodes into v open ! so that i go there when its necessary and the robot nodes not been reached and then provide more v open nodes for it!
+ *       AT THE END OF THE WHILE LOOP PUT AN IF CONDITON TO CHECK IF VOPEN IS EMPTY BUT THE ROBOT NODE INDEX DOESNT HAVE A PARENT THEN YOU NEED MORE VOPEN FROM SOME OTHER SIDE!
+ *       for the refill vopen function maybe use kd tree querying the robot_node_index with the radius of search (to be found!) and then loop thorugh that chunk and if any of those nodes are in v unvisted then add their neighbors to the vopen like the for loop in the update samples!  or maybe not use raidus but a batch size of 100 closest nodes!
+ *       BUT IM NOT SURE IF IT WORKS. YOU HAVE TO COMPLETELY KNOW ABOUT THE REGION AND PU ALL THE NECESSARY NODES INTO VOPEN FOR THAT REGION SO THAT THE PLAN CONNECTION PROCEDURE DOES ITS JOB
+ * 
  */
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
@@ -48,7 +55,7 @@ int main(int argc, char **argv) {
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>("tugbot", obstacle_radii); // Robot model name and obstacle radius
     auto ros2_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization);
 
-    bool use_robot = false; 
+    bool use_robot = true; 
     bool using_factory = true;
     int dim = 2;
     auto problem_def = std::make_unique<ProblemDefinition>(dim);
@@ -57,7 +64,7 @@ int main(int argc, char **argv) {
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
-    params.setParam("num_of_samples", 50000);
+    params.setParam("num_of_samples", 5000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 

@@ -54,17 +54,14 @@ class FMTX : public Planner {
 
             void handleInflatedZoneAdditions(const std::vector<int>& added_inflated);
 
-            // bool isValidYnear(int index, 
-            //       const std::unordered_set<int>& v_open_set, 
-            //       const std::unordered_map<int, std::unordered_set<int>>& invalid_best_neighbors, 
-            //       int xIndex, 
-            //       bool use_heuristic);
-            
-                  bool isValidYnear(int index, 
-                    const std::unordered_set<int>& v_open_set, 
-                    const std::vector<std::vector<bool>>& invalid_best_neighbors, 
-                    int xIndex, 
-                    bool use_heuristic);
+
+            double heuristic(int current_index);
+
+            bool isValidYnear(int index, 
+                                    const std::unordered_set<int>& v_open_set, 
+                                    const std::vector<std::unordered_set<int>>& invalid_connections, 
+                                    int xIndex, 
+                                    bool use_heuristic);
 
  private:
             std::shared_ptr<State> start_;
@@ -114,7 +111,11 @@ class FMTX : public Planner {
 
 
             // std::vector<std::vector<bool>> invalid_best_neighbors;
-            std::vector<std::vector<bool>> invalid_best_neighbors;
+            // std::vector<std::vector<bool>> invalid_best_neighbors;
+            std::vector<std::unordered_set<int>> invalid_best_neighbors; // Sparse storage of invalid neighbors
+
+
+
             // int current_timestamp = 0; 
             
 
