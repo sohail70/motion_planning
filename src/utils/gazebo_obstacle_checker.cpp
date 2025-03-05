@@ -180,6 +180,74 @@ std::vector<Obstacle> GazeboObstacleChecker::getObstaclePositions() const {
 //     }
 
 
+// void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
+//     std::lock_guard<std::mutex> lock(data_mutex_);
+//     obstacle_positions_.clear();  // Clear current obstacles
+
+//     // Track dynamic obstacles in this callback
+//     std::vector<Obstacle> current_dynamic_obstacles;
+
+//     // Update robot position
+//     for (int i = 0; i < msg.pose_size(); ++i) {
+//         const auto& pose = msg.pose(i);
+//         if (pose.name() == robot_model_name_) {
+//             robot_position_ = Eigen::Vector2d(pose.position().x(), pose.position().y());
+//             break;
+//         }
+//     }
+
+//     // Process obstacles
+//     for (int i = 0; i < msg.pose_size(); ++i) {
+//         const auto& pose = msg.pose(i);
+//         const std::string name = pose.name();
+//         Eigen::Vector2d position(pose.position().x(), pose.position().y());
+
+//         if (name == robot_model_name_) continue;
+
+//         bool is_static = name.find("static_cylinder_") != std::string::npos;
+//         bool is_moving = name.find("moving_cylinder_") != std::string::npos;
+
+//         if (!is_static && !is_moving) continue;
+
+//         // Get or assign radius
+//         double radius = 5.0;
+//         auto radius_it = obstacle_radii_.find(name);
+//         if (radius_it != obstacle_radii_.end()) {
+//             radius = radius_it->second;
+//         }
+
+//         Obstacle obstacle{position, radius};
+
+//         // Check if within sensor range
+//         bool within_range = !use_range || (robot_position_ - position).norm() < sensor_range;
+
+//         if (is_static) {
+//             // Check if the static obstacle has been detected before
+//             auto it = static_obstacle_positions_.find(name);
+//             if (it == static_obstacle_positions_.end()) {
+//                 // First time detection: add to static_obstacle_positions_ if within range
+//                 if (within_range) {
+//                     static_obstacle_positions_[name] = obstacle;
+//                 }
+//             } else {
+//                 // Update position if already detected
+//                 it->second.position = position;
+//             }
+//         } else if (is_moving && within_range) {
+//             current_dynamic_obstacles.push_back(obstacle);
+//         }
+//     }
+
+//     // Add dynamic obstacles
+//     obstacle_positions_.insert(obstacle_positions_.end(), current_dynamic_obstacles.begin(), current_dynamic_obstacles.end());
+
+//     // Add all previously detected static obstacles to obstacle_positions_
+//     for (const auto& [name, static_obs] : static_obstacle_positions_) {
+//         obstacle_positions_.push_back(static_obs);
+//     }
+// }
+
+
 void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
     std::lock_guard<std::mutex> lock(data_mutex_);
     obstacle_positions_.clear();  // Clear current obstacles
@@ -222,16 +290,24 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
         bool within_range = !use_range || (robot_position_ - position).norm() < sensor_range;
 
         if (is_static) {
-            // Check if the static obstacle has been detected before
-            auto it = static_obstacle_positions_.find(name);
-            if (it == static_obstacle_positions_.end()) {
-                // First time detection: add to static_obstacle_positions_ if within range
-                if (within_range) {
-                    static_obstacle_positions_[name] = obstacle;
+            if (persistent_static_obstacles) {
+                // Check if the static obstacle has been detected before
+                auto it = static_obstacle_positions_.find(name);
+                if (it == static_obstacle_positions_.end()) {
+                    // First time detection: add to static_obstacle_positions_ if within range
+                    if (within_range) {
+                        static_obstacle_positions_[name] = obstacle;
+                        obstacle_positions_.push_back(obstacle);
+                    }
+                } else {
+                    // Update position if already detected
+                    it->second.position = position;
                 }
             } else {
-                // Update position if already detected
-                it->second.position = position;
+                // Treat static obstacles like dynamic obstacles
+                if (within_range) {
+                    obstacle_positions_.push_back(obstacle);
+                }
             }
         } else if (is_moving && within_range) {
             current_dynamic_obstacles.push_back(obstacle);
@@ -241,11 +317,14 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
     // Add dynamic obstacles
     obstacle_positions_.insert(obstacle_positions_.end(), current_dynamic_obstacles.begin(), current_dynamic_obstacles.end());
 
-    // Add all previously detected static obstacles to obstacle_positions_
-    for (const auto& [name, static_obs] : static_obstacle_positions_) {
-        obstacle_positions_.push_back(static_obs);
+    // Add all previously detected static obstacles to obstacle_positions_ if persistent_static_obstacles is true
+    if (persistent_static_obstacles) {
+        for (const auto& [name, static_obs] : static_obstacle_positions_) {
+            obstacle_positions_.push_back(static_obs);
+        }
     }
 }
+
 
 
 bool GazeboObstacleChecker::lineIntersectsCircle(const Eigen::Vector2d& start,
