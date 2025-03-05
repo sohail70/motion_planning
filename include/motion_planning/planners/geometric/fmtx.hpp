@@ -107,7 +107,7 @@ class FMTX : public Planner {
             // bool use_range = false; // THIS SHOULD BE USED IN THE OBSTALCE CHECKER LEVEL NOT IN THE PLANNER LEVEL! --> LATER REMOVE THIS
             bool partial_plot = true;
             // bool inflation = false;
-            bool use_heuristic = true;
+            bool use_heuristic = false;
 
 
             // std::vector<std::vector<bool>> invalid_best_neighbors;
