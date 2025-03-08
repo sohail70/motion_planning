@@ -28,7 +28,8 @@ class FMTX : public Planner {
             FMTX(std::unique_ptr<StateSpace> statespace , std::unique_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
             void setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) override;
             void plan() override;
-            std::vector<int> getPathIndex() const override;
+            std::vector<size_t> getPathIndex() const;
+            std::vector<Eigen::VectorXd> getPathPositions() const;
             void setStart(const Eigen::VectorXd& start) override;
             void setGoal(const Eigen::VectorXd& goal) override;
             void setRobotIndex(const Eigen::VectorXd& robot_position);
@@ -38,7 +39,8 @@ class FMTX : public Planner {
 
             std::vector<NeighborInfo> near(int node_index);
             void visualizeTree();
-            void visualizePath(std::vector<int> path_indices);
+            void visualizePath(std::vector<size_t> path_indices);
+            void visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_);
 
             std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& obstacles, double scale_factor);
             std::pair<std::unordered_set<int>,std::unordered_set<int>> findSamplesNearObstaclesDual(const std::vector<Obstacle>& obstacles, double scale_factor);
@@ -62,6 +64,10 @@ class FMTX : public Planner {
                                     const std::vector<std::unordered_set<int>>& invalid_connections, 
                                     int xIndex, 
                                     bool use_heuristic);
+
+            std::vector<Eigen::VectorXd> getSmoothedPathPositions(int num_intermediates, int smoothing_window ) const;
+            std::vector<Eigen::VectorXd> smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const;
+            std::vector<Eigen::VectorXd> interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const;
 
  private:
             std::shared_ptr<State> start_;
@@ -105,7 +111,7 @@ class FMTX : public Planner {
             double neighborhood_radius_;
             bool obs_cache = true;
             // bool use_range = false; // THIS SHOULD BE USED IN THE OBSTALCE CHECKER LEVEL NOT IN THE PLANNER LEVEL! --> LATER REMOVE THIS
-            bool partial_plot = true;
+            bool partial_plot = false;
             // bool inflation = false;
             bool use_heuristic = false;
 

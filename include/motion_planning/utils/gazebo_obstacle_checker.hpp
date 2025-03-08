@@ -2,7 +2,7 @@
 
 
 #include "motion_planning/utils/obstacle_checker.hpp"
-
+#include "motion_planning/utils/visualization.hpp"
 
 class GazeboObstacleChecker : public ObstacleChecker {
 public:
@@ -19,7 +19,17 @@ public:
     bool isObstacleFree(const Eigen::VectorXd& point)const override;
 
     Eigen::Vector2d getRobotPosition() const;
+    Eigen::VectorXd getRobotOrientation() const;
+
     std::vector<Obstacle> getObstaclePositions() const;
+    void robotPoseCallback(const gz::msgs::Pose_V& msg);
+
+
+    Eigen::VectorXd quaternionToEuler(const Eigen::VectorXd& quaternion) const;
+    Eigen::VectorXd getRobotEulerAngles() const;
+    double calculateYawFromQuaternion(const Eigen::VectorXd& quaternion);
+
+    void publishPath(const std::vector<Eigen::VectorXd>& waypoints);
 
 private:
     void poseInfoCallback(const gz::msgs::Pose_V& msg);
@@ -34,8 +44,12 @@ private:
     double obstacle_radius_;
     mutable std::mutex data_mutex_; // mutable allows locking in const methods
     Eigen::Vector2d robot_position_;
+    Eigen::VectorXd robot_orientation_;
+    
     // std::vector<Eigen::Vector2d> obstacle_positions_;
     gz::transport::Node gz_node_;
+    gz::transport::Node::Publisher path_pub_;  // Publisher for the path
+
     bool use_range = true;
     double sensor_range = 20.0;
     
@@ -52,5 +66,5 @@ private:
     // Add this member to store radii
     std::unordered_map<std::string, double> obstacle_radii_;
 
-    
+
 };

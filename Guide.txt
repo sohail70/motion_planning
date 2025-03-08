@@ -4,3 +4,112 @@ https://github.com/jlblancoc/nanoflann
 
 valgrind --tool=callgrind ./my_program
 kcachegrind callgrind.out
+
+
+
+
+
+ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=./simple_robot/params/ros_gz_bridge.yaml 
+ros2 run teleop_twist_keyboard teleop_twist_keyboard 
+
+
+
+to run nav2 server run this:
+ros2 launch nav2_bringup bringup_launch.py
+
+the action client is in ros2_manager.hpp ---> use nav2 if you have a map or else a simple pure pursuit is enough
+
+
+
+
+
+#include "nav2_msgs/action/follow_path.hpp"
+#include "rclcpp_action/rclcpp_action.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include "nav_msgs/msg/path.hpp"
+
+// Function to convert Eigen::VectorXd nodes to a nav_msgs::msg::Path
+nav_msgs::msg::Path createPathFromNodes(const std::vector<Eigen::VectorXd>& nodes) {
+    nav_msgs::msg::Path path;
+    path.header.stamp = rclcpp::Clock().now();
+    path.header.frame_id = "map"; // Assuming your map frame is "map"
+
+    for (const auto& node : nodes) {
+        geometry_msgs::msg::PoseStamped pose;
+        pose.header = path.header;
+        pose.pose.position.x = node(0); // x position
+        pose.pose.position.y = node(1); // y position
+        pose.pose.orientation.w = 1.0; // No rotation
+        path.poses.push_back(pose);
+    }
+
+    return path;
+}
+
+// Function to follow the path using nav2
+void followPath(const nav_msgs::msg::Path& path, std::shared_ptr<rclcpp::Node> node) {
+    auto action_client = rclcpp_action::create_client<nav2_msgs::action::FollowPath>(node, "follow_path");
+
+    if (!action_client->wait_for_action_server(std::chrono::seconds(5))) {
+        RCLCPP_ERROR(node->get_logger(), "Action server not available after waiting");
+        return;
+    }
+
+    auto goal_msg = nav2_msgs::action::FollowPath::Goal();
+    goal_msg.path = path;
+
+    auto send_goal_options = rclcpp_action::Client<nav2_msgs::action::FollowPath>::SendGoalOptions();
+    send_goal_options.goal_response_callback =
+        [](std::shared_future<rclcpp_action::ClientGoalHandle<nav2_msgs::action::FollowPath>::SharedPtr> future) {
+            auto goal_handle = future.get();
+            if (!goal_handle) {
+                RCLCPP_ERROR(rclcpp::get_logger("follow_path_client"), "Goal was rejected by server");
+            } else {
+                RCLCPP_INFO(rclcpp::get_logger("follow_path_client"), "Goal accepted by server, waiting for result");
+            }
+        };
+
+    send_goal_options.result_callback =
+        [](const rclcpp_action::ClientGoalHandle<nav2_msgs::action::FollowPath>::WrappedResult& result) {
+            switch (result.code) {
+                case rclcpp_action::ResultCode::SUCCEEDED:
+                    RCLCPP_INFO(rclcpp::get_logger("follow_path_client"), "Goal succeeded");
+                    break;
+                case rclcpp_action::ResultCode::ABORTED:
+                    RCLCPP_ERROR(rclcpp::get_logger("follow_path_client"), "Goal was aborted");
+                    break;
+                case rclcpp_action::ResultCode::CANCELED:
+                    RCLCPP_ERROR(rclcpp::get_logger("follow_path_client"), "Goal was canceled");
+                    break;
+                default:
+                    RCLCPP_ERROR(rclcpp::get_logger("follow_path_client"), "Unknown result code");
+                    break;
+            }
+        };
+
+    action_client->async_send_goal(goal_msg, send_goal_options);
+}
+
+int main(int argc, char **argv) {
+    rclcpp::init(argc, argv);
+
+    auto node = std::make_shared<rclcpp::Node>("path_follower");
+
+    // Example nodes (replace with your actual path nodes)
+    std::vector<Eigen::VectorXd> nodes = {
+        Eigen::Vector2d(0.0, 0.0),
+        Eigen::Vector2d(1.0, 0.0),
+        Eigen::Vector2d(1.0, 1.0),
+        Eigen::Vector2d(2.0, 2.0)
+    };
+
+    // Convert nodes to a nav_msgs::msg::Path
+    auto path = createPathFromNodes(nodes);
+
+    // Follow the path using nav2
+    followPath(path, node);
+
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+    return 0;
+}

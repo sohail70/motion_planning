@@ -16,7 +16,7 @@ class RRTX : public Planner {
     
     void setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) override;
     void plan() override;
-    std::vector<int> getPathIndex() const override;
+    std::vector<int> getPathIndex() const;
     void setStart(const Eigen::VectorXd& start) override;
     void setGoal(const Eigen::VectorXd& goal) override;
 

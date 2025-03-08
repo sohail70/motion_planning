@@ -483,21 +483,101 @@ void FMTX::plan() {
     // }
 }
 
-std::vector<int> FMTX::getPathIndex() const {
+
+
+std::vector<size_t> FMTX::getPathIndex() const {
     int idx = robot_state_index_;
-    std::vector<int> path;
+    std::vector<size_t> path_index;
     while (idx != -1) {
-        path.push_back(idx);
+        path_index.push_back(idx);
         idx = tree_.at(idx)->getParentIndex();
     }
-    return path;
+    return path_index;
 }
 
-void FMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
-    std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, 1);
-    int nearest = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]);  
+std::vector<Eigen::VectorXd> FMTX::getPathPositions() const {
+    int idx = robot_state_index_;
+    std::vector<Eigen::VectorXd> path_positions;
+    while (idx != -1) {
+        path_positions.push_back(tree_.at(idx)->getStateVlaue());
+        idx = tree_.at(idx)->getParentIndex();
+    }
+    return path_positions;
+}
 
-    robot_state_index_ = nearest;
+// void FMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
+//     std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, 1);
+//     int nearest = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]);  
+
+//     robot_state_index_ = nearest;
+// }
+
+// void FMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
+//     // constexpr int MAX_NEIGHBORS_TO_CHECK = 10; // Adjust based on node density
+//     // std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, MAX_NEIGHBORS_TO_CHECK);
+
+//     double MAX_SEARCH_RADIUS = 5.0; // Meters
+//     std::vector<size_t> nearest_indices = kdtree_->radiusSearch(robot_position, MAX_SEARCH_RADIUS);
+
+    
+//     // Iterate through neighbors to find the first valid (finite-cost) node
+//     for (size_t index : nearest_indices) {
+//         if (tree_[index]->getCost() < std::numeric_limits<double>::infinity()) {
+//             robot_state_index_ = static_cast<int>(index);
+//             return;
+//         }
+//     }
+    
+//     // Fallback: Use original nearest node (optional, log a warning)
+//     // RCLCPP_WARN(this->get_logger(), "No valid node found within %d neighbors", MAX_NEIGHBORS_TO_CHECK);
+//     robot_state_index_ = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]);
+// }
+
+void FMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
+    const double MAX_SEARCH_RADIUS = 5.0; // Meters
+    std::vector<size_t> nearest_indices = kdtree_->radiusSearch(robot_position, MAX_SEARCH_RADIUS);
+    // const int MAX_SEARCH_NODES = 30;
+    // std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, MAX_SEARCH_NODES);
+
+
+    size_t best_index = -1;
+    double min_total_cost = std::numeric_limits<double>::max();
+
+    // Calculate total cost for each candidate node: distance(robot→node) + cost(node→goal)
+    for (size_t index : nearest_indices) {
+        // Skip invalid nodes
+        if (tree_[index]->getCost() == std::numeric_limits<double>::infinity()) continue;
+
+        // Distance from robot to node
+        Eigen::VectorXd node_position = tree_[index]->getStateVlaue();
+        double dx = node_position[0] - robot_position[0];
+        double dy = node_position[1] - robot_position[1];
+        double distance_to_node = std::hypot(dx, dy);
+
+        // Total cost = distance(robot→node) + cost(node→goal)
+        double total_cost = distance_to_node + tree_[index]->getCost();
+
+        if (total_cost < min_total_cost) {
+            min_total_cost = total_cost;
+            best_index = index;
+        }
+    }
+
+    if (best_index != -1) {
+        robot_state_index_ = static_cast<int>(best_index);
+        return;
+    }
+
+    // // Fallback 1: Find any valid node (ignore total cost)
+    // for (size_t index : nearest_indices) {
+    //     if (tree_[index]->getCost() < std::numeric_limits<double>::infinity()) {
+    //         robot_state_index_ = static_cast<int>(index);
+    //         return;
+    //     }
+    // }
+
+    // // Fallback 2: Nearest node (even if invalid)
+    // robot_state_index_ = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]);
 }
 
 
@@ -597,7 +677,7 @@ void FMTX::visualizeTree() {
 
 }
 
-void FMTX::visualizePath(std::vector<int> path_indices) {
+void FMTX::visualizePath(std::vector<size_t> path_indices) {
     std::vector<Eigen::VectorXd> nodes;
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
 
@@ -619,6 +699,28 @@ void FMTX::visualizePath(std::vector<int> path_indices) {
     visualization_->visualizeEdges(edges,"map","0.0,1.0,0.0");
 }
 
+
+void FMTX::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_) {
+    // Extract nodes and edges from the smoothed path
+    std::vector<Eigen::VectorXd> nodes;
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+
+    // // Add nodes to the list
+    // for (const auto& point : shortest_path_) {
+    //     nodes.push_back(point); // Each point in the smoothed path is a node
+    // }
+
+    // Add edges to the list
+    for (size_t i = 1; i < shortest_path_.size(); ++i) {
+        edges.emplace_back(shortest_path_[i - 1], shortest_path_[i]); // Create edges between consecutive points
+    }
+
+    // Use the visualization class to visualize nodes and edges
+    if (visualization_) {
+        // visualization_->visualizeNodes(nodes); // Visualize the nodes
+        visualization_->visualizeEdges(edges, "map", "0.0,1.0,0.0"); // Visualize the edges in green
+    } 
+}
 
 // TODO: This should only be on dynamic obstacles! --> But how do we know maybe some static obstalce become dynamic! --> not motion planning concern maybe some method to classify static and dynamic obstalces!
 std::unordered_set<int> FMTX::findSamplesNearObstacles(
@@ -697,6 +799,7 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     auto current = findSamplesNearObstacles(obstacles, max_length); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
     // auto [current,current2] = findSamplesNearObstaclesDual(obstacles, 2.2); 
 
+    // When you put this here it mean no update on the tree is gonna happens unless some obstalce change happens in the environment so don't just move the robot anywhere you like by grabbing it and expect the tree to react!
     if (current==samples_in_obstacles_) // TODO: I think this should be doen in gazeboObstalceChecker level not here! the obstacleChecker needs to be able to report if obstalces has changed.
         return; //because nothing has changed! 
 
@@ -821,14 +924,14 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     // std::string color_str = "0.0,0.0,1.0"; // Blue color
     // visualization_->visualizeNodes(positions,"map",color_str);
 
-    std::vector<Eigen::VectorXd> positions2;
-    for (const auto& y: v_open_set_) {
-        Eigen::VectorXd vec(2);
-        vec << tree_.at(y)->getStateVlaue();
-        positions2.push_back(vec);
-    }
-    std::string color_str = "0.0,0.0,1.0"; // Blue color
-    visualization_->visualizeNodes(positions2,"map",color_str);
+    // std::vector<Eigen::VectorXd> positions2;
+    // for (const auto& y: v_open_set_) {
+    //     Eigen::VectorXd vec(2);
+    //     vec << tree_.at(y)->getStateVlaue();
+    //     positions2.push_back(vec);
+    // }
+    // std::string color_str = "0.0,0.0,1.0"; // Blue color
+    // visualization_->visualizeNodes(positions2,"map",color_str);
     
 
     // std::vector<Eigen::VectorXd> positions3;
@@ -924,4 +1027,59 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 
 void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
     v_unvisited_set_.insert(removed.begin() , removed.end());
+}
+
+
+
+
+std::vector<Eigen::VectorXd> FMTX::getSmoothedPathPositions(int num_intermediates = 3, int smoothing_window = 3) const {
+    auto original_path = getPathPositions();
+    std::reverse(original_path.begin(), original_path.end());
+
+    auto interpolated_path = interpolatePath(original_path, num_intermediates);
+    auto smoothed_path = smoothPath(interpolated_path, smoothing_window);
+    // smoothed_path_ = smoothed_path;
+    return smoothed_path;
+}
+
+
+
+std::vector<Eigen::VectorXd> FMTX::interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const {
+    std::vector<Eigen::VectorXd> new_path;
+    if (path.empty()) return new_path;
+
+    new_path.push_back(path[0]);
+    for (size_t i = 1; i < path.size(); ++i) {
+        const Eigen::VectorXd& prev = path[i-1];
+        const Eigen::VectorXd& curr = path[i];
+
+        for (int j = 1; j <= num_intermediates; ++j) {
+            double t = static_cast<double>(j) / (num_intermediates + 1);
+            Eigen::VectorXd interpolated = prev + t * (curr - prev);
+            new_path.push_back(interpolated);
+        }
+        new_path.push_back(curr);
+    }
+    return new_path;
+}
+
+std::vector<Eigen::VectorXd> FMTX::smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const {
+    if (path.size() <= 2 || window_size < 1) return path;
+
+    std::vector<Eigen::VectorXd> smoothed_path = path;
+    int half_window = window_size / 2;
+
+    for (size_t i = 0; i < path.size(); ++i) {
+        int start = std::max(0, static_cast<int>(i) - half_window);
+        int end = std::min(static_cast<int>(path.size() - 1), static_cast<int>(i) + half_window);
+        int count = end - start + 1;
+
+        Eigen::VectorXd sum = Eigen::VectorXd::Zero(path[0].size());
+        for (int j = start; j <= end; ++j) {
+            sum += path[j];
+        }
+        smoothed_path[i] = sum / count;
+    }
+
+    return smoothed_path;
 }

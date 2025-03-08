@@ -11,6 +11,7 @@
 struct Obstacle {
     Eigen::Vector2d position;
     double radius;
+    
 };
 
 

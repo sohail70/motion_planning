@@ -33,6 +33,7 @@
  *       BUT IM NOT SURE IF IT WORKS. YOU HAVE TO COMPLETELY KNOW ABOUT THE REGION AND PU ALL THE NECESSARY NODES INTO VOPEN FOR THAT REGION SO THAT THE PLAN CONNECTION PROCEDURE DOES ITS JOB
  * 
  */
+
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
@@ -41,26 +42,109 @@
 #include "motion_planning/utils/ros2_manager.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
 
+#include <csignal>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <cstring>
+#include <iostream>
+#include <thread>
+#include <atomic>
+
+std::atomic<bool> running{true}; // Flag to control the infinite loop
+pid_t child_pid = -1;
+
+void runRosGzBridge() {
+    // Launch parameter_bridge as a child process with suppressed logs
+    child_pid = fork();
+    if (child_pid == 0) {
+        // Child process: Execute the ros_gz_bridge command with suppressed logs
+        execlp("ros2", "ros2", "run", "ros_gz_bridge", "parameter_bridge", "--ros-args", 
+               "-p", "config_file:=/home/sohail/jazzy_ws/src/simple_robot/params/ros_gz_bridge.yaml",
+               "--log-level", "error", // Suppress logs below "error" severity
+               (char *)NULL);
+        // If execlp fails, print an error and exit
+        std::cerr << "Failed to launch parameter_bridge: " << strerror(errno) << std::endl;
+        exit(EXIT_FAILURE);
+    } else if (child_pid < 0) {
+        // Fork failed
+        std::cerr << "Failed to fork process: " << strerror(errno) << std::endl;
+        return;
+    }
+
+    // Parent process: Wait for the child process to finish
+    int status;
+    waitpid(child_pid, &status, 0);
+    if (WIFEXITED(status)) {
+        std::cout << "ros_gz_bridge exited with status: " << WEXITSTATUS(status) << std::endl;
+    } else {
+        std::cerr << "ros_gz_bridge terminated abnormally" << std::endl;
+    }
+}
+
+void sigint_handler(int sig) {
+    if (child_pid > 0) {
+        // Terminate the child process
+        kill(child_pid, SIGTERM);
+        waitpid(child_pid, nullptr, 0);
+        child_pid = -1;
+    }
+    running = false; // Stop the main loop
+    rclcpp::shutdown();
+}
 
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
+
+    // Set up SIGINT handler
+    struct sigaction sa;
+    sa.sa_handler = sigint_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    if (sigaction(SIGINT, &sa, nullptr) < 0) {
+        std::cerr << "Failed to set signal handler: " << strerror(errno) << std::endl;
+        rclcpp::shutdown();
+        return EXIT_FAILURE;
+    }
+
+    // Launch ros_gz_bridge in a separate thread
+    std::thread ros_gz_bridge_thread(runRosGzBridge);
+    ros_gz_bridge_thread.detach(); // Detach the thread to run independently
+
     // Create ROS node
     auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
     auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/my_world2_dr.sdf");
     for (auto& el : obstacle_radii) {
-        std::cout<<el.first <<"  " << el.second << "\n";
+        std::cout << el.first << "  " << el.second << "\n";
     }
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>("tugbot", obstacle_radii); // Robot model name and obstacle radius
+    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>("tugbot", obstacle_radii);
     auto ros2_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization);
 
+    bool use_rviz_goal = false;
+
+
+
+    int dim = 2;
+    Eigen::VectorXd start_position = Eigen::VectorXd::Zero(dim);
+    if (use_rviz_goal==true){
+        // Start a spinner thread to process ROS2Manager's callbacks
+        std::thread ros2_spinner_thread([ros2_manager]() {
+            rclcpp::spin(ros2_manager);
+        });
+        ros2_spinner_thread.detach(); // Detach to run independently
+        start_position = ros2_manager->getStartPosition(); // I put a cv in here so i needed the above thread so it wouldn't stop the ros2 callbacks! --> also if use_rviz_goal==false no worries because the default value for this func is 0,0
+    }
+
+
+    bool follow_path = true;
     bool use_robot = true; 
     bool using_factory = true;
-    int dim = 2;
     auto problem_def = std::make_unique<ProblemDefinition>(dim);
-    problem_def->setStart(Eigen::VectorXd::Zero(dim));
-    problem_def->setGoal(Eigen::VectorXd::Ones(dim)*50);
+    problem_def->setStart(start_position); //Root of the tree
+    // problem_def->setStart(Eigen::VectorXd::Zero(dim));
+    problem_def->setGoal(Eigen::VectorXd::Ones(dim) * 50); // where the robot starts!
     problem_def->setBounds(-50, 50);
 
     PlannerParams params;
@@ -68,51 +152,67 @@ int main(int argc, char **argv) {
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");
 
-
     std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 5000);
-
     std::unique_ptr<Planner> planner;
 
     if (using_factory)
-        planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace), std::move(problem_def) ,obstacle_checker);
+        planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace), 
+                                 std::move(problem_def), obstacle_checker);
     else
-        planner = std::make_unique<FMTX>(std::move(statespace), std::move(problem_def) , obstacle_checker);
-    planner->setup(std::move(params) , visualization);
-
-    // auto robot = obstacle_checker->getRobotPosition();
-    // if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
-    //     dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
-
+        planner = std::make_unique<FMTX>(std::move(statespace), std::move(problem_def), obstacle_checker);
+    planner->setup(std::move(params), visualization);
 
     auto start = std::chrono::high_resolution_clock::now();
-    // Plan the static one!
     planner->plan();
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    if (duration.count()>0)
+    if (duration.count() > 0)
         std::cout << "Time taken for the Static env: " << duration.count() << " milliseconds\n";
 
-    while (true) {
+    while (running && rclcpp::ok()) {
         auto obstacles = obstacle_checker->getObstaclePositions();
         auto robot = obstacle_checker->getRobotPosition();
-        if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
+        if (use_robot && robot(0) != 0.0 && robot(1) != 0.0 )
             dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
 
         auto start = std::chrono::high_resolution_clock::now();
         dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
-        // planner->plan();
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        // if (duration.count()>0)
-        //     std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
+        if (duration.count() > 0)
+            std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
 
 
+        std::vector<Eigen::VectorXd> shortest_path_;
+        // shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getPathPositions();
+        shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(3,3);
 
-        dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<FMTX*>(planner.get())->getPathIndex());
+        if (follow_path == true) {
+            // nav2 if you have a occupancy map
+            // auto updated_path = dynamic_cast<FMTX*>(planner.get())->getPathPositions();
+            // ros2_manager->sendPathToNav2(updated_path);
+
+
+            // pure pursuit
+            ros2_manager->followPath(shortest_path_);
+
+            // Gz plugin
+            // obstacle_checker->publishPath(dynamic_cast<FMTX*>(planner.get())->getPathPositions());
+
+        }
+
+
+        // dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<FMTX*>(planner.get())->getPathIndex());
+        dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
-        rclcpp::spin_some(ros2_manager);
-    }
 
+        // ros2_manager->setCmdVel(0.0, 0.2);
+
+        if (use_rviz_goal==false){
+            rclcpp::spin_some(ros2_manager);
+        }
+    }
 
     // // Start the timer
     // auto start_time = std::chrono::high_resolution_clock::now();
@@ -132,6 +232,19 @@ int main(int argc, char **argv) {
     // }
 
 
+    
+    // Cleanup
+    if (child_pid > 0) {
+        kill(child_pid, SIGTERM);
+        waitpid(child_pid, nullptr, 0);
+    }
     rclcpp::shutdown();
-
+    return 0;
 }
+
+
+
+
+
+
+

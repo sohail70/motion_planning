@@ -347,7 +347,7 @@ class Planner {
     
     virtual void setup(const PlannerParams& params , std::shared_ptr<Visualization> visualization) = 0;
     virtual void plan() = 0;
-    virtual std::vector<int> getPathIndex() const = 0;
+    // virtual std::vector<int> getPathIndex() const = 0;
 
  protected:
 
