@@ -6,7 +6,7 @@
 #include "motion_planning/state_space/state.hpp"
 #include "motion_planning/state_space/statespace.hpp"
 #include "motion_planning/utils/problem_definition.hpp"
-#include "motion_planning/utils/planner_params.hpp"
+#include "motion_planning/utils/params.hpp"
 
 #include "motion_planning/utils/nano_flann.hpp"
 #include "motion_planning/utils/visualization.hpp"
@@ -331,6 +331,12 @@ public:
     size_t size() const {
         return heap.size();
     }
+
+    void clear() {
+        heap.clear();  // Clear the heap
+        std::fill(elementIndex.begin(), elementIndex.end(), -1);  // Reset all indices to -1
+    }
+
 };
 
 
@@ -345,7 +351,7 @@ class Planner {
     virtual void setStart(const Eigen::VectorXd& start) = 0;
     virtual void setGoal(const Eigen::VectorXd& goal) = 0;
     
-    virtual void setup(const PlannerParams& params , std::shared_ptr<Visualization> visualization) = 0;
+    virtual void setup(const Params& params , std::shared_ptr<Visualization> visualization) = 0;
     virtual void plan() = 0;
     // virtual std::vector<int> getPathIndex() const = 0;
 

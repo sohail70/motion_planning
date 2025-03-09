@@ -6,6 +6,8 @@ valgrind --tool=callgrind ./my_program
 kcachegrind callgrind.out
 
 
+pkill -f "parameter_bridge"
+pkill -f "gz"
 
 
 

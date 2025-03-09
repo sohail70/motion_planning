@@ -14,20 +14,64 @@ std::string getRandomColor() {
     ss << std::fixed << std::setprecision(2) << r << "," << g << "," << b;
     return ss.str();
 }
-FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::unique_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(std::move(statespace)), problem_(std::move(problem_def)), obs_checker_(obs_checker),v_open_heap_(50) {
+FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(std::move(statespace)), problem_(problem_def), obs_checker_(obs_checker),v_open_heap_(50) {
     std::cout<< "FMTX Constructor \n";
 
 }
 
-void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) {
+void FMTX::clearPlannerState() {
+    // Clear all critical variables
+    start_.reset();
+    goal_.reset();
+    path_.clear();
+
+    // for (auto& node : tree_) {
+    //     node.reset();  // Explicitly reset each shared_ptr
+    // }
+    tree_.clear();  // Clear the vector
+
+    // Reset the StateSpace
+    statespace_->reset();
+
+    // if(kdtree_)
+    //     kdtree_->clearData();
+    kdtree_.reset();
+
+    v_open_set_.clear();
+    v_unvisited_set_.clear();
+    v_open_heap_.clear();
+    boundary_.clear();
+
+    neighbors_dict_.clear();
+    // samples_in_obstacles_.clear();
+    // samples_in_obstacles_2_.clear();
+    inflated_samples_.clear();
+
+    // edge_length_.clear();
+    max_length_edge_ind = -1;
+    max_length = -std::numeric_limits<double>::infinity();
+
+    root_state_index_ = -1;
+    robot_state_index_ = -1;
+
+    invalid_best_neighbors.clear();
+}
+
+
+void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
 
     auto start = std::chrono::high_resolution_clock::now();
+    clearPlannerState();
 
     visualization_ = visualization;
 
 
-
     num_of_samples_ = params.getParam<int>("num_of_samples");
+    partial_update = params.getParam<bool>("partial_update");
+    use_heuristic= params.getParam<bool>("use_heuristic");
+    partial_plot = params.getParam<bool>("partial_plot");
+    obs_cache = params.getParam<bool>("obs_cache");
+
     lower_bound_ = problem_->getLowerBound();
     upper_bound_ = problem_->getUpperBound();
     use_kdtree = params.getParam<bool>("use_kdtree");
@@ -162,7 +206,8 @@ void FMTX::plan() {
     // current_timestamp++;
 
 
-    while (!v_open_heap_.empty() && v_open_heap_.top().index != robot_state_index_) {
+    // while (!v_open_heap_.empty()) {
+    while (!v_open_heap_.empty() && (partial_update ? v_open_heap_.top().index != robot_state_index_ : true)) {
     // while (!v_open_heap_.empty() && v_unvisited_set_.find(robot_state_index_) != v_unvisited_set_.end() ) {
 
         // if (v_open_heap_.size() != v_open_set_.size()) {
@@ -173,10 +218,7 @@ void FMTX::plan() {
         auto top_element = v_open_heap_.top();
         double cost = top_element.min_key;
         int zIndex = top_element.index;
-        // if (zIndex==robot_state_index_){
-        //     // // v_open_heap_.push({tree_.at(zIndex)->getCost(), zIndex});
-        //     // QueueElement2 new_element ={tree_.at(zIndex)->getCost(), zIndex};
-        //     // v_open_heap_.add(new_element);
+        // if (partial_update == true && zIndex==robot_state_index_){
         //     break;
         // }
         v_open_heap_.pop();
@@ -728,24 +770,10 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples;
-    // double robot_range = 20.0;    
-    // Eigen::Vector2d robot_position;
-    // robot_position << tree_.at(robot_state_index_)->getStateVlaue();
     for (const auto& obstacle : obstacles) {
-        // if (use_range==true) {
-        //     if ((obstacle - robot_position).norm() <= robot_range) {
-        //         // Query samples within obstacle radius (5 units)
-        //         auto sample_indices = kdtree_->radiusSearch(obstacle, obstacle_radius);
-        //         conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
-        //     }
-        // }
-        // else {
-                // Query samples within obstacle radius (5 units)
-                // auto sample_indices = kdtree_->radiusSearch(obstacle.position, inflation + obstacle.radius);
-                auto sample_indices = kdtree_->radiusSearch(obstacle.position, std::sqrt(std::pow(obstacle.radius, 2) + std::pow(max_length / 2.0, 2)));
-                
-                conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
-        // }
+        // auto sample_indices = kdtree_->radiusSearch(obstacle.position, 1.5 * obstacle.radius);
+        auto sample_indices = kdtree_->radiusSearch(obstacle.position, std::sqrt(std::pow(obstacle.radius, 2) + std::pow(max_length / 2.0, 2)));
+        conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
     }
     
     return conflicting_samples;
@@ -772,16 +800,27 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNea
 void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 
     // Calculating the max length when the max_length edge is updated or the obstalce is on the previous max_length edge!
-    if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
-    {
-        auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
-            return a.second < b.second;
-        });
-        max_length = max_it->second;
-        max_length_edge_ind = max_it->first;
-        // std::cout<<max_it->first << "  " << max_it->second <<" \n"; 
 
-    }
+
+    /*
+        Now that im thinking about this the max_length's upper bound is neighborhood_radius_ in fmtx! this is not a rrt star based algorithm!
+        I guess we don't need to track the max_edge! and we can easily use rn for this but for now i'll leave this as is!
+    
+    */
+    max_length = neighborhood_radius_; // At first Static plan we don't have max_length --> either do this or do a static plan
+
+    // if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
+    // {
+    //     auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
+    //         return a.second < b.second;
+    //     });
+    //     max_length = max_it->second;
+    //     max_length_edge_ind = max_it->first;
+    //     // std::cout<<max_it->first << "  " << max_it->second <<" \n"; 
+
+    // }
+
+
     // // Visualizing the maximum length node
     // if (max_length_edge_ind !=-1){
     //     std::string color_str = "0.0,0.0,1.0"; // Blue color
@@ -802,6 +841,7 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     // When you put this here it mean no update on the tree is gonna happens unless some obstalce change happens in the environment so don't just move the robot anywhere you like by grabbing it and expect the tree to react!
     if (current==samples_in_obstacles_) // TODO: I think this should be doen in gazeboObstalceChecker level not here! the obstacleChecker needs to be able to report if obstalces has changed.
         return; //because nothing has changed! 
+    
 
     std::vector<int> added;
 
@@ -947,7 +987,7 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     //     v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
     // }
    
-    plan(); //lets put it outside!
+    // plan(); //lets put it outside!
 
 
 
@@ -990,6 +1030,8 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
         The reason is these help the finding of the v open nodes later in the update obstalce sample function
         If we only rely on that mechansim we can't find connections to other branches because we are blind to see other branches! like on the other side of the tree
         Imagine the one side of the plier and some nodes get better cost if they get connected to the other tip of the plier but since we didn't put the other side nodes into v open we never know!
+
+        (side note: Also imagine if the the two tips of the the plier is far apart so you can't rely on the neighborhood raidus of one side to get to the other!)
 
         So that condtion in the main loop is just for one direction expansion and is good for the nodes that gor removed from the obstalce--> Although its a reasonable question here also to ask ourselves why its not the case
         for the remove obstlace to now know their v open at first!

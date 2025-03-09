@@ -31,6 +31,12 @@ class StateSpace {
     int getNumStates() const { return num_states_; }
     int getDimension() const { return dimension_; }
 
+    void reset() {
+        num_states_ = 0; // Reset the counter
+        // states_.resize(0, dimension_); // Clear the states matrix
+        std::cout << "StateSpace reset: num_states_ = " << num_states_ << std::endl;
+    }
+
 
 
  protected:

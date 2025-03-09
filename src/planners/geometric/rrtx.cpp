@@ -1,8 +1,8 @@
 #include "motion_planning/planners/geometric/rrtx.hpp"
 
 RRTX::RRTX(std::unique_ptr<StateSpace> statespace, 
-    std::unique_ptr<ProblemDefinition> problem_def,
-    std::shared_ptr<ObstacleChecker> obs_checker): statespace_(std::move(statespace)), problem_(std::move(problem_def)), obs_checker_(obs_checker) ,inconsistency_queue_(50){
+    std::shared_ptr<ProblemDefinition> problem_def,
+    std::shared_ptr<ObstacleChecker> obs_checker): statespace_(std::move(statespace)), problem_(problem_def), obs_checker_(obs_checker) ,inconsistency_queue_(50){
         std::cout<<"RRTX constructor \n";
 }
 
@@ -39,7 +39,7 @@ void RRTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
 
 
 
-void RRTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) {
+void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
     auto start = std::chrono::high_resolution_clock::now();
     sample_counter = 0;
 

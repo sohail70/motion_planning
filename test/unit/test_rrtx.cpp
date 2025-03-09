@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
     problem_def->setGoal(Eigen::VectorXd::Ones(dim)*50);
     problem_def->setBounds(-50, 50);
 
-    PlannerParams params;
+    Params params;
     params.setParam("num_of_samples", 5000);
     params.setParam("use_kdtree", true);
     params.setParam("kdtree_type", "NanoFlann");

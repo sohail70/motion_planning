@@ -19,7 +19,7 @@ FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::unique_ptr<ProblemDefini
 
 }
 
-void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) {
+void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
 
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -709,7 +709,7 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     //     v_unvisited_set_.erase(*it);  // Only erase each element if it exists in v_unvisited_set_
     // }
    
-    plan(); //lets put it outside!
+    // plan(); //lets put it outside!
 
 
 

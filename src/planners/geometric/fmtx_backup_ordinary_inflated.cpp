@@ -19,7 +19,7 @@ FMTX::FMTX(std::unique_ptr<StateSpace> statespace ,std::unique_ptr<ProblemDefini
 
 }
 
-void FMTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) {
+void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
 
     auto start = std::chrono::high_resolution_clock::now();
 

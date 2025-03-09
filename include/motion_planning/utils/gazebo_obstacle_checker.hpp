@@ -3,13 +3,12 @@
 
 #include "motion_planning/utils/obstacle_checker.hpp"
 #include "motion_planning/utils/visualization.hpp"
-
+#include "motion_planning/utils/params.hpp"
 class GazeboObstacleChecker : public ObstacleChecker {
 public:
 
-    GazeboObstacleChecker(const std::string& robot_model_name,
-                        const std::unordered_map<std::string, double>& obstacle_radii,
-                        const std::string& world_name = "default");
+    GazeboObstacleChecker(const Params& params,
+                        const std::unordered_map<std::string, double>& obstacle_radii);
 
     ~GazeboObstacleChecker();
 
@@ -41,6 +40,7 @@ private:
                                                   const Eigen::Vector2d& center,
                                                   double radius);
     std::string robot_model_name_;
+    std::string world_name_;
     double obstacle_radius_;
     mutable std::mutex data_mutex_; // mutable allows locking in const methods
     Eigen::Vector2d robot_position_;
@@ -50,10 +50,11 @@ private:
     gz::transport::Node gz_node_;
     gz::transport::Node::Publisher path_pub_;  // Publisher for the path
 
-    bool use_range = true;
-    double sensor_range = 20.0;
-    
-    bool persistent_static_obstacles = true;
+    bool use_range;
+    double sensor_range;
+    bool persistent_static_obstacles;
+
+
     std::unordered_map<std::string, Obstacle> static_obstacle_positions_;
     
 

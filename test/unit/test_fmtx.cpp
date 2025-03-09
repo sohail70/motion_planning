@@ -95,7 +95,7 @@ void sigint_handler(int sig) {
 
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
-
+    //////////////////////////////////////////////////////////////////////////////////////////////////
     // Set up SIGINT handler
     struct sigaction sa;
     sa.sa_handler = sigint_handler;
@@ -111,6 +111,51 @@ int main(int argc, char **argv) {
     std::thread ros_gz_bridge_thread(runRosGzBridge);
     ros_gz_bridge_thread.detach(); // Detach the thread to run independently
 
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+    // Create Params for Controller
+    Params controller_params;
+    controller_params.setParam("kp_angular", 1.0);
+    controller_params.setParam("max_angular_speed", 1.5);
+    controller_params.setParam("lookahead_distance", 1.5);
+    controller_params.setParam("control_loop_dt", 0.05);
+
+    // Create Params for Nav2Controller
+    Params nav2_controller_params;
+    nav2_controller_params.setParam("follow_path_topic", "/follow_path");
+    nav2_controller_params.setParam("max_speed", 2.0);
+
+    // Create Params for ROS2Manager
+    Params ros2_manager_params;
+    ros2_manager_params.setParam("follow_path", true);
+    ros2_manager_params.setParam("controller", "pure_pursuit");
+
+    Params gazebo_params;
+    gazebo_params.setParam("robot_model_name", "tugbot");
+    gazebo_params.setParam("default_robot_x", 48.0); // in case you want to test the planner without running gz sim
+    gazebo_params.setParam("default_robot_y", 48.0);
+    gazebo_params.setParam("world_name", "default");
+    gazebo_params.setParam("use_range", false);
+    gazebo_params.setParam("sensor_range", 20.0);
+    gazebo_params.setParam("persistent_static_obstacles", true);
+
+    Params planner_params;
+    planner_params.setParam("num_of_samples", 5000);
+    planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
+    planner_params.setParam("kdtree_type", "NanoFlann");
+    planner_params.setParam("partial_update", false);
+    planner_params.setParam("obs_cache", true);
+    planner_params.setParam("partial_plot", false);
+    planner_params.setParam("use_heuristic", false);
+
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Create Controller and Nav2Controller objects
+    auto controller = std::make_shared<Controller>(controller_params);
+    auto nav2_controller = std::make_shared<Nav2Controller>(nav2_controller_params); // TODO: later i should omit this from ros2 manager by creating a highe level abstraction for controllers!
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+
     // Create ROS node
     auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
@@ -119,8 +164,12 @@ int main(int argc, char **argv) {
     for (auto& el : obstacle_radii) {
         std::cout << el.first << "  " << el.second << "\n";
     }
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>("tugbot", obstacle_radii);
-    auto ros2_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization);
+    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_radii);
+    auto ros2_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization, controller, nav2_controller, ros2_manager_params);
+
+
+
+
 
     bool use_rviz_goal = false;
 
@@ -128,55 +177,53 @@ int main(int argc, char **argv) {
 
     int dim = 2;
     Eigen::VectorXd start_position = Eigen::VectorXd::Zero(dim);
-    if (use_rviz_goal==true){
+    // if (use_rviz_goal==true){
         // Start a spinner thread to process ROS2Manager's callbacks
-        std::thread ros2_spinner_thread([ros2_manager]() {
-            rclcpp::spin(ros2_manager);
-        });
-        ros2_spinner_thread.detach(); // Detach to run independently
+        // std::thread ros2_spinner_thread([ros2_manager]() {
+        //     rclcpp::spin(ros2_manager);
+        // });
+        // ros2_spinner_thread.detach(); // Detach to run independently
         start_position = ros2_manager->getStartPosition(); // I put a cv in here so i needed the above thread so it wouldn't stop the ros2 callbacks! --> also if use_rviz_goal==false no worries because the default value for this func is 0,0
-    }
+    // }
 
 
     bool follow_path = true;
-    bool use_robot = true; 
-    bool using_factory = true;
-    auto problem_def = std::make_unique<ProblemDefinition>(dim);
+    auto problem_def = std::make_shared<ProblemDefinition>(dim);
     problem_def->setStart(start_position); //Root of the tree
     // problem_def->setStart(Eigen::VectorXd::Zero(dim));
     problem_def->setGoal(Eigen::VectorXd::Ones(dim) * 50); // where the robot starts!
     problem_def->setBounds(-50, 50);
 
-    PlannerParams params;
-    params.setParam("num_of_samples", 5000);
-    params.setParam("use_kdtree", true);
-    params.setParam("kdtree_type", "NanoFlann");
+
 
     std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 5000);
-    std::unique_ptr<Planner> planner;
+    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace),problem_def, obstacle_checker);
+    planner->setup(planner_params, visualization);
 
-    if (using_factory)
-        planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace), 
-                                 std::move(problem_def), obstacle_checker);
-    else
-        planner = std::make_unique<FMTX>(std::move(statespace), std::move(problem_def), obstacle_checker);
-    planner->setup(std::move(params), visualization);
-
-    auto start = std::chrono::high_resolution_clock::now();
-    planner->plan();
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    if (duration.count() > 0)
-        std::cout << "Time taken for the Static env: " << duration.count() << " milliseconds\n";
+    // auto start = std::chrono::high_resolution_clock::now();
+    // planner->plan();
+    // auto end = std::chrono::high_resolution_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    // if (duration.count() > 0)
+    //     std::cout << "Time taken for the Static env: " << duration.count() << " milliseconds\n";
 
     while (running && rclcpp::ok()) {
+        if (ros2_manager->hasNewGoal()) {
+            start_position = ros2_manager->getStartPosition();
+            problem_def->setStart(start_position); //Root of the tree
+            planner->setup(planner_params, visualization);
+            // planner->plan();
+        }
+
+
+
         auto obstacles = obstacle_checker->getObstaclePositions();
         auto robot = obstacle_checker->getRobotPosition();
-        if (use_robot && robot(0) != 0.0 && robot(1) != 0.0 )
-            dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
+        dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
 
         auto start = std::chrono::high_resolution_clock::now();
         dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
+        planner->plan();
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         if (duration.count() > 0)
@@ -186,32 +233,12 @@ int main(int argc, char **argv) {
         std::vector<Eigen::VectorXd> shortest_path_;
         // shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getPathPositions();
         shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(3,3);
-
-        if (follow_path == true) {
-            // nav2 if you have a occupancy map
-            // auto updated_path = dynamic_cast<FMTX*>(planner.get())->getPathPositions();
-            // ros2_manager->sendPathToNav2(updated_path);
-
-
-            // pure pursuit
-            ros2_manager->followPath(shortest_path_);
-
-            // Gz plugin
-            // obstacle_checker->publishPath(dynamic_cast<FMTX*>(planner.get())->getPathPositions());
-
-        }
-
-
+        ros2_manager->followPath(shortest_path_);
+  
         // dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<FMTX*>(planner.get())->getPathIndex());
         dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
-
-        // ros2_manager->setCmdVel(0.0, 0.2);
-
-        if (use_rviz_goal==false){
-            rclcpp::spin_some(ros2_manager);
-        }
+        rclcpp::spin_some(ros2_manager);
     }
 
     // // Start the timer

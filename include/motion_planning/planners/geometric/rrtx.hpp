@@ -11,10 +11,10 @@
 class RRTX : public Planner {
  public:
     RRTX(std::unique_ptr<StateSpace> statespace, 
-        std::unique_ptr<ProblemDefinition> problem_def,
+        std::shared_ptr<ProblemDefinition> problem_def,
         std::shared_ptr<ObstacleChecker> obs_checker);
     
-    void setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) override;
+    void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
     void plan() override;
     std::vector<int> getPathIndex() const;
     void setStart(const Eigen::VectorXd& start) override;
@@ -33,7 +33,7 @@ class RRTX : public Planner {
     std::shared_ptr<Visualization> visualization_;
     std::shared_ptr<ObstacleChecker> obs_checker_;
     std::unique_ptr<StateSpace> statespace_;
-    std::unique_ptr<ProblemDefinition> problem_;
+    std::shared_ptr<ProblemDefinition> problem_;
     std::unordered_set<int> v_indices_;
 
     std::unordered_set<int> samples_in_obstacles_; 

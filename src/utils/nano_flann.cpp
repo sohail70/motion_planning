@@ -10,6 +10,7 @@ NanoFlann::NanoFlann(int dimension) : dimension_(dimension), data_(0, dimension)
 
 }
 
+
 void NanoFlann::addPoint(const Eigen::VectorXd& stateValue) {
     Eigen::VectorXd value = stateValue;
     if (value.size() != dimension_) {

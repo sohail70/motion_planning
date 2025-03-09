@@ -1,15 +1,20 @@
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
 
-GazeboObstacleChecker::GazeboObstacleChecker(const std::string& robot_model_name,
-                        const std::unordered_map<std::string, double>& obstacle_radii,
-                        const std::string& world_name)
-        : robot_model_name_(robot_model_name),
-          obstacle_radii_(obstacle_radii),
+GazeboObstacleChecker::GazeboObstacleChecker(const Params& params,
+                        const std::unordered_map<std::string, double>& obstacle_radii)
+        : obstacle_radii_(obstacle_radii),
           robot_position_(Eigen::Vector2d::Zero()),
           robot_orientation_(Eigen::VectorXd(4)) {  // Initialize orientation as a 4D vector for quaternion
 
+    robot_model_name_ = params.getParam<std::string>("robot_model_name");
+    world_name_ = params.getParam<std::string>("world_name");
+    use_range = params.getParam<bool>("use_range");
+    sensor_range = params.getParam<double>("sensor_range");
+    persistent_static_obstacles = params.getParam<bool>("persistent_static_obstacles");
+    robot_position_ << params.getParam<double>("default_robot_x"), params.getParam<double>("default_robot_y");
+
     // Subscribe to the robot pose topic
-    std::string robot_pose_topic = "/model/" + robot_model_name + "/tf";
+    std::string robot_pose_topic = "/model/" + robot_model_name_ + "/tf";
     if (!gz_node_.Subscribe(robot_pose_topic, &GazeboObstacleChecker::robotPoseCallback, this)) {
             std::cerr << "Failed to subscribe to robot pose topic: " << robot_pose_topic << std::endl;
         } else {
@@ -17,7 +22,7 @@ GazeboObstacleChecker::GazeboObstacleChecker(const std::string& robot_model_name
     }
     
 
-    std::string topic = "/world/" + world_name + "/pose/info";
+    std::string topic = "/world/" + world_name_ + "/pose/info";
     if (!gz_node_.Subscribe(topic, &GazeboObstacleChecker::poseInfoCallback, this)) {
         std::cerr << "Failed to subscribe to Gazebo topic: " << topic << std::endl;
     }

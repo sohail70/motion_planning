@@ -25,8 +25,8 @@ struct pair_hash {
 
 class FMTX : public Planner {
  public:
-            FMTX(std::unique_ptr<StateSpace> statespace , std::unique_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
-            void setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) override;
+            FMTX(std::unique_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
+            void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
             void plan() override;
             std::vector<size_t> getPathIndex() const;
             std::vector<Eigen::VectorXd> getPathPositions() const;
@@ -69,6 +69,9 @@ class FMTX : public Planner {
             std::vector<Eigen::VectorXd> smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const;
             std::vector<Eigen::VectorXd> interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const;
 
+            void clearPlannerState();
+
+
  private:
             std::shared_ptr<State> start_;
             std::shared_ptr<State> goal_;
@@ -77,7 +80,7 @@ class FMTX : public Planner {
             std::shared_ptr<KDTree> kdtree_;
 
             std::unique_ptr<StateSpace> statespace_;
-            std::unique_ptr<ProblemDefinition> problem_;
+            std::shared_ptr<ProblemDefinition> problem_;
             
             std::shared_ptr<Visualization> visualization_;
             std::shared_ptr<ObstacleChecker> obs_checker_;
@@ -114,7 +117,7 @@ class FMTX : public Planner {
             bool partial_plot = false;
             // bool inflation = false;
             bool use_heuristic = false;
-
+            bool partial_update = false;
 
             // std::vector<std::vector<bool>> invalid_best_neighbors;
             // std::vector<std::vector<bool>> invalid_best_neighbors;

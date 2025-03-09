@@ -4,7 +4,7 @@
 #include <string>
 #include <stdexcept>
 
-class PlannerParams {
+class PlanneParams {
  public:
     template <typename T>
     T getParam(const std::string& key) const {

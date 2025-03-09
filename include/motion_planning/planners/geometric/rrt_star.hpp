@@ -17,7 +17,7 @@ class RRTX : public Planner {
         std::unique_ptr<ProblemDefinition> problem_def,
         std::shared_ptr<ObstacleChecker> obs_checker);
     
-    void setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) override;
+    void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
     void plan() override;
     std::vector<int> getPathIndex() const override;
     void setStart(const Eigen::VectorXd& start) override;

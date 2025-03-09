@@ -31,7 +31,7 @@ std::vector<int> RRTX::getPathIndex() const {
 
 
 
-void RRTX::setup(const PlannerParams& params, std::shared_ptr<Visualization> visualization) {
+void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
     auto start = std::chrono::high_resolution_clock::now();
 
     visualization_ = visualization;
