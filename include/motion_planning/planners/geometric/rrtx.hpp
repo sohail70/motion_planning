@@ -17,6 +17,9 @@ class RRTX : public Planner {
     void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
     void plan() override;
     std::vector<int> getPathIndex() const;
+    std::vector<Eigen::VectorXd> getPathPositions() const;
+
+
     void setStart(const Eigen::VectorXd& start) override;
     void setGoal(const Eigen::VectorXd& goal) override;
 
@@ -25,7 +28,15 @@ class RRTX : public Planner {
 
     void visualizeTree();
     void visualizePath(std::vector<int> path_indices);
+    void visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_);
+
     void setRobotIndex(const Eigen::VectorXd& robot_position);
+    void clearPlannerState();
+
+    std::vector<Eigen::VectorXd> getSmoothedPathPositions(int num_intermediates, int smoothing_window ) const;
+    std::vector<Eigen::VectorXd> smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const;
+    std::vector<Eigen::VectorXd> interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const;
+
 
  private:
     std::vector<std::shared_ptr<TreeNode>> tree_;
@@ -61,6 +72,7 @@ class RRTX : public Planner {
     UpdatablePriorityQueue inconsistency_queue_;
 
 
+    Eigen::VectorXd robot_position_;
 
 
 

@@ -185,23 +185,16 @@ bool FMTX::isValidYnear(int index,
 
 void FMTX::plan() {
 
-    // std::vector<Eigen::VectorXd> positions2;
-    // for (const auto& y: v_open_set_) {
-    //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
-    //     positions2.push_back(vec);
-    // }
-    // // std::string color_str = "0.0,0.0,1.0"; // Blue color
-    // visualization_->visualizeNodes(positions2,"map");
-
-    // std::vector<Eigen::VectorXd> positions3;
-    // for (const auto& y: v_unvisited_set_) {
-    //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
-    //     positions3.push_back(vec);
-    // }
+    std::vector<Eigen::VectorXd> positions2;
+    for (const auto& y: v_open_set_) {
+        Eigen::VectorXd vec(2);
+        vec << tree_.at(y)->getStateVlaue();
+        positions2.push_back(vec);
+    }
     // std::string color_str = "0.0,0.0,1.0"; // Blue color
-    // visualization_->visualizeNodes(positions3,"map",color_str);
+    visualization_->visualizeNodes(positions2,"map");
+
+
 
     // std::cout<< "Plan FMTX \n";
     auto start = std::chrono::high_resolution_clock::now();
@@ -373,7 +366,7 @@ void FMTX::plan() {
                     }
                 }
 
-                // std::string color_str = "1.0,1.0,0.0"; // Blue color
+                std::string color_str = "1.0,1.0,0.0"; // Blue color
                 // visualization_->visualizeNodes(positions,"map",color_str);
 
                 // positions.clear();
@@ -498,7 +491,7 @@ void FMTX::plan() {
     }
 
 
-    // std::string color_str = "0.0,1.0,1.0"; // Blue color
+    std::string color_str = "0.0,1.0,1.0"; // Blue color
     // visualization_->visualizeNodes(positions,"map",color_str);
 
     // auto end = std::chrono::high_resolution_clock::now();
@@ -997,25 +990,24 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     }
 
 
-    // Do we need this? 
-    // if (first_method==true){
-    //     for (auto it = v_open_set_.begin(); it != v_open_set_.end(); ) {
-    //         auto node = *it;
-    //         if (tree_.at(node)->getCost()==std::numeric_limits<double>::infinity()) {
-    //             std::cout<<"NO WAY \n";
-    //         }
-    //         // if (v_unvisited_set_.count(node) != 0 || tree_.at(node)->getCost() == std::numeric_limits<double>::infinity()) {
-    //         if (v_unvisited_set_.count(node) != 0  || samples_in_obstacles_.count(node)) {
-    //             std::cout<<"WWWHHYY \n";
-    //             it = v_open_set_.erase(it); // Safely erase and move to the next element
-    //             if (v_open_heap_.contains(node)) {
-    //                 v_open_heap_.remove(node);
-    //             }
-    //         } else {
-    //             ++it; // Move to the next element
-    //         }
-    //     }
-    // }
+
+    if (first_method==true){
+        for (auto it = v_open_set_.begin(); it != v_open_set_.end(); ) {
+            auto node = *it;
+            if (tree_.at(node)->getCost()==std::numeric_limits<double>::infinity()) {
+                std::cout<<"NO WAY \n";
+            }
+            // if (v_unvisited_set_.count(node) != 0 || tree_.at(node)->getCost() == std::numeric_limits<double>::infinity()) {
+            if (v_unvisited_set_.count(node) != 0  || samples_in_obstacles_.count(node)) {
+                it = v_open_set_.erase(it); // Safely erase and move to the next element
+                if (v_open_heap_.contains(node)) {
+                    v_open_heap_.remove(node);
+                }
+            } else {
+                ++it; // Move to the next element
+            }
+        }
+    }
 
 
 
@@ -1116,7 +1108,7 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
     v_unvisited_set_.insert(orphan_nodes.begin() , orphan_nodes.end()); 
 
     if (first_method == true){
-        for (auto node : orphan_nodes) {
+        for (auto node : initial_messedup) {
             auto neighbors = near(node);
             for (const auto& neighbor : neighbors) {
                 if (v_open_set_.count(neighbor.index) == 0 &&

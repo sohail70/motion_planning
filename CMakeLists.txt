@@ -64,7 +64,8 @@ target_link_libraries(gz_obs
 # Motion Planning Library
 add_library(motion_planning
     src/planners/geometric/fmtx.cpp
-    src/planners/geometric/rrtx.cpp
+    # src/planners/geometric/rrtx.cpp
+    src/planners/geometric/rrtx2.cpp
     src/planners/planner_factory.cpp
     src/state_space/euclidean_state.cpp
     src/state_space/euclidean_statespace.cpp
@@ -83,14 +84,21 @@ target_link_libraries(test_fmtx motion_planning gz_obs)
 ament_target_dependencies(test_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_fmtx COMMAND test_fmtx)
 
-# add_executable(test_rrtx test/unit/test_rrtx.cpp)
-# target_link_libraries(test_rrtx motion_planning gz_obs)
-# ament_target_dependencies(test_rrtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-# add_test(NAME test_rrtx COMMAND test_rrtx)
+add_executable(test_rrtx test/unit/test_rrtx.cpp)
+target_link_libraries(test_rrtx motion_planning gz_obs)
+ament_target_dependencies(test_rrtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_rrtx COMMAND test_rrtx)
 
-# add_executable(test_kdtree test/unit/test_kdtree.cpp)
-# target_link_libraries(test_kdtree motion_planning)
-# add_test(NAME test_kdtree COMMAND test_kdtree)
+
+add_executable(test_rrtx2 test/unit/test_rrtx2.cpp)
+target_link_libraries(test_rrtx2 motion_planning gz_obs)
+ament_target_dependencies(test_rrtx2 rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_rrtx2 COMMAND test_rrtx2)
+
+
+add_executable(test_kdtree test/unit/test_kdtree.cpp)
+target_link_libraries(test_kdtree motion_planning)
+add_test(NAME test_kdtree COMMAND test_kdtree)
 
 # add_executable(test_state test/unit/test_state.cpp)
 # target_link_libraries(test_state motion_planning)

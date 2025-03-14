@@ -17,6 +17,13 @@ public:
         return convert<T>(it->second);
     }
 
+    // Check if a parameter exists
+    bool hasParam(const std::string& key) const {
+        return params_.find(key) != params_.end();
+    }
+
+
+
     // Specialization for const char*
     /*
     overloaded versions of setParam for const char* and std::string directly in the class. This simplifies the code and avoids the need for template specializations.
@@ -70,4 +77,18 @@ inline bool Params::convert<bool>(const std::string& value) const {
     } else {
         throw std::runtime_error("Invalid boolean value: " + value);
     }
+}
+
+
+// Specialization for std::vector<double>
+template <>
+inline std::vector<double> Params::convert<std::vector<double>>(const std::string& value) const {
+    std::vector<double> result;
+    std::stringstream ss(value);
+    double num;
+    while (ss >> num) {
+        result.push_back(num);
+        if (ss.peek() == ',' || ss.peek() == ' ') ss.ignore(); // Skip commas/spaces
+    }
+    return result;
 }

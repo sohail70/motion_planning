@@ -55,31 +55,31 @@ std::atomic<bool> running{true}; // Flag to control the infinite loop
 pid_t child_pid = -1;
 
 void runRosGzBridge() {
-    // Launch parameter_bridge as a child process with suppressed logs
-    child_pid = fork();
-    if (child_pid == 0) {
-        // Child process: Execute the ros_gz_bridge command with suppressed logs
-        execlp("ros2", "ros2", "run", "ros_gz_bridge", "parameter_bridge", "--ros-args", 
-               "-p", "config_file:=/home/sohail/jazzy_ws/src/simple_robot/params/ros_gz_bridge.yaml",
-               "--log-level", "error", // Suppress logs below "error" severity
-               (char *)NULL);
-        // If execlp fails, print an error and exit
-        std::cerr << "Failed to launch parameter_bridge: " << strerror(errno) << std::endl;
-        exit(EXIT_FAILURE);
-    } else if (child_pid < 0) {
-        // Fork failed
-        std::cerr << "Failed to fork process: " << strerror(errno) << std::endl;
-        return;
-    }
+    // // Launch parameter_bridge as a child process with suppressed logs
+    // child_pid = fork();
+    // if (child_pid == 0) {
+    //     // Child process: Execute the ros_gz_bridge command with suppressed logs
+    //     execlp("ros2", "ros2", "run", "ros_gz_bridge", "parameter_bridge", "--ros-args", 
+    //            "-p", "config_file:=/home/sohail/jazzy_ws/src/simple_robot/params/ros_gz_bridge.yaml",
+    //            "--log-level", "error", // Suppress logs below "error" severity
+    //            (char *)NULL);
+    //     // If execlp fails, print an error and exit
+    //     std::cerr << "Failed to launch parameter_bridge: " << strerror(errno) << std::endl;
+    //     exit(EXIT_FAILURE);
+    // } else if (child_pid < 0) {
+    //     // Fork failed
+    //     std::cerr << "Failed to fork process: " << strerror(errno) << std::endl;
+    //     return;
+    // }
 
-    // Parent process: Wait for the child process to finish
-    int status;
-    waitpid(child_pid, &status, 0);
-    if (WIFEXITED(status)) {
-        std::cout << "ros_gz_bridge exited with status: " << WEXITSTATUS(status) << std::endl;
-    } else {
-        std::cerr << "ros_gz_bridge terminated abnormally" << std::endl;
-    }
+    // // Parent process: Wait for the child process to finish
+    // int status;
+    // waitpid(child_pid, &status, 0);
+    // if (WIFEXITED(status)) {
+    //     std::cout << "ros_gz_bridge exited with status: " << WEXITSTATUS(status) << std::endl;
+    // } else {
+    //     std::cerr << "ros_gz_bridge terminated abnormally" << std::endl;
+    // }
 }
 
 void sigint_handler(int sig) {
@@ -95,6 +95,7 @@ void sigint_handler(int sig) {
 
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
+    
     //////////////////////////////////////////////////////////////////////////////////////////////////
     // Set up SIGINT handler
     struct sigaction sa;
@@ -113,29 +114,63 @@ int main(int argc, char **argv) {
 
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
-    // Create Params for Controller
+    // Create Params for Pure-Pursuit Controller
     Params controller_params;
-    controller_params.setParam("kp_angular", 1.0);
-    controller_params.setParam("max_angular_speed", 1.5);
+    controller_params.setParam("kp_angular", 1.2);
+    controller_params.setParam("ki_angular", 0.05);
+    controller_params.setParam("kd_angular", 0.2);
+    controller_params.setParam("cross_track_gain", 0.8);
+    controller_params.setParam("max_angular_speed", 0.5);
     controller_params.setParam("lookahead_distance", 1.5);
-    controller_params.setParam("control_loop_dt", 0.05);
+    controller_params.setParam("control_loop_dt", 0.005);
 
     // Create Params for Nav2Controller
     Params nav2_controller_params;
     nav2_controller_params.setParam("follow_path_topic", "/follow_path");
     nav2_controller_params.setParam("max_speed", 2.0);
 
+
+    Params DWA;
+    // ========== Core motion limits ==========
+    DWA.setParam("max_speed",         3.0);   // Robot can go up to 3 m/s
+    DWA.setParam("min_speed",        -2.0);   // Allow reversing if needed
+    DWA.setParam("max_yawrate",       0.8);   // Turn rate up to 1.5 rad/s
+    DWA.setParam("max_accel",         2.0);   // Accelerate up to 2 m/s^2
+    DWA.setParam("max_decel",         2.0);   // Decelerate up to 2 m/s^2
+    DWA.setParam("max_dyawrate",      1.0);   // Angular acceleration limit
+    DWA.setParam("robot_radius",      0.3);
+
+    // ========== Sampling and horizon ==========
+    DWA.setParam("dt",               0.1);    // Simulation time step in DWA
+    DWA.setParam("predict_time",     5.0);    // 2s horizon for quick re-planning
+    int sim_steps_ = (int)(DWA.getParam<double>("predict_time") / DWA.getParam<double>("dt"));
+    // -> 2.0 / 0.1 = 20 steps
+    DWA.setParam("sim_steps", sim_steps_);
+
+    DWA.setParam("speed_resolution",  0.1);
+    DWA.setParam("yawrate_resolution",0.1);
+
+    // ========== Cost weights ==========
+    DWA.setParam("obstacle_cost_gain",  3.0); // Higher => more aggressive obstacle avoidance
+    DWA.setParam("speed_cost_gain",     1.0); // Medium => encourages higher speed, but not crazy
+    DWA.setParam("goal_cost_gain",      1.0); // Balanced
+    DWA.setParam("path_cost_gain",      0.3); // Enough to stay near path, but not too strict
+
+    
+
     // Create Params for ROS2Manager
     Params ros2_manager_params;
-    ros2_manager_params.setParam("follow_path", true);
+    ros2_manager_params.setParam("use_sim_time", true);
+    ros2_manager_params.setParam("follow_path", false);
     ros2_manager_params.setParam("controller", "pure_pursuit");
+    // ros2_manager_params.setParam("controller", "dwa");
 
     Params gazebo_params;
     gazebo_params.setParam("robot_model_name", "tugbot");
     gazebo_params.setParam("default_robot_x", 48.0); // in case you want to test the planner without running gz sim
     gazebo_params.setParam("default_robot_y", 48.0);
     gazebo_params.setParam("world_name", "default");
-    gazebo_params.setParam("use_range", false);
+    gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
     gazebo_params.setParam("persistent_static_obstacles", true);
 
@@ -146,13 +181,9 @@ int main(int argc, char **argv) {
     planner_params.setParam("partial_update", false);
     planner_params.setParam("obs_cache", true);
     planner_params.setParam("partial_plot", false);
-    planner_params.setParam("use_heuristic", false);
+    planner_params.setParam("use_heuristic", false); // TODO: Don't use this for now --> the while condition needs to change --> if robot is not in v unvisted is a good start but think about this more
+    planner_params.setParam("first_method", true);
 
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////
-    // Create Controller and Nav2Controller objects
-    auto controller = std::make_shared<Controller>(controller_params);
-    auto nav2_controller = std::make_shared<Nav2Controller>(nav2_controller_params); // TODO: later i should omit this from ros2 manager by creating a highe level abstraction for controllers!
 
     /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -160,34 +191,29 @@ int main(int argc, char **argv) {
     auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/my_world2_dr.sdf");
+    auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
+    // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
     for (auto& el : obstacle_radii) {
         std::cout << el.first << "  " << el.second << "\n";
     }
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_radii);
-    auto ros2_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization, controller, nav2_controller, ros2_manager_params);
 
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Create Controller and Nav2Controller objects
+    auto controller = std::make_shared<Controller>(controller_params);
+    auto nav2_controller = std::make_shared<Nav2Controller>(nav2_controller_params); // TODO: later i should omit this from ros2 manager by creating a highe level abstraction for controllers!
+    auto dwa_controller =  std::make_shared<DWAPlanner>(DWA,obstacle_checker);
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////
 
-
-
-    bool use_rviz_goal = false;
-
+    auto ros2_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization, controller, nav2_controller,dwa_controller, ros2_manager_params);
 
 
     int dim = 2;
-    Eigen::VectorXd start_position = Eigen::VectorXd::Zero(dim);
-    // if (use_rviz_goal==true){
-        // Start a spinner thread to process ROS2Manager's callbacks
-        // std::thread ros2_spinner_thread([ros2_manager]() {
-        //     rclcpp::spin(ros2_manager);
-        // });
-        // ros2_spinner_thread.detach(); // Detach to run independently
-        start_position = ros2_manager->getStartPosition(); // I put a cv in here so i needed the above thread so it wouldn't stop the ros2 callbacks! --> also if use_rviz_goal==false no worries because the default value for this func is 0,0
-    // }
+    Eigen::VectorXd start_position = ros2_manager->getStartPosition(); // I put a cv in here so i needed the above thread so it wouldn't stop the ros2 callbacks! --> also if use_rviz_goal==false no worries because the default value for this func is 0,0
 
 
-    bool follow_path = true;
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
     problem_def->setStart(start_position); //Root of the tree
     // problem_def->setStart(Eigen::VectorXd::Zero(dim));
@@ -200,6 +226,49 @@ int main(int argc, char **argv) {
     std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace),problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
 
+
+    //----------- Waiting for the Sim Clock to start ------------ //
+    bool simulation_is_paused = false;
+    auto node_clock = ros2_manager->get_clock();
+    // We'll store the initial sim time
+    rclcpp::Time last_time = node_clock->now();
+    std::cout << "[DEBUG] Initially, last_time = " << last_time.seconds() 
+            << " (sim seconds)\n";
+    std::cout << "[INFO] Waiting for gz-sim to unpause...\n";
+
+    while (rclcpp::ok() && simulation_is_paused)
+    {
+        // 1) Spin to process any incoming clock messages
+        rclcpp::spin_some(ros2_manager);
+
+        // 2) Get current sim time
+        rclcpp::Time current_time = node_clock->now();
+        double dt = (current_time - last_time).seconds();
+
+        // // 3) Print debug
+        // std::cout << "[DEBUG] last_time=" << last_time.seconds() 
+        //         << ", current_time=" << current_time.seconds() 
+        //         << ", dt=" << dt << "\n";
+
+        // 4) Check if it’s advanced
+        if (current_time > last_time) {
+            std::cout << "[DEBUG] => current_time is strictly greater than last_time, so sim is unpaused.\n";
+            simulation_is_paused = false;
+            std::cout << "[INFO] Simulation unpaused; starting to log data.\n";
+        }
+        else {
+            // If we land here, sim time hasn't advanced since last check
+            // std::cout << "[DEBUG] => Simulation still paused, waiting...\n";
+            rclcpp::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        last_time = current_time;
+    }
+    //----------------------------------------------------------- //
+
+
+
+
     // auto start = std::chrono::high_resolution_clock::now();
     // planner->plan();
     // auto end = std::chrono::high_resolution_clock::now();
@@ -207,15 +276,40 @@ int main(int argc, char **argv) {
     // if (duration.count() > 0)
     //     std::cout << "Time taken for the Static env: " << duration.count() << " milliseconds\n";
 
+
+
+    // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
+    rclcpp::Rate loop_rate(20); // 10 Hz (100ms per loop)
+
+    // Suppose you have a boolean that decides if we want a 20s limit
+    bool limited = true;  // or read from params, or pass as an argument
+
+    // Capture the "start" time if we plan to limit the loop
+    auto start_time = std::chrono::steady_clock::now();
+    auto time_limit = std::chrono::seconds(10);
+
+    std::vector<double> sim_durations;
+
+    // The main loop
     while (running && rclcpp::ok()) {
-        if (ros2_manager->hasNewGoal()) {
-            start_position = ros2_manager->getStartPosition();
-            problem_def->setStart(start_position); //Root of the tree
-            planner->setup(planner_params, visualization);
-            // planner->plan();
+
+        // 1) If we are limiting to 20s, check if we've exceeded that
+        if (limited) {
+            auto now = std::chrono::steady_clock::now();
+            if (now - start_time > time_limit) {
+                std::cout << "[INFO] 20 seconds have passed. Exiting loop.\n";
+                break;  // exit the loop
+            }
         }
 
-
+        // 2) Planner logic ...
+        if (ros2_manager->hasNewGoal()) {
+            start_position = ros2_manager->getStartPosition(); 
+            problem_def->setStart(start_position);
+            problem_def->setGoal(obstacle_checker->getRobotPosition());
+            planner->setup(planner_params, visualization);
+            // planner->plan();   // if you wanted to do it right here
+        }
 
         auto obstacles = obstacle_checker->getObstaclePositions();
         auto robot = obstacle_checker->getRobotPosition();
@@ -226,20 +320,62 @@ int main(int argc, char **argv) {
         planner->plan();
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        if (duration.count() > 0)
-            std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
+        if (duration.count() > 0) {
+            std::cout << "Time taken for the update : " << duration.count() 
+                    << " milliseconds\n";
+        }
+        sim_durations.push_back(duration.count());
 
-
-        std::vector<Eigen::VectorXd> shortest_path_;
-        // shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getPathPositions();
-        shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(3,3);
+        std::vector<Eigen::VectorXd> shortest_path_ =
+            dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
         ros2_manager->followPath(shortest_path_);
-  
-        // dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<FMTX*>(planner.get())->getPathIndex());
+    
         dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
+
+        // if you have a rate to sleep, do it here
+        loop_rate.sleep();
     }
+
+
+    // 1) Get the current local time
+    std::time_t now = std::time(nullptr); 
+    std::tm* local_tm = std::localtime(&now);
+
+    // 2) Extract day, month, year, hour, minute, second
+    int day    = local_tm->tm_mday;           // day of month [1-31]
+    int month  = local_tm->tm_mon + 1;        // months since January [0-11]; add 1
+    int year   = local_tm->tm_year + 1900;    // years since 1900
+    int hour   = local_tm->tm_hour;           // hours since midnight [0-23]
+    int minute = local_tm->tm_min;            // minutes after hour [0-59]
+    int second = local_tm->tm_sec;            // seconds after minute [0-60]
+
+    // 3) Build your file name, e.g. "sim_times_13_3_2025_14_58_12.csv"
+    std::string filename = "sim_times_" +
+        std::to_string(day)    + "_" +
+        std::to_string(month)  + "_" +
+        std::to_string(year)   + "_" +
+        std::to_string(hour)   + "_" +
+        std::to_string(minute) + "_" +
+        std::to_string(second) + ".csv";
+
+    std::cout << "Writing durations to: " << filename << std::endl;
+
+    // 4) Write durations to that file
+    std::ofstream out(filename);
+    if (!out.is_open()) {
+        std::cerr << "Error: failed to open " << filename << std::endl;
+        return 1;
+    }
+
+    for (auto &d : sim_durations) {
+        out << d << "\n";
+    }
+    out.close();
+
+    std::cout << "Done writing CSV.\n";
+
 
     // // Start the timer
     // auto start_time = std::chrono::high_resolution_clock::now();
@@ -257,6 +393,70 @@ int main(int argc, char **argv) {
     //     // dynamic_cast<FMTX*>(planner.get())->visualizeTree();
     //     rclcpp::spin_some(ros2_manager);
     // }
+
+
+  // Variables for frequency calculation
+    // std::deque<std::chrono::milliseconds> loop_times; // Store last N loop durations
+    // const size_t window_size = 10; // Number of iterations to average over
+    // auto last_time = std::chrono::high_resolution_clock::now();
+
+    // while (running && rclcpp::ok()) {
+    //     auto loop_start = std::chrono::high_resolution_clock::now();
+
+    //     if (ros2_manager->hasNewGoal()) {
+    //         start_position = ros2_manager->getStartPosition(); // The goal you provided through rviz2
+    //         problem_def->setStart(start_position); // Root of the tree
+    //         problem_def->setGoal(obstacle_checker->getRobotPosition());
+    //         planner->setup(planner_params, visualization);
+    //         // planner->plan();
+    //     }
+
+    //     auto obstacles = obstacle_checker->getObstaclePositions();
+    //     auto robot = obstacle_checker->getRobotPosition();
+    //     dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
+
+    //     auto start = std::chrono::high_resolution_clock::now();
+    //     dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
+    //     planner->plan();
+    //     auto end = std::chrono::high_resolution_clock::now();
+    //     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    //     if (duration.count() > 0)
+    //         std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
+
+    //     std::vector<Eigen::VectorXd> shortest_path_;
+    //     shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+    //     ros2_manager->followPath(shortest_path_);
+
+    //     dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+    //     dynamic_cast<FMTX*>(planner.get())->visualizeTree();
+    //     rclcpp::spin_some(ros2_manager);
+
+    //     // Calculate loop duration
+    //     auto loop_end = std::chrono::high_resolution_clock::now();
+    //     auto loop_duration = std::chrono::duration_cast<std::chrono::milliseconds>(loop_end - loop_start);
+    //     loop_times.push_back(loop_duration);
+
+    //     // Keep only the last N loop durations
+    //     if (loop_times.size() > window_size) {
+    //         loop_times.pop_front();
+    //     }
+
+    //     // Calculate average loop duration and frequency
+    //     if (loop_times.size() == window_size) {
+    //         double avg_duration_ms = 0.0;
+    //         for (const auto& time : loop_times) {
+    //             avg_duration_ms += time.count();
+    //         }
+    //         avg_duration_ms /= window_size;
+
+    //         double frequency_hz = 1000.0 / avg_duration_ms; // Convert ms to Hz
+    //         std::cout << "Average loop frequency: " << frequency_hz << " Hz\n";
+    //     }
+
+    //     last_time = loop_end;
+    // }
+
+
 
 
     

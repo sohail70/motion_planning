@@ -30,17 +30,131 @@ std::vector<int> RRTX::getPathIndex() const {
     return path;
 }
 
-void RRTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
-    std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, 1);
-    int nearest = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]);  
+std::vector<Eigen::VectorXd> RRTX::getPathPositions() const {
+    int idx = vbot_index_;
+    std::vector<Eigen::VectorXd> path_positions;
 
-    vbot_index_ = nearest;
+    if (vbot_index_ != -1){
+        path_positions.push_back(robot_position_);
+    }
+
+    while (idx != -1) {
+        path_positions.push_back(tree_.at(idx)->getStateVlaue());
+        idx = tree_.at(idx)->getParentIndex();
+    }
+    return path_positions;
 }
 
+
+void RRTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
+    // std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, 1);
+    // int nearest = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]);  
+
+    // vbot_index_ = nearest;
+
+
+
+    robot_position_ = robot_position;
+
+    const double MAX_SEARCH_RADIUS = 5.0; // Meters
+    std::vector<size_t> nearest_indices = kdtree_->radiusSearch(robot_position, MAX_SEARCH_RADIUS);
+    // const int MAX_SEARCH_NODES = 30;
+    // std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, MAX_SEARCH_NODES);
+    
+
+    size_t best_index = -1;
+    double min_total_cost = std::numeric_limits<double>::max();
+
+    // Calculate total cost for each candidate node: distance(robot→node) + cost(node→goal)
+    for (size_t index : nearest_indices) {
+        // Skip invalid nodes
+        if (tree_[index]->getCost() == std::numeric_limits<double>::infinity()) continue;
+
+        // Distance from robot to node
+        Eigen::VectorXd node_position = tree_[index]->getStateVlaue();
+        double dx = node_position[0] - robot_position[0];
+        double dy = node_position[1] - robot_position[1];
+        double distance_to_node = std::hypot(dx, dy);
+
+        // Total cost = distance(robot→node) + cost(node→goal)
+        double total_cost = distance_to_node + tree_[index]->getCost();
+
+        if (total_cost < min_total_cost) {
+            min_total_cost = total_cost;
+            best_index = index;
+        }
+    }
+
+    if (best_index != -1) {
+        vbot_index_ = static_cast<int>(best_index);
+        return;
+    }
+
+}
+
+void RRTX::clearPlannerState() {
+    // Clear all critical variables
+    // start_.reset();
+    // goal_.reset();
+    // path_.clear();
+
+    // for (auto& node : tree_) {
+    //     node.reset();  // Explicitly reset each shared_ptr
+    // }
+    tree_.clear();  // Clear the vector
+
+    // Reset the StateSpace
+    statespace_->reset();
+
+    // Clear neighbor management structures
+    N0_in_.clear();
+    N0_out_.clear();
+    Nr_in_.clear();
+    Nr_out_.clear();
+
+
+    // Clear distance dictionary
+    distance_.clear();
+
+    // Clear the inconsistency queue
+    inconsistency_queue_.clear();
+
+
+
+    // if(kdtree_)
+    //     kdtree_->clearData();
+    kdtree_.reset();
+
+    samples_in_obstacles_.clear();
+    // obstacle_samples_.clear();
+
+
+
+    // Clear edge length map and reset max length
+    edge_length_.clear();
+    max_length_edge_ind = -1;
+    max_length = -std::numeric_limits<double>::infinity();
+
+    // Reset indices
+    vbot_index_ = -1;
+    vgoal_index_ = -1;
+    root_state_index_ = -1;
+    robot_state_index_ = -1;
+
+    Vc_T_.clear();
+
+    // Clear the sample counter
+    sample_counter = 0;
+
+
+
+}
 
 
 void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
     auto start = std::chrono::high_resolution_clock::now();
+    clearPlannerState();
+
     sample_counter = 0;
 
 
@@ -137,7 +251,7 @@ void RRTX::plan() {
         if (v_indices_.find(current_index) != v_indices_.end()) {
             rewireNeighbors(current_index);
             reduceInconsistency();
-            tree_.at(current_index)->setCost(tree_.at(current_index)->getLMC()); //According to my conversation with micheal on 2017! --> though he said we should set it to set it to  min lmc of neighbors and put it in findParent! --> my version looks simpler
+            tree_.at(current_index)->setCost(tree_.at(current_index)->getLMC()); //According to my conversation with micheal in 2017! --> though he said we should set it to set it to  min lmc of neighbors and put it in findParent! --> my version looks simpler
         }
     }
     auto end = std::chrono::high_resolution_clock::now();
@@ -711,4 +825,126 @@ void RRTX::visualizePath(std::vector<int> path_indices) {
     // Use the visualization class to visualize nodes and edges
     // visualization_->visualizeNodes(nodes);
     visualization_->visualizeEdges(edges,"map","0.0,1.0,0.0");
+}
+
+
+void RRTX::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_) {
+    // Extract nodes and edges from the smoothed path
+    std::vector<Eigen::VectorXd> nodes;
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+
+    // Add nodes to the list
+    for (const auto& point : shortest_path_) {
+        nodes.push_back(point); // Each point in the smoothed path is a node
+    }
+
+    // Add edges to the list
+    for (size_t i = 1; i < shortest_path_.size(); ++i) {
+        edges.emplace_back(shortest_path_[i - 1], shortest_path_[i]); // Create edges between consecutive points
+    }
+
+    // Use the visualization class to visualize nodes and edges
+    if (visualization_) {
+        // visualization_->visualizeNodes(nodes); // Visualize the nodes
+        visualization_->visualizeEdges(edges, "map", "0.0,1.0,0.0"); // Visualize the edges in green
+    } 
+}
+
+
+std::vector<Eigen::VectorXd> RRTX::getSmoothedPathPositions(int num_intermediates, int smoothing_passes) const {
+    // Check for invalid inputs
+    if (num_intermediates < 1) {
+        throw std::invalid_argument("num_intermediates must be at least 1");
+    }
+    if (smoothing_passes < 0) {
+        throw std::invalid_argument("smoothing_passes must be non-negative");
+    }
+
+    // Get the original path
+    auto original_path = getPathPositions();
+    if (original_path.empty()) {
+        return original_path; // Return empty path if no points
+    }
+
+
+    // Interpolate the path
+    auto interpolated_path = interpolatePath(original_path, num_intermediates);
+    if (interpolated_path.empty()) {
+        return interpolated_path; // Return empty path if interpolation fails
+    }
+
+    // Smooth the path
+    auto smoothed_path = smoothPath(interpolated_path, smoothing_passes);
+    return smoothed_path;
+}
+
+
+std::vector<Eigen::VectorXd> RRTX::interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const {
+    std::vector<Eigen::VectorXd> new_path;
+
+    // Check for invalid inputs
+    if (path.empty()) {
+        return new_path; // Return empty path if input is empty
+    }
+    if (num_intermediates < 1) {
+        return path; // Return original path if no interpolation is needed
+    }
+
+    // Add the first point
+    new_path.push_back(path[0]);
+
+    // Interpolate between points
+    for (size_t i = 1; i < path.size(); ++i) {
+        const Eigen::VectorXd& prev = path[i-1];
+        const Eigen::VectorXd& curr = path[i];
+
+        // Check for valid points
+        if (prev.size() != curr.size()) {
+            throw std::runtime_error("Path points have inconsistent dimensions");
+        }
+
+        // Add interpolated points
+        for (int j = 1; j <= num_intermediates; ++j) {
+            double t = static_cast<double>(j) / (num_intermediates + 1);
+            Eigen::VectorXd interpolated = prev + t * (curr - prev);
+            new_path.push_back(interpolated);
+        }
+
+        // Add the current point
+        new_path.push_back(curr);
+    }
+
+    return new_path;
+}
+
+
+std::vector<Eigen::VectorXd> RRTX::smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const {
+    // Check for invalid inputs
+    if (path.size() <= 2 || window_size < 1) {
+        return path; // Return original path if no smoothing is needed
+    }
+
+    std::vector<Eigen::VectorXd> smoothed_path = path;
+    int half_window = window_size / 2;
+
+    // Smooth each point
+    for (size_t i = 0; i < path.size(); ++i) {
+        int start = std::max(0, static_cast<int>(i) - half_window);
+        int end = std::min(static_cast<int>(path.size() - 1), static_cast<int>(i) + half_window);
+        int count = end - start + 1;
+
+        // Check for valid points
+        if (count <= 0) {
+            throw std::runtime_error("Invalid smoothing window");
+        }
+
+        // Compute the average of the window
+        Eigen::VectorXd sum = Eigen::VectorXd::Zero(path[0].size());
+        for (int j = start; j <= end; ++j) {
+            sum += path[j];
+        }
+        smoothed_path[i] = sum / count;
+    }
+
+    return smoothed_path;
 }

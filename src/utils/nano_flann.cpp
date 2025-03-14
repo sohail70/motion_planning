@@ -144,3 +144,11 @@ std::pair<std::vector<size_t>, std::vector<size_t>> NanoFlann::radiusSearchDual(
 
     return {resultIndices1, resultIndices2};
 }
+
+
+void NanoFlann::printData() const {
+    std::cout << "KD-Tree Data:\n";
+    for (int i = 0; i < data_.rows(); ++i) {
+        std::cout << "Point " << i << ": " << data_.row(i) << "\n";
+    }
+}

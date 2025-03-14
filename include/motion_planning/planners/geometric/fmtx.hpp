@@ -71,7 +71,6 @@ class FMTX : public Planner {
 
             void clearPlannerState();
 
-
  private:
             std::shared_ptr<State> start_;
             std::shared_ptr<State> goal_;
@@ -93,6 +92,9 @@ class FMTX : public Planner {
             PriorityQueue v_open_heap_;
 
             std::unordered_set<int> boundary_;
+
+
+            Eigen::VectorXd robot_position_;
 
 
             std::unordered_map<int, std::vector<NeighborInfo>> neighbors_dict_;
@@ -118,7 +120,7 @@ class FMTX : public Planner {
             // bool inflation = false;
             bool use_heuristic = false;
             bool partial_update = false;
-
+            bool first_method = true;
             // std::vector<std::vector<bool>> invalid_best_neighbors;
             // std::vector<std::vector<bool>> invalid_best_neighbors;
             std::vector<std::unordered_set<int>> invalid_best_neighbors; // Sparse storage of invalid neighbors

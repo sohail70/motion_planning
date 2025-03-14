@@ -306,3 +306,28 @@ bool GazeboObstacleChecker::pointIntersectsCircle(const Eigen::Vector2d& point,
     // Check if the squared distance is less than or equal to the squared radius
     return squaredDistance <= (radius * radius);
 }
+
+
+
+
+std::vector<Obstacle> GazeboObstacleChecker::getObstacles() const {
+    std::lock_guard<std::mutex> lock(data_mutex_);
+    std::vector<Obstacle> filtered_obstacles;
+    
+    for (const auto& obstacle : obstacle_positions_) {
+        if (use_range) {
+            // Calculate distance from robot to obstacle
+            double distance = (robot_position_ - obstacle.position).norm();
+            
+            // Only include obstacles within sensor range
+            if (distance <= sensor_range) {
+                filtered_obstacles.push_back(obstacle);
+            }
+        } else {
+            // Include all obstacles if range checking is disabled
+            filtered_obstacles.push_back(obstacle);
+        }
+    }
+    
+    return filtered_obstacles;
+}

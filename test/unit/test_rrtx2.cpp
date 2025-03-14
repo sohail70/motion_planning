@@ -150,41 +150,18 @@ int main(int argc, char **argv) {
             std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
         
 
-        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<RRTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-        ros2_manager->followPath(shortest_path_);
+        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<RRTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+        // ros2_manager->followPath(shortest_path_);
 
         ////////// VISUALIZE /////
         // dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
-        dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        // dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         dynamic_cast<RRTX*>(planner.get())->visualizeTree();
 
         rclcpp::spin_some(ros2_manager);
     }
 
-    // // Start the timer
-    // auto start_time = std::chrono::high_resolution_clock::now();
-
-    // // Run the loop for 20 seconds
-    // while (std::chrono::duration_cast<std::chrono::seconds>(
-    //         std::chrono::high_resolution_clock::now() - start_time).count() < 20) {
-    //     auto obstacles = obstacle_checker->getObstaclePositions();
-    //     auto robot = obstacle_checker->getRobotPosition();
-    //     if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
-    //         dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot);
-    //     ////////// PLAN //////////
-    //     auto start = std::chrono::high_resolution_clock::now();
-    //     dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
-    //     auto end = std::chrono::high_resolution_clock::now();
-    //     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    //     if (duration.count()>0)
-    //         std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
-        
-    //     ////////// VISUALIZE /////
-    //     // dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
-    //     // dynamic_cast<RRTX*>(planner.get())->visualizeTree();
-
-    //     rclcpp::spin_some(ros2_manager);
-    // }
+  
     rclcpp::shutdown();
 
 }

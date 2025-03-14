@@ -1,37 +1,45 @@
-// Copyright 2025 Soheil E.nia
-
-#include "motion_planning/utils/nano_flann.hpp"
-#include "motion_planning/state_space/euclidean_state.hpp"
+#include <iostream>
+#include <memory>
+#include <Eigen/Dense>
 #include "motion_planning/state_space/euclidean_statespace.hpp"
+#include "motion_planning/utils/nano_flann.hpp"
 
 int main() {
-    // std::srand(std::time(0));  // Seed the random number generator
-    // std::cout << "KDTree Test \n";
-    // int dim = 2;
-    // std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim,4); // 3 means it will be doubled if the 3 column storage gets full
-    // std::shared_ptr<NanoFlann> kd = std::make_shared<NanoFlann>(dim);
+    std::srand(42);  // Fixed seed for reproducibility
+    std::cout << "KDTree Test \n";
+    int dim = 2;
+    std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 4);
+    std::shared_ptr<NanoFlann> kd = std::make_shared<NanoFlann>(dim);
 
-    // for (int i = 0; i < 5 ; i++) {
-    //     statespace->sampleUniform(0, 20);
-    //     kd->addPoint(statespace->getState(i));
-    // }
-    // std::cout << statespace->getSamples()<<"\n";
-    // std::cout << "------- \n";
-    // auto neighbors = kd->knnSearch(statespace->getState(1),2);
-    // // std::cout << neighbors.at(0)->getValue() << "\n";
-    // // std::cout << neighbors.at(1)->getValue() << "\n";
-    // std::cout << "----- \n";
-    // auto neighbors2 = kd->radiusSearch(statespace->getState(1),10);
-    // // std::cout << neighbors2.at(0)->getValue() << "\n";
+    // Manually add the specified points to the KD-tree
+    Eigen::MatrixXd points(4, dim); // 4 points, 2 dimensions
+    points << 0, 0,               // Point 0
+             -4.69771, -1.71217,  // Point 1
+             4.63176, -1.88329,   // Point 2
+             1.75788, 4.6808;     // Point 3
 
-    // /////////////////////////////////Testing Matrix/////////////////////////////////////
-    // std::cout << "Batch KDTree Test \n";
-    // std::shared_ptr<StateSpace> statespace2 = std::make_shared<EuclideanStateSpace>(dim,4);
-    // std::shared_ptr<NanoFlann> kd2 = std::make_shared<NanoFlann>(dim);
-    // statespace2 ->sampleUniform(0, 20, 5);
-    // kd2->addPoints(statespace2->getSamples());
-    // auto neighbors3 = kd2->knnSearch(statespace2->getState(1),2);
-    // std::cout << "----- \n";
-    // auto neighbors4 = kd2->radiusSearch(statespace2->getState(1),10.0);
+    // Add points to the KD-tree
+    for (int i = 0; i < points.rows(); i++) {
+        kd->addPoint(points.row(i));
+    }
+
+    // Rebuild the KD-tree after adding points
+    kd->buildTree();
+
+    // Print the KD-tree data
+    std::cout << "KD-Tree Data:\n";
+    kd->printData();
+
+    // Define the query point
+    Eigen::VectorXd queryPoint(dim);
+    queryPoint << -13.5007, 26.5381;
+
+    // Perform k-nearest neighbor search with k=1
+    std::cout << "KNN Search Results for Query Point (" << queryPoint.transpose() << "):\n";
+    auto neighbors = kd->knnSearch(queryPoint, 1); // k=1
+    for (size_t idx : neighbors) {
+        std::cout << "Nearest Neighbor: " << points.row(idx) << "\n";
+    }
+
+    return 0;
 }
-

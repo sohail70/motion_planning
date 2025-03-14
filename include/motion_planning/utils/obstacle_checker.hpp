@@ -24,6 +24,12 @@ public:
     virtual bool isObstacleFree(const Eigen::VectorXd& start, const Eigen::VectorXd& end) const = 0;
     virtual bool isObstacleFree(const Eigen::VectorXd& point) const = 0;
     // virtual void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) = 0;
+    virtual std::vector<Obstacle> getObstacles() const = 0;
+    virtual bool checkFootprintCollision(const Eigen::Vector2d& position,
+                                       double yaw,
+                                       const std::vector<Eigen::Vector2d>& footprint) const = 0;
+                                       
+    virtual double distanceToNearestObstacle(const Eigen::Vector2d& position) const = 0;
 
 };
 
