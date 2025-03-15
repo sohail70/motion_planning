@@ -37,6 +37,7 @@ class RRTX : public Planner {
 
 std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& obstacles, double max_length);
 
+    bool isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& edge) const;
 
  private:
     // Core data structures
@@ -90,7 +91,7 @@ int findNodeIndex(RRTxNode* node) const;
     void rewireNeighbors(RRTxNode* v);
     void reduceInconsistency();
     void cullNeighbors(RRTxNode* v);
-    void makeParentOf(RRTxNode* child, RRTxNode* new_parent);
+    void makeParentOf(RRTxNode* child, RRTxNode* new_parent, double edge_dist);
     void updateLMC(RRTxNode* v);
     void verifyQueue(RRTxNode* node);  // Fixed signature
     void propagateDescendants();
@@ -98,6 +99,7 @@ int findNodeIndex(RRTxNode* node) const;
     double shrinkingBallRadius() const;
     void addNewObstacle(const std::vector<int>& added_indices);
     void removeObstacle(const std::vector<int>& removed_indices);
+
     // Path smoothing implementations
     std::vector<Eigen::VectorXd> smoothPath(const std::vector<Eigen::VectorXd>& path, 
                                           int window_size) const;

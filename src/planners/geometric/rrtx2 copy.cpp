@@ -188,8 +188,8 @@ void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
 
     // Since i want to put a cap on the number of samples and i want RRTX to be as close as to FMTX im gonna set step size (delta) to this:
     double factor = 2.0;
-    // delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
-    delta = 10.0;
+    delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
+    // delta = 10.0;
     std::cout << "Computed value of delta: " << delta << std::endl;
 
 
@@ -251,101 +251,173 @@ void RRTX::plan() {
 
 
 bool RRTX::extend(Eigen::VectorXd v) {
-    auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
-    auto neighbors = kdtree_->radiusSearch(new_node->getStateVlaue(), neighborhood_radius_ + 0.01);
+    // Create and add new node
+    auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v) , sample_counter);
+
     
+    // Find nearby neighbors using spatial data structure
+    auto neighbors = kdtree_->radiusSearch(new_node->getStateVlaue(), neighborhood_radius_+0.01);
+    
+    // Find parent and update LMC
     findParent(new_node, neighbors);
 
+    // Remove node if orphaned
     if (!new_node->getParent()) {
         sample_counter--;
         return false;
     }
-
     tree_.push_back(new_node);
     kdtree_->addPoint(new_node->getStateVlaue());
-    kdtree_->buildTree(); 
-    // Algorithm 2 lines 7-13 implementation
+    kdtree_->buildTree();
+    // Update neighbor relationships
     for (size_t idx : neighbors) {
         RRTxNode* neighbor = tree_[idx].get();
         if (neighbor == new_node.get()) continue;
 
-        const bool v_to_u_free = obs_checker_->isObstacleFree(new_node->getStateVlaue(), neighbor->getStateVlaue());
-        // const bool u_to_v_free = obs_checker_->isObstacleFree(neighbor->getStateVlaue(), new_node->getStateVlaue());
-        const bool u_to_v_free = v_to_u_free;
-        const double dist = (new_node->getStateVlaue() - neighbor->getStateVlaue()).norm();
+        bool is_path_free = obs_checker_->isObstacleFree(
+            new_node->getStateVlaue(), 
+            neighbor->getStateVlaue()
+        );
 
-        // Persistent outgoing from new node (N⁰+)
-        if (v_to_u_free) {
-            new_node->addNeighbor(neighbor, true, false, dist);  // N⁰+(v) ← u
-        }
-        
-        // Temporary outgoing from neighbors (Nr+)
-        if (u_to_v_free) {
-            neighbor->addNeighbor(new_node.get(), false, true, dist);  // Nr+(u) ← v
+        if (is_path_free) {
+            const double distance = (new_node->getStateVlaue() - 
+                                   neighbor->getStateVlaue()).norm();
+            // For the new node: add the existing node as an original neighbor
+            new_node->addOriginalNeighbor(neighbor, distance);  // New → Existing (original outgoing)
+
+            // For the existing node: add the new node as a running neighbor
+            neighbor->addRunningNeighbor(new_node.get(), distance); // Existing → New (running outgoing)
         }
     }
-    
-    return true;
+    return true; // Indicate success
 }
-\
 
 
-
-
-
-
-void RRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
-    double min_lmc = INFINITY;
+void RRTX::findParent(std::shared_ptr<RRTxNode> v, 
+                     const std::vector<size_t>& candidates) {
+    double min_lmc = std::numeric_limits<double>::infinity();
     RRTxNode* best_parent = nullptr;
-    double best_dist = 0.0;
+    double best_distance = 0.0;
 
     for (size_t idx : candidates) {
         auto& candidate = tree_[idx];
         if (candidate == v) continue;
 
-        const double dist = (v->getStateVlaue() - candidate->getStateVlaue()).norm();
-        if (dist <= neighborhood_radius_+0.01 && obs_checker_->isObstacleFree(v->getStateVlaue(), candidate->getStateVlaue())) {
-            const double candidate_lmc = candidate->getLMC() + dist;
+        const double distance = (v->getStateVlaue() - 
+                               candidate->getStateVlaue()).norm();
+        const bool path_free = obs_checker_->isObstacleFree(
+            v->getStateVlaue(),
+            candidate->getStateVlaue()
+        );
+
+        if (distance <= neighborhood_radius_+0.01 && path_free) {
+            const double candidate_lmc = candidate->getLMC() + distance;
             
             if (candidate_lmc < min_lmc && candidate_lmc < v->getLMC()) {
                 min_lmc = candidate_lmc;
                 best_parent = candidate.get();
-                best_dist = dist;
+                best_distance = distance;
             }
         }
+
     }
 
     if (best_parent) {
-        v->setParent(best_parent, best_dist);
+        v->setParent(best_parent, best_distance);
         v->setLMC(min_lmc);
-        edge_length_[v->getIndex()] = best_dist;
+        edge_length_[v->getIndex()] = best_distance;
     }
 }
 
 
+// void RRTX::rewireNeighbors(RRTxNode* v) {
+//     const double inconsistency = v->getCost() - v->getLMC();
+//     if (inconsistency <= epsilon_) return;
 
+//     // Cull neighbors first
+//     cullNeighbors(v);
 
+//     // Combine initial and current incoming neighbors
+//     std::unordered_set<RRTxNode*> incoming_neighbors;
+//     for (const auto& [n, dist] : v->initialIn()) incoming_neighbors.insert(n);
+//     for (const auto& [n, dist] : v->currentIn()) incoming_neighbors.insert(n);
 
+//     for (RRTxNode* u : incoming_neighbors) {
+//         if (u == v->getParent()) continue;
+
+//         // Get stored distance between u and v
+//         const auto& u_out = u->currentOut();
+//         if (auto it = u_out.find(v); it != u_out.end()) {
+//             const double trajectory_cost = it->second;
+//             const double candidate_lmc = v->getLMC() + trajectory_cost;
+
+//             if (u->getLMC() > candidate_lmc) {
+//                 u->setLMC(candidate_lmc);
+//                 makeParentOf(u, v);
+
+//                 if (u->getCost() - candidate_lmc > epsilon_) {
+//                     verifyQueue(u);
+//                 }
+//             }
+//         }
+//     }
+// }
 
 void RRTX::rewireNeighbors(RRTxNode* v) {
     const double inconsistency = v->getCost() - v->getLMC();
     if (inconsistency <= epsilon_) return;
 
+    // Cull neighbors first
     cullNeighbors(v);
 
-    for (auto& [u, edge] : v->incomingEdges()) {
-        // if (u == v->getParent() || !isValidEdge(u, v, edge)) continue;
-        if (u == v->getParent() ) continue;
+    // Process initial incoming neighbors (N0_in)
+    for (const auto& [u, dist] : v->initialIn()) {
+        // Skip if u is the parent of v
+        if (u == v->getParent()) {
+            continue;
+        }
 
+        // Get stored distance between u and v
+        const auto& u_out = u->currentOut();
+        if (auto it = u_out.find(v); it != u_out.end()) {
+            const double trajectory_cost = it->second;
+            const double candidate_lmc = v->getLMC() + trajectory_cost;
 
-        const double candidate_lmc = v->getLMC() + edge.distance;
-        if (u->getLMC() > candidate_lmc) {
-            u->setLMC(candidate_lmc);
-            // makeParentOf(u, v, edge.distance);
-            u->setParent(v,edge.distance);
-            edge_length_[u->getIndex()] = edge.distance;
-            if (u->getCost() - candidate_lmc > epsilon_) {
-                verifyQueue(u);
+            // Update LMC and parent if the candidate LMC is better
+            if (u->getLMC() > candidate_lmc) {
+                u->setLMC(candidate_lmc);
+                makeParentOf(u, v);
+                edge_length_[u->getIndex()] = trajectory_cost;
+                // Add to inconsistency queue if necessary
+                if (u->getCost() - candidate_lmc > epsilon_) {
+                    verifyQueue(u);
+                }
+            }
+        }
+    }
+
+    // Process current incoming neighbors (Nr_in)
+    for (const auto& [u, dist] : v->currentIn()) {
+        // Skip if u is the parent of v
+        if (u == v->getParent()) {
+            continue;
+        }
+
+        // Get stored distance between u and v
+        const auto& u_out = u->currentOut();
+        if (auto it = u_out.find(v); it != u_out.end()) {
+            const double trajectory_cost = it->second;
+            const double candidate_lmc = v->getLMC() + trajectory_cost;
+
+            // Update LMC and parent if the candidate LMC is better
+            if (u->getLMC() > candidate_lmc) {
+                u->setLMC(candidate_lmc);
+                makeParentOf(u, v);
+
+                // Add to inconsistency queue if necessary
+                if (u->getCost() - candidate_lmc > epsilon_) {
+                    verifyQueue(u);
+                }
             }
         }
     }
@@ -363,8 +435,6 @@ void RRTX::reduceInconsistency() {
         inconsistency_queue_.pop();
 
         RRTxNode* node = top_element.node;
-
-
         // int node_idx = findNodeIndex(node);
         int node_idx = node->getIndex();
         if (node_idx == -1 || Vc_T_.count(node_idx)) continue;
@@ -394,7 +464,7 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
     
     for (const auto& obstacle : obstacles) {
         // Query samples within obstacle radius (5 units)
-        // auto sample_indices = kdtree_->radiusSearch(obstacle.position, 1.0 * obstacle.radius);
+        // auto sample_indices = kdtree_->radiusSearch(obstacle.position, 2.2 * obstacle.radius);
         auto sample_indices = kdtree_->radiusSearch(obstacle.position, std::sqrt(std::pow(obstacle.radius, 2) + std::pow(max_length / 2.0, 2)));
 
         conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
@@ -451,19 +521,6 @@ void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
         }
     }
 
-
-    // // Visualizing the maximum length node
-    // std::vector<Eigen::VectorXd> positions4;
-    // std::string color_str = "0.0,0.0,1.0"; // Blue color
-    // for (int r : removed){
-    //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(r)->getStateVlaue();
-    //     positions4.push_back(vec);
-
-    // }
-    // visualization_->visualizeNodes(positions4,"map",color_str);
-
-
     // I update here because in removeObstalce i need to avoid samples that are still on obstalces
     // Update the set of samples in obstacles
     samples_in_obstacles_ = std::move(current);
@@ -482,136 +539,85 @@ void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 
     reduceInconsistency();
 }
-
 void RRTX::updateLMC(RRTxNode* v) {
     cullNeighbors(v);
-    double min_lmc = v->getLMC();
-    RRTxNode* best_parent = nullptr;
-    double best_edge_distance = INFINITY;  // Track the distance of the best edge
 
-    // Iterate over incoming edges (u → v)
-    for (const auto& [u, edge] : v->incomingEdges()) {
-        if (Vc_T_.count(u->getIndex()) || edge.distance == INFINITY) continue;
+    // Process initial outgoing neighbors (N0_out)
+    for (const auto& [u, dist] : v->initialOut()) {
+        // Skip if u is in Vc_T_ or if u is the parent of v
+        if (Vc_T_.count(u->getIndex()) || u == v->getParent()) {
+            continue;
+        }
 
-        const double candidate_lmc = u->getLMC() + edge.distance;
-        if (candidate_lmc < min_lmc) {
-            min_lmc = candidate_lmc;
-            best_parent = u;
-            best_edge_distance = edge.distance;  // Capture the distance here
+        // Calculate the candidate LMC
+        double candidate_lmc = u->getLMC() + dist;
+
+        // Update LMC and parent if the candidate LMC is better
+        if (v->getLMC() > candidate_lmc) {
+            makeParentOf(v, u);
+            v->setLMC(candidate_lmc);
         }
     }
 
-    if (best_parent) {
-        v->setParent(best_parent, best_edge_distance);  // Use the captured distance
-        v->setLMC(min_lmc);
-    } 
+    // Process current outgoing neighbors (Nr_out)
+    for (const auto& [u, dist] : v->currentOut()) {
+        // Skip if u is in Vc_T_ or if u is the parent of v
+        if (Vc_T_.count(u->getIndex()) || u == v->getParent()) {
+            continue;
+        }
+
+        // Calculate the candidate LMC
+        double candidate_lmc = u->getLMC() + dist;
+
+        // Update LMC and parent if the candidate LMC is better
+        if (v->getLMC() > candidate_lmc) {
+            makeParentOf(v, u);
+            v->setLMC(candidate_lmc);
+        }
+    }
 }
 
-// void RRTX::updateLMC(RRTxNode* v) {
-
-//     cullNeighbors(v);
-//     double min_lmc = INFINITY;
-//     RRTxNode* best_parent = nullptr;
-
-//     for (auto& [u, edge] : v->outgoingEdges()) {
-//         if (Vc_T_.count(u->getIndex()) || u == v->getParent()) continue;
-//         if (edge.distance == INFINITY) continue;
-
-//         const double candidate_lmc = u->getLMC() + edge.distance;
-//         if (candidate_lmc < min_lmc) {
-//             min_lmc = candidate_lmc;
-//             best_parent = u;
-//         }
-//     }
-
-//     if (best_parent) {
-//         makeParentOf(v, best_parent, best_parent->outgoingEdges()[v].distance);
-//         v->setLMC(min_lmc);
-//     } else {
-//         v->setLMC(INFINITY);
-//     }
-// }
 
 
 
-// Mind that nothing is_initial (original neighbors) must not get deleted
-
-// void RRTX::cullNeighbors(RRTxNode* v) {
-//     auto& outgoing = v->outgoingEdges();
-//     auto it = outgoing.begin();
-    
-//     while (it != outgoing.end()) {
-//         auto [neighbor, edge] = *it;
-        
-//         // Fix 1: Typo in getStateValue()
-//         const double actual_dist = (v->getStateVlaue() - neighbor->getStateVlaue()).norm();
-        
-//         // Fix 2: Check edge validity before distance comparison
-//         const bool is_valid_edge = isValidEdge(v, neighbor, edge);
-        
-//         if (!edge.is_initial && is_valid_edge && 
-//             actual_dist > neighborhood_radius_ && 
-//             neighbor != v->getParent()) 
-//         {
-//             // Remove bidirectional temporary edges
-//             auto& incoming = neighbor->incomingEdges();
-//             if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
-//                 // Only remove temporary incoming edges (Nr⁻)
-//                 if (!incoming_it->second.is_initial) {
-//                     incoming.erase(incoming_it);
-//                 }
-//             }
-//             it = outgoing.erase(it);
-//         } else {
-//             ++it;
-//         }
-//     }
-// }
 
 void RRTX::cullNeighbors(RRTxNode* v) {
-    if (cap_samples_ == true && sample_counter > num_of_samples_)
-        return; // to not waste time when we put a cap on the number of samples!
-    auto& outgoing = v->outgoingEdges();
-    auto it = outgoing.begin();
-    while (it != outgoing.end()) {
-        auto [neighbor, edge] = *it;
-        if (!edge.is_initial && 
-            (v->getStateVlaue() - neighbor->getStateVlaue()).norm() > neighborhood_radius_ &&
-            neighbor != v->getParent() ) 
-        {
-            // Remove temporary edge bidirectionally
-            // neighbor->incomingEdges().erase(v);
+    if (cap_samples_ && sample_counter > num_of_samples_) return;
 
-            auto& incoming = neighbor->incomingEdges();
-            if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
-                // Only remove temporary incoming edges (Nr⁻)
-                if (!incoming_it->second.is_initial) {
-                    incoming.erase(incoming_it);
-                }
-            }
-            it = outgoing.erase(it);
+    auto& current_out = v->currentOut();
+    for (auto it = current_out.begin(); it != current_out.end();) {
+        auto [u, _] = *it; // Ignore stored distance (may be invalid)
+        
+        // Recalculate Euclidean distance (critical fix)
+        const double distance = (v->getStateVlaue() - u->getStateVlaue()).norm();
+
+        if (distance > neighborhood_radius_ && u != v->getParent()) {
+            // Remove reciprocal reference
+            u->currentIn().erase(v);
+            it = current_out.erase(it);
         } else {
             ++it;
         }
     }
 }
 
-
-void RRTX::makeParentOf(RRTxNode* child, RRTxNode* new_parent, double edge_dist ) {
+void RRTX::makeParentOf(RRTxNode* child, RRTxNode* new_parent) {
+    // Remove child from its current parent's successors
     if (RRTxNode* old_parent = child->getParent()) {
-        // Use successorsMutable() for write access
-        auto& succ = old_parent->successorsMutable();
-        succ.erase(std::remove(succ.begin(), succ.end(), child), succ.end());
+        auto& old_successors = old_parent->successorsMutable();
+        old_successors.erase(std::remove(old_successors.begin(), old_successors.end(), child), 
+                            old_successors.end());
     }
-    
-    child->setParent(new_parent, edge_dist);
-    
+
+    // Set the new parent for the child
+    double edge_distance = new_parent ? (child->getStateVlaue() - new_parent->getStateVlaue()).norm() : 0.0;
+    child->setParent(new_parent, edge_distance);
+
+    // Add child to the new parent's successors
     if (new_parent) {
-        // Use successorsMutable() for write access
         new_parent->successorsMutable().push_back(child);
     }
 }
-
 
 void RRTX::verifyQueue(RRTxNode* node) {
     const double min_key = std::min(node->getLMC(), node->getCost());
@@ -626,94 +632,138 @@ void RRTX::verifyQueue(RRTxNode* node) {
 
 
 
+
+int RRTX::findNodeIndex(RRTxNode* node) const {
+    for (size_t i = 0; i < tree_.size(); ++i) {
+        if (tree_[i].get() == node) return i;
+    }
+    return -1;
+}
 void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
     for (int idx : removed_indices) {
+        // samples_in_obstacles_.erase(idx); // Remove from obstacle set
         RRTxNode* node = tree_[idx].get();
-        samples_in_obstacles_.erase(idx); // Remove from obstacle set
 
-        // First loop: Process outgoing edges (node → neighbor)
-        for (auto& [neighbor, edge_info] : node->outgoingEdges()) {
-            const int neighbor_idx = neighbor->getIndex();
+        // Collect all neighbors from ALL edge types (initial + current)
+        std::unordered_set<RRTxNode*> all_neighbors;
+        for (const auto& [n, _] : node->initialIn()) all_neighbors.insert(n);
+        for (const auto& [n, _] : node->initialOut()) all_neighbors.insert(n);
+        for (const auto& [n, _] : node->currentIn()) all_neighbors.insert(n);
+        for (const auto& [n, _] : node->currentOut()) all_neighbors.insert(n);
+
+        // Recalculate distances for all edges bidirectionally
+        for (RRTxNode* neighbor : all_neighbors) {
+            int neighbor_idx = neighbor->getIndex();
             if (samples_in_obstacles_.count(neighbor_idx)) continue;
 
-            // Recalculate distance and check obstacle-free path
-            const Eigen::VectorXd node_state = node->getStateVlaue();
-            const Eigen::VectorXd neighbor_state = neighbor->getStateVlaue();
-            const double dist = (node_state - neighbor_state).norm();
-            // const bool is_free = obs_checker_->isObstacleFree(node_state, neighbor_state);
-            const bool is_free = true;
+            const double new_dist = (node->getStateVlaue() - neighbor->getStateVlaue()).norm();
 
-            // Update node's outgoing edge
-            edge_info.distance = is_free ? dist : INFINITY;
-
-            // Update neighbor's corresponding incoming edge (preserve is_initial)
-            auto neighbor_in_edge = neighbor->incomingEdges().find(node);
-            if (neighbor_in_edge != neighbor->incomingEdges().end()) {
-                neighbor_in_edge->second.distance = is_free ? dist : INFINITY;
+            // Update initialOut (N0_out) <-> initialIn (N0_in)
+            if (node->initialOut().contains(neighbor)) {
+                node->initialOut()[neighbor] = new_dist;
+                neighbor->initialIn()[node] = new_dist;
             }
+
+            // Update currentOut (Nr_out) <-> currentIn (Nr_in)
+            if (node->currentOut().contains(neighbor)) {
+                node->currentOut()[neighbor] = new_dist;
+                neighbor->currentIn()[node] = new_dist;
+            }
+
+            // Update initialIn (N0_in) <-> initialOut (N0_out)
+            if (node->initialIn().contains(neighbor)) {
+                node->initialIn()[neighbor] = new_dist;
+                neighbor->initialOut()[node] = new_dist;
+            }
+
+            // Update currentIn (Nr_in) <-> currentOut (Nr_out)
+            if (node->currentIn().contains(neighbor)) {
+                node->currentIn()[neighbor] = new_dist;
+                neighbor->currentOut()[node] = new_dist;
+            }
+            // /////////////////////////////////////////////
+            // // New unordered_map version:
+            // auto& initialOut = node->initialOut();
+            // if (initialOut.find(neighbor) != initialOut.end()) {
+            //     initialOut[neighbor] = new_dist;
+            //     neighbor->initialIn()[node] = new_dist;
+            // }
+
+            // auto& currentOut = node->currentOut();
+            // if (currentOut.find(neighbor) != currentOut.end()) {
+            //     currentOut[neighbor] = new_dist;
+            //     neighbor->currentIn()[node] = new_dist;
+            // }
+
+            // auto& initialIn = node->initialIn();
+            // if (initialIn.find(neighbor) != initialIn.end()) {
+            //     initialIn[neighbor] = new_dist;
+            //     neighbor->initialOut()[node] = new_dist;
+            // }
+
+            // auto& currentIn = node->currentIn();
+            // if (currentIn.find(neighbor) != currentIn.end()) {
+            //     currentIn[neighbor] = new_dist;
+            //     neighbor->currentOut()[node] = new_dist;
+            // }
         }
 
-        // Second loop: Process incoming edges (neighbor → node)
-        for (auto& [neighbor, edge_info] : node->incomingEdges()) {
-            const int neighbor_idx = neighbor->getIndex();
-            if (samples_in_obstacles_.count(neighbor_idx)) continue;
-
-            // Recalculate distance and check obstacle-free path
-            const Eigen::VectorXd node_state = node->getStateVlaue();
-            const Eigen::VectorXd neighbor_state = neighbor->getStateVlaue();
-            const double dist = (neighbor_state - node_state).norm();
-            // const bool is_free = obs_checker_->isObstacleFree(neighbor_state, node_state);
-            const bool is_free = true;
-
-            // Update node's incoming edge
-            edge_info.distance = is_free ? dist : INFINITY;
-
-            // Update neighbor's corresponding outgoing edge (preserve is_initial)
-            auto neighbor_out_edge = neighbor->outgoingEdges().find(node);
-            if (neighbor_out_edge != neighbor->outgoingEdges().end()) {
-                neighbor_out_edge->second.distance = is_free ? dist : INFINITY;
-            }
-        }
-
-        // Update LMC and queue
+        // Update LMC and verify queue
         updateLMC(node);
-        if (node->getCost() != node->getLMC()) {
+        if (node->getLMC() != node->getCost()) {
             verifyQueue(node);
         }
     }
 }
-
-
 
 void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
     for (int idx : added_indices) {
         RRTxNode* node = tree_[idx].get();
         samples_in_obstacles_.insert(idx);
 
-        // Invalidate all edges connected to this node
-        for (auto& [u, edge] : node->outgoingEdges()) {
+        // Invalidate all connections (initial + current) via distance = INFINITY
+        auto invalidate_edges = [&](auto& neighbor_map, bool is_outgoing) {
+            for (auto& [neighbor, dist] : neighbor_map) {
+                neighbor_map[neighbor] = INFINITY;
+                if (is_outgoing) {
+                    neighbor->currentIn()[node] = INFINITY;
+                } else {
+                    neighbor->currentOut()[node] = INFINITY;
+                }
 
-            edge.distance = INFINITY;
-            u->incomingEdges()[node].distance = INFINITY;
-            u->outgoingEdges()[node].distance = INFINITY;
-            if (u->getParent() == node) verifyOrphan(u);
+                // Parent-child checks
+                if (neighbor->getParent() == node) verifyOrphan(neighbor);
+                if (node->getParent() == neighbor) verifyOrphan(node);
+            }
+        };
+
+        invalidate_edges(node->initialIn(), false);
+        invalidate_edges(node->initialOut(), true);
+        invalidate_edges(node->currentIn(), false);
+        invalidate_edges(node->currentOut(), true);
+
+        // Remove from parent's children list (MISSING IN NEW CODE)
+        if (RRTxNode* parent = node->getParent()) {
+            auto& parent_children = parent->successorsMutable(); // Non-const access
+            auto it = std::find(parent_children.begin(), parent_children.end(), node);
+            if (it != parent_children.end()) {
+                parent_children.erase(it);
+            }
         }
-        for (auto& [u, edge] : node->incomingEdges()) {
 
-            edge.distance = INFINITY;
-            u->outgoingEdges()[node].distance = INFINITY;
-            u->incomingEdges()[node].distance = INFINITY;
-            if (node->getParent() == u) verifyOrphan(node);
+        // Orphan handling
+        for (RRTxNode* child : node->successors()) {
+            verifyOrphan(child);
         }
 
-        // Mark node as invalid and propagate
+        // State reset (matches old code)
         node->setCost(INFINITY);
         node->setLMC(INFINITY);
         edge_length_[idx] = -INFINITY;
-        node->setParent(nullptr, 0.0);  // Clear parent
-        verifyOrphan(node);  // Add to Vc_T_
+        node->setParent(nullptr, 0.0); // Also clears parent_edge_dist_
     }
 }
+
 
 void RRTX::verifyOrphan(RRTxNode* node) {
     inconsistency_queue_.remove(node);
@@ -727,7 +777,7 @@ void RRTX::verifyOrphan(RRTxNode* node) {
 void RRTX::propagateDescendants() {
     std::queue<RRTxNode*> to_process;
 
-    // Step 1: Propagate descendants through the tree
+    // Step 1: Propagate descendants
     for (int idx : Vc_T_) {
         if (idx >= 0 && idx < tree_.size()) {
             to_process.push(tree_[idx].get());
@@ -738,7 +788,7 @@ void RRTX::propagateDescendants() {
         RRTxNode* current = to_process.front();
         to_process.pop();
 
-        // Propagate to children using successors()
+        // Add all children of current to Vc_T_ and the queue
         for (RRTxNode* child : current->successors()) {
             int child_idx = child->getIndex();
             if (child_idx == -1 || Vc_T_.count(child_idx)) continue;
@@ -748,66 +798,62 @@ void RRTX::propagateDescendants() {
         }
     }
 
-    // Step 2: Invalidate costs for neighbors of affected nodes
+    // Step 2: Update costs and verify queue for affected nodes
     for (int idx : Vc_T_) {
         if (idx < 0 || idx >= tree_.size()) continue;
         auto node = tree_[idx].get();
 
-        // Process outgoing neighbors (N⁺(v) \ Vc_T)
-        for (const auto& [neighbor, edge] : node->outgoingEdges()) {
-            // Skip invalid edges
-            // if (!isValidEdge(node, neighbor, edge)) continue; 
+        // Collect all outgoing neighbors (N+(v))
+        std::unordered_set<RRTxNode*> outgoing_neighbors;
+        for (const auto& [n, _] : node->initialOut()) outgoing_neighbors.insert(n);
+        for (const auto& [n, _] : node->currentOut()) outgoing_neighbors.insert(n);
 
+        // Include the parent of v (p+_T(v)) in the set of neighbors
+        if (node->getParent()) {
+            outgoing_neighbors.insert(node->getParent());
+        }
+
+        // Process all neighbors in (N+(v) ∪ {p+_T(v)}) \ Vc_T
+        for (RRTxNode* neighbor : outgoing_neighbors) {
             int neighbor_idx = neighbor->getIndex();
             if (neighbor_idx == -1 || Vc_T_.count(neighbor_idx)) continue;
 
-            edge_length_[neighbor_idx] = -INFINITY;
+            edge_length_[neighbor->getIndex()] = -INFINITY;
+
+
             neighbor->setCost(INFINITY);
             verifyQueue(neighbor);
         }
-
-        // Process parent (p⁺_T(v) \ Vc_T)
-        if (RRTxNode* parent = node->getParent()) {
-            // Find the edge from parent to node
-            const auto& parent_edges = parent->outgoingEdges();
-            auto it = parent_edges.find(node);
-
-            // Validate the edge if it exists
-            // if (it != parent_edges.end() && isValidEdge(parent, node, it->second)) {
-            if (it != parent_edges.end() ) {
-                int parent_idx = parent->getIndex();
-                if (parent_idx != -1 && !Vc_T_.count(parent_idx)) {
-                    edge_length_[parent_idx] = -INFINITY;
-                    parent->setCost(INFINITY);
-                    verifyQueue(parent);
-                }
-            }
-        }
     }
 
-    // Step 3: Reset orphaned nodes using new parent API
+
+    // Step 3: Reset orphaned nodes
     for (int idx : Vc_T_) {
         if (idx < 0 || idx >= tree_.size()) continue;
         auto node = tree_[idx].get();
 
+        // Set g(v) and lmc(v) to infinity
         node->setCost(INFINITY);
         node->setLMC(INFINITY);
 
+        // Remove v from its parent's children list
+        if (RRTxNode* parent = node->getParent()) {
+            // Use successorsMutable() instead of successors()
+            auto& children = parent->successorsMutable(); // <--- FIX HERE
+            auto it = std::find(children.begin(), children.end(), node);
+            if (it != children.end()) {
+                children.erase(it);
+            }
+        }
 
-
+        // Reset parent of v
         node->setParent(nullptr, 0.0);
     }
 
+
+
+    // Clear Vc_T_ after processing
     Vc_T_.clear();
-}
-
-
-
-
-
-bool RRTX::isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& edge) const {
-    return edge.distance != INFINITY && 
-           obs_checker_->isObstacleFree(from->getStateVlaue(), to->getStateVlaue());
 }
 
 void RRTX::visualizeTree() {

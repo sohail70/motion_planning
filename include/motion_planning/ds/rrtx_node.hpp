@@ -7,6 +7,11 @@
 #include "motion_planning/ds/node.hpp"
 #include "boost/container/flat_map.hpp"
 
+struct EdgeInfo {
+    double distance;
+    bool is_initial;  // True = persistent (N0), False = temporary (Nr)
+};
+
 
 class RRTxNode : public Node {
 public:
@@ -25,68 +30,43 @@ public:
     void setLMC(double lmc) noexcept override { lmc_ = lmc; }
     double getLMC() const noexcept override { return lmc_; }
 
-    // Neighbor accessors
-    // Return non-const references for initial neighbors
-    auto& initialIn() noexcept { return N0_in_; }
-    auto& initialOut() noexcept { return N0_out_; }
-        // Add non-const accessors
-    auto& currentIn() { return Nr_in_; }
-    auto& currentOut() { return Nr_out_; }
-    std::vector<RRTxNode*>& successorsMutable() { return successors_; }
-
-
-    /*
-        If node v has node u as an outgoing neighbor (N0_out or Nr_out), then u must have v as an incoming neighbor (N0_in or Nr_in).
-    */
-    void addOriginalNeighbor(RRTxNode* neighbor, double dist) {
-        // For the new node: add the existing node as an original neighbor
-        N0_out_[neighbor] = dist;          // New → Existing (original outgoing)
-        neighbor->Nr_in_[this] = dist;     // Existing ← New (running incoming)
+    // Unified neighbor access
+    std::unordered_map<RRTxNode*, EdgeInfo>& incomingEdges() noexcept { return incoming_edges_; }
+    std::unordered_map<RRTxNode*, EdgeInfo>& outgoingEdges() noexcept { return outgoing_edges_; }
+    
+    // Modified addNeighbor with directional edge types
+    void addNeighbor(RRTxNode* neighbor, bool is_outgoing_initial, bool is_incoming_initial, double dist) {
+        outgoing_edges_[neighbor] = {dist, is_outgoing_initial};
+        neighbor->incoming_edges_[this] = {dist, is_incoming_initial};
     }
 
-    void addRunningNeighbor(RRTxNode* neighbor, double dist) {
-        // For the existing node: add the new node as a running neighbor
-        Nr_out_[neighbor] = dist;          // Existing → New (running outgoing)
-        neighbor->N0_in_[this] = dist;     // New ← Existing (original incoming)
-    }
-
-
-    void removeCurrentOut(RRTxNode* neighbor) {
-        auto it = Nr_out_.find(neighbor);
-        if (it != Nr_out_.end()) {
-            neighbor->Nr_in_.erase(this);
-            Nr_out_.erase(it);
-        }
-    }
-
-    // Parent management
-    // void setParent(RRTxNode* parent, double edge_dist) noexcept {
-    //     parent_ = parent;
-    //     parent_edge_dist_ = edge_dist;
-    //     if (parent) parent->successors_.push_back(this);
+    // void removeNeighbor(RRTxNode* neighbor) {
+    //     outgoing_edges_.erase(neighbor);
+    //     neighbor->incoming_edges_.erase(this);
     // }
 
-    void setParent(RRTxNode* parent, double edge_dist) noexcept {
-        // Add reference counting or use weak_ptr
-        if(parent_) {
-            // Remove from old parent's successors
+    // Fixed setParent implementation
+    void setParent(RRTxNode* parent, double edge_dist) {
+        if (parent_) {
             auto& succ = parent_->successors_;
             succ.erase(std::remove(succ.begin(), succ.end(), this), succ.end());
+            // parent_->outgoingEdges().erase(this);
+            // incomingEdges().erase(parent_);
         }
         
         parent_ = parent;
-        parent_edge_dist_ = edge_dist;
-        
         if (parent) {
             parent->successors_.push_back(this);
+            // Add persistent bidirectional parent-child edges
+            // parent->outgoingEdges()[this] = {edge_dist, true};
+            // incomingEdges()[parent] = {edge_dist, true};
         }
     }
-
 
     // Successor access
     const std::vector<RRTxNode*>& successors() const noexcept { return successors_; }
 
-
+    std::vector<RRTxNode*>& successorsMutable() noexcept { return successors_; }
     ///////////////////////////////////
         // Add missing implementations
     void setParentIndex(int index) override { /* Implement or mark final */ }
@@ -103,51 +83,18 @@ private:
 
     std::unique_ptr<State> state_;
     
-    // // Neighbor storage: [node pointer -> distance]
-    // std::unordered_map<RRTxNode*, double> N0_in_;   // Initial incoming
-    // std::unordered_map<RRTxNode*, double> N0_out_;  // Initial outgoing
-    
-    // // Current neighbors with reverse reference
-    // std::unordered_map<RRTxNode*, double> Nr_out_;  // Current outgoing
-    // std::unordered_map<RRTxNode*, double> Nr_in_;  // Current incoming
-
-    boost::container::flat_map<RRTxNode*, double> N0_in_;  
-    boost::container::flat_map<RRTxNode*, double> N0_out_;
-    boost::container::flat_map<RRTxNode*, double> Nr_out_;
-    boost::container::flat_map<RRTxNode*, double> Nr_in_;
-
-    // // Unified neighbor storage with edge type tagging
-    // std::unordered_map<RRTxNode*, EdgeInfo> incoming_edges_;  // N⁻ = N0⁻ ∪ Nr⁻
-    // std::unordered_map<RRTxNode*, EdgeInfo> outgoing_edges_;   // N⁺ = N0⁺ ∪ Nr⁺
-
-    // struct EdgeInfo {
-    //     double distance;
-    //     bool is_initial;  // True = persistent (N0), False = temporary (Nr)
-    // };
+    std::unordered_map<RRTxNode*, EdgeInfo> incoming_edges_;
+    std::unordered_map<RRTxNode*, EdgeInfo> outgoing_edges_;
+    RRTxNode* parent_ = nullptr;
+    bool in_queue_;
+    double lmc_;
+    double cost_;
+    int index_;
 
 
 
     std::vector<RRTxNode*> successors_; // Successor nodes
-    RRTxNode* parent_;
     double parent_edge_dist_;
-    bool in_queue_;
-    double lmc_;
-    double cost_;
-    int index_; 
+
 };
 
-
-// class RRTxEdge {
-//  public:
-//     RRTxEdge(RRTxNode* start, RRTxNode* end, double dist)
-//         : start_(start), end_(end), distance_(dist) {}
-
-//     double getDistance() const { return distance_; }
-//     RRTxNode* getStart() const { return start_; }
-//     RRTxNode* getEnd() const { return end_; }
-
-//  private:
-//     RRTxNode* start_;
-//     RRTxNode* end_;
-//     double distance_;
-// };
