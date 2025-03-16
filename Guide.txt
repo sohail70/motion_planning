@@ -11,7 +11,7 @@ pkill -f "gz"
 
 
 
-ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=./simple_robot/params/ros_gz_bridge.yaml 
+ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=/home/sohail/jazzy_ws/src/simple_robot/params/ros_gz_bridge.yaml 
 ros2 run teleop_twist_keyboard teleop_twist_keyboard 
 
 

@@ -225,10 +225,11 @@ int main(int argc, char **argv) {
     std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 5000);
     std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace),problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
+    planner->plan();   // if you wanted to do it right here
 
 
     //----------- Waiting for the Sim Clock to start ------------ //
-    bool simulation_is_paused = false;
+    bool simulation_is_paused = true;
     auto node_clock = ros2_manager->get_clock();
     // We'll store the initial sim time
     rclcpp::Time last_time = node_clock->now();
@@ -279,14 +280,14 @@ int main(int argc, char **argv) {
 
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(20); // 10 Hz (100ms per loop)
+    rclcpp::Rate loop_rate(50); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
     bool limited = true;  // or read from params, or pass as an argument
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
-    auto time_limit = std::chrono::seconds(10);
+    auto time_limit = std::chrono::seconds(20);
 
     std::vector<double> sim_durations;
 

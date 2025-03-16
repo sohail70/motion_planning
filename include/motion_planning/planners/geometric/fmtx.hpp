@@ -5,6 +5,7 @@
 #include "motion_planning/planners/planner.hpp"
 #include "motion_planning/ds/tree_node.hpp"
 #include "motion_planning/utils/visualization.hpp"
+#include "boost/container/flat_map.hpp"
 
 struct NeighborInfo {
     int index;
@@ -97,7 +98,8 @@ class FMTX : public Planner {
             Eigen::VectorXd robot_position_;
 
 
-            std::unordered_map<int, std::vector<NeighborInfo>> neighbors_dict_;
+            // std::unordered_map<int, std::vector<NeighborInfo>> neighbors_dict_;
+            boost::container::flat_map<int, std::vector<NeighborInfo>> neighbors_dict_;
             std::unordered_set<int> samples_in_obstacles_; // Current samples in obstacles
             std::unordered_set<int> samples_in_obstacles_2_; // Current samples in obstacles
             std::unordered_set<int> inflated_samples_;
