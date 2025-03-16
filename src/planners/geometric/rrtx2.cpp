@@ -335,8 +335,8 @@ void RRTX::rewireNeighbors(RRTxNode* v) {
     cullNeighbors(v);
 
     for (auto& [u, edge] : v->incomingEdges()) {
-        if (u == v->getParent() || !isValidEdge(u, v, edge)) continue;
-        // if (u == v->getParent() ) continue;
+        // if (u == v->getParent() || !isValidEdge(u, v, edge)) continue;
+        if (u == v->getParent() ) continue;
 
 
         const double candidate_lmc = v->getLMC() + edge.distance;

@@ -283,7 +283,6 @@ void FMTX::plan() {
         std::vector<Eigen::VectorXd> positions;
 
         near(zIndex);
-        bool what;
         // for (const auto& [xIndex, cost_to_neighbor]: zNeighborsInfo) {
         for (const auto& [x, cost_to_neighbor] : z->neighbors()) {
             int xIndex = x->getIndex();
@@ -317,14 +316,6 @@ void FMTX::plan() {
 
 
 
-
-                if (v_unvisited_set_.find(xIndex) != v_unvisited_set_.end()) {
-                    what = true;
-                }
-                else {
-                    what=false;
-                    // v_unvisited_set_.insert(xIndex);
-                }
 
                 // if (v_open_set_.count(xIndex)!=0) {
                 //     v_open_set_.erase(xIndex);

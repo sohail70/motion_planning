@@ -286,7 +286,7 @@ int main(int argc, char **argv) {
 
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(50); // 10 Hz (100ms per loop)
+    rclcpp::Rate loop_rate(5); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
     bool limited = true;  // or read from params, or pass as an argument
