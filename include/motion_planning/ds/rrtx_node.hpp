@@ -31,8 +31,8 @@ public:
     double getLMC() const noexcept override { return lmc_; }
 
     // Unified neighbor access
-    std::unordered_map<RRTxNode*, EdgeInfo>& incomingEdges() noexcept { return incoming_edges_; }
-    std::unordered_map<RRTxNode*, EdgeInfo>& outgoingEdges() noexcept { return outgoing_edges_; }
+    auto& incomingEdges() noexcept { return incoming_edges_; }
+    auto& outgoingEdges() noexcept { return outgoing_edges_; }
     
     // Modified addNeighbor with directional edge types
     void addNeighbor(RRTxNode* neighbor, bool is_outgoing_initial, bool is_incoming_initial, double dist) {
@@ -83,8 +83,10 @@ private:
 
     std::unique_ptr<State> state_;
     
-    std::unordered_map<RRTxNode*, EdgeInfo> incoming_edges_;
-    std::unordered_map<RRTxNode*, EdgeInfo> outgoing_edges_;
+    // std::unordered_map<RRTxNode*, EdgeInfo> incoming_edges_;
+    // std::unordered_map<RRTxNode*, EdgeInfo> outgoing_edges_;
+    boost::container::flat_map<RRTxNode*, EdgeInfo> incoming_edges_;
+    boost::container::flat_map<RRTxNode*, EdgeInfo> outgoing_edges_;
     RRTxNode* parent_ = nullptr;
     bool in_queue_;
     double lmc_;
