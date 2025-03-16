@@ -3,7 +3,7 @@
 
 #include "motion_planning/pch.hpp"
 #include "motion_planning/planners/planner.hpp"
-#include "motion_planning/ds/tree_node.hpp"
+#include "motion_planning/ds/fmtx_node.hpp"
 #include "motion_planning/utils/visualization.hpp"
 #include "boost/container/flat_map.hpp"
 
@@ -38,7 +38,7 @@ class FMTX : public Planner {
             // int getGoalIndex() {return robot_state_index_;}
             // int getStarIndex() {return root_state_index_;}
 
-            std::vector<NeighborInfo> near(int node_index);
+            void near(int node_index);
             void visualizeTree();
             void visualizePath(std::vector<size_t> path_indices);
             void visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_);
@@ -76,7 +76,7 @@ class FMTX : public Planner {
             std::shared_ptr<State> start_;
             std::shared_ptr<State> goal_;
             std::vector<std::shared_ptr<State>> path_;
-            std::vector<std::shared_ptr<TreeNode>> tree_;
+            std::vector<std::shared_ptr<FMTXNode>> tree_;
             std::shared_ptr<KDTree> kdtree_;
 
             std::unique_ptr<StateSpace> statespace_;

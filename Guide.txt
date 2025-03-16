@@ -115,3 +115,35 @@ int main(int argc, char **argv) {
     rclcpp::shutdown();
     return 0;
 }
+////////////////////////////////
+The reason your RRTX implementation works without explicit obstacle checks during dynamic updates lies in how you handle node invalidation and rewiring:
+
+Proximity-Based Obstacle Detection:
+In updateObstacleSamples, you use findSamplesNearObstacles to detect nodes near obstacles. By invalidating these nodes (setting edge distances to INFINITY), you implicitly mark their connected edges as blocked without explicitly checking every edge. This assumes nodes near obstacles sufficiently represent blocked regions.
+
+Edge Invalidation/Revalidation:
+
+Add Obstacles: Nodes in obstacles invalidate their edges, forcing rewiring to bypass them.
+
+Remove Obstacles: Freed nodes recalculate edge distances (but your code skips obstacle checks and assumes edges are now valid). This works if your obstacle updates are perfect (e.g., Gazebo provides exact obstacle positions).
+
+Rewiring and LMC Updates:
+The reduceInconsistency and rewireNeighbors functions propagate cost changes through the tree. Invalidated edges are ignored during rewiring, while valid edges (even if previously blocked) are reconsidered when nodes are freed.
+
+Why It Works Without Explicit Checks:
+Implicit Obstacle Avoidance: By marking nodes near obstacles as invalid, their edges are excluded from the tree. The rewiring process naturally avoids these regions.
+
+Dense Sampling: With 5000 nodes, the tree likely covers the space densely enough that most obstacle changes are captured by proximity checks on nodes.
+
+Assumption of Perfect Updates: If Gazebo provides accurate obstacle positions, findSamplesNearObstacles ensures nodes/edges near obstacles are invalidated reliably.
+
+Potential Pitfalls:
+False Positives/Negatives: If nodes are incorrectly marked as in-obstacle/free, paths might be invalid.
+
+Edge-Level Obstacles: A new obstacle blocking an edge between two valid nodes (not near either node) might go undetected. Your current implementation assumes such cases are rare due to dense sampling.
+
+For robustness, consider adding edge validity checks in removeObstacle using obs_checker_->isObstacleFree(...) when recalculating distances. This would handle edge-level obstacles not captured by node proximity.
+
+///////////////
+Besides the above i think the sole reason is the formula i used in the find samples in obstalce which is a simple euclidean distance by using a the max edge length --> i actually invalidate more nodes than necessary, otherwise i have to explicitly obstalce checking
+but that made rrtx very fast and on par with fmtx! :) ---> because we do not explicitly obstalce check anymore but fmtx is still using the plan and obstalce checks! --> which mean fmtx must be faster --> i even didn't use a good tree node for fmtx

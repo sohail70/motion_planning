@@ -50,16 +50,13 @@ public:
         if (parent_) {
             auto& succ = parent_->successors_;
             succ.erase(std::remove(succ.begin(), succ.end(), this), succ.end());
-            // parent_->outgoingEdges().erase(this);
-            // incomingEdges().erase(parent_);
+
         }
         
         parent_ = parent;
         if (parent) {
             parent->successors_.push_back(this);
-            // Add persistent bidirectional parent-child edges
-            // parent->outgoingEdges()[this] = {edge_dist, true};
-            // incomingEdges()[parent] = {edge_dist, true};
+
         }
     }
 
