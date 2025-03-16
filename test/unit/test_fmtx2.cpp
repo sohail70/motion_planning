@@ -225,57 +225,63 @@ int main(int argc, char **argv) {
     std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 5000);
     std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace),problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
-    planner->plan();   // if you wanted to do it right here
+
+    auto start = std::chrono::high_resolution_clock::now();
+    planner->plan();
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "Time taken for the update : " << duration.count() 
+                << " milliseconds\n";
 
 
-    // //----------- Waiting for the Sim Clock to start ------------ //
-    // bool simulation_is_paused = true;
-    // auto node_clock = ros2_manager->get_clock();
-    // // We'll store the initial sim time
-    // rclcpp::Time last_time = node_clock->now();
-    // std::cout << "[DEBUG] Initially, last_time = " << last_time.seconds() 
-    //         << " (sim seconds)\n";
-    // std::cout << "[INFO] Waiting for gz-sim to unpause...\n";
+    //----------- Waiting for the Sim Clock to start ------------ //
+    bool simulation_is_paused = true;
+    auto node_clock = ros2_manager->get_clock();
+    // We'll store the initial sim time
+    rclcpp::Time last_time = node_clock->now();
+    std::cout << "[DEBUG] Initially, last_time = " << last_time.seconds() 
+            << " (sim seconds)\n";
+    std::cout << "[INFO] Waiting for gz-sim to unpause...\n";
 
-    // while (rclcpp::ok() && simulation_is_paused)
-    // {
-    //     // 1) Spin to process any incoming clock messages
-    //     rclcpp::spin_some(ros2_manager);
+    while (rclcpp::ok() && simulation_is_paused)
+    {
+        // 1) Spin to process any incoming clock messages
+        rclcpp::spin_some(ros2_manager);
 
-    //     // 2) Get current sim time
-    //     rclcpp::Time current_time = node_clock->now();
-    //     double dt = (current_time - last_time).seconds();
+        // 2) Get current sim time
+        rclcpp::Time current_time = node_clock->now();
+        double dt = (current_time - last_time).seconds();
 
-    //     // // 3) Print debug
-    //     // std::cout << "[DEBUG] last_time=" << last_time.seconds() 
-    //     //         << ", current_time=" << current_time.seconds() 
-    //     //         << ", dt=" << dt << "\n";
+        // // 3) Print debug
+        // std::cout << "[DEBUG] last_time=" << last_time.seconds() 
+        //         << ", current_time=" << current_time.seconds() 
+        //         << ", dt=" << dt << "\n";
 
-    //     // 4) Check if it’s advanced
-    //     if (current_time > last_time) {
-    //         std::cout << "[DEBUG] => current_time is strictly greater than last_time, so sim is unpaused.\n";
-    //         simulation_is_paused = false;
-    //         std::cout << "[INFO] Simulation unpaused; starting to log data.\n";
-    //     }
-    //     else {
-    //         // If we land here, sim time hasn't advanced since last check
-    //         // std::cout << "[DEBUG] => Simulation still paused, waiting...\n";
-    //         rclcpp::sleep_for(std::chrono::milliseconds(1));
-    //     }
+        // 4) Check if it’s advanced
+        if (current_time > last_time) {
+            std::cout << "[DEBUG] => current_time is strictly greater than last_time, so sim is unpaused.\n";
+            simulation_is_paused = false;
+            std::cout << "[INFO] Simulation unpaused; starting to log data.\n";
+        }
+        else {
+            // If we land here, sim time hasn't advanced since last check
+            // std::cout << "[DEBUG] => Simulation still paused, waiting...\n";
+            rclcpp::sleep_for(std::chrono::milliseconds(1));
+        }
 
-    //     last_time = current_time;
-    // }
-    // //----------------------------------------------------------- //
-
-
+        last_time = current_time;
+    }
+    //----------------------------------------------------------- //
 
 
-    // // auto start = std::chrono::high_resolution_clock::now();
-    // // planner->plan();
-    // // auto end = std::chrono::high_resolution_clock::now();
-    // // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    // // if (duration.count() > 0)
-    // //     std::cout << "Time taken for the Static env: " << duration.count() << " milliseconds\n";
+
+
+    // auto start = std::chrono::high_resolution_clock::now();
+    // planner->plan();
+    // auto end = std::chrono::high_resolution_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    // if (duration.count() > 0)
+    //     std::cout << "Time taken for the Static env: " << duration.count() << " milliseconds\n";
 
 
 
@@ -283,7 +289,7 @@ int main(int argc, char **argv) {
     rclcpp::Rate loop_rate(50); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
-    bool limited = false;  // or read from params, or pass as an argument
+    bool limited = true;  // or read from params, or pass as an argument
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
@@ -294,38 +300,38 @@ int main(int argc, char **argv) {
     // The main loop
     while (running && rclcpp::ok()) {
 
-        // // 1) If we are limiting to 20s, check if we've exceeded that
-        // if (limited) {
-        //     auto now = std::chrono::steady_clock::now();
-        //     if (now - start_time > time_limit) {
-        //         std::cout << "[INFO] 20 seconds have passed. Exiting loop.\n";
-        //         break;  // exit the loop
-        //     }
-        // }
+        // 1) If we are limiting to 20s, check if we've exceeded that
+        if (limited) {
+            auto now = std::chrono::steady_clock::now();
+            if (now - start_time > time_limit) {
+                std::cout << "[INFO] 20 seconds have passed. Exiting loop.\n";
+                break;  // exit the loop
+            }
+        }
 
-        // // 2) Planner logic ...
-        // if (ros2_manager->hasNewGoal()) {
-        //     start_position = ros2_manager->getStartPosition(); 
-        //     problem_def->setStart(start_position);
-        //     problem_def->setGoal(obstacle_checker->getRobotPosition());
-        //     planner->setup(planner_params, visualization);
-        //     // planner->plan();   // if you wanted to do it right here
-        // }
+        // 2) Planner logic ...
+        if (ros2_manager->hasNewGoal()) {
+            start_position = ros2_manager->getStartPosition(); 
+            problem_def->setStart(start_position);
+            problem_def->setGoal(obstacle_checker->getRobotPosition());
+            planner->setup(planner_params, visualization);
+            // planner->plan();   // if you wanted to do it right here
+        }
 
-        // auto obstacles = obstacle_checker->getObstaclePositions();
-        // auto robot = obstacle_checker->getRobotPosition();
-        // dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
+        auto obstacles = obstacle_checker->getObstaclePositions();
+        auto robot = obstacle_checker->getRobotPosition();
+        dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
 
-        // auto start = std::chrono::high_resolution_clock::now();
-        // dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
-        // planner->plan();
-        // auto end = std::chrono::high_resolution_clock::now();
-        // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        // if (duration.count() > 0) {
-        //     std::cout << "Time taken for the update : " << duration.count() 
-        //             << " milliseconds\n";
-        // }
-        // sim_durations.push_back(duration.count());
+        auto start = std::chrono::high_resolution_clock::now();
+        dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
+        planner->plan();
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        if (duration.count() > 0) {
+            std::cout << "Time taken for the update : " << duration.count() 
+                    << " milliseconds\n";
+        }
+        sim_durations.push_back(duration.count());
 
         // std::vector<Eigen::VectorXd> shortest_path_ =
         //     dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
@@ -340,42 +346,42 @@ int main(int argc, char **argv) {
     }
 
 
-    // // 1) Get the current local time
-    // std::time_t now = std::time(nullptr); 
-    // std::tm* local_tm = std::localtime(&now);
+    // 1) Get the current local time
+    std::time_t now = std::time(nullptr); 
+    std::tm* local_tm = std::localtime(&now);
 
-    // // 2) Extract day, month, year, hour, minute, second
-    // int day    = local_tm->tm_mday;           // day of month [1-31]
-    // int month  = local_tm->tm_mon + 1;        // months since January [0-11]; add 1
-    // int year   = local_tm->tm_year + 1900;    // years since 1900
-    // int hour   = local_tm->tm_hour;           // hours since midnight [0-23]
-    // int minute = local_tm->tm_min;            // minutes after hour [0-59]
-    // int second = local_tm->tm_sec;            // seconds after minute [0-60]
+    // 2) Extract day, month, year, hour, minute, second
+    int day    = local_tm->tm_mday;           // day of month [1-31]
+    int month  = local_tm->tm_mon + 1;        // months since January [0-11]; add 1
+    int year   = local_tm->tm_year + 1900;    // years since 1900
+    int hour   = local_tm->tm_hour;           // hours since midnight [0-23]
+    int minute = local_tm->tm_min;            // minutes after hour [0-59]
+    int second = local_tm->tm_sec;            // seconds after minute [0-60]
 
-    // // 3) Build your file name, e.g. "sim_times_13_3_2025_14_58_12.csv"
-    // std::string filename = "sim_times_" +
-    //     std::to_string(day)    + "_" +
-    //     std::to_string(month)  + "_" +
-    //     std::to_string(year)   + "_" +
-    //     std::to_string(hour)   + "_" +
-    //     std::to_string(minute) + "_" +
-    //     std::to_string(second) + ".csv";
+    // 3) Build your file name, e.g. "sim_times_13_3_2025_14_58_12.csv"
+    std::string filename = "sim_times_" +
+        std::to_string(day)    + "_" +
+        std::to_string(month)  + "_" +
+        std::to_string(year)   + "_" +
+        std::to_string(hour)   + "_" +
+        std::to_string(minute) + "_" +
+        std::to_string(second) + ".csv";
 
-    // std::cout << "Writing durations to: " << filename << std::endl;
+    std::cout << "Writing durations to: " << filename << std::endl;
 
-    // // 4) Write durations to that file
-    // std::ofstream out(filename);
-    // if (!out.is_open()) {
-    //     std::cerr << "Error: failed to open " << filename << std::endl;
-    //     return 1;
-    // }
+    // 4) Write durations to that file
+    std::ofstream out(filename);
+    if (!out.is_open()) {
+        std::cerr << "Error: failed to open " << filename << std::endl;
+        return 1;
+    }
 
-    // for (auto &d : sim_durations) {
-    //     out << d << "\n";
-    // }
-    // out.close();
+    for (auto &d : sim_durations) {
+        out << d << "\n";
+    }
+    out.close();
 
-    // std::cout << "Done writing CSV.\n";
+    std::cout << "Done writing CSV.\n";
 
 
 

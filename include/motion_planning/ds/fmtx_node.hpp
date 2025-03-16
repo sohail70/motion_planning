@@ -3,12 +3,14 @@
 
 #include "motion_planning/state_space/state.hpp"
 #include "motion_planning/ds/node.hpp"
+#include <unordered_map>
 #include <boost/container/flat_map.hpp>
 #include <vector>
 
 class FMTXNode : public Node {
 public:
     using NeighborMap = boost::container::flat_map<FMTXNode*, double>;
+    // using NeighborMap = std::unordered_map<FMTXNode*, double>;
     
     explicit FMTXNode(std::unique_ptr<State> state, int index = -1)
         : state_(std::move(state)),
