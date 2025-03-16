@@ -33,6 +33,11 @@ public:
 
     // Parent-child management
     void setParent(FMTXNode* parent, double edge_cost) {
+        // sometime the parent is the same but its cost has changed so we are here redundantly and if we do not early exist we have to use the hasChild below!!
+        if (parent == parent_) { 
+            edge_cost_ = edge_cost; // Update cost even if parent is same
+            return;
+        }
         if(parent_ && parent_ != parent) {
             // Remove from old parent's children
             auto& childs = parent_->children_;
@@ -42,10 +47,40 @@ public:
         parent_ = parent;
         edge_cost_ = edge_cost;
         
-        if(parent_ ){  // && !hasChild(this, parent_->children_)) {
+        if(parent_ ){ //&& !hasChild(this, parent_->children_)) {
             parent_->children_.push_back(this);
         }
     }
+
+
+// void setParent(FMTXNode* parent, double edge_cost) {
+//     // Debug: Track calls
+//     std::cout << "FMTXNode " << index_ 
+//               << " setting parent to " << (parent ? std::to_string(parent->index_) : "nullptr") 
+//               << std::endl;
+
+//     if (parent_ && parent_ != parent) {
+//         // Remove from old parent's children
+//         auto& childs = parent_->children_;
+//         childs.erase(std::remove(childs.begin(), childs.end(), this), childs.end());
+//         std::cout << "  Removed from old parent " << parent_->index_ << "'s children." << std::endl;
+//     }
+    
+//     parent_ = parent;
+//     edge_cost_ = edge_cost;
+    
+//     if (parent_) {
+//         // Check for duplicate before adding
+//         auto& children = parent_->children_;
+//         if (std::find(children.begin(), children.end(), this) == children.end()) {
+//             children.push_back(this);
+//             std::cout << "  Added to parent " << parent_->index_ << "'s children." << std::endl;
+//         } else {
+//             std::cout << "  Already in parent " << parent_->index_ << "'s children. Skipping." << std::endl;
+//         }
+//     }
+// }
+
 
     FMTXNode* getParent() const noexcept { return parent_; }
     const std::vector<FMTXNode*>& getChildren() const noexcept { return children_; }

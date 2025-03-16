@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 5000);
+    planner_params.setParam("num_of_samples", 20000);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
 
@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
 
 
 
-    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 5000);
+    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 20000);
     std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::RRTX, std::move(statespace),problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
     // Plan the static one!
@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
 
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(5); // 10 Hz (100ms per loop)
+    rclcpp::Rate loop_rate(1); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
     bool limited = true;  // or read from params, or pass as an argument

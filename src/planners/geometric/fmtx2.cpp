@@ -441,7 +441,7 @@ void FMTX::plan() {
 
                         // tree_.at(xIndex)->setParentIndex(best_neighbor_index);
                         // tree_.at(best_neighbor_index)->setChildrenIndex(xIndex);
-                        x->setParent(best_neighbor_node,best_edge_length);
+                        x->setParent(best_neighbor_node,best_edge_length); //IMPORTANT CONCEPT --> sometimes x's parent is the same as best_neighbor_node so why did we end up here? because the parent's cost has changed because of my new condtion that i put there!!!!
                         
                         edge_length_[xIndex] = best_edge_length;
 
@@ -1078,26 +1078,98 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 //     return descendants;
 // }
 
+// std::unordered_set<int> FMTX::getDescendants(int node_index) {
+//     std::unordered_set<int> descendants;
+//     std::queue<FMTXNode*> queue;
+    
+//     // Start with the initial node
+//     queue.push(tree_[node_index].get());
+    
+//     while (!queue.empty()) {
+//         FMTXNode* current = queue.front();
+//         queue.pop();
+        
+//         // Store the index in the result set
+//         descendants.insert(current->getIndex());
+        
+//         // Process children through pointers
+//         for (FMTXNode* child : current->getChildren()) {
+//             queue.push(child);
+//         }
+//     }
+    
+//     return descendants;
+// }
 std::unordered_set<int> FMTX::getDescendants(int node_index) {
     std::unordered_set<int> descendants;
     std::queue<FMTXNode*> queue;
+    std::unordered_set<FMTXNode*> processing; // Track nodes being processed
     
-    // Start with the initial node
-    queue.push(tree_[node_index].get());
-    
+    // Debugging variables
+    int cycle_counter = 0;
+    constexpr int MAX_CYCLE_WARNINGS = 5;
+    auto start_time = std::chrono::steady_clock::now();
+
+    FMTXNode* start_node = tree_[node_index].get();
+    queue.push(start_node);
+    processing.insert(start_node);
+
     while (!queue.empty()) {
+        // Check for infinite loops
+        if (++cycle_counter > tree_.size() * 2) {
+            auto duration = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - start_time
+            );
+            std::cerr << "CRITICAL WARNING: Potential infinite loop detected!\n"
+                      << "Current node: " << queue.front()->getIndex() << "\n"
+                      << "Elapsed time: " << duration.count() << "s\n"
+                      << "Descendants found: " << descendants.size() << "\n";
+            break;
+        }
+
         FMTXNode* current = queue.front();
         queue.pop();
-        
-        // Store the index in the result set
-        descendants.insert(current->getIndex());
-        
-        // Process children through pointers
-        for (FMTXNode* child : current->getChildren()) {
-            queue.push(child);
+        processing.erase(current);
+
+        // Check if we've already processed this node
+        if (!descendants.insert(current->getIndex()).second) {
+            if (cycle_counter < MAX_CYCLE_WARNINGS) {
+                std::cerr << "Cycle detected! Already processed node: " 
+                          << current->getIndex() << "\n";
+            }
+            continue;
         }
+
+        // Process children with cycle checks
+        const auto& children = current->getChildren();
+        for (FMTXNode* child : children) {
+            if (processing.count(child)) {
+                std::cerr << "Parent-child cycle detected!\n"
+                          << "Parent: " << current->getIndex() << "\n"
+                          << "Child: " << child->getIndex() << "\n";
+                continue;
+            }
+
+            if (descendants.count(child->getIndex())) {
+                std::cerr << "Cross-branch cycle detected!\n"
+                          << "Current branch: " << current->getIndex() << "\n"
+                          << "Existing descendant: " << child->getIndex() << "\n";
+                continue;
+            }
+
+            queue.push(child);
+            processing.insert(child);
+        }
+
+        cycle_counter = 0; // Reset counter if we made progress
     }
-    
+
+    // Final check for partial cycles
+    if (!queue.empty()) {
+        std::cerr << "WARNING: Terminated early with " << queue.size()
+                  << " nodes remaining in queue\n";
+    }
+
     return descendants;
 }
 
@@ -1187,8 +1259,32 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 
         node->setCost(INFINITY);
         node->setParent(nullptr,INFINITY);
+        node->getChildrenMutable().clear();
         edge_length_[orphan] = -std::numeric_limits<double>::infinity(); // Good trick to ignore this in max_element call
     }
+
+    // // Step 2: Process ALL orphans in a single loop
+    // for (int orphan : orphan_nodes) {
+    //     FMTXNode* node = tree_[orphan].get();
+
+    //     // Clear children's parent pointers
+    //     for (FMTXNode* child : node->getChildren()) {
+    //         child->setParent(nullptr, INFINITY);
+    //     }
+    //     node->getChildrenMutable().clear();
+
+    //     // Remove from queues and reset
+    //     v_open_set_.erase(orphan);
+    //     if (v_open_heap_.contains(orphan)) {
+    //         v_open_heap_.remove(orphan);
+            
+    //     }
+    //     node->setCost(INFINITY);
+    //     node->setParent(nullptr, INFINITY);
+    //     edge_length_[orphan] = -INFINITY;
+    // }
+
+
 
 }
 

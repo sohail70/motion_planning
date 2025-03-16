@@ -47,6 +47,10 @@ public:
 
     // Fixed setParent implementation
     void setParent(RRTxNode* parent, double edge_dist) {
+        // ??? This was necessary for fmtx but i don't think its necessary for rrtx 
+        if (parent == parent_) { 
+            return;
+        }
         if (parent_) {
             auto& succ = parent_->successors_;
             succ.erase(std::remove(succ.begin(), succ.end(), this), succ.end());
@@ -54,9 +58,8 @@ public:
         }
         
         parent_ = parent;
-        if (parent) {
+        if (parent ){ //&& !hasChild(parent->successors_, this)) { // Check added
             parent->successors_.push_back(this);
-
         }
     }
 
@@ -94,6 +97,11 @@ private:
 
     std::vector<RRTxNode*> successors_; // Successor nodes
     double parent_edge_dist_;
+
+    // Add this helper function
+    static bool hasChild(const std::vector<RRTxNode*>& successors, RRTxNode* child) {
+        return std::find(successors.begin(), successors.end(), child) != successors.end();
+    }
 
 };
 
