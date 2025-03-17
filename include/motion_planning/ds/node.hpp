@@ -7,7 +7,7 @@
 class Node {
  public:
     virtual ~Node() = default;
-    virtual Eigen::VectorXd getStateVlaue() const = 0;
+    virtual const Eigen::VectorXd& getStateVlaue() const = 0;
 
     virtual void setCost(double cost) = 0;
     virtual double getCost() const = 0;

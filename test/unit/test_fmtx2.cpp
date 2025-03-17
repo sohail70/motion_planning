@@ -41,6 +41,7 @@
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
 #include "motion_planning/utils/ros2_manager.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
+#include <valgrind/callgrind.h>
 
 #include <csignal>
 #include <sys/types.h>
@@ -133,11 +134,11 @@ int main(int argc, char **argv) {
     Params DWA;
     // ========== Core motion limits ==========
     DWA.setParam("max_speed",         3.0);   // Robot can go up to 3 m/s
-    DWA.setParam("min_speed",        -2.0);   // Allow reversing if needed
+    DWA.setParam("min_speed",        -1.0);   // Allow reversing if needed
     DWA.setParam("max_yawrate",       0.8);   // Turn rate up to 1.5 rad/s
-    DWA.setParam("max_accel",         2.0);   // Accelerate up to 2 m/s^2
-    DWA.setParam("max_decel",         2.0);   // Decelerate up to 2 m/s^2
-    DWA.setParam("max_dyawrate",      1.0);   // Angular acceleration limit
+    DWA.setParam("max_accel",         3.0);   // Accelerate up to 2 m/s^2
+    DWA.setParam("max_decel",         3.0);   // Decelerate up to 2 m/s^2
+    DWA.setParam("max_dyawrate",      2.0);   // Angular acceleration limit
     DWA.setParam("robot_radius",      0.3);
 
     // ========== Sampling and horizon ==========
@@ -151,9 +152,9 @@ int main(int argc, char **argv) {
     DWA.setParam("yawrate_resolution",0.1);
 
     // ========== Cost weights ==========
-    DWA.setParam("obstacle_cost_gain",  3.0); // Higher => more aggressive obstacle avoidance
-    DWA.setParam("speed_cost_gain",     1.0); // Medium => encourages higher speed, but not crazy
-    DWA.setParam("goal_cost_gain",      1.0); // Balanced
+    DWA.setParam("obstacle_cost_gain",  5.0); // Higher => more aggressive obstacle avoidance
+    DWA.setParam("speed_cost_gain",     0.3); // Medium => encourages higher speed, but not crazy
+    DWA.setParam("goal_cost_gain",      3.0); // Balanced
     DWA.setParam("path_cost_gain",      0.3); // Enough to stay near path, but not too strict
 
     
@@ -178,13 +179,10 @@ int main(int argc, char **argv) {
     planner_params.setParam("num_of_samples", 20000);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
-    planner_params.setParam("partial_update", false);
+    planner_params.setParam("partial_update", true);
     planner_params.setParam("obs_cache", true);
     planner_params.setParam("partial_plot", false);
-    planner_params.setParam("use_heuristic", false); // TODO: Don't use this for now --> the while condition needs to change --> if robot is not in v unvisted is a good start but think about this more
-    planner_params.setParam("first_method", true);
-
-
+    planner_params.setParam("use_heuristic", false); // TODO: I need to verify if its legit workingor not.
     /////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Create ROS node
@@ -245,7 +243,7 @@ int main(int argc, char **argv) {
 
     while (rclcpp::ok() && simulation_is_paused)
     {
-        // 1) Spin to process any incoming clock messages
+        // 1) Spin to process any incoming clock message
         rclcpp::spin_some(ros2_manager);
 
         // 2) Get current sim time
@@ -286,10 +284,10 @@ int main(int argc, char **argv) {
 
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(5); // 10 Hz (100ms per loop)
+    rclcpp::Rate loop_rate(1); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
-    bool limited = false;  // or read from params, or pass as an argument
+    bool limited = true;  // or read from params, or pass as an argument
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
@@ -333,55 +331,54 @@ int main(int argc, char **argv) {
         }
         sim_durations.push_back(duration.count());
 
-        // std::vector<Eigen::VectorXd> shortest_path_ =
-        //     dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-        // ros2_manager->followPath(shortest_path_);
+        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+        ros2_manager->followPath(shortest_path_);
     
-        // dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
-
-        // if you have a rate to sleep, do it here
         loop_rate.sleep();
     }
 
+    if (limited==true){
+        // 1) Get the current local time
+        std::time_t now = std::time(nullptr); 
+        std::tm* local_tm = std::localtime(&now);
 
-    // 1) Get the current local time
-    std::time_t now = std::time(nullptr); 
-    std::tm* local_tm = std::localtime(&now);
+        // 2) Extract day, month, year, hour, minute, second
+        int day    = local_tm->tm_mday;           // day of month [1-31]
+        int month  = local_tm->tm_mon + 1;        // months since January [0-11]; add 1
+        int year   = local_tm->tm_year + 1900;    // years since 1900
+        int hour   = local_tm->tm_hour;           // hours since midnight [0-23]
+        int minute = local_tm->tm_min;            // minutes after hour [0-59]
+        int second = local_tm->tm_sec;            // seconds after minute [0-60]
 
-    // 2) Extract day, month, year, hour, minute, second
-    int day    = local_tm->tm_mday;           // day of month [1-31]
-    int month  = local_tm->tm_mon + 1;        // months since January [0-11]; add 1
-    int year   = local_tm->tm_year + 1900;    // years since 1900
-    int hour   = local_tm->tm_hour;           // hours since midnight [0-23]
-    int minute = local_tm->tm_min;            // minutes after hour [0-59]
-    int second = local_tm->tm_sec;            // seconds after minute [0-60]
+        // 3) Build your file name, e.g. "sim_times_13_3_2025_14_58_12.csv"
+        std::string filename = "sim_times_" +
+            std::to_string(day)    + "_" +
+            std::to_string(month)  + "_" +
+            std::to_string(year)   + "_" +
+            std::to_string(hour)   + "_" +
+            std::to_string(minute) + "_" +
+            std::to_string(second) + ".csv";
 
-    // 3) Build your file name, e.g. "sim_times_13_3_2025_14_58_12.csv"
-    std::string filename = "sim_times_" +
-        std::to_string(day)    + "_" +
-        std::to_string(month)  + "_" +
-        std::to_string(year)   + "_" +
-        std::to_string(hour)   + "_" +
-        std::to_string(minute) + "_" +
-        std::to_string(second) + ".csv";
+        std::cout << "Writing durations to: " << filename << std::endl;
 
-    std::cout << "Writing durations to: " << filename << std::endl;
+        // 4) Write durations to that file
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: failed to open " << filename << std::endl;
+            return 1;
+        }
 
-    // 4) Write durations to that file
-    std::ofstream out(filename);
-    if (!out.is_open()) {
-        std::cerr << "Error: failed to open " << filename << std::endl;
-        return 1;
+        for (auto &d : sim_durations) {
+            out << d << "\n";
+        }
+        out.close();
+
+        std::cout << "Done writing CSV.\n";
     }
 
-    for (auto &d : sim_durations) {
-        out << d << "\n";
-    }
-    out.close();
-
-    std::cout << "Done writing CSV.\n";
 
 
 

@@ -448,22 +448,51 @@ public:
         heapifyUp(heap.size() - 1);
     }
 
-    void update(int index, double new_cost) {
-        ensureCapacity(index);  // Ensure capacity for the updated element
-        if (!contains(index)) {
-            throw std::runtime_error("Element not found");
-        }
-        size_t heap_index = elementIndex[index];
-        double old_cost = heap[heap_index].min_key;
-        heap[heap_index].min_key = new_cost;
+    // void update(int index, double new_cost) {
+    //     ensureCapacity(index);  // Ensure capacity for the updated element
+    //     if (!contains(index)) {
+    //         throw std::runtime_error("Element not found");
+    //     }
+    //     size_t heap_index = elementIndex[index];
+    //     double old_cost = heap[heap_index].min_key;
+    //     heap[heap_index].min_key = new_cost;
 
-        // Restore heap property
-        if (new_cost < old_cost) {
-            heapifyUp(heap_index);  // New cost is smaller, move it up
-        } else {
-            heapifyDown(heap_index);  // New cost is larger, move it down
-        }
+    //     // Restore heap property
+    //     if (new_cost < old_cost) {
+    //         heapifyUp(heap_index);  // New cost is smaller, move it up
+    //     } else {
+    //         heapifyDown(heap_index);  // New cost is larger, move it down
+    //     }
+    // }
+
+void update(int index, double new_cost) {
+    ensureCapacity(index);  // Ensure capacity for the updated element
+    if (!contains(index)) {
+        throw std::runtime_error("Element not found");
     }
+
+    size_t heap_index = elementIndex[index];
+    double old_cost = heap[heap_index].min_key;
+
+    // Debug: Log a warning if the priority is the same
+    if (new_cost == old_cost) {
+        std::cerr << "Warning: Redundant update for element with index " << index
+                  << ". Old cost: " << old_cost << ", New cost: " << new_cost << std::endl;
+        return;  // No need to update if the cost is the same
+    }
+
+    // Update the priority
+    heap[heap_index].min_key = new_cost;
+
+    // Restore heap property
+    if (new_cost < old_cost) {
+        heapifyUp(heap_index);  // New cost is smaller, move it up
+    } else {
+        heapifyDown(heap_index);  // New cost is larger, move it down
+    }
+}
+
+
 
     QueueElement2 top() const {
         if (heap.empty()) {

@@ -17,10 +17,11 @@ public:
           index_(index),
           cost_(INFINITY),
           in_queue_(false),
+          in_unvisited_(false),
           parent_(nullptr) {}
 
     // Core interface
-    Eigen::VectorXd getStateVlaue() const override { return state_->getValue(); }
+    const Eigen::VectorXd& getStateVlaue() const override { return state_->getValue(); }
     double getCost() const noexcept override { return cost_; }
     void setCost(double cost) noexcept override { cost_ = cost; }
 
@@ -52,7 +53,12 @@ public:
         }
     }
 
-
+    void sanityCheck() const {
+        if (in_unvisited_ && in_queue_) {
+            std::cerr << "Warning: Node " << index_ 
+                      << " has both in_unvisited_ and in_queue_ set to true!" << std::endl;
+        }
+    }
 // void setParent(FMTXNode* parent, double edge_cost) {
 //     // Debug: Track calls
 //     std::cout << "FMTXNode " << index_ 
@@ -109,7 +115,9 @@ public:
    double getLMC() const override { return getCost(); }  // Map LMC to cost if needed
 
     bool in_queue_;
+    bool in_unvisited_;
     double edge_cost_;
+    std::unordered_set<int> blocked_best_neighbors;
 private:
     std::unique_ptr<State> state_;
     NeighborMap neighbors_;         // neighbor node -> edge cost

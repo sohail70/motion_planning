@@ -17,6 +17,7 @@ class RRTxNode : public Node {
 public:
     explicit RRTxNode(std::unique_ptr<State> state,int index = -1)
         : state_(std::move(state)),
+            // state_value_(static_cast<EuclideanState*>(state_.get())->getValue()), // Cache the value
           parent_(nullptr),
           index_(index),
           in_queue_(false),
@@ -24,7 +25,8 @@ public:
           cost_(INFINITY) {}
 
     // Core functionality
-    Eigen::VectorXd getStateVlaue() const override { return state_->getValue(); }
+    const Eigen::VectorXd& getStateVlaue() const override { return state_->getValue(); }
+    // const Eigen::VectorXd& getStateVlaue() const override { return state_value_;}
     void setCost(double cost) noexcept override { cost_ = cost; }
     double getCost() const noexcept override { return cost_; }
     void setLMC(double lmc) noexcept override { lmc_ = lmc; }
@@ -93,7 +95,7 @@ private:
     double cost_;
     int index_;
 
-
+    // Eigen::VectorXd state_value_; // Cached state value
 
     std::vector<RRTxNode*> successors_; // Successor nodes
     double parent_edge_dist_;

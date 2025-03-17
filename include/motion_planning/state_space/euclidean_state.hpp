@@ -12,7 +12,7 @@ class EuclideanState : public State {
     std::unique_ptr<State> clone() const override;
     bool equals(const State& other) const override;
     std::string toString() const override;
-    Eigen::VectorXd getValue() const override;
+    const Eigen::VectorXd& getValue() const override;
  private:
     Eigen::VectorXd value_;
 };

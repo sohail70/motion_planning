@@ -355,11 +355,11 @@ void RRTX::rewireNeighbors(RRTxNode* v) {
 
 void RRTX::reduceInconsistency() {
     while (!inconsistency_queue_.empty() 
-        //     && 
-        //    (inconsistency_queue_.top().min_key < vbot_node_->getCost() ||
-        //     vbot_node_->getLMC() != vbot_node_->getCost() ||
-        //     vbot_node_->getCost() == INFINITY ||
-        //     inconsistency_queue_.contains(vbot_node_.get())) 
+            && 
+           (inconsistency_queue_.top().min_key < vbot_node_->getCost() ||
+            vbot_node_->getLMC() != vbot_node_->getCost() ||
+            vbot_node_->getCost() == INFINITY ||
+            inconsistency_queue_.contains(vbot_node_.get())) 
         ) 
     {
         auto top_element = inconsistency_queue_.top();
@@ -579,12 +579,9 @@ void RRTX::cullNeighbors(RRTxNode* v) {
     while (it != outgoing.end()) {
         auto [neighbor, edge] = *it;
         if (!edge.is_initial && 
-            (v->getStateVlaue() - neighbor->getStateVlaue()).norm() > neighborhood_radius_ &&
+            edge.distance > neighborhood_radius_ &&// (v->getStateVlaue() - neighbor->getStateVlaue()).norm() > neighborhood_radius_ &&
             neighbor != v->getParent() ) 
         {
-            // Remove temporary edge bidirectionally
-            // neighbor->incomingEdges().erase(v);
-
             auto& incoming = neighbor->incomingEdges();
             if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
                 // Only remove temporary incoming edges (Nr⁻)
@@ -600,20 +597,20 @@ void RRTX::cullNeighbors(RRTxNode* v) {
 }
 
 
-void RRTX::makeParentOf(RRTxNode* child, RRTxNode* new_parent, double edge_dist ) {
-    if (RRTxNode* old_parent = child->getParent()) {
-        // Use successorsMutable() for write access
-        auto& succ = old_parent->successorsMutable();
-        succ.erase(std::remove(succ.begin(), succ.end(), child), succ.end());
-    }
+// void RRTX::makeParentOf(RRTxNode* child, RRTxNode* new_parent, double edge_dist ) {
+//     if (RRTxNode* old_parent = child->getParent()) {
+//         // Use successorsMutable() for write access
+//         auto& succ = old_parent->successorsMutable();
+//         succ.erase(std::remove(succ.begin(), succ.end(), child), succ.end());
+//     }
     
-    child->setParent(new_parent, edge_dist);
+//     child->setParent(new_parent, edge_dist);
     
-    if (new_parent) {
-        // Use successorsMutable() for write access
-        new_parent->successorsMutable().push_back(child);
-    }
-}
+//     if (new_parent) {
+//         // Use successorsMutable() for write access
+//         new_parent->successorsMutable().push_back(child);
+//     }
+// }
 
 
 void RRTX::verifyQueue(RRTxNode* node) {

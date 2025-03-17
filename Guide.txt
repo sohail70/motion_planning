@@ -3,6 +3,8 @@ https://github.com/jlblancoc/nanoflann
 
 
 valgrind --tool=callgrind ./my_program
+valgrind --tool=callgrind --instr-atstart=no  ./test_rrtx2          -->  if want to profile only a speicifc section you have to use this code and also put macros covering the section in code.
+
 kcachegrind callgrind.out
 
 

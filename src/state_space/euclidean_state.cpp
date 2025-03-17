@@ -22,7 +22,7 @@ std::string EuclideanState::toString() const {
     return oss.str();
 }
 
-Eigen::VectorXd EuclideanState::getValue() const {
+const Eigen::VectorXd& EuclideanState::getValue() const {
      return value_;
 }
 

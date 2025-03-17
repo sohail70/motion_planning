@@ -11,6 +11,7 @@
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
 #include "motion_planning/utils/ros2_manager.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
+#include <valgrind/callgrind.h>
 
 
 int main(int argc, char **argv) {
@@ -181,6 +182,9 @@ int main(int argc, char **argv) {
 
     std::vector<double> sim_durations;
 
+    // Start profiling
+    CALLGRIND_START_INSTRUMENTATION;
+
 
     while (rclcpp::ok()) {
 
@@ -229,6 +233,9 @@ int main(int argc, char **argv) {
         loop_rate.sleep();
 
     }
+    // Stop profiling
+    CALLGRIND_STOP_INSTRUMENTATION;
+
 
     // 1) Get the current local time
     std::time_t now = std::time(nullptr); 

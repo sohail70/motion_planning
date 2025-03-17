@@ -210,7 +210,7 @@ private:
     Eigen::Vector3d current_goal_;
     geometry_msgs::msg::Twist current_cmd_vel_;
 
-    const double LOOKAHEAD_DISTANCE = 7.0;  // 1.2m lookahead
+    const double LOOKAHEAD_DISTANCE = 1.0;  // 1.2m lookahead
     size_t last_nearest_idx_ = 0;
 
 

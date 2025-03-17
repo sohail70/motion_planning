@@ -35,8 +35,6 @@ class FMTX : public Planner {
             void setGoal(const Eigen::VectorXd& goal) override;
             void setRobotIndex(const Eigen::VectorXd& robot_position);
 
-            // int getGoalIndex() {return robot_state_index_;}
-            // int getStarIndex() {return root_state_index_;}
 
             void near(int node_index);
             void visualizeTree();
@@ -48,7 +46,6 @@ class FMTX : public Planner {
 
             void updateObstacleSamples(const std::vector<Obstacle>& obstacles);
             std::unordered_set<int> getDescendants(int node_index);
-            // std::unordered_set<int> getDescendants(const std::vector<int>& node_index);
 
 
 
@@ -86,24 +83,11 @@ class FMTX : public Planner {
             std::shared_ptr<ObstacleChecker> obs_checker_;
 
 
-            std::unordered_set<int> v_open_set_;
-            std::unordered_set<int> v_unvisited_set_;
-            // std::priority_queue<std::pair<double,int>, std::vector<std::pair<double,int>>, std::greater<>> v_open_heap_;
-
             PriorityQueue v_open_heap_;
-
-            std::unordered_set<int> boundary_;
-
-
             Eigen::VectorXd robot_position_;
+            FMTXNode* robot_node_;
 
-
-            // std::unordered_map<int, std::vector<NeighborInfo>> neighbors_dict_;
-            boost::container::flat_map<int, std::vector<NeighborInfo>> neighbors_dict_;
             std::unordered_set<int> samples_in_obstacles_; // Current samples in obstacles
-            // std::unordered_set<int> samples_in_obstacles_2_; // Current samples in obstacles
-            // std::unordered_set<int> inflated_samples_;
-
 
             std::unordered_map<int , double> edge_length_;
             int max_length_edge_ind = -1;
@@ -116,20 +100,11 @@ class FMTX : public Planner {
             int robot_state_index_;
             bool use_kdtree;
             double neighborhood_radius_;
-            bool obs_cache = true;
-            // bool use_range = false; // THIS SHOULD BE USED IN THE OBSTALCE CHECKER LEVEL NOT IN THE PLANNER LEVEL! --> LATER REMOVE THIS
+            bool obs_cache = false;
             bool partial_plot = false;
-            // bool inflation = false;
             bool use_heuristic = false;
             bool partial_update = false;
-            bool first_method = true;
-            // std::vector<std::vector<bool>> invalid_best_neighbors;
-            // std::vector<std::vector<bool>> invalid_best_neighbors;
-            std::vector<std::unordered_set<int>> invalid_best_neighbors; // Sparse storage of invalid neighbors
 
-
-
-            // int current_timestamp = 0; 
             
 
 };
