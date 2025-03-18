@@ -246,7 +246,7 @@ void RRTX::plan() {
         }
         
     }
-    
+
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Planning time: " << duration.count() << " ms" << std::endl;
@@ -272,9 +272,9 @@ bool RRTX::extend(Eigen::VectorXd v) {
         RRTxNode* neighbor = tree_[idx].get();
         if (neighbor == new_node.get()) continue;
 
-        const bool v_to_u_free = obs_checker_->isObstacleFree(new_node->getStateVlaue(), neighbor->getStateVlaue());
-        // const bool u_to_v_free = obs_checker_->isObstacleFree(neighbor->getStateVlaue(), new_node->getStateVlaue());
-        const bool u_to_v_free = v_to_u_free;
+        // const bool v_to_u_free = obs_checker_->isObstacleFree(new_node->getStateVlaue(), neighbor->getStateVlaue()); // This we do in find parent and we don't need to do it again but right now i didn't store them in findParent
+        const bool u_to_v_free = obs_checker_->isObstacleFree(neighbor->getStateVlaue(), new_node->getStateVlaue());
+        const bool v_to_u_free = u_to_v_free;  // Easy way out for now since im not doing tracjetories right now
         const double dist = (new_node->getStateVlaue() - neighbor->getStateVlaue()).norm();
 
         // Persistent outgoing from new node (N⁰+)
@@ -290,7 +290,7 @@ bool RRTX::extend(Eigen::VectorXd v) {
     
     return true;
 }
-\
+
 
 
 
@@ -305,8 +305,11 @@ void RRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& ca
     for (size_t idx : candidates) {
         auto& candidate = tree_[idx];
         if (candidate == v) continue;
-
         const double dist = (v->getStateVlaue() - candidate->getStateVlaue()).norm();
+        /*
+          The obstalce check we do here right now is the v->u  (new node to neighbors) and can also be used for the v->u trajcetories 
+          obstalce check (maybe later use a map or something) but u->v should be done in extend.
+        */
         if (dist <= neighborhood_radius_+0.01 && obs_checker_->isObstacleFree(v->getStateVlaue(), candidate->getStateVlaue())) {
             const double candidate_lmc = candidate->getLMC() + dist;
             
@@ -574,14 +577,14 @@ void RRTX::updateLMC(RRTxNode* v) {
 // }
 
 void RRTX::cullNeighbors(RRTxNode* v) {
-    if (cap_samples_ == true && sample_counter > num_of_samples_)
+    if (cap_samples_ == true && sample_counter >= num_of_samples_)
         return; // to not waste time when we put a cap on the number of samples!
     auto& outgoing = v->outgoingEdges();
     auto it = outgoing.begin();
     while (it != outgoing.end()) {
         auto [neighbor, edge] = *it;
         if (!edge.is_initial && 
-            edge.distance > neighborhood_radius_ &&// (v->getStateVlaue() - neighbor->getStateVlaue()).norm() > neighborhood_radius_ &&
+            edge.distance > neighborhood_radius_+0.01 &&// (v->getStateVlaue() - neighbor->getStateVlaue()).norm() > neighborhood_radius_ &&
             neighbor != v->getParent() ) 
         {
             auto& incoming = neighbor->incomingEdges();
@@ -638,15 +641,12 @@ void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
             const int neighbor_idx = neighbor->getIndex();
             if (samples_in_obstacles_.count(neighbor_idx)) continue;
 
-            // Recalculate distance and check obstacle-free path
-            const Eigen::VectorXd node_state = node->getStateVlaue();
-            const Eigen::VectorXd neighbor_state = neighbor->getStateVlaue();
-            const double dist = (node_state - neighbor_state).norm();
+            const double dist = edge_info.distance_original;
             // const bool is_free = obs_checker_->isObstacleFree(node_state, neighbor_state);
             const bool is_free = true;
 
             // Update node's outgoing edge
-            edge_info.distance = is_free ? dist : INFINITY;
+            edge_info.distance = is_free ? dist: INFINITY;
 
             // Update neighbor's corresponding incoming edge (preserve is_initial)
             auto neighbor_in_edge = neighbor->incomingEdges().find(node);
@@ -660,12 +660,11 @@ void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
             const int neighbor_idx = neighbor->getIndex();
             if (samples_in_obstacles_.count(neighbor_idx)) continue;
 
-            // Recalculate distance and check obstacle-free path
-            const Eigen::VectorXd node_state = node->getStateVlaue();
-            const Eigen::VectorXd neighbor_state = neighbor->getStateVlaue();
-            const double dist = (neighbor_state - node_state).norm();
+            const double dist = edge_info.distance_original;
             // const bool is_free = obs_checker_->isObstacleFree(neighbor_state, node_state);
             const bool is_free = true;
+
+
 
             // Update node's incoming edge
             edge_info.distance = is_free ? dist : INFINITY;

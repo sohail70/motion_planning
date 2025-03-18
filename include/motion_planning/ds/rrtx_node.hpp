@@ -9,6 +9,7 @@
 
 struct EdgeInfo {
     double distance;
+    double distance_original; // I use it in removeObstalce When i want to reset the distance
     bool is_initial;  // True = persistent (N0), False = temporary (Nr)
 };
 
@@ -38,8 +39,8 @@ public:
     
     // Modified addNeighbor with directional edge types
     void addNeighbor(RRTxNode* neighbor, bool is_outgoing_initial, bool is_incoming_initial, double dist) {
-        outgoing_edges_[neighbor] = {dist, is_outgoing_initial};
-        neighbor->incoming_edges_[this] = {dist, is_incoming_initial};
+        outgoing_edges_[neighbor] = {dist,dist ,is_outgoing_initial};
+        neighbor->incoming_edges_[this] = {dist,dist ,is_incoming_initial};
     }
 
     // void removeNeighbor(RRTxNode* neighbor) {
