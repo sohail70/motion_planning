@@ -210,7 +210,9 @@ void RRTX::plan() {
     // if (cap_samples_==true && sample_counter < num_of_samples_) { // TODO: later when you add the robot you can put the condtion of the while loop here and we use the while true outside because we want it to always work to update the gazebo obstale positions
     while ( cap_samples_==true && sample_counter < num_of_samples_) { // TODO: later when you add the robot you can put the condtion of the while loop here and we use the while true outside because we want it to always work to update the gazebo obstale positions
         neighborhood_radius_ = shrinkingBallRadius();
-        delta = neighborhood_radius_;
+        // neighborhood_radius_ = 10.0;
+        // delta = neighborhood_radius_;
+
         Eigen::VectorXd sample = Eigen::VectorXd::Random(dimension_);
         sample = lower_bound_ + (upper_bound_ - lower_bound_) * (sample.array() + 1) / 2;
 

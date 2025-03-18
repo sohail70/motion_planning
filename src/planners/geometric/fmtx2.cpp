@@ -110,6 +110,7 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     double gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
     double factor = 2.0;
     neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
+    // neighborhood_radius_ = 5.0;
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
 
     auto end = std::chrono::high_resolution_clock::now();
