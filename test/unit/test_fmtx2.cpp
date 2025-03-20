@@ -284,7 +284,7 @@ int main(int argc, char **argv) {
 
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(1); // 10 Hz (100ms per loop)
+    rclcpp::Rate loop_rate(20); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
     bool limited = true;  // or read from params, or pass as an argument
@@ -331,10 +331,10 @@ int main(int argc, char **argv) {
         }
         sim_durations.push_back(duration.count());
 
-        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-        ros2_manager->followPath(shortest_path_);
+        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+        // ros2_manager->followPath(shortest_path_);
     
-        dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        // dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();

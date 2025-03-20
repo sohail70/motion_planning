@@ -110,7 +110,7 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     double gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
     double factor = 2.0;
     neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
-    neighborhood_radius_ = 10.0;
+    // neighborhood_radius_ = 5.0;
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -169,10 +169,10 @@ void FMTX::plan() {
     // std::string color_str = "0.0,0.0,1.0"; // Blue color
     // visualization_->visualizeNodes(positions3,"map",color_str);
 
-    auto start = std::chrono::high_resolution_clock::now();
-    std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
+    // std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
     int uncached = 0;
     int cached = 0;
+    int checks = 0;
 
 
 
@@ -212,7 +212,7 @@ void FMTX::plan() {
 
                 I also added this feature to rrtx so we have a fair comparison between these two!
             */
-            if (samples_in_obstacles_.find(xIndex) != samples_in_obstacles_.end()) 
+            if (samples_in_obstacles_.find(xIndex) != samples_in_obstacles_.end())
                 continue;
 
             
@@ -225,8 +225,8 @@ void FMTX::plan() {
 
                 // Single pass through neighbors to both filter and find minimum
                 for (const auto& [neighbor, dist] : x->neighbors()) {
-                    if(use_heuristic==true && x->blocked_best_neighbors.count(neighbor->getIndex()) > 0)
-                        continue;
+                    // if(use_heuristic==true && x->blocked_best_neighbors.count(neighbor->getIndex()) > 0)
+                        // continue;
                     if (neighbor->in_queue_) {
                         const double total_cost = neighbor->getCost() + dist;
                         if (total_cost < min_cost) {
@@ -245,30 +245,39 @@ void FMTX::plan() {
 
 
                 bool obstacle_free;
-                // Create a key for the cache
-                if (obs_cache == true) {
-                    // Create a key for the cache
-                    auto edge_key = (best_neighbor_index < xIndex) ? std::make_pair(best_neighbor_index, xIndex) : std::make_pair(xIndex, best_neighbor_index);
+                // // Create a key for the cache
+                // if (obs_cache == true) {
+                //     // Create a key for the cache
+                //     auto edge_key = (best_neighbor_index < xIndex) ? std::make_pair(best_neighbor_index, xIndex) : std::make_pair(xIndex, best_neighbor_index);
 
-                    // Check if the obstacle check result is already in the cache
-                    if (obstacle_check_cache.find(edge_key) != obstacle_check_cache.end()) {
-                        obstacle_free = obstacle_check_cache[edge_key];
-                        cached++;
-                    } else {
-                        // Perform the obstacle check and store the result in the cache
-                        obstacle_free = obs_checker_->isObstacleFree(x->getStateVlaue() , best_neighbor_node->getStateVlaue());
-                        obstacle_check_cache[edge_key] = obstacle_free;
-                        uncached++;
-                    }
-                }
-                else { //SOMETIMES BEST_NEIGHBOR_INDEX is -1 which means all the Ynear nodes has inf cost --> inf cost means its either samples_in_obstalces or vUnvisted or it was made to inf in the handleAddObstalce! --> THESE nodes shouldn't be in vOpen --> sometimes a node lingers in vOpen because of early exit so you have to erase it in handleAddObstalce or you have to check some ifs in Ynear node push_back!
+                //     // Check if the obstacle check result is already in the cache
+                //     if (obstacle_check_cache.find(edge_key) != obstacle_check_cache.end()) {
+                //         obstacle_free = obstacle_check_cache[edge_key];
+                //         cached++;
+                //     } else {
+                //         // Perform the obstacle check and store the result in the cache
+                //         obstacle_free = obs_checker_->isObstacleFree(x->getStateVlaue() , best_neighbor_node->getStateVlaue());
+                //         obstacle_check_cache[edge_key] = obstacle_free;
+                //         uncached++;
+                //     }
+                // }
+                // else { //SOMETIMES BEST_NEIGHBOR_INDEX is -1 which means all the Ynear nodes has inf cost --> inf cost means its either samples_in_obstalces or vUnvisted or it was made to inf in the handleAddObstalce! --> THESE nodes shouldn't be in vOpen --> sometimes a node lingers in vOpen because of early exit so you have to erase it in handleAddObstalce or you have to check some ifs in Ynear node push_back!
+                //     obstacle_free = obs_checker_->isObstacleFree(x->getStateVlaue() , best_neighbor_node->getStateVlaue());
+                // }
+
+                if (in_dynamic == false){
                     obstacle_free = obs_checker_->isObstacleFree(x->getStateVlaue() , best_neighbor_node->getStateVlaue());
                 }
+                else{
+                    obstacle_free = true;
+                    checks++;
+                }
+
 
                 if (obstacle_free) {
                     double newCost = min_cost;
                     if (newCost < x->getCost()) {
-                        if (use_heuristic==true) x->blocked_best_neighbors.clear(); // Well if x is connected then i don't care about neighbors that can't be connected
+                        // if (use_heuristic==true) x->blocked_best_neighbors.clear(); // Well if x is connected then i don't care about neighbors that can't be connected
                         x->setCost(newCost);
                         double h_value = use_heuristic ? heuristic(xIndex) : 0.0;
                         double priorityCost = newCost + h_value;
@@ -293,21 +302,24 @@ void FMTX::plan() {
                         edge_length_[xIndex] = best_edge_length;
 
                     }
-                }else{
-                    /*
-                        Tracking the following set doesn put much performance issues as i tested with 20K nodes and the uupdate time was almost identical
-                        This set enables us to use A* heuristic if we want
-                    */
-                    if (use_heuristic==true) {
-                        x->blocked_best_neighbors.insert(best_neighbor_index);
-                    }
                 }
+                // else{
+                //     /*
+                //         Tracking the following set doesn put much performance issues as i tested with 20K nodes and the uupdate time was almost identical
+                //         This set enables us to use A* heuristic if we want
+                //     */
+                //     if (use_heuristic==true) {
+                //         x->blocked_best_neighbors.insert(best_neighbor_index);
+                //     }
+                // }
             }
         }
 
         z->in_queue_=false;
         z->in_unvisited_= false; // close the node if its not already --> i dont think i need this but let it be to be sure!
     }
+
+    // std::cout<<"checks: "<< checks <<"\n";
 }
 
 
@@ -562,6 +574,7 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNea
     return {conflicting_samples_inflated, conflicting_samples};
 }
 void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+    in_dynamic = true;
 
     // Calculating the max length when the max_length edge is updated or the obstalce is on the previous max_length edge!
 
@@ -640,9 +653,8 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 
 
     // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
-    for (auto it = samples_in_obstacles_.begin(); it != samples_in_obstacles_.end(); ++it) {
-        auto node = tree_.at(*it).get();
-        node->in_unvisited_ = false;
+    for (int idx : samples_in_obstacles_) {
+        tree_[idx]->in_unvisited_ = false;
     }
 
 
@@ -799,8 +811,7 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
     */
     // v_unvisited_set_.insert(orphan_nodes.begin() , orphan_nodes.end()); 
     for (auto node_index : orphan_nodes) { // we should do it here --> don't be greedy because if you put it down below , in the nested for loop you might put some neighbor in the vopen that would later in the first loop became vunvisited! --> bu you can find a way to put this in the above loop!
-        auto node = tree_.at(node_index).get();
-        node->in_unvisited_ = true;
+        tree_.at(node_index)->in_unvisited_ = true;
     }
 
     for (auto node_index : orphan_nodes) {
@@ -842,7 +853,6 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
     // Step 2: Update the tree structure ---> DOESNT MATTER IF THIS LOOP WOULD GO HIGHER THAN THE ABOVE FOR LOOP BECAUSE THE VUNVISTED UPDATE LOOP IS GONNA HELP THE ABOVE LOOP
     for (int orphan : orphan_nodes) {
         auto node = tree_[orphan].get();
-        // v_open_set_.erase(orphan);
         if (node->in_queue_==true){
             v_open_heap_.remove(orphan);
             node->in_queue_ = false;

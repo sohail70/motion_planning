@@ -105,6 +105,8 @@ class FMTX : public Planner {
             bool use_heuristic = false;
             bool partial_update = false;
 
+            bool in_dynamic = false;
+
             
 
 };

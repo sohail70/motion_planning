@@ -9,12 +9,17 @@ RRTX::RRTX(std::unique_ptr<StateSpace> statespace,
 
 void RRTX::setStart(const Eigen::VectorXd& start) {
     robot_state_index_ = statespace_->getNumStates();
-    tree_.push_back(std::make_shared<RRTxNode>(statespace_->addState(start) ,  tree_.size()));
+    tree_.push_back(std::make_unique<RRTxNode>(statespace_->addState(start) ,  tree_.size()));
     std::cout << "RRTX: Start node created on Index: " << robot_state_index_ << "\n";
 }
 void RRTX::setGoal(const Eigen::VectorXd& goal) {
     root_state_index_ = statespace_->getNumStates();
-    tree_.push_back(std::make_shared<RRTxNode>(statespace_->addState(goal) ,  tree_.size())); // Fixed parenthesis
+    auto node = std::make_unique<RRTxNode>(statespace_->addState(goal) ,  tree_.size());
+    vbot_index_ = 1;
+    vbot_node_ = node.get();
+
+    
+    tree_.push_back(std::move(node)); // Fixed parenthesis
     std::cout << "RRTX: Goal node created on Index: " << root_state_index_ << "\n";
 }
 
@@ -51,11 +56,11 @@ void RRTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
     const double MAX_SEARCH_RADIUS = 5.0;  // Meters
     auto candidates = kdtree_->radiusSearch(robot_position, MAX_SEARCH_RADIUS);
 
-    std::shared_ptr<RRTxNode> best_node = nullptr;
+    RRTxNode* best_node = nullptr;  // Use raw pointer instead of shared_ptr
     double min_total_cost = INFINITY;
 
     for (int idx : candidates) {
-        std::shared_ptr<RRTxNode> node = tree_[idx]; // Use the existing shared_ptr
+        RRTxNode* node = tree_[idx].get();  // Get raw pointer from shared_ptr
         if (node->getCost() == INFINITY) continue;
 
         const double distance_to_node = (robot_position - node->getStateVlaue()).norm();
@@ -63,11 +68,11 @@ void RRTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
 
         if (total_cost < min_total_cost) {
             min_total_cost = total_cost;
-            best_node = node; // Assign the shared_ptr directly
+            best_node = node;  // Assign raw pointer
         }
     }
 
-    vbot_node_ = best_node ? best_node : vbot_node_;
+    vbot_node_ = best_node ? best_node : vbot_node_;  // Update vbot_node_ (raw pointer)
 }
 
 void RRTX::clearPlannerState() {
@@ -167,8 +172,7 @@ void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     }
 
     /////////////////////////SETTING UP DS//////////////
-    vbot_index_ = 1;
-    vbot_node_ = std::make_shared<RRTxNode>(statespace_->addState(problem_->getGoal()) , vbot_index_);
+
 
     tree_.at(0)->setCost(0);
     tree_.at(0)->setLMC(0);
@@ -187,9 +191,9 @@ void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
 
 
     // Since i want to put a cap on the number of samples and i want RRTX to be as close as to FMTX im gonna set step size (delta) to this:
-    double factor = 2.0;
-    // delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
-    delta = 10.0;
+    factor = 2.0;
+    delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
+    // delta = 5.0;
     std::cout << "Computed value of delta: " << delta << std::endl;
 
 
@@ -250,6 +254,69 @@ void RRTX::plan() {
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Planning time: " << duration.count() << " ms" << std::endl;
+
+
+
+    // ===== Add this verification loop at the end =====
+    bool has_inconsistency = false;
+    int edge_counter = 0;
+
+    // Loop through all nodes in the tree
+    for (const auto& node_ptr : tree_) {
+        // Check outgoing edges
+        for (const auto& [neighbor, edge_info] : node_ptr->outgoingEdges()) {
+            edge_counter++;
+            
+            // Check if distance != distance_original (unexpected)
+            if (edge_info.distance != edge_info.distance_original) {
+                std::cerr << "ERROR: Outgoing edge mismatch at node " << node_ptr->getIndex()
+                          << " -> " << neighbor->getIndex() 
+                          << " | dist=" << edge_info.distance 
+                          << ", dist_original=" << edge_info.distance_original << "\n";
+                has_inconsistency = true;
+            }
+
+            // Check if distance_original is zero (invalid)
+            if (edge_info.distance_original == 0.0) {
+                std::cerr << "WARNING: Zero distance_original at node " << node_ptr->getIndex()
+                          << " -> " << neighbor->getIndex() 
+                          << " | State1: " << node_ptr->getStateVlaue().transpose()
+                          << " | State2: " << neighbor->getStateVlaue().transpose() << "\n";
+            }
+        }
+
+        // Check incoming edges
+        for (const auto& [neighbor, edge_info] : node_ptr->incomingEdges()) {
+            edge_counter++;
+            
+            if (edge_info.distance != edge_info.distance_original) {
+                std::cerr << "ERROR: Incoming edge mismatch at node " << node_ptr->getIndex()
+                          << " <- " << neighbor->getIndex() 
+                          << " | dist=" << edge_info.distance 
+                          << ", dist_original=" << edge_info.distance_original << "\n";
+                has_inconsistency = true;
+            }
+
+            if (edge_info.distance_original == 0.0) {
+                std::cerr << "WARNING: Zero distance_original at node " << node_ptr->getIndex()
+                          << " <- " << neighbor->getIndex() 
+                          << " | State1: " << neighbor->getStateVlaue().transpose()
+                          << " | State2: " << node_ptr->getStateVlaue().transpose() << "\n";
+            }
+        }
+    }
+
+    std::cout << "Edge verification complete. Checked " << edge_counter << " edges.\n";
+    if (!has_inconsistency) {
+        std::cout << "All edges have consistent distance/distance_original.\n";
+    }
+
+
+
+
+
+
+
 }
 
 
@@ -307,7 +374,7 @@ void RRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& ca
         if (candidate == v) continue;
         const double dist = (v->getStateVlaue() - candidate->getStateVlaue()).norm();
         /*
-          The obstalce check we do here right now is the v->u  (new node to neighbors) and can also be used for the v->u trajcetories 
+          The obstalce check we do here right now is the v->u  (new node to neighbors) and can also be used for the v->u trajcetories in extend function
           obstalce check (maybe later use a map or something) but u->v should be done in extend.
         */
         if (dist <= neighborhood_radius_+0.01 && obs_checker_->isObstacleFree(v->getStateVlaue(), candidate->getStateVlaue())) {
@@ -364,7 +431,7 @@ void RRTX::reduceInconsistency() {
            (inconsistency_queue_.top().min_key < vbot_node_->getCost() ||
             vbot_node_->getLMC() != vbot_node_->getCost() ||
             vbot_node_->getCost() == INFINITY ||
-            inconsistency_queue_.contains(vbot_node_.get())) 
+            inconsistency_queue_.contains(vbot_node_)) 
         ) 
     {
         auto top_element = inconsistency_queue_.top();
@@ -389,7 +456,6 @@ void RRTX::reduceInconsistency() {
 
 
 double RRTX::shrinkingBallRadius() const {
-    double factor = 2.0;
     auto rad = factor * gamma_ * pow(log(tree_.size()) / tree_.size(), 1.0/dimension_);
     return std::min(rad, delta);;
 
@@ -416,6 +482,7 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
 
 // To handle changes in the environment
 void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+    update_obstacle = true;
 
     if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
     {
@@ -577,8 +644,11 @@ void RRTX::updateLMC(RRTxNode* v) {
 // }
 
 void RRTX::cullNeighbors(RRTxNode* v) {
-    if (cap_samples_ == true && sample_counter >= num_of_samples_)
+    if (cap_samples_ == true && sample_counter >= num_of_samples_-1)
+    // if (cap_samples_ == true && update_obstacle == true)
         return; // to not waste time when we put a cap on the number of samples!
+    // std::cout<<sample_counter <<" " << num_of_samples_<<"\n";
+
     auto& outgoing = v->outgoingEdges();
     auto it = outgoing.begin();
     while (it != outgoing.end()) {

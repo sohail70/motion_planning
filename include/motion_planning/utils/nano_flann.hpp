@@ -10,7 +10,7 @@
 
 class NanoFlann : public KDTree {
  public:
-          using NFKDTree = nanoflann::KDTreeEigenMatrixAdaptor<Eigen::MatrixXd>;
+          using NFKDTree = nanoflann::KDTreeEigenMatrixAdaptor<Eigen::MatrixXd>; // TODO: later use another Adaptor to directly map it to Node class.
           explicit NanoFlann(int dimension);
           void addPoint(const Eigen::VectorXd& stateValue) override;
           void addPoints(const std::vector<Eigen::VectorXd>& statesValues) override;

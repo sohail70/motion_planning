@@ -171,7 +171,7 @@ int main(int argc, char **argv) {
 
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(1); // 10 Hz (100ms per loop)
+    rclcpp::Rate loop_rate(20); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
     bool limited = true;  // or read from params, or pass as an argument
@@ -210,8 +210,8 @@ int main(int argc, char **argv) {
 
         auto obstacles = obstacle_checker->getObstaclePositions();
         auto robot = obstacle_checker->getRobotPosition();
-        // if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
-            dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot);
+        // dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot); // UNCOMMENT THIS LATER!
+
         ////////// PLAN //////////
         auto start = std::chrono::high_resolution_clock::now();
         dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);

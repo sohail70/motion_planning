@@ -53,7 +53,7 @@ std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& ob
 
     // Node tracking
     // RRTxNode* vbot_node_ = nullptr;  // Added missing declaration
-    std::shared_ptr<RRTxNode>  vbot_node_;
+    RRTxNode*  vbot_node_;
     std::unordered_set<int> Vc_T_; // Store indices instead of pointers
 
     std::unordered_set<int> samples_in_obstacles_;
@@ -64,12 +64,15 @@ std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& ob
     double epsilon_ = 1e-6;
     double gamma_;
     double delta = 20.0; 
+    double factor;
     int num_of_samples_;
     int dimension_;
     int root_state_index_ = -1;
     int robot_state_index_ = -1;
     size_t sample_counter = 0;
     bool cap_samples_ = true;
+    bool update_obstacle = false;
+
 
 Eigen::VectorXd robot_position_;
 std::unordered_map<int, double> edge_length_;
