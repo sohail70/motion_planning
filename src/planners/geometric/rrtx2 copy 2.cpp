@@ -435,7 +435,7 @@ void RRTX::rewireNeighbors(RRTxNode* v) {
 
 void RRTX::reduceInconsistency() {
     while (!inconsistency_queue_.empty() 
-            && (!partial_update ||
+            && (!partial_update &&
            (inconsistency_queue_.top().min_key < vbot_node_->getCost() ||
             vbot_node_->getLMC() != vbot_node_->getCost() ||
             vbot_node_->getCost() == INFINITY ||
@@ -487,6 +487,183 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
 }
 
 
+
+
+// // To handle changes in the environment ---> THIS ONE IS FOR IGNORING SAMPLES ON OBSTALCES AND NOT EPLICIT OBSTACLE CHECK
+// void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+//     update_obstacle = true;
+
+//     if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
+//     {
+//         auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
+//             return a.second < b.second;
+//         });
+//         max_length = max_it->second;
+//         max_length_edge_ind = max_it->first;
+//         // std::cout<<max_it->first << "  " << max_it->second <<" \n"; 
+
+//     }
+//     // // Visualizing the maximum length node
+//     // if (max_length_edge_ind !=-1){
+//     //     std::string color_str = "0.0,0.0,1.0"; // Blue color
+//     //     std::vector<Eigen::VectorXd> positions4;
+//     //     Eigen::VectorXd vec(2);
+//     //     vec << tree_.at(max_length_edge_ind)->getStateVlaue();
+//     //     positions4.push_back(vec);
+//     //     visualization_->visualizeNodes(positions4,"map",color_str);
+
+//     // }
+
+
+//     // Similar obstacle sampling to FMTX but with RRTX propagation
+//     // TODO: Later i need to implement the max length of and edge to find the scaling paramter accurately
+//     auto current = findSamplesNearObstacles(obstacles, max_length); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+
+
+
+//     std::vector<int> added;
+//     for (int sample : current) {
+//         if (samples_in_obstacles_.find(sample) == samples_in_obstacles_.end()) {
+//             added.push_back(sample); 
+//         }
+//     }
+
+//     std::vector<int> removed;
+//     for (int sample : samples_in_obstacles_) {
+//         if (current.find(sample) == current.end()) {
+//             removed.push_back(sample); 
+//         }
+//     }
+
+
+//     // // // Visualizing the maximum length node
+//     // std::vector<Eigen::VectorXd> positions4;
+//     // std::string color_str = "0.0,0.0,1.0"; // Blue color
+//     // for (int r : removed){
+//     //     Eigen::VectorXd vec(2);
+//     //     vec << tree_.at(r)->getStateVlaue();
+//     //     positions4.push_back(vec);
+
+//     // }
+//     // visualization_->visualizeNodes(positions4,"map",color_str);
+
+
+//     // I update here because in removeObstalce i need to avoid samples that are still on obstalces
+//     // Update the set of samples in obstacles
+//     samples_in_obstacles_ = std::move(current);
+    
+
+//     // Handle added and removed samples
+//     if (!added.empty()) {
+//         addNewObstacle(added);
+//         propagateDescendants();
+//         verifyQueue(tree_[vbot_index_].get()); // Convert index to node pointer
+
+//     }
+//     if (!removed.empty()) {
+//         removeObstacle(removed);
+//     }
+
+//     reduceInconsistency();
+// }
+
+
+
+// // To handle changes in the environment --> THIS ONE IS USED FOR EPLICIT OBSTCLE CHECK
+// void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+//     update_obstacle = true;
+
+//     if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
+//     {
+//         auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
+//             return a.second < b.second;
+//         });
+//         max_length = max_it->second;
+//         max_length_edge_ind = max_it->first;
+//         // std::cout<<max_it->first << "  " << max_it->second <<" \n"; 
+
+//     }
+//     // max_length = delta;
+    
+//     // // Visualizing the maximum length node
+//     // if (max_length_edge_ind !=-1){
+//     //     std::string color_str = "0.0,0.0,1.0"; // Blue color
+//     //     std::vector<Eigen::VectorXd> positions4;
+//     //     Eigen::VectorXd vec(2);
+//     //     vec << tree_.at(max_length_edge_ind)->getStateVlaue();
+//     //     positions4.push_back(vec);
+//     //     visualization_->visualizeNodes(positions4,"map",color_str);
+
+//     // }
+
+
+//     // Similar obstacle sampling to FMTX but with RRTX propagation
+//     // TODO: Later i need to implement the max length of and edge to find the scaling paramter accurately
+//     auto current = findSamplesNearObstacles(obstacles, max_length); // TODO: i don't think its correct to scale this but its necessary to (it needs to be integrated with max length) --> its not correct in a sense that the scaled onces shoudlnt go into the samples in obstalces i guess because i avoid them in the main while loop --> weirdly it works but i'll take a look later!
+
+
+
+//     std::vector<int> added;
+//     for (int sample : current) {
+//         if (samples_in_obstacles_.find(sample) == samples_in_obstacles_.end()) {
+//             added.push_back(sample); 
+//         }
+//     }
+
+//     std::vector<int> removed;
+//     for (int sample : samples_in_obstacles_) {
+//         if (current.find(sample) == current.end()) {
+//             removed.push_back(sample); 
+//         }
+//     }
+
+
+
+//     // I update here because in removeObstalce i need to avoid samples that are still on obstalces
+//     // Update the set of samples in obstacles
+//     // samples_in_obstacles_ = std::move(current);
+
+
+
+//     std::vector<int> cur;
+//     for(int c: current)
+//         cur.push_back(c);
+
+//     std::vector<int> prev;
+//     for(int p: samples_in_obstacles_)
+//         prev.push_back(p);
+
+//     // // Visualizing the maximum length node
+//     // std::vector<Eigen::VectorXd> positions4;
+//     // std::string color_str = "0.0,0.0,1.0"; // Blue color
+//     // for (int r : current){
+//     //     Eigen::VectorXd vec(2);
+//     //     vec << tree_.at(r)->getStateVlaue();
+//     //     positions4.push_back(vec);
+
+//     // }
+//     // visualization_->visualizeNodes(positions4,"map",color_str);
+
+
+//     // Handle added and removed samples ---> if you wanna use the obstacle check near obstalces we need to pt removeObstalce first (because of the edge.distance==inf continue;) condition that we have in removeObstalce
+//     if (!removed.empty()) {
+//     // if (!prev.empty()) {
+//         // removeObstacle(removed);
+//         removeObstacle(prev);
+//     }
+//     if (!added.empty()) {
+//     // if (!cur.empty()) {
+//         // addNewObstacle(added);
+//         addNewObstacle(cur);
+//         propagateDescendants();
+//         verifyQueue(tree_[vbot_index_].get()); // Convert index to node pointer
+
+//     }
+
+//     // Update the set of samples in obstacles
+//     samples_in_obstacles_ = std::move(current);
+//     reduceInconsistency();
+// }
 void RRTX::updateLMC(RRTxNode* v) {
     cullNeighbors(v);
     double min_lmc = v->getLMC();
@@ -570,6 +747,306 @@ void RRTX::verifyQueue(RRTxNode* node) {
 }
 
 
+
+// void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
+//     for (int idx : removed_indices) {
+//         RRTxNode* node = tree_[idx].get();
+//         samples_in_obstacles_.erase(idx); // Remove from obstacle set
+
+//         // First loop: Process outgoing edges (node → neighbor)
+//         for (auto& [neighbor, edge_info] : node->outgoingEdges()) {
+//             const int neighbor_idx = neighbor->getIndex();
+//             if (samples_in_obstacles_.count(neighbor_idx)) continue;
+
+//             const double dist = edge_info.distance_original;
+//             // const bool is_free = obs_checker_->isObstacleFree(node_state, neighbor_state);
+//             const bool is_free = true;
+
+//             // Update node's outgoing edge
+//             edge_info.distance = is_free ? dist: INFINITY;
+
+//             // Update neighbor's corresponding incoming edge (preserve is_initial)
+//             auto neighbor_in_edge = neighbor->incomingEdges().find(node);
+//             if (neighbor_in_edge != neighbor->incomingEdges().end()) {
+//                 neighbor_in_edge->second.distance = is_free ? dist : INFINITY;
+//             }
+//         }
+
+//         // Second loop: Process incoming edges (neighbor → node)
+//         for (auto& [neighbor, edge_info] : node->incomingEdges()) {
+//             const int neighbor_idx = neighbor->getIndex();
+//             if (samples_in_obstacles_.count(neighbor_idx)) continue;
+
+//             const double dist = edge_info.distance_original;
+//             // const bool is_free = obs_checker_->isObstacleFree(neighbor_state, node_state);
+//             const bool is_free = true;
+
+
+
+//             // Update node's incoming edge
+//             edge_info.distance = is_free ? dist : INFINITY;
+
+//             // Update neighbor's corresponding outgoing edge (preserve is_initial)
+//             auto neighbor_out_edge = neighbor->outgoingEdges().find(node);
+//             if (neighbor_out_edge != neighbor->outgoingEdges().end()) {
+//                 neighbor_out_edge->second.distance = is_free ? dist : INFINITY;
+//             }
+//         }
+
+//         // Update LMC and queue
+//         updateLMC(node);
+//         if (node->getCost() != node->getLMC()) {
+//             verifyQueue(node);
+//         }
+//     }
+// }
+
+
+
+// void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
+//     for (int idx : added_indices) {
+//         RRTxNode* node = tree_[idx].get();
+//         samples_in_obstacles_.insert(idx);
+
+//         // Invalidate all edges connected to this node
+//         for (auto& [u, edge] : node->outgoingEdges()) {
+
+//             edge.distance = INFINITY;
+//             u->incomingEdges()[node].distance = INFINITY;
+//             u->outgoingEdges()[node].distance = INFINITY;
+//             if (u->getParent() == node) verifyOrphan(u);
+//         }
+//         for (auto& [u, edge] : node->incomingEdges()) {
+
+//             edge.distance = INFINITY;
+//             u->outgoingEdges()[node].distance = INFINITY;
+//             u->incomingEdges()[node].distance = INFINITY;
+//             if (node->getParent() == u) verifyOrphan(node);
+//         }
+
+//         // Mark node as invalid and propagate
+//         node->setCost(INFINITY);
+//         node->setLMC(INFINITY);
+//         edge_length_[idx] = -INFINITY;
+//         node->setParent(nullptr, 0.0);  // Clear parent
+//         verifyOrphan(node);  // Add to Vc_T_
+//     }
+// }
+
+// void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
+//     for (int idx : added_indices) {
+//         RRTxNode* node = tree_[idx].get();
+//         /*
+//             IMPORTANT: I ONLY USE INCOMING EDGES BECAUSE REWIRE FUNCTION AND UPDATE LMC FUNCTION USES INCMING EDGES! 
+//         */
+//         // // Invalidate all edges connected to this node
+//                 // Track nodes from both loops
+//         std::unordered_set<RRTxNode*> outgoing_nodes;
+//         std::unordered_set<RRTxNode*> incoming_nodes;
+//         for (auto& [u, edge] : node->outgoingEdges()) {
+//             outgoing_nodes.insert(u);
+//             const bool is_free = obs_checker_->isObstacleFree(u->getStateVlaue(), node->getStateVlaue());
+//             if (is_free) continue;
+//             edge.distance = INFINITY;
+//             u->incomingEdges()[node].distance = INFINITY;
+//             u->outgoingEdges()[node].distance = INFINITY;
+//             if (u->getParent() == node) {
+//                 u->setParent(nullptr, 0.0);  // Clear parent
+//                 verifyOrphan(u);
+//             }
+//         }
+//         for (auto& [u, edge] : node->incomingEdges()) {
+//             incoming_nodes.insert(u);
+//             const bool is_free = obs_checker_->isObstacleFree(u->getStateVlaue(), node->getStateVlaue());
+//             if (is_free) continue;
+//             edge.distance = INFINITY;
+//             u->outgoingEdges()[node].distance = INFINITY;
+//             u->incomingEdges()[node].distance = INFINITY;
+//             if (node->getParent() == u) {
+//                 node->setParent(nullptr, 0.0);  // Clear parent
+//                 verifyOrphan(node);
+
+//             }
+//         }
+
+//         // Find nodes unique to outgoing
+//         std::vector<RRTxNode*> outgoing_only;
+//         for (auto* u : outgoing_nodes) {
+//             if (!incoming_nodes.count(u)) {
+//                 outgoing_only.push_back(u);
+//             }
+//         }
+
+//         // Find nodes unique to incoming
+//         std::vector<RRTxNode*> incoming_only;
+//         for (auto* u : incoming_nodes) {
+//             if (!outgoing_nodes.count(u)) {
+//                 incoming_only.push_back(u);
+//             }
+//         }
+
+//         // Print warnings if discrepancies found
+//         if (!outgoing_only.empty() || !incoming_only.empty()) {
+//             std::cerr << "\nWARNING: Edge asymmetry detected for node " 
+//                       << node->getIndex() << ":\n";
+            
+//             if (!outgoing_only.empty()) {
+//                 std::cerr << "  Nodes ONLY in outgoing edges: ";
+//                 for (auto* u : outgoing_only) std::cerr << u->getIndex() << " ";
+//                 std::cerr << "\n";
+//             }
+            
+//             if (!incoming_only.empty()) {
+//                 std::cerr << "  Nodes ONLY in incoming edges: ";
+//                 for (auto* u : incoming_only) std::cerr << u->getIndex() << " ";
+//                 std::cerr << "\n";
+//             }
+//         }
+
+
+        
+
+//     }
+// }
+
+// void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
+//     for (int idx : added_indices) {
+//         RRTxNode* node = tree_[idx].get();
+//         // std::vector<Eigen::VectorXd> positions4;
+//         // Eigen::VectorXd vec1(2);
+//         // vec1 << node->getStateVlaue();
+//         // positions4.push_back(vec1);
+//         // if (node->getIndex() == 56)
+//         //     std::cout<<"asdasd \n";
+//         // Invalidate outgoing edges
+//         for (auto& [u, edge] : node->outgoingEdges()) {
+//             // if (node->getIndex() == 538 && u->getIndex() == 260 || 
+//             //     node->getIndex() == 260 && u->getIndex() == 538  
+//             //     )
+//             //     std::cout<<edge.distance   << " \n";
+//             // std::string color_str = "0.0,0.0,1.0"; // Blue color
+//             // Eigen::VectorXd vec(2);
+//             // vec << u->getStateVlaue();
+//             // positions4.push_back(vec);
+//             // visualization_->visualizeNodes(positions4,"map",color_str);
+//             // positions4.pop_back();
+//             // Skip already invalid edges
+//             if (edge.distance == INFINITY) continue;
+
+//             // Check if edge intersects the obstacle
+//             const bool is_free = obs_checker_->isObstacleFree(
+//                 node->getStateVlaue(), 
+//                 u->getStateVlaue()
+//             );
+//             if (!is_free) {
+//                 // Invalidate both directions of the edge
+//                 edge.distance = INFINITY;
+//                 /*
+//                     so since we are iterating over outgoing (you can iterate over ingoing also doesnt matter!), and our focus is on "node" thne if node has collision with its neighbor u then
+//                     outgoing node's dist from node->u should be inf, also incoming node from u->node should be inf also incoming node from node->u should be inf!
+//                     so its like the outgoing of node i.e, node->u (with the focus on node!) and incoming of node (u->node) should be inf and also the incoming of u from node i.e, node->u needs to be inf, but how about outgoing of u i.e., u->node  --> this should be ALSO handled!--> don't confuse the asymetry
+//                 */
+//                 u->incomingEdges().at(node).distance = INFINITY;
+//                 u->outgoingEdges().at(node).distance = INFINITY;
+//                 node->incomingEdges().at(u).distance = INFINITY;
+
+//                 // auto neighbor_in_edge = u->incomingEdges().find(node);
+//                 // if (neighbor_in_edge != u->incomingEdges().end()) {
+//                 //     neighbor_in_edge->second.distance = INFINITY;
+//                 // }
+
+//                 // // // Update neighbor's outgoing edge to this node (if it exists)
+//                 // auto neighbor_out_edge = u->outgoingEdges().find(node);
+//                 // if (neighbor_out_edge != u->outgoingEdges().end()) {
+//                 //     neighbor_out_edge->second.distance = INFINITY;
+//                 // }
+//                 // // Update neighbor's outgoing edge to this node (if it exists)
+//                 // auto node_in_edge = node->incomingEdges().find(u);
+//                 // if (node_in_edge != node->incomingEdges().end()) {
+//                 //     node_in_edge->second.distance = INFINITY;
+//                 // }
+
+
+
+
+//                 // Orphan nodes if edge is part of the tree
+//                 if (u->getParent() == node) {
+//                     u->setParent(nullptr, INFINITY); // Clear parent
+//                     verifyOrphan(u);
+//                 }
+//                 if (node->getParent() == u) {
+//                     node->setParent(nullptr, INFINITY); // Clear parent
+//                     verifyOrphan(node);
+//                 }
+//             }
+//         }
+
+//     }
+// }
+
+// void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
+//     for (int idx : removed_indices) {
+//         RRTxNode* node = tree_[idx].get();
+
+//         // Process all edges connected to this node
+//         for (auto& [neighbor, edge_info] : node->outgoingEdges()) {
+//             // if (node->getIndex() == 538 && neighbor->getIndex() == 260 || 
+//             //     node->getIndex() == 260 && neighbor->getIndex() == 538 
+//             //     )
+//             //     std::cout<<edge_info.distance <<"\n";
+
+
+//             // Skip edges that are already valid
+//             if (edge_info.distance != INFINITY) continue;
+
+//             // Check if the edge is now obstacle-free
+//             const double dist = edge_info.distance_original;
+//             const bool is_free = obs_checker_->isObstacleFree(
+//                 node->getStateVlaue(), 
+//                 neighbor->getStateVlaue()
+//             );
+
+//             if (!is_free) continue; // Edge is still blocked
+
+//             // Update node's outgoing edge
+//             edge_info.distance = dist;
+
+//             neighbor->incomingEdges().at(node).distance = dist;
+//             neighbor->outgoingEdges().at(node).distance = dist;
+//             node->incomingEdges().at(neighbor).distance = dist;
+
+
+
+
+//             // // Update neighbor's corresponding incoming edge
+//             // auto neighbor_in_edge = neighbor->incomingEdges().find(node);
+//             // if (neighbor_in_edge != neighbor->incomingEdges().end()) {
+//             //     neighbor_in_edge->second.distance = dist;
+//             // }
+
+//             // // // Update neighbor's outgoing edge to this node (if it exists)
+//             // auto neighbor_out_edge = neighbor->outgoingEdges().find(node);
+//             // if (neighbor_out_edge != neighbor->outgoingEdges().end()) {
+//             //     neighbor_out_edge->second.distance = dist;
+//             // }
+//             // // Update neighbor's outgoing edge to this node (if it exists)
+//             // auto node_in_edge = node->incomingEdges().find(neighbor);
+//             // if (node_in_edge != node->incomingEdges().end()) {
+//             //     node_in_edge->second.distance = dist;
+//             // }
+//         }
+
+
+
+
+
+//         // Update LMC and queue
+//         updateLMC(node);
+//         if (node->getCost() != node->getLMC()) {
+//             verifyQueue(node);
+//         }
+//     }
+// }
 
 
 void RRTX::verifyOrphan(RRTxNode* node) {
@@ -863,23 +1340,10 @@ void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     for(int p: samples_in_obstacles_)
         prev.push_back(p);
 
-    // // // Visualization
-    // std::vector<Eigen::VectorXd> positions4;
-    // std::string color_str = "0.0,0.0,1.0"; // Blue color
-    // for (int r : removed){
-    //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(r)->getStateVlaue();
-    //     positions4.push_back(vec);
-    // }
-    // visualization_->visualizeNodes(positions4,"map",color_str);
-
-
 
 
     if (ignore_sample) {
         // Version 1: Track samples on obstacles without explicit checks
-
-        // I update here because in removeObstalce i need to avoid samples that are still on obstalces
         samples_in_obstacles_ = current;
         
         if (!added.empty()) {
@@ -892,23 +1356,13 @@ void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
         }
     } else {
         // Version 2: Use explicit obstacle checks
-        samples_in_obstacles_ = current; // doesn't matter to update here or after the functions because we alread filled prev with samples_in_obstacles
-        /*
-            we use removed and added for the condtions but we use prev and cur as the input
-            prev is the whole samples previously on the obstalces --> we use prev because we need prev in remove obstacle
-            cur is all the current samples on the obstalces
-            as opposed to added removed which we use in the version 1 ---> the version one is much faster and we can use it because we ignore sample in obstalces in remove obstalce function
-            so in version one we only send what is added wrt to the previous one! --> the obstalce mayb only moved a little bit and only a fraction of samples has been added or removed wrt to previous iteration
-            this simplificatin only works if you ignore samples in obstalce in remove obstalce function of version 1 or else we might connect some nodes and think we are okay but the next cycle added/removed wouldn't 
-            cover the obstacly part.
-        */
-
         if (!removed.empty()) removeObstacle(prev);
         if (!added.empty()) {
             addNewObstacle(cur);
             propagateDescendants();
             verifyQueue(tree_[vbot_index_].get());
         }
+        samples_in_obstacles_ = current;
     }
 
     reduceInconsistency();
@@ -929,11 +1383,7 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
                 !obs_checker_->isObstacleFree(node->getStateVlaue(), u->getStateVlaue()));
 
             if (!should_invalidate) continue;
-            /*
-                so since we are iterating over outgoing (you can iterate over ingoing also doesnt matter!), and our focus is on "node" thne if node has collision with its neighbor u then
-                outgoing node's dist from node->u should be inf, also incoming node from u->node should be inf also incoming node from node->u should be inf!
-                so its like the outgoing of node i.e, node->u (with the focus on node!) and incoming of node (u->node) should be inf and also the incoming of u from node i.e, node->u needs to be inf, but how about outgoing of u i.e., u->node  --> this should be ALSO handled!--> don't confuse the asymetry
-            */
+
             // Common invalidation operations
             edge.distance = INFINITY;
             u->incomingEdges().at(node).distance = INFINITY;

@@ -72,7 +72,8 @@ std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& ob
     size_t sample_counter = 0;
     bool cap_samples_ = true;
     bool update_obstacle = false;
-
+    bool partial_update;
+    bool ignore_sample;
 
 Eigen::VectorXd robot_position_;
 std::unordered_map<int, double> edge_length_;

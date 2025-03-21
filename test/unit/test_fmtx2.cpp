@@ -173,6 +173,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("world_name", "default");
     gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
+    gazebo_params.setParam("inflation", 1.5); //1.5 meters --> this will be added to obstalce radius when obstalce checking
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;

@@ -10,6 +10,7 @@ GazeboObstacleChecker::GazeboObstacleChecker(const Params& params,
     world_name_ = params.getParam<std::string>("world_name");
     use_range = params.getParam<bool>("use_range");
     sensor_range = params.getParam<double>("sensor_range");
+    inflation = params.getParam<double>("inflation");
     persistent_static_obstacles = params.getParam<bool>("persistent_static_obstacles");
     robot_position_ << params.getParam<double>("default_robot_x"), params.getParam<double>("default_robot_y");
 
@@ -67,7 +68,7 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const E
     Eigen::Vector2d end2d = end.head<2>();
 
     for (const auto& obstacle : obstacle_positions_) {
-        if (lineIntersectsCircle(start2d, end2d, obstacle.position, obstacle.radius)) {
+        if (lineIntersectsCircle(start2d, end2d, obstacle.position, obstacle.radius + inflation)) {
             return false;
         }
     }
@@ -79,7 +80,7 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
     Eigen::Vector2d point2d = point.head<2>();
 
     for (const auto& obstacle : obstacle_positions_) {
-        if (pointIntersectsCircle(point2d, obstacle.position, obstacle.radius)) {
+        if (pointIntersectsCircle(point2d, obstacle.position, obstacle.radius + inflation)) {
             return false;
         }
     }
@@ -185,7 +186,7 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
             radius = radius_it->second;
         }
 
-        Obstacle obstacle{position, radius};
+        Obstacle obstacle{position, radius+inflation};
 
         // Check if within sensor range
         bool within_range = !use_range || (robot_position_ - position).norm() < sensor_range;
@@ -274,6 +275,11 @@ bool GazeboObstacleChecker::lineIntersectsCircle(const Eigen::Vector2d& start,
                                                  const Eigen::Vector2d& end,
                                                  const Eigen::Vector2d& center,
                                                  double radius) {
+    // Check if either endpoint is inside the circle --> because in case BOTH the points lie in the obstalce then not intersection can be detected by the following procedure so its better to put this check!
+    if ((start - center).norm() <= radius || (end - center).norm() <= radius) {
+        return true;
+    }
+
     const Eigen::Vector2d d = end - start;
     const Eigen::Vector2d f = start - center;
     
@@ -283,13 +289,13 @@ bool GazeboObstacleChecker::lineIntersectsCircle(const Eigen::Vector2d& start,
 
     double discriminant = b * b - 4 * a * c;
     
-    // If the discriminant is negative, no intersection
+    // If the discriminant is negative, no intersection with the circle's boundary
     if (discriminant < 0) return false;
 
     // Compute the square root of the discriminant
     discriminant = std::sqrt(discriminant);
 
-    // Calculate the parametric intersection points
+    // Calculate the parametric intersection points along the line
     const double t1 = (-b - discriminant) / (2 * a);
     const double t2 = (-b + discriminant) / (2 * a);
 

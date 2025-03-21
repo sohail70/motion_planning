@@ -99,6 +99,7 @@ private:
 
     bool use_range;
     double sensor_range;
+    double inflation;
     bool persistent_static_obstacles;
 
 
