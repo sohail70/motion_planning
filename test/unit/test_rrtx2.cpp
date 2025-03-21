@@ -76,15 +76,15 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("world_name", "default");
     gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
-    gazebo_params.setParam("inflation", 0.0); //1.5 meters --> this will be added to obstalce radius when obstalce checking
+    gazebo_params.setParam("inflation", 3.0); // inflation added to obstalce radius virtually for the planner
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 5000);
+    planner_params.setParam("num_of_samples", 15000);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
-    planner_params.setParam("partial_update", true); // update the tree cost of the robot or not
-    planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check
+    planner_params.setParam("partial_update", false); // update the tree cost of the robot or not
+    planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update
 
 
 
@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
     planner->plan();
 
     //----------- Waiting for the Sim Clock to start ------------ //
-    bool simulation_is_paused = false;
+    bool simulation_is_paused = true;
     auto node_clock = ros2_manager->get_clock();
     // We'll store the initial sim time
     rclcpp::Time last_time = node_clock->now();
@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
 
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(30); // 10 Hz (100ms per loop)
+    rclcpp::Rate loop_rate(10); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
     bool limited = false;  // or read from params, or pass as an argument

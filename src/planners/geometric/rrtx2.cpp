@@ -478,7 +478,7 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
         // Query samples within obstacle radius (5 units)
         // auto sample_indices = kdtree_->radiusSearch(obstacle.position, 1.0 * obstacle.radius);
         // auto sample_indices = kdtree_->radiusSearch(obstacle.position, obstacle.radius+max_length);
-        auto sample_indices = kdtree_->radiusSearch(obstacle.position, std::sqrt(std::pow(obstacle.radius, 2) + std::pow(max_length / 2.0, 2)));
+        auto sample_indices = kdtree_->radiusSearch(obstacle.position,  std::sqrt(std::pow(obstacle.radius+obstacle.inflation, 2) + std::pow(max_length / 2.0, 2)));
 
         conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
     }
@@ -533,7 +533,7 @@ void RRTX::cullNeighbors(RRTxNode* v) {
     if (cap_samples_ == true && sample_counter >= num_of_samples_-1)
     // if (cap_samples_ == true && update_obstacle == true)
         return; // to not waste time when we put a cap on the number of samples!
-    // std::cout<<sample_counter <<" " << num_of_samples_<<"\n";
+
 
     auto& outgoing = v->outgoingEdges();
     auto it = outgoing.begin();
@@ -918,9 +918,9 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
     for (int idx : added_indices) {
         RRTxNode* node = tree_[idx].get();
         
-        // if (ignore_sample) {
-        //     samples_in_obstacles_.insert(idx);
-        // }
+        if (ignore_sample) {
+            samples_in_obstacles_.insert(idx);
+        }
 
         for (auto& [u, edge] : node->outgoingEdges()) {
             // Common edge invalidation logic
@@ -965,9 +965,9 @@ void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
     for (int idx : removed_indices) {
         RRTxNode* node = tree_[idx].get();
 
-        // if (ignore_sample) {
-        //     samples_in_obstacles_.erase(idx); // Update obstacle set
-        // }
+        if (ignore_sample) {
+            samples_in_obstacles_.erase(idx); // Update obstacle set
+        }
 
         for (auto& [u, edge] : node->outgoingEdges()) {
             // Mode-specific condition components

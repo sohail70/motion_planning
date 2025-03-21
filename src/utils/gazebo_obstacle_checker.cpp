@@ -68,7 +68,7 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const E
     Eigen::Vector2d end2d = end.head<2>();
 
     for (const auto& obstacle : obstacle_positions_) {
-        if (lineIntersectsCircle(start2d, end2d, obstacle.position, obstacle.radius + inflation)) {
+        if (lineIntersectsCircle(start2d, end2d, obstacle.position, obstacle.radius)) {
             return false;
         }
     }
@@ -80,7 +80,7 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
     Eigen::Vector2d point2d = point.head<2>();
 
     for (const auto& obstacle : obstacle_positions_) {
-        if (pointIntersectsCircle(point2d, obstacle.position, obstacle.radius + inflation)) {
+        if (pointIntersectsCircle(point2d, obstacle.position, obstacle.radius)) {
             return false;
         }
     }
@@ -186,7 +186,7 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
             radius = radius_it->second;
         }
 
-        Obstacle obstacle{position, radius+inflation};
+        Obstacle obstacle{position, radius ,inflation};
 
         // Check if within sensor range
         bool within_range = !use_range || (robot_position_ - position).norm() < sensor_range;
