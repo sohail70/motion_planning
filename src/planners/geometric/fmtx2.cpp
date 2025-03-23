@@ -917,64 +917,6 @@ std::unordered_set<int> FMTX::getDescendants(int node_index) {
 
 
 
-// void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
-//     // v_unvisited_set_.insert(removed.begin() , removed.end());
-//     for (const auto& node_index: removed) {
-//         auto node = tree_[node_index].get();
-//         node->in_unvisited_ = true;
-//         // I didn't use this before and had no problem (and the reason is we are putting lower priority vopen heap nodes in the handleAddObstalce and by the time we reach to this vopen node we already have a cost for that node)but i need to follow the rule of no vunvisted nodes should be in vopen because vunvisted WILL turn to vopen eventually
-//         if (node->in_queue_==true){ 
-//             v_open_heap_.remove(node_index);
-//             node->in_queue_ = false;
-//         }
-
-//         if(prune==true){
-//             // Check outgoing edges (node -> neighbor)
-//             for (auto& [neighbor, edge_info] : node->neighbors()) {
-//                 if (edge_info.distance!=INFINITY) continue;
-
-//                 if (obs_checker_->isObstacleFree(node->getStateVlaue(), neighbor->getStateVlaue())) {
-//                     // Invalidate both directions
-//                     edge_info.distance = edge_info.distance_original;
-                   
-//                     neighbor->neighbors().at(node).distance = edge_info.distance_original;
-//                     // auto& neighbor_edges = neighbor->neighbors();
-//                     // if (auto it = neighbor_edges.find(node); it != neighbor_edges.end()) {
-//                     //     it->second.distance = edge_info.distance_original;
-//                     // }
-//                 }
-//             }
-//         }
-
-
-//     }
-
-
-//     // Directly process neighbors of revalidated nodes
-//     for (int node_index : removed) {
-//         auto node = tree_.at(node_index).get();
-//         near(node_index);
-//         for (const auto& [neighbor,dist] : node->neighbors()) {
-//             const int n_idx = neighbor->getIndex();
-//             if (neighbor->in_unvisited_ == false &&
-//                 neighbor->in_queue_== false &&
-//                 samples_in_obstacles_.count(n_idx) == 0) {
-                
-//                 double h_value = use_heuristic ? heuristic(n_idx) : 0.0;
-//                 double priorityCost = neighbor->getCost() + h_value;
-//                 QueueElement2 new_element = {priorityCost, n_idx};
-//                 v_open_heap_.add(new_element);
-//                 neighbor->in_queue_=true;
-//                 v_open_set_.insert(n_idx);
-//             }
-//         }
-//     }
-
-
-
-
-// }
-
 
 std::vector<Eigen::VectorXd> FMTX::getSmoothedPathPositions(int num_intermediates, int smoothing_passes) const {
     // Check for invalid inputs
@@ -1078,16 +1020,30 @@ std::vector<Eigen::VectorXd> FMTX::smoothPath(const std::vector<Eigen::VectorXd>
 
 void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     in_dynamic = true;
-    max_length = neighborhood_radius_;
+
+    /*
+        Now that im thinking about this the max_length's upper bound is neighborhood_radius_ in fmtx! this is not a rrt star based algorithm!
+        I guess we don't need to track the max_edge! and we can easily use rn for this but for now i'll leave this as is!
+    
+    */
+    max_length = neighborhood_radius_; // At first Static plan we don't have max_length --> either do this or do a static plan
+    // if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
+    // {
+    //     auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
+    //         return a.second < b.second;
+    //     });
+    //     max_length = max_it->second;
+    //     max_length_edge_ind = max_it->first;
+    //     // std::cout<<max_it->first << "  " << max_it->second <<" \n"; 
+    // }
 
     auto current = findSamplesNearObstacles(obstacles, max_length);
-    if (current == samples_in_obstacles_) return;
+    if (current == samples_in_obstacles_) return; // Early exit if nothing has changed
 
     std::vector<int> added, removed;
     std::vector<int> cur, prev;
 
     if (ignore_sample) {
-        // Original ignore_sample=true logic
         for (int sample : current) {
             if (!samples_in_obstacles_.count(sample)) added.push_back(sample);
         }
@@ -1095,7 +1051,6 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
             if (!current.count(sample)) removed.push_back(sample);
         }
     } else {
-        // Original ignore_sample=false logic
         for (int sample : current) {
             if (!samples_in_obstacles_.count(sample)) added.push_back(sample);
         }
@@ -1103,16 +1058,16 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
             if (!current.count(sample)) removed.push_back(sample);
         }
         
-        // Preserve cur/prev vectors for original logic
         for (int c : current) cur.push_back(c);
         for (int p : samples_in_obstacles_) prev.push_back(p);
     }
 
-    // Handle changes with order preservation
     if (ignore_sample) {
         if (!added.empty()) handleAddedObstacleSamples(added);
         if (!removed.empty()) handleRemovedObstacleSamples(removed);
-        samples_in_obstacles_ = std::move(current);  // Update before final loop
+        samples_in_obstacles_ = std::move(current);
+
+        // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
         for (int idx : samples_in_obstacles_) {
             tree_[idx]->in_unvisited_ = false;
         }
@@ -1121,13 +1076,48 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
         if (!cur.empty()) handleAddedObstacleSamples(cur);
         if (!prev.empty()) handleRemovedObstacleSamples(prev);
         
-        // Original order-sensitive update
         for (int idx : samples_in_obstacles_) {
             tree_[idx]->in_unvisited_ = false;
         }
-        samples_in_obstacles_ = std::move(current);  // Update after in_unvisited loop
+        samples_in_obstacles_ = std::move(current);//IMPORTANT I had to do it after the above line or else it didn't work in this version! or if you don't wanna do this you have to lose the is unvisted condition in the for loop for it to work
     }
 
+
+    // std::vector<Eigen::VectorXd> positions;
+    // for (const auto& y: v_unvisited_set_) {
+    //     Eigen::VectorXd vec(2);
+    //     vec << tree_.at(y)->getStateVlaue();
+    //     positions.push_back(vec);
+    // }
+    // std::string color_str = "0.0,0.0,1.0"; // Blue color
+    // visualization_->visualizeNodes(positions,"map",color_str);
+
+    // std::vector<Eigen::VectorXd> positions2;
+    // for (const auto& y: v_open_set_) {
+    //     Eigen::VectorXd vec(2);
+    //     vec << tree_.at(y)->getStateVlaue();
+    //     positions2.push_back(vec);
+    // }
+    // // std::string color_str = "0.0,0.0,1.0"; // Blue color
+    // visualization_->visualizeNodes(positions2,"map");
+    // v_open_set_.clear();
+    
+
+    // std::vector<Eigen::VectorXd> positions3;
+    // for (const auto& y: samples_in_obstacles_) {
+    //     Eigen::VectorXd vec(2);
+    //     vec << tree_.at(y)->getStateVlaue();
+    //     positions3.push_back(vec);
+    // }
+    // visualization_->visualizeNodes(positions3,"map");
+
+
+    /* THIS NOTE MAYBE OUTDATED!
+        handling the problem of reconnecion to the inflation zone is not easy! you can't just keep track of the difference between added and current
+        and you have to use current everytime in the handleAddedObstalceSamples because if you don't the added will only go forward (with a distance to the obstalce ofcourse)
+        and the obstalce might move and end up on top of a edge but since the added is just a difference between previous and current iteration it doesnt cover the nodes on that edge
+        so the timeline is this --> added --> then plan takes care of the nodes in the inflation zone --> obstalce move and end up on some long edge --> the added is far away and doesnt invalidate those long edge because it invalidated it in previous iteraion and moved on!
+    */
 
 }
 
@@ -1136,11 +1126,14 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 
     for (int idx : added) {
         if (!ignore_sample && prune) {
-            // Original edge invalidation logic
             auto node = tree_[idx].get();
             near(idx);
             for (auto& [neighbor, edge_info] : node->neighbors()) {
                 if (edge_info.distance == INFINITY) continue;
+                /*
+                    Note: i think we don't need to obstacle check for all the node->neighbor relatioship because i think we can utilize dualFindSample and instantly make nodes on samples_in_obstalce distances to INFINITY
+                          but for now since rrtx didn't do optimization in this part i keep the code this way
+                */
                 if (!obs_checker_->isObstacleFree(node->getStateVlaue(), neighbor->getStateVlaue())) {
                     edge_info.distance = INFINITY;
                     neighbor->neighbors().at(node).distance = INFINITY;
@@ -1148,13 +1141,28 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
             }
         }
 
-        // Common orphan node handling
         orphan_nodes.insert(idx);
         auto descendants = getDescendants(idx);
         orphan_nodes.insert(descendants.begin(), descendants.end());
     }
 
-    // Common queue management
+    /*
+        one might ask why do you put orphan nodes into v_unvisited_set when you have a mechanism in the main loop to find these automatically?! 
+        The reason is these help the finding of the v open nodes later in the update obstalce sample function
+        If we only rely on that mechansim we can't find connections to other branches because we are blind to see other branches! like on the other side of the tree
+        Imagine the one side of the plier and some nodes get better cost if they get connected to the other tip of the plier but since we didn't put the other side nodes into v open we never know!
+
+        (side note: Also imagine if the the two tips of the the plier is far apart so you can't rely on the neighborhood raidus of one side to get to the other!)
+
+        So that condtion in the main loop is just for one direction expansion and is good for the nodes that gor removed from the obstalce--> Although its a reasonable question here also to ask ourselves why its not the case
+        for the remove obstlace to now know their v open at first!
+        the difference between addObstalce and removeObstalce is adding and obstalce most certainly adds cost to orphan nodes
+        but removing an obstlace most certainly reduces cost of the neighbor nodes! and reducing happens in the current branch and direction of the expansion that happens in dijkstra like (like fmtx) algorithm 
+        so we don't need to worry about the other side of plier (per say!) because they are gonna connect to us! not us connecting to them (and by "us" i mean the current direction of the expansion)
+    */
+
+
+    // DOESNT MATTER IF THIS LOOP WOULD GO HIGHER OR LOWER THAN THE BELOW FOR LOOP BECAUSE THE VUNVISTED UPDATE LOOP IS GONNA HELP THE BELOW LOOP
     for (auto node_index : orphan_nodes) {
         tree_.at(node_index)->in_unvisited_ = true;
         auto node = tree_[node_index].get();
@@ -1164,21 +1172,34 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
             node->in_queue_ = false;
         }
 
-        // Common tree updates
         node->setCost(INFINITY);
         node->setParent(nullptr, INFINITY);
         node->getChildrenMutable().clear();
         edge_length_[node_index] = -std::numeric_limits<double>::infinity();
     }
 
-    // Common neighbor processing
+    /*
+        IMPORTNAT NOTE: My assumption is we do not need to update the queue here because we only need to ADD to queue. 
+        UPDATE IS WHEN A COST of node has changed and that happens only in the main plan function. here we only make the cost to inf and we removed. you may ask
+        how can you be sure we don't have any vopen heap nodes left? in partial update false the vopen heap gets fully cleaned because of the while loop but in partial update true
+        we early exit that loop so some vopen heap nodes are left! in this scenraio now imagine an obstalce is being added and at the worst case scenario it is being added to the region where there are already vopen heap nodes!
+        the result of adding obstalce means two things! ---> some vclosed (conceptually i mean because i don't use vclose in my algorithm!) nodes become vunvisted or some vopen nodes become vunvisted! and the previously vunvisited due to partial update
+        stays in vunvisted! mind that the cost of these per say messeup nodes will become infinity or stay infinity
+        for expansion we need CORRECT vopen heap nodes! (by correct i mean the correct cost that resembles the changes of the environment) and one rule you need to follow for safety is to not put any vunvisted node into vopen or if some vunvisted node is in vopen you need to remove it
+        so since the cost of nodes doesnt change to any numbers but inf! so we only need to remove them. the following addition to heap is also for covering the vunvisted node for the next batch of update in plan function
+        in the next for loop i do the heap removal
+
+        but in the plan function since i update the nodes cost because of the second condtion in the main if! i have to update the queue's priority --> and its only happening frequntly in obstalce removal(even though it might sometimes happens in the regular loop due to the main problem that fmt has in low sample number which is negligible when samples counters go to inf theoretically!)
+
+    */
+
     for (auto node_index : orphan_nodes) {
         auto node = tree_.at(node_index).get();
         near(node_index);
         for (const auto& [neighbor, dist] : node->neighbors()) {
             int index = neighbor->getIndex();
             if (neighbor->in_queue_ || neighbor->in_unvisited_) continue;
-            if (samples_in_obstacles_.count(index)) continue;
+            // if (samples_in_obstacles_.count(index)) continue;
 
             double h_value = use_heuristic ? heuristic(index) : 0.0;
             v_open_heap_.add({neighbor->getCost() + h_value, index});
@@ -1188,18 +1209,18 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 }
 
 void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
-    // Common initialization
     for (const auto& node_index : removed) {
         auto node = tree_[node_index].get();
         node->in_unvisited_ = true;
         
+
+        // I didn't use this before and had no problem (and the reason is we are putting lower priority vopen heap nodes in the handleAddObstalce and by the time we reach to this vopen node we already have a cost for that node)but i need to follow the rule of no vunvisted nodes should be in vopen because vunvisted WILL turn to vopen eventually
         if (node->in_queue_) {
             v_open_heap_.remove(node_index);
             node->in_queue_ = false;
         }
 
         if (!ignore_sample && prune) {
-            // Original edge revalidation logic
             near(node_index);
             for (auto& [neighbor, edge_info] : node->neighbors()) {
                 if (edge_info.distance != INFINITY) continue;
@@ -1211,13 +1232,12 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
         }
     }
 
-    // Common neighbor processing
     for (int node_index : removed) {
         auto node = tree_.at(node_index).get();
         near(node_index);
         for (const auto& [neighbor, dist] : node->neighbors()) {
             const int n_idx = neighbor->getIndex();
-            if (samples_in_obstacles_.count(n_idx)) continue;
+            // if (samples_in_obstacles_.count(n_idx)) continue;
             if (neighbor->in_unvisited_ || neighbor->in_queue_) continue;
 
             double h_value = use_heuristic ? heuristic(n_idx) : 0.0;
