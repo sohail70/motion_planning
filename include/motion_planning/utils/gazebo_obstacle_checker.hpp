@@ -75,6 +75,17 @@ std::vector<Obstacle> getObstacles() const override;
 
 
 
+    struct Snapshot {
+        Eigen::Vector2d robot_position;
+        std::vector<Obstacle> obstacles;
+    };
+
+    Snapshot getAtomicSnapshot() const {
+        std::lock_guard<std::mutex> lock(data_mutex_);
+        obstacle_snapshot_ = obstacle_positions_;  // Atomic copy --> obstacle snapshot is gonna be used in is obstacle free, because obstalce_positions_ is live updating while you are in a plan() function
+        return {robot_position_, obstacle_snapshot_};
+    }
+
 
 
 private:
@@ -104,8 +115,15 @@ private:
 
 
     std::unordered_map<std::string, Obstacle> static_obstacle_positions_;
+
+
+
     
 
+    
+
+    mutable std::vector<Obstacle> obstacle_snapshot_;
+    mutable std::mutex snapshot_mutex_;
 
 
 

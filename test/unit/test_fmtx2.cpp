@@ -32,6 +32,9 @@
  *       for the refill vopen function maybe use kd tree querying the robot_node_index with the radius of search (to be found!) and then loop thorugh that chunk and if any of those nodes are in v unvisted then add their neighbors to the vopen like the for loop in the update samples!  or maybe not use raidus but a batch size of 100 closest nodes!
  *       BUT IM NOT SURE IF IT WORKS. YOU HAVE TO COMPLETELY KNOW ABOUT THE REGION AND PU ALL THE NECESSARY NODES INTO VOPEN FOR THAT REGION SO THAT THE PLAN CONNECTION PROCEDURE DOES ITS JOB
  * 
+ * 
+ * OBSERVATION MATH EXTENSION: I think the ignore sample approach is good if you use inflation it pretty much covers that --> maybe a simple formula to find how much minimum inflation is needed to activate ignore sample approach (which should be also dependant on the number of samples)
+ *  
  */
 
 #include "motion_planning/state_space/euclidean_statespace.hpp"
@@ -173,17 +176,29 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("world_name", "default");
     gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
-    gazebo_params.setParam("inflation", 1.5); //1.5 meters --> this will be added to obstalce radius when obstalce checking
+    gazebo_params.setParam("inflation", 0.0); //1.5 meters --> this will be added to obstalce radius when obstalce checking
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 5000);
+    planner_params.setParam("num_of_samples", 10000);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("partial_update", true);
     planner_params.setParam("obs_cache", true);
     planner_params.setParam("partial_plot", false);
     planner_params.setParam("use_heuristic", false); // TODO: I need to verify if its legit workingor not.
+    planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update --> when ignore_sample true the prune is not happening anymore so doesnt matter what you put there
+    planner_params.setParam("prune", false); // prune == true means do an obstalce check in handlAdd/Remove and set the neighbor cost to inf and DO NOT  obstalce check in plan , prune==false means do not do an obstalce check in handleAdd/Remove and delay it in plan --> the delayed part makes it more expensive in case of high obstalce but in case of low obstalce its faster! (also for high number of samples the delayed part is slower)--> prune true overall is faster i guess
+    /*
+        IMPORTANT NODE: prune vs plan? in prune we do obstacle check in local vicinity of obstalce and set cost to neighbor to inf in add obstalce and reset in remove obstalce
+                        and since we invalidated the edges between those nodes on obstalce and their neighbor, we don't need to do an obstacle check in plan function 
+                        but i wonder what if we do not do an obstacle check in add/remove obstalce and postpone the check to plan ? this is in line with fmt philosophy but
+                        the thing is then we have to do lots of obstacle checks for all the orphaned edges! as opposed to do only local obstacle checks so the question boild down
+                        to number of obstacle checks in local vicnity of the obstalce with ALL their neighbors and the number of delayed obstacle checks in plan function where only the query
+                        current edge-> best_neighbor edge. in my tests the prune version where we do not delay checks works faster but maybe at high dimensional space its better to use the delayed version!
+                        thats another topic of research i'll do later!
+    */
+
     /////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Create ROS node
@@ -285,7 +300,7 @@ int main(int argc, char **argv) {
 
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(20); // 10 Hz (100ms per loop)
+    rclcpp::Rate loop_rate(30); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
     bool limited = true;  // or read from params, or pass as an argument
@@ -317,14 +332,33 @@ int main(int argc, char **argv) {
             // planner->plan();   // if you wanted to do it right here
         }
 
-        auto obstacles = obstacle_checker->getObstaclePositions();
-        auto robot = obstacle_checker->getRobotPosition();
-        dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
+        // auto obstacles = obstacle_checker->getObstaclePositions();
+        // auto robot = obstacle_checker->getRobotPosition();
 
+        auto snapshot = obstacle_checker->getAtomicSnapshot();
+        auto& obstacles = snapshot.obstacles;
+        auto& robot = snapshot.robot_position;
+        
+        // // Immediately after getting snapshot:
+        // if (obstacles.empty()) {
+        //     std::cout << "WARNING: Empty obstacles in snapshot!\n";
+        //     continue; // Skip planning iteration
+        // }
+        
+        // // Check robot position validity
+        // if (robot.hasNaN() || robot.norm() > 1e6) { 
+        //     std::cout << "Invalid robot position: " << robot.transpose() << "\n";
+        //     continue;
+        // }
+
+        dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
+        // auto t0 = std::chrono::high_resolution_clock::now();
         auto start = std::chrono::high_resolution_clock::now();
         dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
         planner->plan();
         auto end = std::chrono::high_resolution_clock::now();
+        // auto t1 = std::chrono::high_resolution_clock::now();
+
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         if (duration.count() > 0) {
             std::cout << "Time taken for the update : " << duration.count() 
@@ -332,9 +366,22 @@ int main(int argc, char **argv) {
         }
         sim_durations.push_back(duration.count());
 
-        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-        // ros2_manager->followPath(shortest_path_);
+// // Check if obstacles moved during planning
+// auto post_snapshot = obstacle_checker->getAtomicSnapshot();
+// if (post_snapshot.obstacles != snapshot.obstacles) {
+//   std::cout << "WARNING: Obstacles changed during " 
+//             << std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count()
+//             << "ms planning!\n";
+// }
+
+
+//         // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+//         // ros2_manager->followPath(shortest_path_);
     
+//         std::this_thread::sleep_for(std::chrono::milliseconds(5));  // Let visualization "catch up"
+
+
+
         // dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);

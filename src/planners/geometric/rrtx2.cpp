@@ -477,8 +477,8 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
     for (const auto& obstacle : obstacles) {
         // Query samples within obstacle radius (5 units)
         // auto sample_indices = kdtree_->radiusSearch(obstacle.position, 1.0 * obstacle.radius);
-        // auto sample_indices = kdtree_->radiusSearch(obstacle.position, obstacle.radius+max_length);
-        auto sample_indices = kdtree_->radiusSearch(obstacle.position,  std::sqrt(std::pow(obstacle.radius+obstacle.inflation, 2) + std::pow(max_length / 2.0, 2)));
+        // auto sample_indices = kdtree_->radiusSearch(obstacle.position, obstacle.radius+obstacle.inflation+max_length);
+        auto sample_indices = kdtree_->radiusSearch(obstacle.position, std::sqrt(std::pow(obstacle.radius+obstacle.inflation, 2) + std::pow(max_length / 2.0, 2)));
 
         conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
     }

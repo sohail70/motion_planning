@@ -104,8 +104,13 @@ class FMTX : public Planner {
             bool partial_plot = false;
             bool use_heuristic = false;
             bool partial_update = false;
+            bool ignore_sample;
+            bool prune;
 
             bool in_dynamic = false;
+
+
+            std::unordered_set<int> v_open_set_;
 
             
 

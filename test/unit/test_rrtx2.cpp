@@ -1,8 +1,5 @@
 // Copyright 2025 Soheil E.nia
-/**
- * TODO: cullNeighbor makes the tree to have sub-optimal connections! 
- * TODO: the only difference in my versrion is using samples_in_obstalce_ in the removeObstalce and etc. also i didin't create  the statespace after checking the parent in extent function (because weirdly the algorithm demands an lmc beofre deciding to have the sample as a tree node or not!)
- */
+
 
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
@@ -80,7 +77,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 15000);
+    planner_params.setParam("num_of_samples", 10000);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("partial_update", false); // update the tree cost of the robot or not
@@ -175,10 +172,10 @@ int main(int argc, char **argv) {
 
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(10); // 10 Hz (100ms per loop)
+    rclcpp::Rate loop_rate(30); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
-    bool limited = false;  // or read from params, or pass as an argument
+    bool limited = true;  // or read from params, or pass as an argument
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
@@ -212,9 +209,13 @@ int main(int argc, char **argv) {
         }
 
 
-        auto obstacles = obstacle_checker->getObstaclePositions();
-        auto robot = obstacle_checker->getRobotPosition();
-        // dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot); // UNCOMMENT THIS LATER!
+        // auto obstacles = obstacle_checker->getObstaclePositions();
+        // auto robot = obstacle_checker->getRobotPosition();
+
+        auto snapshot = obstacle_checker->getAtomicSnapshot();
+        auto& obstacles = snapshot.obstacles;
+        auto& robot = snapshot.robot_position;
+        // // dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot); // UNCOMMENT THIS LATER!
 
         ////////// PLAN //////////
         auto start = std::chrono::high_resolution_clock::now();

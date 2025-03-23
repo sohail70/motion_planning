@@ -63,11 +63,11 @@ void GazeboObstacleChecker::publishPath(const std::vector<Eigen::VectorXd>& wayp
 
 
 bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const Eigen::VectorXd& end) const {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    std::lock_guard<std::mutex> lock(snapshot_mutex_);
     Eigen::Vector2d start2d = start.head<2>();
     Eigen::Vector2d end2d = end.head<2>();
 
-    for (const auto& obstacle : obstacle_positions_) {
+    for (const auto& obstacle : obstacle_snapshot_) {
         if (lineIntersectsCircle(start2d, end2d, obstacle.position, obstacle.radius)) {
             return false;
         }
@@ -76,10 +76,10 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const E
 }
 
 bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    std::lock_guard<std::mutex> lock(snapshot_mutex_);
     Eigen::Vector2d point2d = point.head<2>();
 
-    for (const auto& obstacle : obstacle_positions_) {
+    for (const auto& obstacle : obstacle_snapshot_) {
         if (pointIntersectsCircle(point2d, obstacle.position, obstacle.radius)) {
             return false;
         }

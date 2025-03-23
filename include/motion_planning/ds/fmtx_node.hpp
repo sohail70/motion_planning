@@ -7,9 +7,15 @@
 #include <boost/container/flat_map.hpp>
 #include <vector>
 
+struct FMTxEdgeInfo {
+    double distance;
+    double distance_original; // I use it in removeObstalce When i want to reset the distance
+};
+
 class FMTXNode : public Node {
 public:
-    using NeighborMap = boost::container::flat_map<FMTXNode*, double>;
+    // using NeighborMap = boost::container::flat_map<FMTXNode*, double>;
+    using NeighborMap = boost::container::flat_map<FMTXNode*, FMTxEdgeInfo>;
     // using NeighborMap = std::unordered_map<FMTXNode*, double>;
     
     explicit FMTXNode(std::unique_ptr<State> state, int index = -1)

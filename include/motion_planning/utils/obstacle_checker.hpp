@@ -14,6 +14,14 @@ struct Obstacle {
     double inflation;
     // int is_static;
     
+
+    // Equality operator
+    bool operator==(const Obstacle& other) const {
+        return position == other.position && 
+               radius == other.radius && 
+               inflation == other.inflation;
+    }
+
 };
 
 
