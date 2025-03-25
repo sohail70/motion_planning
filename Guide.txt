@@ -149,3 +149,224 @@ For robustness, consider adding edge validity checks in removeObstacle using obs
 ///////////////
 Besides the above i think the sole reason is the formula i used in the find samples in obstalce which is a simple euclidean distance by using a the max edge length --> i actually invalidate more nodes than necessary, otherwise i have to explicitly obstalce checking
 but that made rrtx very fast and on par with fmtx! :) ---> because we do not explicitly obstalce check anymore but fmtx is still using the plan and obstalce checks! --> which mean fmtx must be faster --> i even didn't use a good tree node for fmtx
+
+
+
+
+
+///////////////////////////////////////
+serious problem:
+auto node1 = std::make_shared<FMTXNode>(...);  // node1 owns the FMTXNode
+auto node2 = std::make_shared<FMTXNode>(...);  // node2 owns another FMTXNode
+
+// Set raw pointer links
+node1->children_.push_back(node2.get());  // node1's children_ points to node2's memory
+node2->parent_ = node1.get();             // node2's parent_ points to node1's memory
+
+tree_.push_back(node1);
+tree_.push_back(node2);
+
+tree_.clear();  // node1 and node2 are deleted, but:
+// node1->children_[0] is now a dangling pointer!
+// node2->parent_ is now a dangling pointer!
+
+
+
+
+
+2. Why Aren’t parent_ and children_ Cleared Automatically?
+Raw pointers (FMTXNode*) have no idea when the object they point to is deleted.
+
+They don’t participate in ownership.
+
+They don’t "know" when tree_.clear() happens.
+
+std::vector<FMTXNode*> is just a list of memory addresses.
+
+Clearing tree_ doesn’t magically update these pointers.
+///////////////////////////////////////
+more info:
+
+i thought when i clear the tree_ these two would also clear!
+    std::vector<FMTXNode*> children_; // direct children
+    FMTXNode* parent_;
+Why Clearing tree_ Doesn't Clear parent_ and children_
+You’re encountering a classic C++ ownership misconception. Here’s the breakdown:
+
+1. What Happens When You Call tree_.clear()?
+tree_ is a std::vector<std::shared_ptr<FMTXNode>>
+
+clear() destroys all shared_ptrs in the vector.
+
+If no other shared_ptrs reference the nodes, the FMTXNode objects are deleted from memory.
+
+But parent_ and children_ are raw pointers (FMTXNode*)
+
+They are non-owning: They don’t keep the referenced nodes alive.
+
+After tree_.clear(), these pointers become dangling (pointing to freed memory).
+
+Example:
+cpp
+Copy
+auto node1 = std::make_shared<FMTXNode>(...);  // node1 owns the FMTXNode
+auto node2 = std::make_shared<FMTXNode>(...);  // node2 owns another FMTXNode
+
+// Set raw pointer links
+node1->children_.push_back(node2.get());  // node1's children_ points to node2's memory
+node2->parent_ = node1.get();             // node2's parent_ points to node1's memory
+
+tree_.push_back(node1);
+tree_.push_back(node2);
+
+tree_.clear();  // node1 and node2 are deleted, but:
+// node1->children_[0] is now a dangling pointer!
+// node2->parent_ is now a dangling pointer!
+2. Why Aren’t parent_ and children_ Cleared Automatically?
+Raw pointers (FMTXNode*) have no idea when the object they point to is deleted.
+
+They don’t participate in ownership.
+
+They don’t "know" when tree_.clear() happens.
+
+std::vector<FMTXNode*> is just a list of memory addresses.
+
+Clearing tree_ doesn’t magically update these pointers.
+
+3. What You Expected vs. What Actually Happens
+Your Expectation	Reality
+"tree_.clear() should also clear parent_ and children_."	tree_.clear() only deletes the shared_ptrs. Raw pointers in children_/parent_ are left dangling.
+"I never used new, so I’m safe."	Raw pointers (FMTXNode*) are just as dangerous as new if mismanaged.
+4. How to Fix This
+Option 1: Use weak_ptr for Non-Owning Links (Recommended)
+cpp
+Copy
+class FMTXNode : public std::enable_shared_from_this<FMTXNode> {
+    std::weak_ptr<FMTXNode> parent_;  // Safe non-owning reference
+    std::vector<std::weak_ptr<FMTXNode>> children_;  // No dangling pointers!
+public:
+    void setParent(std::shared_ptr<FMTXNode> parent) {
+        parent_ = parent;
+        if (auto p = parent_.lock()) {
+            p->children_.push_back(shared_from_this());  // Safe!
+        }
+    }
+};
+Pros: Automatically handles dangling pointers.
+
+Cons: Slight performance overhead (negligible in most cases).
+
+Option 2: Manually Break Links Before tree_.clear()
+cpp
+Copy
+void clearTree() {
+    // Step 1: Nullify all raw pointers
+    for (auto& node : tree_) {
+        node->parent_ = nullptr;
+        node->children_.clear();
+    }
+    // Step 2: Now safe to clear
+    tree_.clear();
+}
+Pros: No overhead.
+
+Cons: Easy to forget, risky in multithreaded code.
+
+Option 3: Use unique_ptr + Raw Pointers (If You Control All Access)
+cpp
+Copy
+std::vector<std::unique_ptr<FMTXNode>> tree_;
+
+// Guarantee that `tree_` outlives all node operations.
+// Raw pointers are safe if you never dereference them after `tree_.clear()`.
+5. Key Takeaways for Future C++ Code
+Raw pointers (T*) are unsafe by default. They don’t respect ownership.
+
+Always use smart pointers (shared_ptr, unique_ptr) for ownership.
+
+Use weak_ptr for non-owning references (e.g., parent/child links).
+
+Never assume containers will clean up raw pointers. They don’t.
+
+Tools to detect these issues:
+
+valgrind (memory errors)
+
+AddressSanitizer (-fsanitize=address)
+
+Why This Bites Even Experienced Developers
+Hidden assumptions: "I didn’t use new, so I’m safe."
+
+Ownership isn’t enforced by the compiler: C++ trusts you to model it correctly.
+
+Debugging is painful: Crashes happen far from the root cause.
+
+What to Remember
+Smart pointers = ownership.
+
+Raw pointers = observation only.
+
+tree_.clear() only cares about shared_ptrs, not raw pointers inside nodes.
+
+This is a critical lesson in C++ memory safety! Now you’ll never mix ownership models blindly.
+
+
+
+
+summary of the problem:
+Clearing the vector only destroys the memory owned by the unique or shared pointers. However, if those nodes have pointers to one another (like parent or children pointers), those raw pointers won't be automatically updated or nullified. That means other parts of your code could end up referencing invalid memory. The disconnect function is a way to explicitly break those inter-node connections to avoid dangling pointers and undefined behavior.
+
+In short, if no other part of your program keeps a pointer to those nodes (i.e., the tree is the sole owner), you might not strictly need to call disconnect. However, given that your nodes reference each other as part of a graph structure, it's safer to call disconnect before clearing the vector.
+
+
+better approach --> 
+
+One way to simplify your design is to use smart pointers to manage ownership and relationships automatically. For example:
+
+Use std::shared_ptr for owning pointers and std::weak_ptr for non-owning (back) references.
+Instead of having raw pointers for parent and children, store parent pointers as std::weak_ptr and children as std::shared_ptr (or even std::weak_ptr if appropriate). This avoids circular references and ensures that when the owning container (e.g., your tree_ vector) clears, no dangling pointers remain.
+
+Encapsulate relationships in your node class.
+By having your node's destructor automatically handle disconnection (or by relying on the weak pointer mechanism), you remove the need for a manual disconnectFromGraph() call. For example, when a node is destroyed, its weak parent pointer does not prevent the parent's destruction, and vice versa.
+
+Example Refactor
+Before:
+
+cpp
+Copy
+Edit
+// Raw pointers leading to manual disconnection
+FMTXNode* parent_;
+std::vector<FMTXNode*> children_;
+After:
+
+cpp
+Copy
+Edit
+#include <memory>
+#include <vector>
+
+class FMTXNode : public std::enable_shared_from_this<FMTXNode> {
+public:
+    std::weak_ptr<FMTXNode> parent_;
+    std::vector<std::shared_ptr<FMTXNode>> children_;
+
+    // Other members and methods
+};
+With this setup:
+
+When the tree_ vector (which holds std::shared_ptr<FMTXNode>) is cleared, each node is automatically destroyed.
+
+The parent pointers, being weak, do not extend the lifetime of their children, and the children pointers being shared_ptr ensure that the children are kept alive only if they are owned elsewhere.
+
+Benefits
+Automatic Memory Management:
+Smart pointers automatically clean up memory when no longer needed.
+
+No Need for Manual Disconnection:
+The weak pointers prevent dangling references without requiring an explicit disconnect function.
+
+Safer Code:
+It reduces the chance of memory leaks, double frees, or dangling pointers, as ownership is clearly defined.
+
+This design change shifts the responsibility of memory management to the smart pointer mechanism, which can significantly reduce the potential for errors and simplify your cleanup code.

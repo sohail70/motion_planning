@@ -226,12 +226,12 @@ int main(int argc, char **argv) {
             std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
         sim_durations.push_back(duration.count());
 
-        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<RRTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-        // ros2_manager->followPath(shortest_path_);
+        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<RRTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+        ros2_manager->followPath(shortest_path_);
 
         ////////// VISUALIZE /////
         // dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
-        // dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         dynamic_cast<RRTX*>(planner.get())->visualizeTree();
 
         rclcpp::spin_some(ros2_manager);

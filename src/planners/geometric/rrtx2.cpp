@@ -84,6 +84,12 @@ void RRTX::clearPlannerState() {
     // for (auto& node : tree_) {
     //     node.reset();  // Explicitly reset each shared_ptr
     // }
+
+    for (auto& node : tree_) {
+        node->disconnectFromGraph();  // Safe to call even if nodes are shared
+        node.reset();
+    }
+
     tree_.clear();  // Clear the vector
 
     // Reset the StateSpace

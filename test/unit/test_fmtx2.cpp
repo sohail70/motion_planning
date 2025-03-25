@@ -176,7 +176,10 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("world_name", "default");
     gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
-    gazebo_params.setParam("inflation", 0.0); //1.5 meters --> this will be added to obstalce radius when obstalce checking
+    /*
+        When you use ignore_sample == true i don't think would need a inflation specially in low sample case --> math can be proved i guess.
+    */
+    gazebo_params.setParam("inflation", 0.0); //1.5 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
@@ -190,13 +193,15 @@ int main(int argc, char **argv) {
     planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update --> when ignore_sample true the prune is not happening anymore so doesnt matter what you put there
     planner_params.setParam("prune", true); // prune == true means do an obstalce check in handlAdd/Remove and set the neighbor cost to inf and DO NOT  obstalce check in plan , prune==false means do not do an obstalce check in handleAdd/Remove and delay it in plan --> the delayed part makes it more expensive in case of high obstalce but in case of low obstalce its faster! (also for high number of samples the delayed part is slower)--> prune true overall is faster i guess
     /*
-        IMPORTANT NODE: prune vs plan? in prune we do obstacle check in local vicinity of obstalce and set cost to neighbor to inf in add obstalce and reset in remove obstalce
+        IMPORTANT NOTE: prune vs plan? in prune we do obstacle check in local vicinity of obstalce and set cost to neighbor to inf in add obstalce and reset in remove obstalce
                         and since we invalidated the edges between those nodes on obstalce and their neighbor, we don't need to do an obstacle check in plan function 
                         but i wonder what if we do not do an obstacle check in add/remove obstalce and postpone the check to plan ? this is in line with fmt philosophy but
                         the thing is then we have to do lots of obstacle checks for all the orphaned edges! as opposed to do only local obstacle checks so the question boild down
                         to number of obstacle checks in local vicnity of the obstalce with ALL their neighbors and the number of delayed obstacle checks in plan function where only the query
                         current edge-> best_neighbor edge. in my tests the prune version where we do not delay checks works faster but maybe at high dimensional space its better to use the delayed version!
                         thats another topic of research i'll do later!
+
+                        all in all prune is like doing the rrtx approach in setting the distance to inf based on explicit obstacle check between a node in obstalce and its neighbors
     */
 
     /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -206,7 +211,7 @@ int main(int argc, char **argv) {
     auto visualization = std::make_shared<RVizVisualization>(node);
 
     auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
-    // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
+    // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_world2.sdf");
     // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
     for (auto& el : obstacle_radii) {
         std::cout << el.first << "  " << el.second << "\n";
@@ -326,8 +331,9 @@ int main(int argc, char **argv) {
         // 2) Planner logic ...
         if (ros2_manager->hasNewGoal()) {
             start_position = ros2_manager->getStartPosition(); 
+            auto snapshot = obstacle_checker->getAtomicSnapshot();
             problem_def->setStart(start_position);
-            problem_def->setGoal(obstacle_checker->getRobotPosition());
+            problem_def->setGoal(snapshot.robot_position);
             planner->setup(planner_params, visualization);
             // planner->plan();   // if you wanted to do it right here
         }
@@ -375,14 +381,14 @@ int main(int argc, char **argv) {
 // }
 
 
-//         // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-//         // ros2_manager->followPath(shortest_path_);
+        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+        ros2_manager->followPath(shortest_path_);
     
 //         std::this_thread::sleep_for(std::chrono::milliseconds(5));  // Let visualization "catch up"
 
 
 
-        // dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();

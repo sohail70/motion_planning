@@ -25,10 +25,16 @@ void FMTX::clearPlannerState() {
     goal_.reset();
     path_.clear();
 
-    // for (auto& node : tree_) {
-    //     node.reset();  // Explicitly reset each shared_ptr
-    // }
-    tree_.clear();  // Clear the vector
+    ////////////////////////////
+    // // Step 1: Nullify all raw pointers --> or else if you only use tree_.clear() you have dangling pointers for parent_ and children_ that do not exist now!
+    for (auto& node : tree_) {
+        node->disconnectFromGraph();
+        node.reset();  
+    }
+    // Step 2: Now safe to clear
+    tree_.clear();
+    ///////////////////////////
+
 
     // Reset the StateSpace
     statespace_->reset();
@@ -38,6 +44,8 @@ void FMTX::clearPlannerState() {
     kdtree_.reset();
 
     v_open_heap_.clear();
+
+
 
     // samples_in_obstacles_.clear();
     // samples_in_obstacles_2_.clear();
@@ -1124,6 +1132,9 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
     std::unordered_set<int> orphan_nodes;
 
+    /*
+        the 2 near function i put here because of rviz new goal feature i've added to the system and since the tree_ is cleared the neighbors need to be set again 
+    */
     for (int idx : added) {
         if (!ignore_sample && prune) {
             auto node = tree_[idx].get();
@@ -1136,6 +1147,7 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
                 */
                 if (!obs_checker_->isObstacleFree(node->getStateVlaue(), neighbor->getStateVlaue())) {
                     edge_info.distance = INFINITY;
+                    near(neighbor->getIndex());
                     neighbor->neighbors().at(node).distance = INFINITY;
                 }
             }
@@ -1171,8 +1183,8 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
             v_open_heap_.remove(node_index);
             node->in_queue_ = false;
         }
-
-        node->setCost(INFINITY);
+        if (!node->getIndex() == 0) // Root of the tree must keep its zero cost!
+            node->setCost(INFINITY); 
         node->setParent(nullptr, INFINITY);
         node->getChildrenMutable().clear();
         edge_length_[node_index] = -std::numeric_limits<double>::infinity();
@@ -1226,6 +1238,7 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
                 if (edge_info.distance != INFINITY) continue;
                 if (obs_checker_->isObstacleFree(node->getStateVlaue(), neighbor->getStateVlaue())) {
                     edge_info.distance = edge_info.distance_original;
+                    near(neighbor->getIndex());
                     neighbor->neighbors().at(node).distance = edge_info.distance_original;
                 }
             }

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(MotionPlanning)
-
+# add_compile_options(-g -O0)  # Force debug symbols and disable optimizations
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Release)
 # set(CMAKE_BUILD_TYPE RelWithDebInfo)

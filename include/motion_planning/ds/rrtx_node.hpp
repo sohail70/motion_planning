@@ -66,6 +66,44 @@ public:
         }
     }
 
+
+    void disconnectFromGraph() {
+        // 1. Clear parent relationship
+        if (parent_ != nullptr) {
+            auto& parent_successors = parent_->successors_;
+            parent_successors.erase(
+                std::remove(parent_successors.begin(), parent_successors.end(), this),
+                parent_successors.end()
+            );
+            parent_ = nullptr;
+        }
+
+        // 2. Clear successor relationships
+        for (RRTxNode* successor : successors_) {
+            if (successor && successor->parent_ == this) {
+                successor->parent_ = nullptr;
+            }
+        }
+        successors_.clear();
+
+        // 3. Clear edge relationships (both directions)
+        for (auto& [neighbor, _] : outgoing_edges_) {
+            if (neighbor) {
+                neighbor->incoming_edges_.erase(this);
+            }
+        }
+
+        for (auto& [neighbor, _] : incoming_edges_) {
+            if (neighbor) {
+                neighbor->outgoing_edges_.erase(this);
+            }
+        }
+
+        incoming_edges_.clear();
+        outgoing_edges_.clear();
+    }
+
+
     // Successor access
     const std::vector<RRTxNode*>& successors() const noexcept { return successors_; }
 

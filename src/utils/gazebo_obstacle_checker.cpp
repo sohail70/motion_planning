@@ -68,7 +68,7 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const E
     Eigen::Vector2d end2d = end.head<2>();
 
     for (const auto& obstacle : obstacle_snapshot_) {
-        if (lineIntersectsCircle(start2d, end2d, obstacle.position, obstacle.radius)) {
+        if (lineIntersectsCircle(start2d, end2d, obstacle.position, obstacle.radius+obstacle.inflation )) {
             return false;
         }
     }
@@ -80,7 +80,7 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
     Eigen::Vector2d point2d = point.head<2>();
 
     for (const auto& obstacle : obstacle_snapshot_) {
-        if (pointIntersectsCircle(point2d, obstacle.position, obstacle.radius)) {
+        if (pointIntersectsCircle(point2d, obstacle.position, obstacle.radius + obstacle.inflation)) {
             return false;
         }
     }

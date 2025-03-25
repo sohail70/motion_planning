@@ -26,6 +26,12 @@ public:
           in_unvisited_(false),
           parent_(nullptr) {}
 
+    // ~FMTXNode() {
+    //     std::cout << "Destroying node " << index_ 
+    //             << " (parent=" << (parent_ ? parent_->index_ : -1)
+    //             << ", children=" << children_.size() << ")\n";
+    // }
+
     // Core interface
     const Eigen::VectorXd& getStateVlaue() const override { return state_->getValue(); }
     double getCost() const noexcept override { return cost_; }
@@ -58,6 +64,24 @@ public:
             parent_->children_.push_back(this);
         }
     }
+
+    void disconnectFromGraph() {
+        // Break parent link
+        if (parent_ != nullptr) {
+            auto& siblings = parent_->children_;
+            siblings.erase(std::remove(siblings.begin(), siblings.end(), this), siblings.end());
+            parent_ = nullptr;
+        }
+        
+        // Break child links
+        for (FMTXNode* child : children_) {
+            if (child && child->parent_ == this) {
+                child->parent_ = nullptr;
+            }
+        }
+        children_.clear();
+    }
+
 
     void sanityCheck() const {
         if (in_unvisited_ && in_queue_) {
@@ -124,11 +148,11 @@ public:
     bool in_unvisited_;
     double edge_cost_;
     std::unordered_set<int> blocked_best_neighbors;
+    std::vector<FMTXNode*> children_; // direct children
+    FMTXNode* parent_;              // direct parent
 private:
     std::unique_ptr<State> state_;
     NeighborMap neighbors_;         // neighbor node -> edge cost
-    std::vector<FMTXNode*> children_; // direct children
-    FMTXNode* parent_;              // direct parent
     double cost_;
     int index_;
     bool on_obstacle; // not using this now! maybelater instead of samples_in_obstalce!
