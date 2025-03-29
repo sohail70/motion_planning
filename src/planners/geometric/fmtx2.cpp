@@ -195,8 +195,8 @@ void FMTX::plan() {
                 because they are downstream nodes and they get updated any way on the next z node pop and update procedure, UNTIL you reach the robot and then you might see some inconsistency (visually) that happens after that
                 which is also okay because if you move the robot using MOUSE in gazebo you can see they also CAN get updated but we don't need to update that because we are using early exit!
             */ 
-            if (x->in_unvisited_==true || x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){
-            // if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){
+            // if (x->in_unvisited_==true || x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){
+            if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){
 
                 near(xIndex);
                 double min_cost = std::numeric_limits<double>::infinity();
@@ -588,7 +588,7 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 
     // DOESNT MATTER IF THIS LOOP WOULD GO HIGHER OR LOWER THAN THE BELOW FOR LOOP BECAUSE THE VUNVISTED UPDATE LOOP IS GONNA HELP THE BELOW LOOP
     for (auto node_index : orphan_nodes) {
-        tree_.at(node_index)->in_unvisited_ = true;
+        // tree_.at(node_index)->in_unvisited_ = true;
         auto node = tree_.at(node_index).get();
         
         if (node->in_queue_) {
@@ -631,7 +631,8 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
         near(node_index);
         for (const auto& [neighbor, dist] : node->neighbors()) {
             int index = neighbor->getIndex();
-            if (neighbor->in_queue_ || neighbor->in_unvisited_) continue;
+            if (neighbor->in_queue_ || neighbor->getCost()==INFINITY) continue;
+            // if (neighbor->in_queue_ || neighbor->in_unvisited_) continue;
             // if (samples_in_obstacles_.count(index)) continue; //TODO: see if we need this or if it helps speed or is redundant
 
             double h_value = use_heuristic ? heuristic(index) : 0.0;
@@ -646,14 +647,14 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
     for (const auto& node_index : removed) {
         auto node = tree_[node_index].get();
         /*
-            if you use the following line since some of the surrounding nodes already have a parent and the parent cost
+            if you use the following line "node->in_unvisited_ = true;  " since some of the surrounding nodes already have a parent and the parent cost
             hasn't changed then we go to plan() function trying to repair some redundant node and the worst thing is all of them goes till the 
             core if condtion for the cost update the cost doesnt get updated because newCost is exaclty the same as the previous cost! so they will end up
             staying in the v unvisted and currupting the upcoming heap addition in the handleadd/remove function!
         
         */
-        if(!node->getParent()){
-            node->in_unvisited_ = true;  
+        // if(!node->getParent()){
+            // node->in_unvisited_ = true;  
         
 
             // Remove the nodes that got unvisited now from the the heap
@@ -662,7 +663,7 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
                 node->in_queue_ = false;
             }
 
-        }
+        // }
 
 
 
@@ -688,7 +689,8 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
         for (const auto& [neighbor, dist] : node->neighbors()) {
             const int n_idx = neighbor->getIndex();
             // if (samples_in_obstacles_.count(n_idx)) continue;
-            if (neighbor->in_unvisited_ || neighbor->in_queue_) continue;
+            // if (neighbor->in_unvisited_ || neighbor->in_queue_) continue;
+            if (neighbor->in_queue_ || neighbor->getCost()==INFINITY) continue;
 
             double h_value = use_heuristic ? heuristic(n_idx) : 0.0;
             v_open_heap_.add({neighbor->getCost() + h_value, n_idx});
