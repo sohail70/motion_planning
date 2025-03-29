@@ -55,7 +55,7 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     setStart(problem_->getStart());
     for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
         auto node = std::make_unique<FMTXNode>(statespace_->sampleUniform(lower_bound_ , upper_bound_),tree_.size());
-        node->in_unvisited_ = true;
+        // node->in_unvisited_ = true;
         tree_.push_back(std::move(node));
     }
     setGoal(problem_->getGoal());
@@ -114,7 +114,6 @@ void FMTX::plan() {
     while (!v_open_heap_.empty() &&
            (partial_update ? (v_open_heap_.top().min_key < robot_node_->getCost() ||
             robot_node_->getCost() == INFINITY ||
-            robot_node_->in_unvisited_==true || // do we need this ? cost inf and unvisted means the same thing
             robot_node_->in_queue_==true)  : true  )){
 
         auto top_element = v_open_heap_.top();
@@ -298,7 +297,7 @@ void FMTX::plan() {
                             v_open_heap_.add(new_element);
                             x->in_queue_ = true;
                         }
-                        x->in_unvisited_ = false;
+                        // x->in_unvisited_ = false;
 
                         /*
                             //IMPORTANT CONCEPT --> sometimes x's parent is the same as best_neighbor_node so why did we end up here? because the parent's cost has changed because of my new condtion that i put there!!!! (it obviouly happens in remove obstalce case)
@@ -329,7 +328,7 @@ void FMTX::plan() {
         }
 
         z->in_queue_=false;
-        z->in_unvisited_= false; // close the node if its not already --> i dont think i need this but let it be to be sure!
+        // z->in_unvisited_= false; // close the node if its not already --> i dont think i need this but let it be to be sure!
     }
 
     // std::cout<<"checks: "<< checks <<"\n";
@@ -481,9 +480,9 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
         samples_in_obstacles_ = std::move(current);
 
         // Whats the point of putting these in vUnvisted when they are on obstalce! BUT SHOULD I DO IT BEFORE THE PLAN OR AFTER THE PLAN?? WELL the samples_in_obstalces_ is used in the main while loop anyway!
-        for (int idx : samples_in_obstacles_) {
-            tree_[idx]->in_unvisited_ = false;
-        }
+        // for (int idx : samples_in_obstacles_) {
+        //     tree_[idx]->in_unvisited_ = false;
+        // }
 
     } else {
         if (!prev.empty()) handleRemovedObstacleSamples(prev);
@@ -495,9 +494,9 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
             percision problem!
         */
         samples_in_obstacles_ = current;
-        for (int idx : samples_in_obstacles_) {
-            tree_[idx]->in_unvisited_ = false;
-        }
+        // for (int idx : samples_in_obstacles_) {
+        //     tree_[idx]->in_unvisited_ = false;
+        // }
     }
 
     // visualizeHeapAndUnvisited();
@@ -851,7 +850,7 @@ void FMTX::setStart(const Eigen::VectorXd& start) {
 void FMTX::setGoal(const Eigen::VectorXd& goal) {
     robot_state_index_ = statespace_->getNumStates();
     auto node = std::make_unique<FMTXNode>(statespace_->addState(goal),tree_.size());
-    node->in_unvisited_ = true;
+    // node->in_unvisited_ = true;
     robot_node_ = node.get(); // Management of the node variable above will be done by the unique_ptr i'll send to tree_ below so robot_node_ is just using it!
     tree_.push_back(std::move(node));
     std::cout << "FMTX: Goal node created on Index: " << root_state_index_ << "\n";
@@ -1176,9 +1175,9 @@ void FMTX::visualizeHeapAndUnvisited() {
     for (const auto& node_ptr : tree_) {
         const auto& node = node_ptr;
 
-        if (node->in_queue_ && node->in_unvisited_) {
+        if (node->in_queue_ && node->getCost()==INFINITY) {
             std::cerr << "Warning: Node " << node->getIndex() 
-                      << " is both in vopen and vunvisited!" << std::endl;
+                      << " is both in vopen and has INF cost!" << std::endl;
             found_conflict = true;
         }
 
@@ -1188,11 +1187,11 @@ void FMTX::visualizeHeapAndUnvisited() {
             vopen_positions.push_back(vec);
         }
 
-        if (node->in_unvisited_) {
-            Eigen::VectorXd vec(2);
-            vec << node->getStateValue()(0), node->getStateValue()(1); // Assuming 2D state
-            vunvisited_positions.push_back(vec);
-        }
+        // if (node->in_unvisited_) {
+        //     Eigen::VectorXd vec(2);
+        //     vec << node->getStateValue()(0), node->getStateValue()(1); // Assuming 2D state
+        //     vunvisited_positions.push_back(vec);
+        // }
     }
 
     if (found_conflict) {
@@ -1204,8 +1203,8 @@ void FMTX::visualizeHeapAndUnvisited() {
         // std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
 
-    std::string vunvisited_color_str = "0.0,1.0,1.0";  // Cyan color
-    visualization_->visualizeNodes(vunvisited_positions, "map", vunvisited_color_str,"vunvisited");
+    // std::string vunvisited_color_str = "0.0,1.0,1.0";  // Cyan color
+    // visualization_->visualizeNodes(vunvisited_positions, "map", vunvisited_color_str,"vunvisited");
         // std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
 }
