@@ -626,8 +626,9 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
         /*
             it doesnt come here so maybe we don't need this --> im thinking there shouldn't be a node in remove that is in heap
             my reason is the removed nodes are the current nodes of the previous iteration and we didn't put any of the current
-            nodes(messedup node actually which is a subset of current) in heap
-            because they had inf cost! but im gonna leave this here for later pondering!
+            nodes(messedup node actually which is a subset of current) in heap and havent updated those nodes yet!(because we haven't reached
+            plan function yet)
+            we didn't put them in heap because they had "inf" cost! but im gonna leave this here for later pondering!
         */
             std::cout<<"is it here?? \n";
             v_open_heap_.remove(node_index);

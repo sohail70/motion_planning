@@ -223,3 +223,47 @@ void RVizVisualization::visualizeCylinder(
     // Publish all markers at once
     marker_pub_2_->publish(marker_array);
 }
+
+
+
+void RVizVisualization::visualizeRobotArrow(
+    const Eigen::VectorXd& robot_position,  // Position of the robot
+    const Eigen::VectorXd& robot_orientation,  // Quaternion orientation
+    const std::string& frame_id,
+    const std::vector<float>& color,  // RGB color for the arrow
+    const std::string& ns)
+{
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = frame_id;
+    marker.header.stamp = node_->now();
+    marker.ns = ns;
+    marker.id = 0;  // Only one marker for the robot
+    marker.type = visualization_msgs::msg::Marker::ARROW;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+
+
+    // Set position for the arrow (robot position)
+    marker.pose.position.x = robot_position[0];
+    marker.pose.position.y = robot_position[1];
+    marker.pose.position.z = 0.0;  // Keep it 2D for now (z = 0)
+
+    // Set orientation from the quaternion (robot_orientation)
+    marker.pose.orientation.x = robot_orientation[0];
+    marker.pose.orientation.y = robot_orientation[1];
+    marker.pose.orientation.z = robot_orientation[2];
+    marker.pose.orientation.w = robot_orientation[3];
+
+    // Set the scale of the arrow
+    marker.scale.x = 3.0;  // Shaft width
+    marker.scale.y = 1.0;  // Shaft width
+    marker.scale.z = 0.5;  // Arrowhead size
+
+    // Set the color of the arrow
+    marker.color.r = color[0];
+    marker.color.g = color[1];
+    marker.color.b = color[2];
+    marker.color.a = 1.0;  // Fully opaque
+
+    // Publish the marker (robot as an arrow)
+    marker_pub_->publish(marker);
+}
