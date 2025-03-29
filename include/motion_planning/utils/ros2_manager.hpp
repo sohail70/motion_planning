@@ -397,7 +397,9 @@ void visualizeDWA(const DWAVisualization& data) {
 
     void visualizeObstacles(double robot_x, double robot_y) {
         std::vector<Eigen::VectorXd> obstacles;
+        std::vector<Eigen::VectorXd> robot;
         std::vector<double> radii;
+        std::vector<double> robot_rad;
         if (auto grid_checker = std::dynamic_pointer_cast<OccupancyGridObstacleChecker>(obstacle_checker_)) {
             obstacles = grid_checker->getObstaclesInRange(robot_x, robot_y);
         } else if (auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_)) {
@@ -408,10 +410,11 @@ void visualizeDWA(const DWAVisualization& data) {
                 radii.push_back(obstacle_pos.radius);
             }
             Eigen::Vector2d robot_pos = gazebo_checker->getRobotPosition();
-            obstacles.push_back(robot_pos);
-            radii.push_back(1.0);
+            robot.push_back(robot_pos);
+            robot_rad.push_back(1.0);
         }
-        visualizer_->visualizeCylinder(obstacles, radii, "map");
+        visualizer_->visualizeCylinder(robot, robot_rad, "map",std::vector<float>{1.0f,1.0f,0.0f}, "robot_marker");
+        visualizer_->visualizeCylinder(obstacles, radii, "map",std::vector<float>{0.0f,0.0f,1.0f}, "obstalce_markers");
     }
 
 

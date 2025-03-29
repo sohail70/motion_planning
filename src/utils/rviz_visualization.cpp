@@ -174,7 +174,9 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
 void RVizVisualization::visualizeCylinder(
     const std::vector<Eigen::VectorXd>& obstacles, 
     const std::vector<double>& radii, 
-    const std::string& frame_id) 
+    const std::string& frame_id,
+    const std::vector<float>& color ,
+    const std::string& ns) 
 {
     if (obstacles.size() != radii.size()) {
         RCLCPP_ERROR(node_->get_logger(), 
@@ -193,7 +195,7 @@ void RVizVisualization::visualizeCylinder(
         visualization_msgs::msg::Marker marker;
         marker.header.frame_id = frame_id;
         marker.header.stamp = node_->now();
-        marker.ns = "obstacle_markers";
+        marker.ns = ns;
         marker.id = id++;  // Unique ID per marker
         marker.type = visualization_msgs::msg::Marker::CYLINDER;
         marker.action = visualization_msgs::msg::Marker::ADD;
@@ -209,8 +211,10 @@ void RVizVisualization::visualizeCylinder(
         marker.scale.z = 0.1;         // Height in z
 
         // Set the color of the marker
-        marker.color.b = 1.0;  // Blue color
-        marker.color.a = 0.5;   // Semi-transparent
+        marker.color.r = color[0];
+        marker.color.g = color[1];
+        marker.color.b = color[2];
+        marker.color.a = 0.5; // semi-transparent
 
         // Add the marker to the array
         marker_array.markers.push_back(marker);
