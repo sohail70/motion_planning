@@ -411,6 +411,11 @@ public:
         elementIndex.resize(capacity, -1);  // Initialize elementIndex with invalid indices
     }
 
+    // Add this method to expose read-only access to the heap
+    const std::vector<QueueElement2>& getHeap() const {
+        return heap;
+    }
+
     // Check if an element exists in the queue
     bool contains(int index) const {
         return index >= 0 && index < elementIndex.size() && elementIndex[index] != -1;

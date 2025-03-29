@@ -54,7 +54,7 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
         marker_pub_->publish(marker);
 }
 
-void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id, const std::string& color_str , const std::string& ns) {
+void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id, const std::vector<float>& color, const std::string& ns) {
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = frame_id;
     marker.header.stamp = node_->now();
@@ -69,27 +69,14 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
     // marker.lifetime = rclcpp::Duration::from_seconds(0.2);  // Keep for 0.2 seconds
 
 
-    // Parse the color string
-    std::stringstream ss(color_str);
-    std::string token;
-    std::vector<float> color_components;
-    while (std::getline(ss, token, ',')) {
-        color_components.push_back(std::stof(token));
-    }
+
 
     // Set the color components
-    if (color_components.size() == 3) {
-        marker.color.r = color_components[0]; // Red
-        marker.color.g = color_components[1]; // Green
-        marker.color.b = color_components[2]; // Blue
-        marker.color.a = 1.0; // Fully opaque
-    } else {
-        // Default color (green) if the input is invalid
-        marker.color.r = 0.0;
-        marker.color.g = 1.0;
-        marker.color.b = 0.0;
+        marker.color.r = color[0];
+        marker.color.g = color[1];
+        marker.color.b = color[2];
         marker.color.a = 1.0;
-    }
+
 
     // Add nodes to the marker
     for (const auto& node : nodes) {

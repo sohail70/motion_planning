@@ -90,6 +90,12 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
 }
 
 void FMTX::plan() {
+
+    visualizeHeapAndUnvisited();
+
+
+
+
     /*
         Does caching obstacle for each run helps? it did in my python code but in my C++ design it doesn't which is a good sign.
     */
@@ -296,6 +302,7 @@ void FMTX::plan() {
                         } else{
                             v_open_heap_.add(new_element);
                             x->in_queue_ = true;
+                            // v_open_set_.insert(x->getIndex());
                         }
                         // x->in_unvisited_ = false;
 
@@ -329,6 +336,7 @@ void FMTX::plan() {
 
         z->in_queue_=false;
         // z->in_unvisited_= false; // close the node if its not already --> i dont think i need this but let it be to be sure!
+        // v_open_set_.erase(zIndex);
     }
 
     // std::cout<<"checks: "<< checks <<"\n";
@@ -485,8 +493,8 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
         // }
 
     } else {
-        if (!prev.empty()) handleRemovedObstacleSamples(prev);
         if (!cur.empty()) handleAddedObstacleSamples(cur);
+        if (!prev.empty()) handleRemovedObstacleSamples(prev);
         
 
         /*
@@ -556,17 +564,31 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
                     Note: i think we don't need to obstacle check for all the node->neighbor relatioship because i think we can utilize dualFindSample and instantly make nodes on samples_in_obstalce distances to INFINITY
                           but for now since rrtx didn't do optimization in this part i keep the code this way
                 */
-                if (!obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue())) {
-                    edge_info.distance = INFINITY;
-                    near(neighbor->getIndex());
-                    neighbor->neighbors().at(node).distance = INFINITY;
+                bool is_free_ = obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue());
+                if (is_free_) continue;
+
+                edge_info.distance = INFINITY;
+                near(neighbor->getIndex());
+                neighbor->neighbors().at(node).distance = INFINITY;
+
+                if (node->getParent() == neighbor){
+                    orphan_nodes.insert(node->getIndex()); // In the current tree_ we check if an edge connection the node and its parent is on obstalce or not, if it is, then we send it and its descendant to orphan list
+                    auto descendants = getDescendants(node->getIndex());
+                    orphan_nodes.insert(descendants.begin(), descendants.end());
+                }
+                if (neighbor->getParent() == node) { //We check bidirectionaly because we used "neighbor->neighbors().at(node).distance = INFINITY;" in above line
+                    orphan_nodes.insert(neighbor->getIndex());
+                    auto descendants = getDescendants(neighbor->getIndex());
+                    orphan_nodes.insert(descendants.begin(), descendants.end());
                 }
             }
         }
+        else{
+            orphan_nodes.insert(idx);
+            auto descendants = getDescendants(idx);
+            orphan_nodes.insert(descendants.begin(), descendants.end());
+        }
 
-        orphan_nodes.insert(idx);
-        auto descendants = getDescendants(idx);
-        orphan_nodes.insert(descendants.begin(), descendants.end());
     }
 
     /*
@@ -587,12 +609,13 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 
     // DOESNT MATTER IF THIS LOOP WOULD GO HIGHER OR LOWER THAN THE BELOW FOR LOOP BECAUSE THE VUNVISTED UPDATE LOOP IS GONNA HELP THE BELOW LOOP
     for (auto node_index : orphan_nodes) {
-        // tree_.at(node_index)->in_unvisited_ = true;
+        tree_.at(node_index)->in_unvisited_ = true;
         auto node = tree_.at(node_index).get();
         
         if (node->in_queue_) {
             v_open_heap_.remove(node_index);
             node->in_queue_ = false;
+            // v_open_set_.erase(node_index);
         }
         if (!node->getIndex() == 0) // Root of the tree must keep its zero cost!
             node->setCost(INFINITY); 
@@ -628,15 +651,15 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
     for (auto node_index : orphan_nodes) {
         auto node = tree_.at(node_index).get();
         near(node_index);
-        for (const auto& [neighbor, dist] : node->neighbors()) {
+        for (const auto& [neighbor, dist] : node->neighbors()){
             int index = neighbor->getIndex();
-            if (neighbor->in_queue_ || neighbor->getCost()==INFINITY) continue;
+            if (neighbor->in_queue_ || neighbor->getCost()==INFINITY ) continue;
             // if (neighbor->in_queue_ || neighbor->in_unvisited_) continue;
             // if (samples_in_obstacles_.count(index)) continue; //TODO: see if we need this or if it helps speed or is redundant
-
             double h_value = use_heuristic ? heuristic(index) : 0.0;
             v_open_heap_.add({neighbor->getCost() + h_value, index});
             neighbor->in_queue_ = true;
+            // v_open_set_.insert(index);
         }
     }
   
@@ -657,9 +680,10 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
         
 
             // Remove the nodes that got unvisited now from the the heap
-            if (node->in_queue_) {
+            if (node->in_queue_ && node->getCost()==INFINITY) {
                 v_open_heap_.remove(node_index);
                 node->in_queue_ = false;
+                // v_open_set_.erase(node_index);
             }
 
         // }
@@ -694,6 +718,7 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
             double h_value = use_heuristic ? heuristic(n_idx) : 0.0;
             v_open_heap_.add({neighbor->getCost() + h_value, n_idx});
             neighbor->in_queue_ = true;
+            // v_open_set_.insert(n_idx);
         }
     }
     // ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1111,7 +1136,7 @@ void FMTX::visualizeTree() {
         }
     
         // Use the visualization class to visualize nodes and edges
-        // visualization_->visualizeNodes(nodes);
+        visualization_->visualizeNodes(nodes,"map",std::vector<float>{1.0f,0.0f,0.0f},"tree_node");
         visualization_->visualizeEdges(edges);
     }
 
@@ -1167,45 +1192,35 @@ void FMTX::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_pa
 
 void FMTX::visualizeHeapAndUnvisited() {
     std::vector<Eigen::VectorXd> vopen_positions;
-    std::vector<Eigen::VectorXd> vunvisited_positions;
-
     bool found_conflict = false;
 
-    // Loop through the entire tree_ and segregate nodes into vopen and vunvisited
-    for (const auto& node_ptr : tree_) {
-        const auto& node = node_ptr;
-
-        if (node->in_queue_ && node->getCost()==INFINITY) {
-            std::cerr << "Warning: Node " << node->getIndex() 
-                      << " is both in vopen and has INF cost!" << std::endl;
+    // Access the heap via the public getter
+    const auto& heap_elements = v_open_heap_.getHeap();
+    
+    // Iterate through elements in the v_open_heap_
+    for (const auto& element : heap_elements) {
+        // Check for INF cost directly in the heap element
+        if (element.min_key == INFINITY) {
+            std::cerr << "Warning: Node " << element.index 
+                      << " is in v_open_heap_ but has INF cost!" << std::endl;
             found_conflict = true;
         }
 
-        if (node->in_queue_) {
-            Eigen::VectorXd vec(2);
-            vec << node->getStateValue()(0), node->getStateValue()(1); // Assuming 2D state
-            vopen_positions.push_back(vec);
-        }
-
-        // if (node->in_unvisited_) {
-        //     Eigen::VectorXd vec(2);
-        //     vec << node->getStateValue()(0), node->getStateValue()(1); // Assuming 2D state
-        //     vunvisited_positions.push_back(vec);
-        // }
+        // Get the node from tree_ using the index stored in the heap element
+        const auto& node = tree_[element.index]; // Ensure this is valid
+        Eigen::VectorXd vec(2);
+        vec << node->getStateValue()(0), node->getStateValue()(1);
+        vopen_positions.push_back(vec);
     }
 
     if (found_conflict) {
-        std::cerr << "There were nodes that were both in vopen and vunvisited." << std::endl;
+        std::cerr << "There were nodes in v_open_heap_ with INF cost!" << std::endl;
     }
 
-    std::string vopen_color_str = "0.0,1.0,0.0";  // Green color
-    visualization_->visualizeNodes(vopen_positions, "map", vopen_color_str,"vopen");
-        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-
-    // std::string vunvisited_color_str = "0.0,1.0,1.0";  // Cyan color
-    // visualization_->visualizeNodes(vunvisited_positions, "map", vunvisited_color_str,"vunvisited");
-        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
+    // Visualize
+    // visualization_->visualizeNodes(vopen_positions, "map", std::vector<float>{0.0f,1.0f,0.0f}, "vopen");
+    visualization_->visualizeNodes(vopen_positions);
 }
+
+
 

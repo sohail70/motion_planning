@@ -342,7 +342,7 @@ int main(int argc, char **argv) {
 
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         if (duration.count() > 0) {
-            std::cout << "Time taken for the update : " << duration.count() 
+            std::cout << "time taken for the update : " << duration.count() 
                     << " milliseconds\n";
         }
         sim_durations.push_back(duration.count());
