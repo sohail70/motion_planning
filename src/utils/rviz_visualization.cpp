@@ -2,6 +2,23 @@
 
 #include "motion_planning/utils/rviz_visualization.hpp"
 
+
+// std::string getRandomColor() {
+//     // Seed the random number generator
+//     std::srand(std::time(nullptr));
+
+//     // Generate random values for RGB between 0.0 and 1.0
+//     float r = static_cast<float>(std::rand()) / RAND_MAX;
+//     float g = static_cast<float>(std::rand()) / RAND_MAX;
+//     float b = static_cast<float>(std::rand()) / RAND_MAX;
+
+//     // Convert to string
+//     std::ostringstream ss;
+//     ss << std::fixed << std::setprecision(2) << r << "," << g << "," << b;
+//     return ss.str();
+// }
+
+
 RVizVisualization::RVizVisualization(rclcpp::Node::SharedPtr node, const std::string& marker_topic)
     : node_(node),marker_id_counter_(0)  {
     marker_pub_ = node_->create_publisher<visualization_msgs::msg::Marker>(marker_topic, 10);
@@ -37,16 +54,20 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
         marker_pub_->publish(marker);
 }
 
-void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id, const std::string& color_str) {
+void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id, const std::string& color_str , const std::string& ns) {
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = frame_id;
     marker.header.stamp = node_->now();
-    marker.ns = "colored_nodes";
+    // marker.ns = "colored_nodes";
+    marker.ns = ns;
     marker.id = 0;
     marker.type = visualization_msgs::msg::Marker::POINTS;
     marker.action = visualization_msgs::msg::Marker::ADD;
-    marker.scale.x = 1.1; // Point width
-    marker.scale.y = 1.1; // Point height
+    marker.scale.x = 0.3; // Point width
+    marker.scale.y = 0.3; // Point height
+    // marker.lifetime = rclcpp::Duration(1, 0);  // 1 second visibility
+    // marker.lifetime = rclcpp::Duration::from_seconds(0.2);  // Keep for 0.2 seconds
+
 
     // Parse the color string
     std::stringstream ss(color_str);

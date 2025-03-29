@@ -7,7 +7,7 @@ TreeNode::TreeNode(std::unique_ptr<State> state, std::shared_ptr<Node> parent): 
     parent_index_ = -1;
 }
 
-const Eigen::VectorXd& TreeNode::getStateVlaue() const {
+const Eigen::VectorXd& TreeNode::getStateValue() const {
     return state_->getValue();
 }
 

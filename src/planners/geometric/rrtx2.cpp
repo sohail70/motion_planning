@@ -26,53 +26,95 @@ void RRTX::setGoal(const Eigen::VectorXd& goal) {
 
 
 std::vector<int> RRTX::getPathIndex() const {
-
-    int idx = vbot_index_;
     std::vector<int> path;
+    int idx = vbot_index_;
     while (idx != -1) {
         path.push_back(idx);
-        idx = tree_.at(idx)->getParentIndex();
+        RRTxNode* current_node = tree_.at(idx).get();
+        RRTxNode* parent = current_node->getParent();
+        if (parent == nullptr) {
+            break;
+        }
+        idx = parent->getIndex();
     }
     return path;
 }
-
 std::vector<Eigen::VectorXd> RRTX::getPathPositions() const {
-    int idx = vbot_index_;
     std::vector<Eigen::VectorXd> path_positions;
+    
+    if (vbot_node_ == nullptr) {
+        return path_positions;
+    }
 
-    if (vbot_index_ != -1){
+    // Get the dimension from the first node to check consistency
+    const size_t expected_dim = vbot_node_->getStateValue().size();
+
+    // Add robot position if it matches dimension
+    if (robot_position_.size() == expected_dim) {
         path_positions.push_back(robot_position_);
     }
 
-    while (idx != -1) {
-        path_positions.push_back(tree_.at(idx)->getStateVlaue());
-        idx = tree_.at(idx)->getParentIndex();
+    RRTxNode* current_node = vbot_node_;
+    while (current_node != nullptr) {
+        Eigen::VectorXd state = current_node->getStateValue();
+        if (state.size() != expected_dim) {
+            throw std::runtime_error("Inconsistent state dimensions in path");
+        }
+        path_positions.push_back(state);
+        current_node = current_node->getParent();
     }
+
     return path_positions;
 }
 
-
 void RRTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
-    const double MAX_SEARCH_RADIUS = 5.0;  // Meters
-    auto candidates = kdtree_->radiusSearch(robot_position, MAX_SEARCH_RADIUS);
+    robot_position_ = robot_position;
 
-    RRTxNode* best_node = nullptr;  // Use raw pointer instead of shared_ptr
-    double min_total_cost = INFINITY;
+    const double MAX_SEARCH_RADIUS = 5.0; // Meters
+    std::vector<size_t> nearest_indices = kdtree_->radiusSearch(robot_position, MAX_SEARCH_RADIUS);
 
-    for (int idx : candidates) {
-        RRTxNode* node = tree_[idx].get();  // Get raw pointer from shared_ptr
-        if (node->getCost() == INFINITY) continue;
+    size_t best_index = std::numeric_limits<size_t>::max(); 
+    double min_total_cost = std::numeric_limits<double>::max();
+    RRTxNode* best_node = nullptr; 
 
-        const double distance_to_node = (robot_position - node->getStateVlaue()).norm();
-        const double total_cost = distance_to_node + node->getCost();
+    for (size_t index : nearest_indices) {
+        auto node = tree_.at(index).get();
+        if (node->getCost() == std::numeric_limits<double>::infinity()) continue;
+
+        Eigen::VectorXd node_position = node->getStateValue();  // Fixed typo: getStateValue -> getStateValue
+        double distance_to_node = (node_position - robot_position).norm();
+        double total_cost = distance_to_node + node->getCost();
 
         if (total_cost < min_total_cost) {
             min_total_cost = total_cost;
-            best_node = node;  // Assign raw pointer
+            best_index = index;
+            best_node = node;
         }
     }
 
-    vbot_node_ = best_node ? best_node : vbot_node_;  // Update vbot_node_ (raw pointer)
+    if (best_index != std::numeric_limits<size_t>::max()) {
+        vbot_index_ = best_node->getIndex();
+        vbot_node_ = best_node; // Directly assign the raw pointer
+        return;
+    }
+
+    bool keep_prev_state_ = false;
+    if (vbot_node_ && keep_prev_state_ == true) {
+        std::cout << "No valid node found in neighborhood. Keeping previous vbot_node_.\n";
+        return;
+    }
+    if (vbot_node_) {
+        std::cout << "No valid node found in neighborhood. Setting to nearest node.\n";
+        std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, 1);
+        int nearest = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]);  
+        vbot_node_ = tree_.at(nearest).get();
+        vbot_index_ = vbot_node_->getIndex();
+        return;
+    }
+
+    vbot_index_ = -1;
+    vbot_node_ = nullptr; 
+    std::cout << "No valid node found and no previous vbot_node_. Setting vbot_node_ to nullptr.\n";
 }
 
 void RRTX::clearPlannerState() {
@@ -232,7 +274,7 @@ void RRTX::plan() {
         sample_counter++;
         std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample, 1);
         RRTxNode* nearest_node = tree_[nearest_indices[0]].get();
-        Eigen::VectorXd nearest_state = nearest_node->getStateVlaue();
+        Eigen::VectorXd nearest_state = nearest_node->getStateValue();
         
         // Steer towards sample
         Eigen::VectorXd direction = sample - nearest_state;
@@ -242,9 +284,10 @@ void RRTX::plan() {
         }
 
         // Attempt to extend tree
-        // if (obs_checker_->isObstacleFree(sample)) {
-            bool node_added = extend(sample);
-        // }
+        bool node_added = false;
+        if (obs_checker_->isObstacleFree(sample)) {
+            node_added = extend(sample);
+        }
             
         if (node_added) {
             RRTxNode* new_node = tree_.back().get();
@@ -289,8 +332,8 @@ void RRTX::plan() {
             if (edge_info.distance_original == 0.0) {
                 std::cerr << "WARNING: Zero distance_original at node " << node_ptr->getIndex()
                           << " -> " << neighbor->getIndex() 
-                          << " | State1: " << node_ptr->getStateVlaue().transpose()
-                          << " | State2: " << neighbor->getStateVlaue().transpose() << "\n";
+                          << " | State1: " << node_ptr->getStateValue().transpose()
+                          << " | State2: " << neighbor->getStateValue().transpose() << "\n";
             }
         }
 
@@ -309,8 +352,8 @@ void RRTX::plan() {
             if (edge_info.distance_original == 0.0) {
                 std::cerr << "WARNING: Zero distance_original at node " << node_ptr->getIndex()
                           << " <- " << neighbor->getIndex() 
-                          << " | State1: " << neighbor->getStateVlaue().transpose()
-                          << " | State2: " << node_ptr->getStateVlaue().transpose() << "\n";
+                          << " | State1: " << neighbor->getStateValue().transpose()
+                          << " | State2: " << node_ptr->getStateValue().transpose() << "\n";
             }
         }
     }
@@ -331,7 +374,7 @@ void RRTX::plan() {
 
 bool RRTX::extend(Eigen::VectorXd v) {
     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
-    auto neighbors = kdtree_->radiusSearch(new_node->getStateVlaue(), neighborhood_radius_ + 0.01);
+    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue(), neighborhood_radius_ + 0.01);
     
     findParent(new_node, neighbors);
 
@@ -341,17 +384,17 @@ bool RRTX::extend(Eigen::VectorXd v) {
     }
 
     tree_.push_back(new_node);
-    kdtree_->addPoint(new_node->getStateVlaue());
+    kdtree_->addPoint(new_node->getStateValue());
     kdtree_->buildTree(); 
     // Algorithm 2 lines 7-13 implementation
     for (size_t idx : neighbors) {
         RRTxNode* neighbor = tree_[idx].get();
         if (neighbor == new_node.get()) continue;
 
-        // const bool v_to_u_free = obs_checker_->isObstacleFree(new_node->getStateVlaue(), neighbor->getStateVlaue()); // This we do in find parent and we don't need to do it again but right now i didn't store them in findParent
-        const bool u_to_v_free = obs_checker_->isObstacleFree(neighbor->getStateVlaue(), new_node->getStateVlaue());
+        // const bool v_to_u_free = obs_checker_->isObstacleFree(new_node->getStateValue(), neighbor->getStateValue()); // This we do in find parent and we don't need to do it again but right now i didn't store them in findParent
+        const bool u_to_v_free = obs_checker_->isObstacleFree(neighbor->getStateValue(), new_node->getStateValue());
         const bool v_to_u_free = u_to_v_free;  // Easy way out for now since im not doing tracjetories right now
-        const double dist = (new_node->getStateVlaue() - neighbor->getStateVlaue()).norm();
+        const double dist = (new_node->getStateValue() - neighbor->getStateValue()).norm();
 
         // Persistent outgoing from new node (N⁰+)
         if (v_to_u_free) {
@@ -381,12 +424,12 @@ void RRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& ca
     for (size_t idx : candidates) {
         auto& candidate = tree_[idx];
         if (candidate == v) continue;
-        const double dist = (v->getStateVlaue() - candidate->getStateVlaue()).norm();
+        const double dist = (v->getStateValue() - candidate->getStateValue()).norm();
         /*
           The obstalce check we do here right now is the v->u  (new node to neighbors) and can also be used for the v->u trajcetories in extend function
           obstalce check (maybe later use a map or something) but u->v should be done in extend.
         */
-        if (dist <= neighborhood_radius_+0.01 && obs_checker_->isObstacleFree(v->getStateVlaue(), candidate->getStateVlaue())) {
+        if (dist <= neighborhood_radius_+0.01 && obs_checker_->isObstacleFree(v->getStateValue(), candidate->getStateValue())) {
             const double candidate_lmc = candidate->getLMC() + dist;
             
             if (candidate_lmc < min_lmc && candidate_lmc < v->getLMC()) {
@@ -521,10 +564,10 @@ void RRTX::updateLMC(RRTxNode* v) {
         // std::vector<Eigen::VectorXd> positions4;
         // std::string color_str = "0.0,0.0,1.0"; // Blue color
         // Eigen::VectorXd vec(2);
-        // vec << v->getStateVlaue();
+        // vec << v->getStateValue();
         // positions4.push_back(vec);
         // Eigen::VectorXd vec2(2);
-        // vec2 << best_parent->getStateVlaue();
+        // vec2 << best_parent->getStateValue();
         // positions4.push_back(vec2);
         // visualization_->visualizeNodes(positions4,"map",color_str);
 
@@ -546,7 +589,7 @@ void RRTX::cullNeighbors(RRTxNode* v) {
     while (it != outgoing.end()) {
         auto [neighbor, edge] = *it;
         if (!edge.is_initial && 
-            edge.distance > neighborhood_radius_+0.01 &&// (v->getStateVlaue() - neighbor->getStateVlaue()).norm() > neighborhood_radius_ &&
+            edge.distance > neighborhood_radius_+0.01 &&// (v->getStateValue() - neighbor->getStateValue()).norm() > neighborhood_radius_ &&
             neighbor != v->getParent() ) 
         {
             auto& incoming = neighbor->incomingEdges();
@@ -602,7 +645,7 @@ void RRTX::propagateDescendants() {
         to_process.pop();
 
         // Propagate to children using successors()
-        for (RRTxNode* child : current->successors()) {
+        for (RRTxNode* child : current->getChildren()) {
             int child_idx = child->getIndex();
             if (child_idx == -1 || Vc_T_.count(child_idx)) continue;
 
@@ -670,7 +713,7 @@ void RRTX::propagateDescendants() {
 
 bool RRTX::isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& edge) const {
     return edge.distance != INFINITY && 
-           obs_checker_->isObstacleFree(from->getStateVlaue(), to->getStateVlaue());
+           obs_checker_->isObstacleFree(from->getStateValue(), to->getStateValue());
 }
 
 void RRTX::visualizeTree() {
@@ -682,7 +725,7 @@ void RRTX::visualizeTree() {
     std::unordered_set<RRTxNode*> valid_nodes;
     for (const auto& node : tree_) {
         if (node->getCost() <= goal_cost) {
-            nodes.push_back(node->getStateVlaue());
+            nodes.push_back(node->getStateValue());
             valid_nodes.insert(node.get());
         }
     }
@@ -690,8 +733,8 @@ void RRTX::visualizeTree() {
     // Generate edges for valid nodes
     for (const auto& node : valid_nodes) {
         if (node->getParent()) {
-            edges.emplace_back(node->getParent()->getStateVlaue(),
-                             node->getStateVlaue());
+            edges.emplace_back(node->getParent()->getStateValue(),
+                             node->getStateValue());
         }
     }
 
@@ -707,10 +750,10 @@ void RRTX::visualizePath(const std::vector<RRTxNode*>& path) {
     edges.reserve(path.size());
 
     for (const auto& node : path) {
-        nodes.push_back(node->getStateVlaue());
+        nodes.push_back(node->getStateValue());
         if (node->getParent()) {
-            edges.emplace_back(node->getParent()->getStateVlaue(),
-                             node->getStateVlaue());
+            edges.emplace_back(node->getParent()->getStateValue(),
+                             node->getStateValue());
         }
     }
 
@@ -874,7 +917,7 @@ void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     // std::string color_str = "0.0,0.0,1.0"; // Blue color
     // for (int r : removed){
     //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(r)->getStateVlaue();
+    //     vec << tree_.at(r)->getStateValue();
     //     positions4.push_back(vec);
     // }
     // visualization_->visualizeNodes(positions4,"map",color_str);
@@ -932,7 +975,7 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
             // Common edge invalidation logic
             const bool should_invalidate = ignore_sample ? true : 
                 (edge.distance != INFINITY && 
-                !obs_checker_->isObstacleFree(node->getStateVlaue(), u->getStateVlaue()));
+                !obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue()));
 
             if (!should_invalidate) continue;
             /*
@@ -979,8 +1022,8 @@ void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
             // Mode-specific condition components
             const bool is_neighbor_clear = !samples_in_obstacles_.count(u->getIndex());
             const bool was_invalidated = (edge.distance == INFINITY);
-            const bool is_now_clear = obs_checker_->isObstacleFree(node->getStateVlaue(), 
-                                                                  u->getStateVlaue());
+            const bool is_now_clear = obs_checker_->isObstacleFree(node->getStateValue(), 
+                                                                  u->getStateValue());
             
             // Unified restoration condition
             const bool should_restore = ignore_sample 

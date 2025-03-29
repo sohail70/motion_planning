@@ -1,22 +1,21 @@
-// fmtx_node.hpp
+// Copyright Soheil E.nia 2025
 #pragma once
 
 #include "motion_planning/state_space/state.hpp"
-#include "motion_planning/ds/node.hpp"
-#include <unordered_map>
-#include <boost/container/flat_map.hpp>
-#include <vector>
+#include "motion_planning/pch.hpp"
+#include "motion_planning/ds/edge_info.hpp"
 
-struct FMTxEdgeInfo {
-    double distance;
-    double distance_original; // I use it in removeObstalce When i want to reset the distance
-};
 
-class FMTXNode : public Node {
+
+class FMTXNode  {
 public:
-    // using NeighborMap = boost::container::flat_map<FMTXNode*, double>;
-    using NeighborMap = boost::container::flat_map<FMTXNode*, FMTxEdgeInfo>;
-    // using NeighborMap = std::unordered_map<FMTXNode*, double>;
+    /*
+        Why flat_map? it worked better than std::unordered_map --> you can also uncomment the unordered_map to test.
+        Reasons: 1) Lots of looping over neighbors in FMTX
+                 2) The number of neighbors are limited because we pre-sample in FMTx so cost of insertion which is log(n) in flat map due to sorting is negligble
+    */
+    using NeighborMap = boost::container::flat_map<FMTXNode*, EdgeInfo>;
+    // using NeighborMap = std::unordered_map<FMTXNode*, EdgeInfo>;
     
     explicit FMTXNode(std::unique_ptr<State> state, int index = -1)
         : state_(std::move(state)),
@@ -26,33 +25,30 @@ public:
           in_unvisited_(false),
           parent_(nullptr) {}
 
-    // ~FMTXNode() {
-    //     std::cout << "Destroying node " << index_ 
-    //             << " (parent=" << (parent_ ? parent_->index_ : -1)
-    //             << ", children=" << children_.size() << ")\n";
-    // }
 
-    // Core interface
-    const Eigen::VectorXd& getStateVlaue() const override { return state_->getValue(); }
-    double getCost() const noexcept override { return cost_; }
-    void setCost(double cost) noexcept override { cost_ = cost; }
+    const Eigen::VectorXd& getStateValue() const { return state_->getValue(); } // I get the position of the node (states) from State interface
+    double getCost() const noexcept { return cost_; } // g_value
+    void setCost(double cost) noexcept { cost_ = cost; } 
 
-
-
-    // Direct neighbor access
-    NeighborMap& neighbors() noexcept { return neighbors_; }
+    NeighborMap& neighbors() noexcept { return neighbors_; } 
     const NeighborMap& neighbors() const noexcept { return neighbors_; }
 
 
-    // Parent-child management
+    /*
+        we set parent and manage children at the same time 
+        with the added condition in FMTx, i.e.,  " ... || x->getCost() > (z->getCost() + cost_to_neighbor.distance" which is basically enables rewiring,
+        one node may have rewired into the same parent! this seems weird but the cost of that parent is infact reduced and thats why you reached to last phase of
+        the fmtx to setParent function, so we are here in setParent redundantly and if we do not early exit we have to use the hasChild below or else we
+        are gonna end up using "parent_children_.push_back(this)" alot!
+    */
     void setParent(FMTXNode* parent, double edge_cost) {
-        // sometime the parent is the same but its cost has changed so we are here redundantly and if we do not early exist we have to use the hasChild below!!
+        // Early exit if parent is the same
         if (parent == parent_) { 
             edge_cost_ = edge_cost; // Update cost even if parent is same
             return;
         }
+        // If parent has changed remove this node from its old parent's children list
         if(parent_ && parent_ != parent) {
-            // Remove from old parent's children
             auto& childs = parent_->children_;
             childs.erase(std::remove(childs.begin(), childs.end(), this), childs.end());
         }
@@ -60,11 +56,13 @@ public:
         parent_ = parent;
         edge_cost_ = edge_cost;
         
+        // Add this node to the new parent's children list
         if(parent_ ){ //&& !hasChild(this, parent_->children_)) {
             parent_->children_.push_back(this);
         }
     }
 
+    // I used raw pointers for speed and I use this in clear function inside setup() to be sure!
     void disconnectFromGraph() {
         // Break parent link
         if (parent_ != nullptr) {
@@ -82,86 +80,57 @@ public:
         children_.clear();
     }
 
+    /*
+        Well my rule is that nodes shouldn't be at both in_unvisited and in_queue and we should decide before going into plan() function --> but how about your added condition 
+        " ... || x->getCost() > (z->getCost() + cost_to_neighbor.distance" isn't this somehow behind the scene not checking if a node is in vopen and just decides to treat it as v unvisited? Yes, but!
 
+        every unvisted then becomes v open but because v univsted does have inf cost its gonna cause problem if its on vopen because best_neighbor is gonna get selected out of vopens who has the best cost 
+        and imagine at some point we only have inf costs in out vopens!
+        at the same time vopen pops from lowest cost so if its downstream it shoulnt be a problem
+        even though i explicitly don't have nodes 
+
+        I don't use the following function anywhere now but you can put it in plan() function to see whats what
+    */
     void sanityCheck() const {
         if (in_unvisited_ && in_queue_) {
             std::cerr << "Warning: Node " << index_ 
                       << " has both in_unvisited_ and in_queue_ set to true!" << std::endl;
         }
     }
-// void setParent(FMTXNode* parent, double edge_cost) {
-//     // Debug: Track calls
-//     std::cout << "FMTXNode " << index_ 
-//               << " setting parent to " << (parent ? std::to_string(parent->index_) : "nullptr") 
-//               << std::endl;
-
-//     if (parent_ && parent_ != parent) {
-//         // Remove from old parent's children
-//         auto& childs = parent_->children_;
-//         childs.erase(std::remove(childs.begin(), childs.end(), this), childs.end());
-//         std::cout << "  Removed from old parent " << parent_->index_ << "'s children." << std::endl;
-//     }
-    
-//     parent_ = parent;
-//     edge_cost_ = edge_cost;
-    
-//     if (parent_) {
-//         // Check for duplicate before adding
-//         auto& children = parent_->children_;
-//         if (std::find(children.begin(), children.end(), this) == children.end()) {
-//             children.push_back(this);
-//             std::cout << "  Added to parent " << parent_->index_ << "'s children." << std::endl;
-//         } else {
-//             std::cout << "  Already in parent " << parent_->index_ << "'s children. Skipping." << std::endl;
-//         }
-//     }
-// }
-
 
     FMTXNode* getParent() const noexcept { return parent_; }
     const std::vector<FMTXNode*>& getChildren() const noexcept { return children_; }
     std::vector<FMTXNode*>& getChildrenMutable() noexcept { return children_; }
     
-    // Index management
-    void setIndex(int index) noexcept { index_ = index; }
+    void setIndex(int index) noexcept { index_ = index; } // No need!
     int getIndex() const noexcept  { return index_; }
 
-    // // Optimized memory layout
-    // struct StateComparator {
-    //     bool operator()(const FMTXNode* a, const FMTXNode* b) const {
-    //         return a->state_->getValue().norm() < b->state_->getValue().norm();
-    //     }
-    // };
-
-
-
-    // Add these implementations
-    void setParentIndex(int index) override { parent_index_ = index; }
-    int getParentIndex() const override { return parent_index_; }
-    void setChildrenIndex(int index) override { children_indices_.push_back(index); }
-    std::vector<int>& getChildrenIndices() override { return children_indices_; }
-   // Add these implementations
-   void setLMC(double lmc) override { /* FMTX doesn't use LMC */ }
-   double getLMC() const override { return getCost(); }  // Map LMC to cost if needed
 
     bool in_queue_;
     bool in_unvisited_;
     double edge_cost_;
+    /*
+        blocked_best_neighbor: one thing about FMT is it exhausts the z nodes as it goes and in some bad cases near obstacles 
+        we keep getting the same best_neighbor out of the best_neighbor procedure and that x node's edge to that best_neighbor
+        is in obstacle and there is nothing we can do about it. the algorithm goes forward to pop another z node from heap and we keep having
+        the same problem for that x node and the best neighbor node that we calculate
+        this is not a problem for dijktra like fast marching tree even though it causes sub-optimal solutions in low sample case and it is mentioned in 
+        fmt paper also but if you want to use A-star like heuristic its gonna create a problem because z node pop procedure in dijkstra-like is breadth-first
+        and in the end that blocked_best_neighbor node will end up poped from the vopen heap but in case of A-star like which is depth first it will not get poped easily
+        and it will exhaust alot of z nodes (i mean heap nodes - expansion nodes if you will) so we need to exclude those from the best_neighbor candidate list!
+        so we fill blocked_best_neighbors in the else part of the cost update in the main plan function
+    */
     std::unordered_set<int> blocked_best_neighbors;
-    std::vector<FMTXNode*> children_; // direct children
-    FMTXNode* parent_;              // direct parent
+    std::vector<FMTXNode*> children_;
+    FMTXNode* parent_;
 private:
     std::unique_ptr<State> state_;
-    NeighborMap neighbors_;         // neighbor node -> edge cost
+    NeighborMap neighbors_;
     double cost_;
     int index_;
-    bool on_obstacle; // not using this now! maybelater instead of samples_in_obstalce!
-    //////
-        // Add these members
-    int parent_index_ = -1;
-    std::vector<int> children_indices_;
+    bool on_obstacle; // not using this now! maybe later instead of samples_in_obstalce!
 
-    static bool hasChild(FMTXNode* node, const std::vector<FMTXNode*>& children) {
-        return std::find(children.begin(), children.end(), node) != children.end();
-    }
+    // static bool hasChild(FMTXNode* node, const std::vector<FMTXNode*>& children) {
+    //     return std::find(children.begin(), children.end(), node) != children.end();
+    // }
 };

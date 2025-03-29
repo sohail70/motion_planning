@@ -39,7 +39,7 @@ std::vector<Eigen::VectorXd> RRTX::getPathPositions() const {
     }
 
     while (idx != -1) {
-        path_positions.push_back(tree_.at(idx)->getStateVlaue());
+        path_positions.push_back(tree_.at(idx)->getStateValue());
         idx = tree_.at(idx)->getParentIndex();
     }
     return path_positions;
@@ -71,7 +71,7 @@ void RRTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
         if (tree_[index]->getCost() == std::numeric_limits<double>::infinity()) continue;
 
         // Distance from robot to node
-        Eigen::VectorXd node_position = tree_[index]->getStateVlaue();
+        Eigen::VectorXd node_position = tree_[index]->getStateValue();
         double dx = node_position[0] - robot_position[0];
         double dy = node_position[1] - robot_position[1];
         double distance_to_node = std::hypot(dx, dy);
@@ -235,7 +235,7 @@ void RRTX::plan() {
         sample_counter++;
         std::vector<size_t> nearest_indices = kdtree_->knnSearch(v, 1);
         int nearest = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]); 
-        Eigen::VectorXd nearest_state = tree_.at(nearest)->getStateVlaue();
+        Eigen::VectorXd nearest_state = tree_.at(nearest)->getStateValue();
         Eigen::VectorXd direction = v - nearest_state;
         double d = direction.norm();
 
@@ -289,7 +289,7 @@ void RRTX::extend(Eigen::VectorXd v) {
         if (u_index==current_index) {
             continue;
         }
-        const Eigen::VectorXd& u_state = tree_.at(u_index)->getStateVlaue();
+        const Eigen::VectorXd& u_state = tree_.at(u_index)->getStateValue();
         // TODO: For now i don't distinguish between bidirectional paths between v,u and u,v. Later when we have to deal with dynamics and trajectory we'll deal with this.
         bool is_path_free = obs_checker_->isObstacleFree(v, u_state); 
 
@@ -319,7 +319,7 @@ void RRTX::findParent(Eigen::VectorXd v, const std::vector<size_t>& candidate_in
     // Iterate through all candidate nodes
     double best_parent_distance;
     for (int u_index : candidate_indices) {
-        const Eigen::VectorXd& u_state = tree_.at(u_index)->getStateVlaue();
+        const Eigen::VectorXd& u_state = tree_.at(u_index)->getStateValue();
 
         // Compute trajectory and distance between v and u
         double distance = (v_state - u_state).norm();
@@ -468,7 +468,7 @@ void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     //     std::string color_str = "0.0,0.0,1.0"; // Blue color
     //     std::vector<Eigen::VectorXd> positions4;
     //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(max_length_edge_ind)->getStateVlaue();
+    //     vec << tree_.at(max_length_edge_ind)->getStateValue();
     //     positions4.push_back(vec);
     //     visualization_->visualizeNodes(positions4,"map",color_str);
 
@@ -551,7 +551,7 @@ void RRTX::cullNeighbors(int v_index) {
         // Do not use the distance map because it might have inf value and culls uneccessary neighbors! or if you want ot use the map just add another condtion to avoid neighbors that have cost of inf
         // double distance = distance_[v_index][u_index];
 
-        double distance = (tree_.at(v_index)->getStateVlaue() - tree_.at(u_index)->getStateVlaue()).norm(); // for cullNeighbor we don't use the distance map because that map sometimes has inf in it!
+        double distance = (tree_.at(v_index)->getStateValue() - tree_.at(u_index)->getStateValue()).norm(); // for cullNeighbor we don't use the distance map because that map sometimes has inf in it!
         // Check if the distance is greater than the neighborhood radius
         // and u is not the parent of v
 
@@ -623,7 +623,7 @@ void RRTX::removeObstacle(const std::vector<int>& removed_samples) {
             if (samples_in_obstacles_.find(neighbor_index)!=samples_in_obstacles_.end()) {
                 continue;
             }
-            double new_distance = (tree_[sample_index]->getStateVlaue() - tree_[neighbor_index]->getStateVlaue()).norm();
+            double new_distance = (tree_[sample_index]->getStateValue() - tree_[neighbor_index]->getStateValue()).norm();
             distance_[sample_index][neighbor_index] = new_distance;
             distance_[neighbor_index][sample_index] = new_distance;
         }
@@ -785,7 +785,7 @@ void RRTX::visualizeTree() {
     // Collect valid nodes
     for (size_t i = 0; i < tree_.size(); ++i) {
         if (tree_[i]->getCost() <= goal_node_cost) {
-            nodes.push_back(tree_[i]->getStateVlaue());
+            nodes.push_back(tree_[i]->getStateValue());
             valid_node_indices.insert(i);
         }
     }
@@ -794,7 +794,7 @@ void RRTX::visualizeTree() {
     for (int index : valid_node_indices) {
         int parent_index = tree_[index]->getParentIndex();
         if (parent_index != -1) {
-            edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_.at(index)->getStateVlaue());
+            edges.emplace_back(tree_.at(parent_index)->getStateValue(), tree_.at(index)->getStateValue());
         }
     }
 
@@ -811,14 +811,14 @@ void RRTX::visualizePath(std::vector<int> path_indices) {
 
     // Add nodes to the list
     for (const auto& index : path_indices) {
-        nodes.push_back(tree_.at(index)->getStateVlaue());
+        nodes.push_back(tree_.at(index)->getStateValue());
     }
 
     // Add edges to the list
     for (const auto& index : path_indices) {
         int parent_index = tree_.at(index)->getParentIndex();
         if (parent_index != -1) {
-            edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_.at(index)->getStateVlaue());
+            edges.emplace_back(tree_.at(parent_index)->getStateValue(), tree_.at(index)->getStateValue());
         }
     }
 

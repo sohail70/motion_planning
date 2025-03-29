@@ -69,9 +69,9 @@ void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
         kdtree_->addPoints(statespace_->getSamplesCopy());
         // Build the tree all at once after we fill the data_ in the KDTree
         kdtree_->buildTree();
-        // kdtree_->radiusSearch(tree_.at(0)->getStateVlaue(), 10);
+        // kdtree_->radiusSearch(tree_.at(0)->getStateValue(), 10);
         // std::cout << "---- \n";
-        // kdtree_->knnSearch(tree_.at(0)->getStateVlaue(), 10);
+        // kdtree_->knnSearch(tree_.at(0)->getStateValue(), 10);
     }
 
     /////////////////////////SETTING UP DS//////////////
@@ -124,7 +124,7 @@ void RRTX::plan() {
         sample_counter++;
         std::vector<size_t> nearest_indices = kdtree_->knnSearch(v, 1);
         int nearest = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]); 
-        Eigen::VectorXd nearest_state = tree_.at(nearest)->getStateVlaue();
+        Eigen::VectorXd nearest_state = tree_.at(nearest)->getStateValue();
         Eigen::VectorXd direction = v - nearest_state;
         double d = direction.norm();
 
@@ -176,7 +176,7 @@ void RRTX::extend(Eigen::VectorXd v) {
         if (u_index==current_index) {
             continue;
         }
-        const Eigen::VectorXd& u_state = tree_.at(u_index)->getStateVlaue();
+        const Eigen::VectorXd& u_state = tree_.at(u_index)->getStateValue();
         // bool is_path_free = obs_checker_->isPathFree(v, u_state); // TODO implement later because you need to add another function or an overload to see if a point is in obstalces or not!
         bool is_path_free = true;
 
@@ -205,7 +205,7 @@ void RRTX::findParent(Eigen::VectorXd v, const std::vector<size_t>& candidate_in
     int current_index_ = tree_.size()-1;
     // Iterate through all candidate nodes
     for (int u_index : candidate_indices) {
-        const Eigen::VectorXd& u_state = tree_.at(u_index)->getStateVlaue();
+        const Eigen::VectorXd& u_state = tree_.at(u_index)->getStateValue();
 
         // Compute trajectory and distance between v and u
         double distance = (v_state - u_state).norm();
@@ -435,14 +435,14 @@ void RRTX::visualizeTree() {
 
     // Add nodes to the list
     for (const auto& tree_node : tree_) {
-        nodes.push_back(tree_node->getStateVlaue());
+        nodes.push_back(tree_node->getStateValue());
     }
 
     // Add edges to the list
     for (const auto& tree_node : tree_) {
         int parent_index = tree_node->getParentIndex();
         if (parent_index != -1) {
-            edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_node->getStateVlaue());
+            edges.emplace_back(tree_.at(parent_index)->getStateValue(), tree_node->getStateValue());
         }
     }
 
@@ -457,14 +457,14 @@ void RRTX::visualizePath(std::vector<int> path_indices) {
 
     // Add nodes to the list
     for (const auto& index : path_indices) {
-        nodes.push_back(tree_.at(index)->getStateVlaue());
+        nodes.push_back(tree_.at(index)->getStateValue());
     }
 
     // Add edges to the list
     for (const auto& index : path_indices) {
         int parent_index = tree_.at(index)->getParentIndex();
         if (parent_index != -1) {
-            edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_.at(index)->getStateVlaue());
+            edges.emplace_back(tree_.at(parent_index)->getStateValue(), tree_.at(index)->getStateValue());
         }
     }
 

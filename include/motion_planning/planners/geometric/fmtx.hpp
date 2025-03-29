@@ -50,6 +50,7 @@ class FMTX : public Planner {
             std::unordered_set<int> getDescendants(int node_index);
             // std::unordered_set<int> getDescendants(const std::vector<int>& node_index);
 
+            void visualizeHeapAndUnvisited();
 
 
             void handleAddedObstacleSamples(const std::vector<int>& added);

@@ -40,7 +40,7 @@ std::vector<Eigen::VectorXd> RRTX::getPathPositions() const {
     }
 
     while (idx != -1) {
-        path_positions.push_back(tree_.at(idx)->getStateVlaue());
+        path_positions.push_back(tree_.at(idx)->getStateValue());
         idx = tree_.at(idx)->getParentIndex();
     }
     return path_positions;
@@ -58,7 +58,7 @@ void RRTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
         std::shared_ptr<RRTxNode> node = tree_[idx]; // Use the existing shared_ptr
         if (node->getCost() == INFINITY) continue;
 
-        const double distance_to_node = (robot_position - node->getStateVlaue()).norm();
+        const double distance_to_node = (robot_position - node->getStateValue()).norm();
         const double total_cost = distance_to_node + node->getCost();
 
         if (total_cost < min_total_cost) {
@@ -216,7 +216,7 @@ void RRTX::plan() {
         sample_counter++;
         std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample, 1);
         RRTxNode* nearest_node = tree_[nearest_indices[0]].get();
-        Eigen::VectorXd nearest_state = nearest_node->getStateVlaue();
+        Eigen::VectorXd nearest_state = nearest_node->getStateValue();
         
         // Steer towards sample
         Eigen::VectorXd direction = sample - nearest_state;
@@ -256,7 +256,7 @@ bool RRTX::extend(Eigen::VectorXd v) {
 
     
     // Find nearby neighbors using spatial data structure
-    auto neighbors = kdtree_->radiusSearch(new_node->getStateVlaue(), neighborhood_radius_+0.01);
+    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue(), neighborhood_radius_+0.01);
     
     // Find parent and update LMC
     findParent(new_node, neighbors);
@@ -267,7 +267,7 @@ bool RRTX::extend(Eigen::VectorXd v) {
         return false;
     }
     tree_.push_back(new_node);
-    kdtree_->addPoint(new_node->getStateVlaue());
+    kdtree_->addPoint(new_node->getStateValue());
     kdtree_->buildTree();
     // Update neighbor relationships
     for (size_t idx : neighbors) {
@@ -275,13 +275,13 @@ bool RRTX::extend(Eigen::VectorXd v) {
         if (neighbor == new_node.get()) continue;
 
         bool is_path_free = obs_checker_->isObstacleFree(
-            new_node->getStateVlaue(), 
-            neighbor->getStateVlaue()
+            new_node->getStateValue(), 
+            neighbor->getStateValue()
         );
 
         if (is_path_free) {
-            const double distance = (new_node->getStateVlaue() - 
-                                   neighbor->getStateVlaue()).norm();
+            const double distance = (new_node->getStateValue() - 
+                                   neighbor->getStateValue()).norm();
             // For the new node: add the existing node as an original neighbor
             new_node->addOriginalNeighbor(neighbor, distance);  // New → Existing (original outgoing)
 
@@ -303,11 +303,11 @@ void RRTX::findParent(std::shared_ptr<RRTxNode> v,
         auto& candidate = tree_[idx];
         if (candidate == v) continue;
 
-        const double distance = (v->getStateVlaue() - 
-                               candidate->getStateVlaue()).norm();
+        const double distance = (v->getStateValue() - 
+                               candidate->getStateValue()).norm();
         const bool path_free = obs_checker_->isObstacleFree(
-            v->getStateVlaue(),
-            candidate->getStateVlaue()
+            v->getStateValue(),
+            candidate->getStateValue()
         );
 
         if (distance <= neighborhood_radius_+0.01 && path_free) {
@@ -494,7 +494,7 @@ void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     //     std::string color_str = "0.0,0.0,1.0"; // Blue color
     //     std::vector<Eigen::VectorXd> positions4;
     //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(max_length_edge_ind)->getStateVlaue();
+    //     vec << tree_.at(max_length_edge_ind)->getStateValue();
     //     positions4.push_back(vec);
     //     visualization_->visualizeNodes(positions4,"map",color_str);
 
@@ -589,7 +589,7 @@ void RRTX::cullNeighbors(RRTxNode* v) {
         auto [u, _] = *it; // Ignore stored distance (may be invalid)
         
         // Recalculate Euclidean distance (critical fix)
-        const double distance = (v->getStateVlaue() - u->getStateVlaue()).norm();
+        const double distance = (v->getStateValue() - u->getStateValue()).norm();
 
         if (distance > neighborhood_radius_ && u != v->getParent()) {
             // Remove reciprocal reference
@@ -610,7 +610,7 @@ void RRTX::makeParentOf(RRTxNode* child, RRTxNode* new_parent) {
     }
 
     // Set the new parent for the child
-    double edge_distance = new_parent ? (child->getStateVlaue() - new_parent->getStateVlaue()).norm() : 0.0;
+    double edge_distance = new_parent ? (child->getStateValue() - new_parent->getStateValue()).norm() : 0.0;
     child->setParent(new_parent, edge_distance);
 
     // Add child to the new parent's successors
@@ -656,7 +656,7 @@ void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
             int neighbor_idx = neighbor->getIndex();
             if (samples_in_obstacles_.count(neighbor_idx)) continue;
 
-            const double new_dist = (node->getStateVlaue() - neighbor->getStateVlaue()).norm();
+            const double new_dist = (node->getStateValue() - neighbor->getStateValue()).norm();
 
             // Update initialOut (N0_out) <-> initialIn (N0_in)
             if (node->initialOut().contains(neighbor)) {
@@ -865,7 +865,7 @@ void RRTX::visualizeTree() {
     std::unordered_set<RRTxNode*> valid_nodes;
     for (const auto& node : tree_) {
         if (node->getCost() <= goal_cost) {
-            nodes.push_back(node->getStateVlaue());
+            nodes.push_back(node->getStateValue());
             valid_nodes.insert(node.get());
         }
     }
@@ -873,8 +873,8 @@ void RRTX::visualizeTree() {
     // Generate edges for valid nodes
     for (const auto& node : valid_nodes) {
         if (node->getParent()) {
-            edges.emplace_back(node->getParent()->getStateVlaue(),
-                             node->getStateVlaue());
+            edges.emplace_back(node->getParent()->getStateValue(),
+                             node->getStateValue());
         }
     }
 
@@ -890,10 +890,10 @@ void RRTX::visualizePath(const std::vector<RRTxNode*>& path) {
     edges.reserve(path.size());
 
     for (const auto& node : path) {
-        nodes.push_back(node->getStateVlaue());
+        nodes.push_back(node->getStateValue());
         if (node->getParent()) {
-            edges.emplace_back(node->getParent()->getStateVlaue(),
-                             node->getStateVlaue());
+            edges.emplace_back(node->getParent()->getStateValue(),
+                             node->getStateValue());
         }
     }
 

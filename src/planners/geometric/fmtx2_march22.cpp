@@ -125,8 +125,8 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
 }
 
 double FMTX::heuristic(int current_index) {
-    Eigen::VectorXd current_position = tree_.at(current_index)->getStateVlaue();
-    Eigen::VectorXd goal_position = tree_.at(robot_state_index_)->getStateVlaue();
+    Eigen::VectorXd current_position = tree_.at(current_index)->getStateValue();
+    Eigen::VectorXd goal_position = tree_.at(robot_state_index_)->getStateValue();
     return (goal_position-current_position).norm();
 }
 
@@ -154,7 +154,7 @@ void FMTX::plan() {
     // std::vector<Eigen::VectorXd> positions2;
     // for (const auto& y: v_open_set_) {
     //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
+    //     vec << tree_.at(y)->getStateValue();
     //     positions2.push_back(vec);
     // }
     // // std::string color_str = "0.0,0.0,1.0"; // Blue color
@@ -163,7 +163,7 @@ void FMTX::plan() {
     // std::vector<Eigen::VectorXd> positions3;
     // for (const auto& y: v_unvisited_set_) {
     //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
+    //     vec << tree_.at(y)->getStateValue();
     //     positions3.push_back(vec);
     // }
     // std::string color_str = "0.0,0.0,1.0"; // Blue color
@@ -256,17 +256,17 @@ void FMTX::plan() {
                 //         cached++;
                 //     } else {
                 //         // Perform the obstacle check and store the result in the cache
-                //         obstacle_free = obs_checker_->isObstacleFree(x->getStateVlaue() , best_neighbor_node->getStateVlaue());
+                //         obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
                 //         obstacle_check_cache[edge_key] = obstacle_free;
                 //         uncached++;
                 //     }
                 // }
                 // else { //SOMETIMES BEST_NEIGHBOR_INDEX is -1 which means all the Ynear nodes has inf cost --> inf cost means its either samples_in_obstalces or vUnvisted or it was made to inf in the handleAddObstalce! --> THESE nodes shouldn't be in vOpen --> sometimes a node lingers in vOpen because of early exit so you have to erase it in handleAddObstalce or you have to check some ifs in Ynear node push_back!
-                //     obstacle_free = obs_checker_->isObstacleFree(x->getStateVlaue() , best_neighbor_node->getStateVlaue());
+                //     obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
                 // }
 
                 if (in_dynamic == false){
-                    obstacle_free = obs_checker_->isObstacleFree(x->getStateVlaue() , best_neighbor_node->getStateVlaue());
+                    obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
                 }
                 else{
                     obstacle_free = true;
@@ -347,7 +347,7 @@ std::vector<Eigen::VectorXd> FMTX::getPathPositions() const {
 
     // Traverse the tree from the robot's node to the root
     while (current_node != nullptr) {
-        path_positions.push_back(current_node->getStateVlaue());
+        path_positions.push_back(current_node->getStateValue());
 
         // Move to the parent node
         current_node = current_node->getParent();
@@ -370,7 +370,7 @@ void FMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
         auto node = tree_.at(index).get();
         if (node->getCost() == std::numeric_limits<double>::infinity()) continue;
 
-        Eigen::VectorXd node_position = node->getStateVlaue(); // Fixed typo: getStateVlaue -> getStateValue
+        Eigen::VectorXd node_position = node->getStateValue(); // Fixed typo: getStateValue -> getStateValue
         double dx = node_position[0] - robot_position[0];
         double dy = node_position[1] - robot_position[1];
         double distance_to_node = std::hypot(dx, dy);
@@ -434,11 +434,11 @@ void FMTX::near(int node_index) {
     auto node = tree_[node_index].get();
     if (!node->neighbors().empty()) return;
 
-    auto indices = kdtree_->radiusSearch(node->getStateVlaue(), neighborhood_radius_); //!!!!! WHEN KD TREE PROVIDES DISTANCE WHY DO YOU CALC DISTS AGAIN IN BELOW! --> ALSO DO THIS FOR RRTX
+    auto indices = kdtree_->radiusSearch(node->getStateValue(), neighborhood_radius_); //!!!!! WHEN KD TREE PROVIDES DISTANCE WHY DO YOU CALC DISTS AGAIN IN BELOW! --> ALSO DO THIS FOR RRTX
     for(int idx : indices) {
         if(idx == node->getIndex()) continue;
         FMTXNode* neighbor = tree_[idx].get();
-        auto dist = (node->getStateVlaue() - neighbor->getStateVlaue()).norm();
+        auto dist = (node->getStateValue() - neighbor->getStateValue()).norm();
         node->neighbors()[neighbor] = FMTxEdgeInfo{dist,dist};
     }
 }
@@ -455,7 +455,7 @@ void FMTX::visualizeTree() {
         // Collect valid nodes
         for (size_t i = 0; i < tree_.size(); ++i) {
             if (tree_[i]->getCost() <= goal_node_cost) {
-                nodes.push_back(tree_[i]->getStateVlaue());
+                nodes.push_back(tree_[i]->getStateValue());
                 valid_node_indices.insert(i);
             }
         }
@@ -464,7 +464,7 @@ void FMTX::visualizeTree() {
         for (int index : valid_node_indices) {
             int parent_index = tree_[index]->getParentIndex();
             if (parent_index != -1) {
-                edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_.at(index)->getStateVlaue());
+                edges.emplace_back(tree_.at(parent_index)->getStateValue(), tree_.at(index)->getStateValue());
             }
         }
         // Visualize nodes and edges
@@ -477,14 +477,14 @@ void FMTX::visualizeTree() {
     
         // Add nodes to the list
         for (const auto& tree_node : tree_) {
-            nodes.push_back(tree_node->getStateVlaue());
+            nodes.push_back(tree_node->getStateValue());
         }
     
         // Add edges to the list
         for (const auto& tree_node : tree_) {
             auto parent = tree_node->getParent();
             if (parent) {
-                edges.emplace_back(parent->getStateVlaue(), tree_node->getStateVlaue());
+                edges.emplace_back(parent->getStateValue(), tree_node->getStateValue());
             }
         }
     
@@ -502,14 +502,14 @@ void FMTX::visualizePath(std::vector<size_t> path_indices) {
 
     // Add nodes to the list
     for (const auto& index : path_indices) {
-        nodes.push_back(tree_.at(index)->getStateVlaue());
+        nodes.push_back(tree_.at(index)->getStateValue());
     }
 
     // Add edges to the list
     for (const auto& index : path_indices) {
         int parent_index = tree_.at(index)->getParentIndex();
         if (parent_index != -1) {
-            edges.emplace_back(tree_.at(parent_index)->getStateVlaue(), tree_.at(index)->getStateVlaue());
+            edges.emplace_back(tree_.at(parent_index)->getStateValue(), tree_.at(index)->getStateValue());
         }
     }
 
@@ -663,7 +663,7 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     // std::vector<Eigen::VectorXd> positions;
     // for (const auto& y: v_unvisited_set_) {
     //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
+    //     vec << tree_.at(y)->getStateValue();
     //     positions.push_back(vec);
     // }
     // std::string color_str = "0.0,0.0,1.0"; // Blue color
@@ -672,7 +672,7 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     // std::vector<Eigen::VectorXd> positions2;
     // for (const auto& y: v_open_set_) {
     //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
+    //     vec << tree_.at(y)->getStateValue();
     //     positions2.push_back(vec);
     // }
     // // std::string color_str = "0.0,0.0,1.0"; // Blue color
@@ -682,7 +682,7 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     // std::vector<Eigen::VectorXd> positions3;
     // for (const auto& y: samples_in_obstacles_) {
     //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(y)->getStateVlaue();
+    //     vec << tree_.at(y)->getStateValue();
     //     positions3.push_back(vec);
     // }
     // visualization_->visualizeNodes(positions3,"map");

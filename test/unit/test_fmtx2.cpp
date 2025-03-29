@@ -295,20 +295,12 @@ int main(int argc, char **argv) {
 
 
 
-    // auto start = std::chrono::high_resolution_clock::now();
-    // planner->plan();
-    // auto end = std::chrono::high_resolution_clock::now();
-    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    // if (duration.count() > 0)
-    //     std::cout << "Time taken for the Static env: " << duration.count() << " milliseconds\n";
-
-
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
     rclcpp::Rate loop_rate(30); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
-    bool limited = true;  // or read from params, or pass as an argument
+    bool limited = false; 
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
@@ -319,7 +311,6 @@ int main(int argc, char **argv) {
     // The main loop
     while (running && rclcpp::ok()) {
 
-        // 1) If we are limiting to 20s, check if we've exceeded that
         if (limited) {
             auto now = std::chrono::steady_clock::now();
             if (now - start_time > time_limit) {
@@ -328,7 +319,6 @@ int main(int argc, char **argv) {
             }
         }
 
-        // 2) Planner logic ...
         if (ros2_manager->hasNewGoal()) {
             start_position = ros2_manager->getStartPosition(); 
             auto snapshot = obstacle_checker->getAtomicSnapshot();
@@ -338,32 +328,17 @@ int main(int argc, char **argv) {
             // planner->plan();   // if you wanted to do it right here
         }
 
-        // auto obstacles = obstacle_checker->getObstaclePositions();
-        // auto robot = obstacle_checker->getRobotPosition();
 
         auto snapshot = obstacle_checker->getAtomicSnapshot();
         auto& obstacles = snapshot.obstacles;
         auto& robot = snapshot.robot_position;
         
-        // // Immediately after getting snapshot:
-        // if (obstacles.empty()) {
-        //     std::cout << "WARNING: Empty obstacles in snapshot!\n";
-        //     continue; // Skip planning iteration
-        // }
-        
-        // // Check robot position validity
-        // if (robot.hasNaN() || robot.norm() > 1e6) { 
-        //     std::cout << "Invalid robot position: " << robot.transpose() << "\n";
-        //     continue;
-        // }
 
         dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
-        // auto t0 = std::chrono::high_resolution_clock::now();
         auto start = std::chrono::high_resolution_clock::now();
         dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
         planner->plan();
         auto end = std::chrono::high_resolution_clock::now();
-        // auto t1 = std::chrono::high_resolution_clock::now();
 
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         if (duration.count() > 0) {
@@ -372,34 +347,21 @@ int main(int argc, char **argv) {
         }
         sim_durations.push_back(duration.count());
 
-// // Check if obstacles moved during planning
-// auto post_snapshot = obstacle_checker->getAtomicSnapshot();
-// if (post_snapshot.obstacles != snapshot.obstacles) {
-//   std::cout << "WARNING: Obstacles changed during " 
-//             << std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count()
-//             << "ms planning!\n";
-// }
-
 
         std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
         ros2_manager->followPath(shortest_path_);
-    
-//         std::this_thread::sleep_for(std::chrono::milliseconds(5));  // Let visualization "catch up"
-
-
 
         dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        // dynamic_cast<FMTX*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();
     }
 
     if (limited==true){
-        // 1) Get the current local time
         std::time_t now = std::time(nullptr); 
         std::tm* local_tm = std::localtime(&now);
 
-        // 2) Extract day, month, year, hour, minute, second
         int day    = local_tm->tm_mday;           // day of month [1-31]
         int month  = local_tm->tm_mon + 1;        // months since January [0-11]; add 1
         int year   = local_tm->tm_year + 1900;    // years since 1900
@@ -432,100 +394,6 @@ int main(int argc, char **argv) {
 
         std::cout << "Done writing CSV.\n";
     }
-
-
-
-
-
-
-
-
-    ////////////////////////////////////////////////////////
-
-
-
-    // // Start the timer
-    // auto start_time = std::chrono::high_resolution_clock::now();
-
-    // // Run the loop for 20 seconds
-    // while (std::chrono::duration_cast<std::chrono::seconds>(
-    //         std::chrono::high_resolution_clock::now() - start_time).count() < 20) {
-    //     auto obstacles = obstacle_checker->getObstaclePositions();
-    //     auto robot = obstacle_checker->getRobotPosition();
-    //     if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
-    //         dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
-    //     dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
-
-    //     // dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<FMTX*>(planner.get())->getPathIndex());
-    //     // dynamic_cast<FMTX*>(planner.get())->visualizeTree();
-    //     rclcpp::spin_some(ros2_manager);
-    // }
-
-
-  // Variables for frequency calculation
-    // std::deque<std::chrono::milliseconds> loop_times; // Store last N loop durations
-    // const size_t window_size = 10; // Number of iterations to average over
-    // auto last_time = std::chrono::high_resolution_clock::now();
-
-    // while (running && rclcpp::ok()) {
-    //     auto loop_start = std::chrono::high_resolution_clock::now();
-
-    //     if (ros2_manager->hasNewGoal()) {
-    //         start_position = ros2_manager->getStartPosition(); // The goal you provided through rviz2
-    //         problem_def->setStart(start_position); // Root of the tree
-    //         problem_def->setGoal(obstacle_checker->getRobotPosition());
-    //         planner->setup(planner_params, visualization);
-    //         // planner->plan();
-    //     }
-
-    //     auto obstacles = obstacle_checker->getObstaclePositions();
-    //     auto robot = obstacle_checker->getRobotPosition();
-    //     dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
-
-    //     auto start = std::chrono::high_resolution_clock::now();
-    //     dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
-    //     planner->plan();
-    //     auto end = std::chrono::high_resolution_clock::now();
-    //     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    //     if (duration.count() > 0)
-    //         std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
-
-    //     std::vector<Eigen::VectorXd> shortest_path_;
-    //     shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-    //     ros2_manager->followPath(shortest_path_);
-
-    //     dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-    //     dynamic_cast<FMTX*>(planner.get())->visualizeTree();
-    //     rclcpp::spin_some(ros2_manager);
-
-    //     // Calculate loop duration
-    //     auto loop_end = std::chrono::high_resolution_clock::now();
-    //     auto loop_duration = std::chrono::duration_cast<std::chrono::milliseconds>(loop_end - loop_start);
-    //     loop_times.push_back(loop_duration);
-
-    //     // Keep only the last N loop durations
-    //     if (loop_times.size() > window_size) {
-    //         loop_times.pop_front();
-    //     }
-
-    //     // Calculate average loop duration and frequency
-    //     if (loop_times.size() == window_size) {
-    //         double avg_duration_ms = 0.0;
-    //         for (const auto& time : loop_times) {
-    //             avg_duration_ms += time.count();
-    //         }
-    //         avg_duration_ms /= window_size;
-
-    //         double frequency_hz = 1000.0 / avg_duration_ms; // Convert ms to Hz
-    //         std::cout << "Average loop frequency: " << frequency_hz << " Hz\n";
-    //     }
-
-    //     last_time = loop_end;
-    // }
-
-
-
-
     
     // Cleanup
     if (child_pid > 0) {

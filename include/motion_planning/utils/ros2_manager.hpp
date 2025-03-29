@@ -169,7 +169,7 @@ public:
 
             dwa_global_path_ = dwa_path;
             visualizer_->visualizeNodes({Eigen::Vector2d(current_goal_.x(), current_goal_.y())}, 
-                                    "map", "1.0 0 0"); // Red
+                                    "map", "1.0 0 0", "current_goal"); // Red
 
             // Eigen::Vector2d robot_pos = getRobotPose().position;
             // std::cout << "Local Goal Debug:\n"
