@@ -895,6 +895,7 @@ void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     }
 
     auto current = findSamplesNearObstacles(obstacles, max_length);
+    if (current == samples_in_obstacles_) return; // Early exit if nothing has changed
 
     // Common code for finding added/removed samples
     std::vector<int> added, removed;

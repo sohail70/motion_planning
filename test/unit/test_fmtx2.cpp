@@ -179,7 +179,7 @@ int main(int argc, char **argv) {
     /*
         When you use ignore_sample == true i don't think would need a inflation specially in low sample case --> math can be proved i guess.
     */
-    gazebo_params.setParam("inflation", 0.0); //1.5 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
+    gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
@@ -300,7 +300,7 @@ int main(int argc, char **argv) {
     rclcpp::Rate loop_rate(30); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
-    bool limited = false; 
+    bool limited = true; 
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
