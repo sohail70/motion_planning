@@ -246,7 +246,7 @@ int main(int argc, char **argv) {
     planner->setup(planner_params, visualization);
 
     auto start = std::chrono::high_resolution_clock::now();
-    planner->plan();
+    // planner->plan();
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Time taken for the update : " << duration.count() 
@@ -254,7 +254,7 @@ int main(int argc, char **argv) {
 
 
     //----------- Waiting for the Sim Clock to start ------------ //
-    bool simulation_is_paused = true;
+    bool simulation_is_paused = false;
     auto node_clock = ros2_manager->get_clock();
     // We'll store the initial sim time
     rclcpp::Time last_time = node_clock->now();
@@ -336,7 +336,7 @@ int main(int argc, char **argv) {
 
         dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
         auto start = std::chrono::high_resolution_clock::now();
-        dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
+        // dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
         planner->plan();
         auto end = std::chrono::high_resolution_clock::now();
 

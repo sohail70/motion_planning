@@ -55,7 +55,7 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     setStart(problem_->getStart());
     for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
         auto node = std::make_unique<FMTXNode>(statespace_->sampleUniform(lower_bound_ , upper_bound_),tree_.size());
-        // node->in_unvisited_ = true;
+        node->in_unvisited_ = true;
         tree_.push_back(std::move(node));
     }
     setGoal(problem_->getGoal());
@@ -196,10 +196,21 @@ void FMTX::plan() {
                 x node obviously might have had some children that we are not removing! but we don't need to because as the update goes the setParent takes care of those mentioned children one by one
                 because they are downstream nodes and they get updated any way on the next z node pop and update procedure, UNTIL you reach the robot and then you might see some inconsistency (visually) that happens after that
                 which is also okay because if you move the robot using MOUSE in gazebo you can see they also CAN get updated but we don't need to update that because we are using early exit!
-            */ 
-            // if (x->in_unvisited_==true || x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){
-            if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){ // THE REASON I DITCHED THE x->in_unvisited_==true CONDTION IS USING COST IS IN PAR WITH MAKING THE EDGE DISTANCE TO INF AND I DON'T HAVE TO TAKE CARE OF UNVISTED ON TOP OF IT WHICH IS TIME CONSUMING AND ALSO NOT CLEAN AND REDUNDANT IN MY CASE!
 
+
+                I TESTED AGAIN AND ONLY THE OBSTALCE CHECKS AND ONLY USING UNVISITED CONDTION ONCE AND COST FUNCTION ONCE SO THE ABOVE COMMENTS ARE OUTDATED AND THE TEST IT SELF MIGHT EVEN BE WRONG BUT THE COMMENTS ARE OKAY TO READ
+                10k nodes:
+
+                checks: 152973 obstacle checks --> using only unvisited condition
+                    Time taken for the update : 786 milliseconds
+               
+                and with using the second condtion:
+                    checks: 152973 obstacle checks --> using only the cost condition
+                    Time taken for the update : 798 milliseconds
+
+            */ 
+            if (x->in_unvisited_==true  ){
+            // if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){ // THE REASON I DITCHED THE x->in_unvisited_==true CONDTION IS USING COST IS IN PAR WITH MAKING THE EDGE DISTANCE TO INF AND I DON'T HAVE TO TAKE CARE OF UNVISTED ON TOP OF IT WHICH IS TIME CONSUMING AND ALSO NOT CLEAN AND REDUNDANT IN MY CASE!
                 near(xIndex);
                 double min_cost = std::numeric_limits<double>::infinity();
                 FMTXNode* best_neighbor_node = nullptr;
@@ -228,6 +239,7 @@ void FMTX::plan() {
                     continue;
                 }
 
+
                 int best_neighbor_index = best_neighbor_node->getIndex();
 
 
@@ -254,6 +266,7 @@ void FMTX::plan() {
 
                 if (in_dynamic == false){ // in_dynamic true happens in update obstacle sample and after that we don't need obstacle check unless we are not pruning!
                     obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
+                    checks++;
                 }
                 else{
                     /*
@@ -314,6 +327,7 @@ void FMTX::plan() {
                         x->setParent(best_neighbor_node,best_edge_length); 
                         // x->getChildrenMutable().clear(); // We don't need to do this even though at this current iteration this node has children but they will be removed as we iterate by the setParent function
                         edge_length_[xIndex] = best_edge_length;
+                        x->in_unvisited_=false;
 
                     }
                 }
@@ -330,9 +344,10 @@ void FMTX::plan() {
         }
 
         z->in_queue_=false;
+        z->in_unvisited_ =false;
     }
 
-    // std::cout<<"checks: "<< checks <<"\n";
+    std::cout<<"Obs checks: "<< checks <<"\n";
 }
 
 
@@ -771,6 +786,8 @@ void FMTX::setStart(const Eigen::VectorXd& start) {
 void FMTX::setGoal(const Eigen::VectorXd& goal) {
     robot_state_index_ = statespace_->getNumStates();
     auto node = std::make_unique<FMTXNode>(statespace_->addState(goal),tree_.size());
+    node->in_unvisited_ = true;
+
     robot_node_ = node.get(); // Management of the node variable above will be done by the unique_ptr i'll send to tree_ below so robot_node_ is just using it!
     tree_.push_back(std::move(node));
     std::cout << "FMTX: Goal node created on Index: " << root_state_index_ << "\n";
