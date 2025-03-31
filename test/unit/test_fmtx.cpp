@@ -191,12 +191,12 @@ int main(int argc, char **argv) {
     auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    auto obstacle_radii = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
     // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
     // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
-    for (auto& el : obstacle_radii) {
-        std::cout << el.first << "  " << el.second << "\n";
-    }
+for (const auto& [name, info] : obstacle_radii) {
+    std::cout << name << ": " << info << "\n";
+}
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_radii);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////

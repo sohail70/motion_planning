@@ -267,3 +267,57 @@ void RVizVisualization::visualizeRobotArrow(
     // Publish the marker (robot as an arrow)
     marker_pub_->publish(marker);
 }
+void RVizVisualization::visualizeCube(
+    const std::vector<std::tuple<Eigen::Vector2d, double, double, double>>& box_obstacles,
+    const std::string& frame_id,
+    const std::vector<float>& color,
+    const std::string& ns) 
+{
+    visualization_msgs::msg::MarkerArray marker_array;
+    int id = 0;
+
+    for (const auto& box : box_obstacles) {
+        visualization_msgs::msg::Marker marker;
+        marker.header.frame_id = frame_id;
+        marker.header.stamp = node_->now();
+        marker.ns = ns;
+        marker.id = id++;
+        marker.type = visualization_msgs::msg::Marker::CUBE;
+        marker.action = visualization_msgs::msg::Marker::ADD;
+
+        // Extract box parameters from the tuple
+        const Eigen::Vector2d& position = std::get<0>(box);
+        double width = std::get<1>(box);
+        double height = std::get<2>(box);
+        double rotation = std::get<3>(box);
+
+        // Set position (z slightly above ground)
+        marker.pose.position.x = position.x();
+        marker.pose.position.y = position.y();
+        marker.pose.position.z = 0.05;
+
+        // Convert yaw rotation to quaternion
+        tf2::Quaternion q;
+        q.setRPY(0, 0, rotation);  // Roll, Pitch, Yaw (radians)
+        marker.pose.orientation.x = q.x();
+        marker.pose.orientation.y = q.y();
+        marker.pose.orientation.z = q.z();
+        marker.pose.orientation.w = q.w();
+
+        // Set scale (width, height, small depth)
+        marker.scale.x = width;
+        marker.scale.y = height;
+        marker.scale.z = 0.1;  // Thickness in Z-axis
+
+        // Set color and transparency
+        marker.color.r = color[0];
+        marker.color.g = color[1];
+        marker.color.b = color[2];
+        marker.color.a = 0.5;  // Semi-transparent
+
+        marker_array.markers.push_back(marker);
+    }
+
+    // Publish all box markers
+    marker_pub_2_->publish(marker_array);
+}

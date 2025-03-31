@@ -8,7 +8,7 @@ class GazeboObstacleChecker : public ObstacleChecker {
 public:
 
     GazeboObstacleChecker(const Params& params,
-                        const std::unordered_map<std::string, double>& obstacle_radii);
+                        const std::unordered_map<std::string, ObstacleInfo>& obstacle_info);
 
     ~GazeboObstacleChecker();
 
@@ -32,38 +32,59 @@ public:
 
 std::vector<Obstacle> getObstacles() const override;
 
-    // Add these method overrides
-    bool checkFootprintCollision(const Eigen::Vector2d& position,
+bool checkFootprintCollision(const Eigen::Vector2d& position,
                                double yaw,
                                const std::vector<Eigen::Vector2d>& footprint) const override {
-        std::lock_guard<std::mutex> lock(data_mutex_);
+    std::lock_guard<std::mutex> lock(data_mutex_);
+    
+    const Eigen::Rotation2Dd rot(yaw);
+    for(const auto& local_point : footprint) {
+        Eigen::Vector2d world_point = position + rot * local_point;
         
-        // Rotate footprint points to world orientation
-        const Eigen::Rotation2Dd rot(yaw);
-        for(const auto& local_point : footprint) {
-            Eigen::Vector2d world_point = position + rot * local_point;
-            
-            // Check collision with all obstacles
-            for(const auto& obstacle : obstacle_positions_) {
-                if((world_point - obstacle.position).norm() <= obstacle.radius) {
+        for(const auto& obstacle : obstacle_positions_) {
+            if(obstacle.type == Obstacle::CIRCLE) {
+                double total_radius = obstacle.dimensions.circle.radius + obstacle.inflation;
+                if((world_point - obstacle.position).norm() <= total_radius) {
+                    return true;
+                }
+            } else {
+                double width = obstacle.dimensions.box.width + 2*obstacle.inflation;
+                double height = obstacle.dimensions.box.height + 2*obstacle.inflation;
+                if(pointIntersectsRectangle(world_point, obstacle.position,
+                                           width, height, obstacle.dimensions.box.rotation)) {
                     return true;
                 }
             }
         }
-        return false;
     }
+    return false;
+}
 
-    double distanceToNearestObstacle(const Eigen::Vector2d& position) const override {
-        std::lock_guard<std::mutex> lock(data_mutex_);
-        double min_distance = std::numeric_limits<double>::max();
-        
-        for(const auto& obstacle : obstacle_positions_) {
-            double dist = (position - obstacle.position).norm() - obstacle.radius;
-            min_distance = std::min(min_distance, dist);
+double distanceToNearestObstacle(const Eigen::Vector2d& position) const override {
+    std::lock_guard<std::mutex> lock(data_mutex_);
+    double min_distance = std::numeric_limits<double>::max();
+    
+    for(const auto& obstacle : obstacle_positions_) {
+        double dist;
+        if(obstacle.type == Obstacle::CIRCLE) {
+            dist = (position - obstacle.position).norm() - 
+                  (obstacle.dimensions.circle.radius + obstacle.inflation);
+        } else {
+            // Calculate distance to expanded rectangle
+            Eigen::Rotation2Dd rot(-obstacle.dimensions.box.rotation);
+            Eigen::Vector2d local_pos = rot * (position - obstacle.position);
+            double expanded_width = obstacle.dimensions.box.width + 2*obstacle.inflation;
+            double expanded_height = obstacle.dimensions.box.height + 2*obstacle.inflation;
+            
+            double dx = std::max(std::abs(local_pos.x()) - expanded_width/2, 0.0);
+            double dy = std::max(std::abs(local_pos.y()) - expanded_height/2, 0.0);
+            dist = std::sqrt(dx*dx + dy*dy);
         }
-        
-        return min_distance;
+        min_distance = std::min(min_distance, dist);
     }
+    return min_distance;
+}
+
 
     // Add these helper methods
     Eigen::Vector2d rotatePoint(const Eigen::Vector2d& point, double yaw) const {
@@ -97,6 +118,19 @@ private:
     static bool pointIntersectsCircle(const Eigen::Vector2d& point,
                                                   const Eigen::Vector2d& center,
                                                   double radius);
+
+    static bool lineIntersectsRectangle(const Eigen::Vector2d& start,
+                                       const Eigen::Vector2d& end,
+                                       const Eigen::Vector2d& center,
+                                       double width, double height,
+                                       double rotation);
+                                       
+    static bool pointIntersectsRectangle(const Eigen::Vector2d& point,
+                                        const Eigen::Vector2d& center,
+                                        double width, double height,
+                                        double rotation);
+
+
     std::string robot_model_name_;
     std::string world_name_;
     double obstacle_radius_;
@@ -131,7 +165,8 @@ private:
     std::vector<Obstacle> obstacle_positions_;
     
     // Add this member to store radii
-    std::unordered_map<std::string, double> obstacle_radii_;
+    // std::unordered_map<std::string, double> obstacle_radii_;
+    std::unordered_map<std::string, ObstacleInfo> obstacle_info_;
 
 
 };

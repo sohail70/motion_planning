@@ -55,7 +55,7 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     setStart(problem_->getStart());
     for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
         auto node = std::make_unique<FMTXNode>(statespace_->sampleUniform(lower_bound_ , upper_bound_),tree_.size());
-        // node->in_unvisited_ = true;
+        node->in_unvisited_ = true;
         tree_.push_back(std::move(node));
     }
     setGoal(problem_->getGoal());
@@ -211,8 +211,11 @@ void FMTX::plan() {
             */ 
             // if (x->in_unvisited_==true  ){
             if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){ // THE REASON I DITCHED THE x->in_unvisited_==true CONDTION IS USING COST IS IN PAR WITH MAKING THE EDGE DISTANCE TO INF AND I DON'T HAVE TO TAKE CARE OF UNVISTED ON TOP OF IT WHICH IS TIME CONSUMING AND ALSO NOT CLEAN AND REDUNDANT IN MY CASE!
+                // std::cout<<x->getCost()<<"\n";
+                checks++;
                 near(xIndex);
-                double min_cost = std::numeric_limits<double>::infinity();
+                // double min_cost = std::numeric_limits<double>::infinity();
+                double min_cost = x->getCost(); // Because x might have a cost it self and even if it doesnt its INFINITY by default in the FMTXNode CLass
                 FMTXNode* best_neighbor_node = nullptr;
                 double best_edge_length = 0.0;
 
@@ -234,6 +237,10 @@ void FMTX::plan() {
                         }
                     }
                 }
+                // if(best_neighbor_node!=z)
+                //     std::cout<<"best is not z \n";
+                // else
+                //     std::cout<<"best is z \n";
 
                 if (!best_neighbor_node) {
                     continue;
@@ -266,7 +273,6 @@ void FMTX::plan() {
 
                 if (in_dynamic == false){ // in_dynamic true happens in update obstacle sample and after that we don't need obstacle check unless we are not pruning!
                     obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
-                    checks++;
                 }
                 else{
                     /*
@@ -327,7 +333,7 @@ void FMTX::plan() {
                         x->setParent(best_neighbor_node,best_edge_length); 
                         // x->getChildrenMutable().clear(); // We don't need to do this even though at this current iteration this node has children but they will be removed as we iterate by the setParent function
                         edge_length_[xIndex] = best_edge_length;
-                        // x->in_unvisited_=false;
+                        x->in_unvisited_=false;
 
                     }
                 }
@@ -344,7 +350,7 @@ void FMTX::plan() {
         }
 
         z->in_queue_=false;
-        // z->in_unvisited_ =false;
+        z->in_unvisited_ =false;
     }
 
     // std::cout<<"Obs checks: "<< checks <<"\n";
@@ -385,13 +391,29 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
 ) {
     std::unordered_set<int> conflicting_samples;
     for (const auto& obstacle : obstacles) {
-        // auto sample_indices = kdtree_->radiusSearch(obstacle.position,  obstacle.radius+obstacle.inflation);
-        auto sample_indices = kdtree_->radiusSearch(obstacle.position, std::sqrt(std::pow(obstacle.radius + obstacle.inflation , 2) + std::pow(max_length / 2.0, 2)));
+        double obstacle_radius;
+        if (obstacle.type == Obstacle::CIRCLE) {
+            obstacle_radius = obstacle.dimensions.circle.radius + obstacle.inflation;
+        } else { // BOX
+            // Calculate half diagonal of the box
+            double half_diagonal = std::sqrt(
+                std::pow(obstacle.dimensions.box.width/2, 2) + 
+                std::pow(obstacle.dimensions.box.height/2, 2)
+            );
+            obstacle_radius = half_diagonal + obstacle.inflation;
+        }
+        
+        double search_radius = std::sqrt(
+            std::pow(obstacle_radius, 2) + 
+            std::pow(max_length / 2.0, 2)
+        );
+        
+        auto sample_indices = kdtree_->radiusSearch(obstacle.position, search_radius);
         conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
     }
-    
     return conflicting_samples;
 }
+
 
 /*
     This is using two circles with same center but different radius to find the nodes exactly on obstalce and nodes that are on surrounding using the above formula
@@ -399,7 +421,6 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
     the reason to use this is to make some part of the code faster because if you have distinction on what nodes are exactlyon obstalce and what are the nodes that are also on obstalce and surrouning then
     you can use that to your advantage
 */
-
 std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNearObstaclesDual(
     const std::vector<Obstacle>& obstacles, 
     double max_length
@@ -408,10 +429,33 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNea
     std::unordered_set<int> conflicting_samples;
 
     for (const auto& obstacle : obstacles) {
-        // Call the radiusSearchDual function
-        auto [sample_indices1, sample_indices2] = kdtree_->radiusSearchDual(obstacle.position,std::sqrt(std::pow(obstacle.radius + obstacle.inflation , 2) + std::pow(max_length / 2.0, 2)), obstacle.radius+obstacle.inflation);
+        double obstacle_radius, base_radius;
+        if (obstacle.type == Obstacle::CIRCLE) {
+            base_radius = obstacle.dimensions.circle.radius;
+            obstacle_radius = base_radius + obstacle.inflation;
+        } else { // BOX
+            // Calculate half diagonal of the box
+            double half_diagonal = std::sqrt(
+                std::pow(obstacle.dimensions.box.width/2, 2) + 
+                std::pow(obstacle.dimensions.box.height/2, 2)
+            );
+            base_radius = half_diagonal;
+            obstacle_radius = half_diagonal + obstacle.inflation;
+        }
 
-        // Insert the results into the unordered_sets
+        double outer_radius = std::sqrt(
+            std::pow(obstacle_radius, 2) + 
+            std::pow(max_length / 2.0, 2)
+        );
+        
+        double inner_radius = base_radius + obstacle.inflation;
+
+        auto [sample_indices1, sample_indices2] = kdtree_->radiusSearchDual(
+            obstacle.position, 
+            outer_radius, 
+            inner_radius
+        );
+
         conflicting_samples_inflated.insert(sample_indices1.begin(), sample_indices1.end());
         conflicting_samples.insert(sample_indices2.begin(), sample_indices2.end());
     }
@@ -786,7 +830,7 @@ void FMTX::setStart(const Eigen::VectorXd& start) {
 void FMTX::setGoal(const Eigen::VectorXd& goal) {
     robot_state_index_ = statespace_->getNumStates();
     auto node = std::make_unique<FMTXNode>(statespace_->addState(goal),tree_.size());
-    // node->in_unvisited_ = true;
+    node->in_unvisited_ = true;
 
     robot_node_ = node.get(); // Management of the node variable above will be done by the unique_ptr i'll send to tree_ below so robot_node_ is just using it!
     tree_.push_back(std::move(node));

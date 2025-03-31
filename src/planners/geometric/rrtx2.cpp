@@ -524,11 +524,26 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
     std::unordered_set<int> conflicting_samples;
         
     for (const auto& obstacle : obstacles) {
-        // Query samples within obstacle radius (5 units)
-        // auto sample_indices = kdtree_->radiusSearch(obstacle.position, 1.0 * obstacle.radius);
-        // auto sample_indices = kdtree_->radiusSearch(obstacle.position, obstacle.radius+obstacle.inflation+max_length);
-        auto sample_indices = kdtree_->radiusSearch(obstacle.position, std::sqrt(std::pow(obstacle.radius+obstacle.inflation, 2) + std::pow(max_length / 2.0, 2)));
+        double obstacle_radius;
+        if (obstacle.type == Obstacle::CIRCLE) {
+            // For circles: radius + inflation
+            obstacle_radius = obstacle.dimensions.circle.radius + obstacle.inflation;
+        } else { // BOX
+            // For boxes: half diagonal + inflation
+            double half_diagonal = std::sqrt(
+                std::pow(obstacle.dimensions.box.width/2, 2) + 
+                std::pow(obstacle.dimensions.box.height/2, 2)
+            );
+            obstacle_radius = half_diagonal + obstacle.inflation;
+        }
 
+        // Calculate search radius using safety margin formula
+        double search_radius = std::sqrt(
+            std::pow(obstacle_radius, 2) + 
+            std::pow(max_length / 2.0, 2)
+        );
+
+        auto sample_indices = kdtree_->radiusSearch(obstacle.position, search_radius);
         conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
     }
     

@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 10000);
+    planner_params.setParam("num_of_samples", 5000);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("partial_update", false); // update the tree cost of the robot or not
@@ -91,12 +91,12 @@ int main(int argc, char **argv) {
     auto node = std::make_shared<rclcpp::Node>("rrtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
-    // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
-    // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
-    for (auto& el : obstacle_radii) {
-        std::cout << el.first << "  " << el.second << "\n";
-    }
+    auto obstacle_radii = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    // auto obstacle_radii = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
+    // auto obstacle_radii = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
+for (const auto& [name, info] : obstacle_radii) {
+    std::cout << name << ": " << info << "\n";
+}
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_radii);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////

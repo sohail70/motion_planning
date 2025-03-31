@@ -396,31 +396,73 @@ void visualizeDWA(const DWAVisualization& data) {
     }
 
     void visualizeObstacles(double robot_x, double robot_y) {
-        std::vector<Eigen::VectorXd> obstacles;
+        std::vector<Eigen::VectorXd> cylinder_obstacles;
+        std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_obstacles;
+        std::vector<double> cylinder_radii;
         std::vector<Eigen::VectorXd> robot;
         Eigen::VectorXd robot_quat;
         Eigen::Vector2d robot_position;
-        std::vector<double> radii;
         std::vector<double> robot_rad;
+
         if (auto grid_checker = std::dynamic_pointer_cast<OccupancyGridObstacleChecker>(obstacle_checker_)) {
-            obstacles = grid_checker->getObstaclesInRange(robot_x, robot_y);
-        } else if (auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_)) {
-            for (const auto& obstacle_pos : gazebo_checker->getObstaclePositions()) {
-                Eigen::VectorXd vec(2);
-                vec << obstacle_pos.position;
-                obstacles.push_back(vec);
-                radii.push_back(obstacle_pos.radius);
+            // Handle grid-based obstacles if needed
+            cylinder_obstacles = grid_checker->getObstaclesInRange(robot_x, robot_y);
+        } 
+        else if (auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_)) {
+            // Process Gazebo obstacles
+            for (const auto& obstacle : gazebo_checker->getObstaclePositions()) {
+                if (obstacle.type == Obstacle::CIRCLE) {
+                    // Handle cylindrical obstacles
+                    Eigen::VectorXd vec(2);
+                    vec << obstacle.position.x(), obstacle.position.y();
+                    cylinder_obstacles.push_back(vec);
+                    cylinder_radii.push_back(obstacle.dimensions.circle.radius);// + obstacle.inflation);
+                } else if (obstacle.type == Obstacle::BOX) {
+    const double inflated_width = obstacle.dimensions.box.width; // + 2*obstacle.inflation;
+    const double inflated_height = obstacle.dimensions.box.height; // + 2*obstacle.inflation;
+    
+    if (inflated_width > 0.0 && inflated_height > 0.0) {
+        box_obstacles.emplace_back(
+            obstacle.position,
+            inflated_width,
+            inflated_height,
+            obstacle.dimensions.box.rotation
+        );
+    } else {
+        std::cout << "WARNING: Invalid box dimensions - width: " 
+                  << std::fixed << std::setprecision(2)
+                  << obstacle.dimensions.box.width << " (+" << obstacle.inflation
+                  << " inflation), height: " << obstacle.dimensions.box.height
+                  << " (+" << obstacle.inflation << " inflation)"
+                  << std::endl;
+    }
+}
             }
-            Eigen::Vector2d robot_pos = gazebo_checker->getRobotPosition();
-            robot_position = robot_pos;
+
+            // Get robot info
+            robot_position = gazebo_checker->getRobotPosition();
             robot_quat = gazebo_checker->getRobotOrientation();
-            robot.push_back(robot_pos);
+            Eigen::VectorXd robot_pos_vec(2);
+            robot_pos_vec << robot_position.x(), robot_position.y();
+            robot.push_back(robot_pos_vec);
             robot_rad.push_back(1.0);
         }
 
-        visualizer_->visualizeRobotArrow(robot_position,robot_quat, "map",std::vector<float>{1.0f,1.0f,0.0f}, "robot_marker");
-        visualizer_->visualizeCylinder(robot, robot_rad, "map",std::vector<float>{1.0f,1.0f,0.0f}, "robot_marker");
-        visualizer_->visualizeCylinder(obstacles, radii, "map",std::vector<float>{0.0f,0.0f,1.0f}, "obstalce_markers");
+        // Visualize elements
+        visualizer_->visualizeRobotArrow(robot_position, robot_quat, "map", 
+                                    {1.0f, 1.0f, 0.0f}, "robot_marker");
+        
+        // Visualize cylindrical obstacles
+        if (!cylinder_obstacles.empty()) {
+            visualizer_->visualizeCylinder(cylinder_obstacles, cylinder_radii, "map",
+                                        {0.0f, 0.0f, 1.0f}, "cylinder_obstacles");
+        }
+        
+        // Visualize box obstacles
+        if (!box_obstacles.empty()) {
+            visualizer_->visualizeCube(box_obstacles, "map", 
+                                    {0.0f, 0.0f, 1.0f}, "box_obstacles");
+        }
     }
 
 

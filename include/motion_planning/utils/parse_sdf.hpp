@@ -1,80 +1,83 @@
 // #include "motion_planning/pch.hpp"
-
-
 #include <unordered_map>
 #include <tinyxml2.h>
-#include <iostream>
+#include <sstream>
 
-std::unordered_map<std::string, double> parseSdfForObstacleRadii(const std::string& sdf_path) {
-    std::unordered_map<std::string, double> obstacle_radii;
+// struct ObstacleInfo {
+//     enum Type { CYLINDER, BOX };
+//     Type type;
+//     double radius;    // For cylinders
+//     double width;     // For boxes
+//     double height;    // For boxes
+// };
+
+std::unordered_map<std::string, ObstacleInfo> parseSdfObstacles(const std::string& sdf_path) {
+    std::unordered_map<std::string, ObstacleInfo> obstacles;
     tinyxml2::XMLDocument doc;
     
-    // Load the SDF file
-    if (doc.LoadFile(sdf_path.c_str()) != tinyxml2::XML_SUCCESS) {
-        std::cerr << "Failed to load SDF file: " << sdf_path << std::endl;
-        return obstacle_radii;
-    }
+    if (doc.LoadFile(sdf_path.c_str()) != tinyxml2::XML_SUCCESS) return obstacles;
 
-    // Get the root <sdf> element
-    const auto* root = doc.RootElement();
-    if (!root) {
-        std::cerr << "Invalid SDF file: No root <sdf> element." << std::endl;
-        return obstacle_radii;
-    }
+    const auto* world = doc.RootElement()->FirstChildElement("world");
+    if (!world) return obstacles;
 
-    // Get the <world> element
-    const auto* world = root->FirstChildElement("world");
-    if (!world) {
-        std::cerr << "Invalid SDF file: No <world> element." << std::endl;
-        return obstacle_radii;
-    }
-
-    // Iterate through all <model> elements in the world
     for (const auto* model = world->FirstChildElement("model"); model; 
          model = model->NextSiblingElement("model")) {
         
-        // Get the model name
         const char* name = model->Attribute("name");
         if (!name) continue;
 
+        ObstacleInfo info;
         const std::string model_name(name);
+        bool is_cylinder = model_name.find("cylinder") != std::string::npos;
+        bool is_box = model_name.find("box") != std::string::npos;
 
-        // Check if it's a static or moving cylinder
-        const bool is_static = model_name.find("static_cylinder_") != std::string::npos;
-        const bool is_moving = model_name.find("moving_cylinder_") != std::string::npos;
-        
-        if (!is_static && !is_moving) continue;
+        if (!is_cylinder && !is_box) continue;
 
-        // Get the first <link> element (regardless of name)
         const auto* link = model->FirstChildElement("link");
         if (!link) continue;
 
-        // Get the <visual> element
-        const auto* visual = link->FirstChildElement("visual");
-        if (!visual) continue;
-
-        // Get the <geometry> element inside <visual>
-        const auto* geometry = visual->FirstChildElement("geometry");
+        // Get geometry from collision or visual
+        const auto* geometry = link->FirstChildElement("collision") 
+                             ? link->FirstChildElement("collision")->FirstChildElement("geometry")
+                             : link->FirstChildElement("visual")->FirstChildElement("geometry");
+        
         if (!geometry) continue;
 
-        // Get the <cylinder> element inside <geometry>
-        const auto* cylinder = geometry->FirstChildElement("cylinder");
-        if (!cylinder) continue;
+        if (is_cylinder) {
+            info.type = ObstacleInfo::CYLINDER;
+            if (const auto* cylinder = geometry->FirstChildElement("cylinder")) {
+                cylinder->FirstChildElement("radius")->QueryDoubleText(&info.radius);
+            }
+        } 
 
-        // Get the <radius> element inside <cylinder>
-        const auto* radius_elem = cylinder->FirstChildElement("radius");
-        if (!radius_elem) continue;
 
-        // Parse the radius value
-        double radius = 0.0;
-        if (radius_elem->QueryDoubleText(&radius) != tinyxml2::XML_SUCCESS) {
-            std::cerr << "Failed to parse radius for model: " << model_name << std::endl;
-            continue;
+        else if (is_box) {
+            info.type = ObstacleInfo::BOX;
+            if (const auto* box = geometry->FirstChildElement("box")) {
+                if (const auto* size = box->FirstChildElement("size")) {
+                    std::stringstream ss(size->GetText());
+                    double x, y, z;
+                    
+                    // Read space-separated values without explicit delimiters
+                    if (ss >> x >> y >> z) {  // Changed this line
+                        // Add validation
+                        if (x <= 0 || y <= 0) {
+                            std::cerr << "Invalid box dimensions for " << name 
+                                    << ": " << x << "x" << y << std::endl;
+                            continue;
+                        }
+                        info.width = x;
+                        info.height = y;
+                    } else {
+                        std::cerr << "Failed to parse box size for " << name 
+                                << ": " << size->GetText() << std::endl;
+                    }
+                }
+            }
         }
 
-        // Store the radius in the map
-        obstacle_radii[model_name] = radius;
+        obstacles[model_name] = info;
     }
     
-    return obstacle_radii;
+    return obstacles;
 }

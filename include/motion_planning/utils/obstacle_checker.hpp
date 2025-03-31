@@ -7,24 +7,72 @@
 #include <memory>
 #include "motion_planning/pch.hpp"
 
-// Add this structure to store obstacle information
 struct Obstacle {
+    enum Type { CIRCLE, BOX };
+    Type type;
     Eigen::Vector2d position;
-    double radius;
+    union {
+        struct {
+            double radius;
+        } circle;
+        struct {
+            double width;
+            double height;
+            double rotation;
+        } box;
+    } dimensions;
     double inflation;
-    // int is_static;
-    
 
-    // Equality operator
-    bool operator==(const Obstacle& other) const {
-        return position == other.position && 
-               radius == other.radius && 
-               inflation == other.inflation;
+    // Add default constructor
+    Obstacle() : type(CIRCLE), position(Eigen::Vector2d::Zero()), inflation(0.0) {
+        dimensions.circle.radius = 0.0;
     }
 
+    // Circle constructor
+    Obstacle(Eigen::Vector2d pos, double rad, double infl)
+        : type(CIRCLE), position(pos), inflation(infl) {
+        dimensions.circle.radius = rad;
+    }
+
+    // Box constructor
+    Obstacle(Eigen::Vector2d pos, double w, double h, double rot, double infl)
+        : type(BOX), position(pos), inflation(infl) {
+        dimensions.box.width = w;
+        dimensions.box.height = h;
+        dimensions.box.rotation = rot;
+    }
+
+    bool operator==(const Obstacle& other) const {
+        // Update equality check for new structure
+        if (type != other.type || position != other.position || inflation != other.inflation)
+            return false;
+        
+        if (type == CIRCLE) {
+            return dimensions.circle.radius == other.dimensions.circle.radius;
+        }
+        return dimensions.box.width == other.dimensions.box.width &&
+               dimensions.box.height == other.dimensions.box.height &&
+               dimensions.box.rotation == other.dimensions.box.rotation;
+    }
 };
 
+struct ObstacleInfo {
+    enum Type { CYLINDER, BOX };
+    Type type;
+    double radius = 0.0;    // For cylinders (initialize!)
+    double width = 0.0;     // For boxes (initialize!)
+    double height = 0.0;    // For boxes (initialize!)
+}; // <-- Semicolon here
 
+// Operator<< definition OUTSIDE the struct
+inline std::ostream& operator<<(std::ostream& os, const ObstacleInfo& info) {
+    if (info.type == ObstacleInfo::CYLINDER) {
+        os << "Cylinder(r=" << info.radius << ")";
+    } else {
+        os << "Box(w=" << info.width << ", h=" << info.height << ")";
+    }
+    return os;
+}
 
 class ObstacleChecker {
 public:

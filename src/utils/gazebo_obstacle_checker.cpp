@@ -1,8 +1,8 @@
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
 
 GazeboObstacleChecker::GazeboObstacleChecker(const Params& params,
-                        const std::unordered_map<std::string, double>& obstacle_radii)
-        : obstacle_radii_(obstacle_radii),
+                        const std::unordered_map<std::string, ObstacleInfo>& obstacle_info)
+        : obstacle_info_(obstacle_info),
           robot_position_(Eigen::Vector2d::Zero()),
           robot_orientation_(Eigen::VectorXd(4)) {  // Initialize orientation as a 4D vector for quaternion
 
@@ -61,15 +61,27 @@ void GazeboObstacleChecker::publishPath(const std::vector<Eigen::VectorXd>& wayp
 
 
 
-
 bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const Eigen::VectorXd& end) const {
     std::lock_guard<std::mutex> lock(snapshot_mutex_);
     Eigen::Vector2d start2d = start.head<2>();
     Eigen::Vector2d end2d = end.head<2>();
 
     for (const auto& obstacle : obstacle_snapshot_) {
-        if (lineIntersectsCircle(start2d, end2d, obstacle.position, obstacle.radius+obstacle.inflation )) {
-            return false;
+        const double inflated = obstacle.inflation;
+        const Eigen::Vector2d& center = obstacle.position;
+        
+        if (obstacle.type == Obstacle::CIRCLE) {
+            const double radius = obstacle.dimensions.circle.radius + inflated;
+            if (lineIntersectsCircle(start2d, end2d, center, radius)) {
+                return false;
+            }
+        } else {
+            const double width = obstacle.dimensions.box.width + 2*inflated;
+            const double height = obstacle.dimensions.box.height + 2*inflated;
+            const double rotation = obstacle.dimensions.box.rotation;
+            if (lineIntersectsRectangle(start2d, end2d, center, width, height, rotation)) {
+                return false;
+            }
         }
     }
     return true;
@@ -80,12 +92,26 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
     Eigen::Vector2d point2d = point.head<2>();
 
     for (const auto& obstacle : obstacle_snapshot_) {
-        if (pointIntersectsCircle(point2d, obstacle.position, obstacle.radius + obstacle.inflation)) {
-            return false;
+        const double inflated = obstacle.inflation;
+        const Eigen::Vector2d& center = obstacle.position;
+        
+        if (obstacle.type == Obstacle::CIRCLE) {
+            const double radius = obstacle.dimensions.circle.radius + inflated;
+            if (pointIntersectsCircle(point2d, center, radius)) {
+                return false;
+            }
+        } else {
+            const double width = obstacle.dimensions.box.width + 2*inflated;
+            const double height = obstacle.dimensions.box.height + 2*inflated;
+            const double rotation = obstacle.dimensions.box.rotation;
+            if (pointIntersectsRectangle(point2d, center, width, height, rotation)) {
+                return false;
+            }
         }
     }
     return true;
 }
+
 
 Eigen::Vector2d GazeboObstacleChecker::getRobotPosition() const {
     std::lock_guard<std::mutex> lock(data_mutex_);
@@ -146,15 +172,10 @@ Eigen::VectorXd GazeboObstacleChecker::quaternionToEuler(const Eigen::VectorXd& 
     return euler_angles;
 }
 
-
-
 void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
     std::lock_guard<std::mutex> lock(data_mutex_);
-    obstacle_positions_.clear();  // Clear current obstacles
-
-    // Track dynamic obstacles in this callback
+    obstacle_positions_.clear();
     std::vector<Obstacle> current_dynamic_obstacles;
-
 
     // Update robot position
     for (int i = 0; i < msg.pose_size(); ++i) {
@@ -165,7 +186,6 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
         }
     }
 
-
     // Process obstacles
     for (int i = 0; i < msg.pose_size(); ++i) {
         const auto& pose = msg.pose(i);
@@ -174,58 +194,100 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
 
         if (name == robot_model_name_) continue;
 
-        bool is_static = name.find("static_cylinder_") != std::string::npos;
-        bool is_moving = name.find("moving_cylinder_") != std::string::npos;
+        bool is_cylinder = name.find("cylinder") != std::string::npos;
+        bool is_box = name.find("box") != std::string::npos;
+        bool is_static = name.find("static_") != std::string::npos;
+        bool is_moving = name.find("moving_") != std::string::npos;
 
-        if (!is_static && !is_moving) continue;
+        if (!is_cylinder && !is_box) continue;
 
-        // Get or assign radius
-        double radius = 5.0;
-        auto radius_it = obstacle_radii_.find(name);
-        if (radius_it != obstacle_radii_.end()) {
-            radius = radius_it->second;
+        auto info_it = obstacle_info_.find(name);
+        if (info_it == obstacle_info_.end()) continue;
+
+        // Create obstacle object
+        Obstacle obstacle;
+        if (is_cylinder) {
+            obstacle = Obstacle(position, info_it->second.radius, inflation);
+        } else {
+            Eigen::Vector4d quat(
+                pose.orientation().x(),
+                pose.orientation().y(),
+                pose.orientation().z(),
+                pose.orientation().w()
+            );
+            double yaw = calculateYawFromQuaternion(quat);
+            obstacle = Obstacle(position, info_it->second.width, 
+                              info_it->second.height, yaw, inflation);
         }
 
-        Obstacle obstacle{position, radius ,inflation};
+        const bool within_range = !use_range || 
+            (robot_position_ - position).norm() < sensor_range;
 
-        // Check if within sensor range
-        bool within_range = !use_range || (robot_position_ - position).norm() < sensor_range;
-
+        // Handle static obstacles
         if (is_static) {
             if (persistent_static_obstacles) {
-                // Check if the static obstacle has been detected before
-                auto it = static_obstacle_positions_.find(name);
-                if (it == static_obstacle_positions_.end()) {
-                    // First time detection: add to static_obstacle_positions_ if within range
+                auto map_it = static_obstacle_positions_.find(name);
+                
+                if (map_it == static_obstacle_positions_.end()) {
+                    // First detection: only store if in range
                     if (within_range) {
                         static_obstacle_positions_[name] = obstacle;
-                        obstacle_positions_.push_back(obstacle);
                     }
                 } else {
-                    // Update position if already detected
-                    it->second.position = position;
-                }
-            } else {
-                // Treat static obstacles like dynamic obstacles
-                if (within_range) {
-                    obstacle_positions_.push_back(obstacle);
+                    // Update position but don't add yet
+                    map_it->second.position = position;
                 }
             }
-        } else if (is_moving && within_range) {
+            
+            // Add to current frame if in range
+            if (within_range) {
+                obstacle_positions_.push_back(obstacle);
+            }
+        }
+        // Handle dynamic obstacles
+        else if (is_moving && within_range) {
             current_dynamic_obstacles.push_back(obstacle);
         }
     }
 
-    // Add dynamic obstacles
-    obstacle_positions_.insert(obstacle_positions_.end(), current_dynamic_obstacles.begin(), current_dynamic_obstacles.end());
-
-    // Add all previously detected static obstacles to obstacle_positions_ if persistent_static_obstacles is true
+    // Add persistent static obstacles (even if currently out of range)
     if (persistent_static_obstacles) {
         for (const auto& [name, static_obs] : static_obstacle_positions_) {
-            obstacle_positions_.push_back(static_obs);
+            // Check if not already added from current detection
+            bool exists = std::any_of(
+                obstacle_positions_.begin(),
+                obstacle_positions_.end(),
+                [&](const Obstacle& o) {
+                    return o.position == static_obs.position && 
+                           o.type == static_obs.type;
+                }
+            );
+            
+            if (!exists) {
+                obstacle_positions_.push_back(static_obs);
+            }
         }
     }
+
+    // Add dynamic obstacles
+    obstacle_positions_.insert(obstacle_positions_.end(),
+                             current_dynamic_obstacles.begin(),
+                             current_dynamic_obstacles.end());
+
+    // // Debug output
+    // std::cout << "\n===== Current Obstacle Positions =====" << std::endl;
+    // for (size_t i = 0; i < obstacle_positions_.size(); ++i) {
+    //     const auto& obs = obstacle_positions_[i];
+    //     std::string type = (obs.type == Obstacle::CIRCLE) ? "Cylinder" : "Box";
+    //     std::string state = (i >= obstacle_positions_.size() - current_dynamic_obstacles.size()) 
+    //                       ? "DYNAMIC" : "STATIC";
+    //     std::cout << "Obstacle " << i+1 << ": " << type
+    //             << " at (" << obs.position.x() << ", " << obs.position.y() << ")"
+    //             << " [" << state << "]" << std::endl;
+    // }
+    // std::cout << "=====================================\n" << std::endl;
 }
+
 
 double GazeboObstacleChecker::calculateYawFromQuaternion(const Eigen::VectorXd& quaternion) {
     // Ensure the quaternion is valid (x, y, z, w)
@@ -336,4 +398,57 @@ std::vector<Obstacle> GazeboObstacleChecker::getObstacles() const {
     }
     
     return filtered_obstacles;
+}
+
+
+
+// Add rectangle collision detection implementations
+bool GazeboObstacleChecker::lineIntersectsRectangle(const Eigen::Vector2d& start,
+                                                   const Eigen::Vector2d& end,
+                                                   const Eigen::Vector2d& center,
+                                                   double width, double height,
+                                                   double rotation) {
+    // Transform points to rectangle's local coordinate system
+    Eigen::Rotation2Dd rot(-rotation);
+    Eigen::Vector2d localStart = rot * (start - center);
+    Eigen::Vector2d localEnd = rot * (end - center);
+    
+    // Calculate rectangle bounds
+    double halfWidth = width / 2.0;
+    double halfHeight = height / 2.0;
+    
+    // Use Liang-Barsky line clipping algorithm
+    double t0 = 0.0;
+    double t1 = 1.0;
+    double dx = localEnd.x() - localStart.x();
+    double dy = localEnd.y() - localStart.y();
+    
+    double p[4] = {-dx, dx, -dy, dy};
+    double q[4] = {localStart.x() + halfWidth, halfWidth - localStart.x(),
+                   localStart.y() + halfHeight, halfHeight - localStart.y()};
+    
+    for(int i = 0; i < 4; i++) {
+        if(p[i] == 0) {
+            if(q[i] < 0) return false;
+        } else {
+            double t = q[i] / p[i];
+            if(p[i] < 0 && t > t0) t0 = t;
+            else if(p[i] > 0 && t < t1) t1 = t;
+        }
+    }
+    
+    return t0 < t1 && t0 < 1.0 && t1 > 0.0;
+}
+
+bool GazeboObstacleChecker::pointIntersectsRectangle(const Eigen::Vector2d& point,
+                                                    const Eigen::Vector2d& center,
+                                                    double width, double height,
+                                                    double rotation) {
+    // Transform point to rectangle's local coordinate system
+    Eigen::Rotation2Dd rot(-rotation);
+    Eigen::Vector2d local_point = rot * (point - center);
+    
+    // Check bounds
+    return (std::abs(local_point.x()) <= width/2 && 
+           std::abs(local_point.y()) <= height/2);
 }
