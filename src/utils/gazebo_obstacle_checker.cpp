@@ -202,13 +202,18 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
         if (!is_cylinder && !is_box) continue;
 
         auto info_it = obstacle_info_.find(name);
-        if (info_it == obstacle_info_.end()) continue;
+        // if (info_it == obstacle_info_.end()) continue;
 
         // Create obstacle object
         Obstacle obstacle;
         if (is_cylinder) {
-            obstacle = Obstacle(position, info_it->second.radius, inflation);
+            // obstacle = Obstacle(position, info_it->second.radius, inflation);
+            double radius = (info_it != obstacle_info_.end()) ? info_it->second.radius : 5.0;
+            obstacle = Obstacle(position, radius, inflation);
         } else {
+            double width = (info_it != obstacle_info_.end()) ? info_it->second.width : 10.0;
+            double height = (info_it != obstacle_info_.end()) ? info_it->second.height : 10.0;
+            
             Eigen::Vector4d quat(
                 pose.orientation().x(),
                 pose.orientation().y(),
@@ -216,8 +221,7 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
                 pose.orientation().w()
             );
             double yaw = calculateYawFromQuaternion(quat);
-            obstacle = Obstacle(position, info_it->second.width, 
-                              info_it->second.height, yaw, inflation);
+            obstacle = Obstacle(position, width, height, yaw, inflation);
         }
 
         const bool within_range = !use_range || 

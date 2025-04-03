@@ -3,10 +3,9 @@
 
 #include "motion_planning/pch.hpp"
 #include "motion_planning/planners/planner.hpp"
-#include "motion_planning/ds/tree_node.hpp"
+#include "motion_planning/ds/rrtx_node.hpp"
 #include "motion_planning/utils/visualization.hpp"
-
-
+#include "motion_planning/ds/priority_queue.hpp"
 
 class RRTX : public Planner {
  public:
@@ -19,103 +18,96 @@ class RRTX : public Planner {
     std::vector<int> getPathIndex() const;
     std::vector<Eigen::VectorXd> getPathPositions() const;
 
-
     void setStart(const Eigen::VectorXd& start) override;
     void setGoal(const Eigen::VectorXd& goal) override;
+    void setRobotIndex(const Eigen::VectorXd& robot_position);
+    void clearPlannerState() ;
 
-    void updateRobotPosition(const Eigen::VectorXd& new_position);
+    // Obstacle management
     void updateObstacleSamples(const std::vector<Obstacle>& obstacles);
+    void updateRobotPosition(const Eigen::VectorXd& new_position);
 
+    // Visualization
     void visualizeTree();
-    void visualizePath(std::vector<int> path_indices);
+    void visualizePath(const std::vector<RRTxNode*>& path);
     void visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_);
 
-    void setRobotIndex(const Eigen::VectorXd& robot_position);
-    void clearPlannerState();
+    // Path smoothing
+    std::vector<Eigen::VectorXd> getSmoothedPathPositions(int num_intermediates, 
+                                                        int smoothing_window) const;
 
-    std::vector<Eigen::VectorXd> getSmoothedPathPositions(int num_intermediates, int smoothing_window ) const;
-    std::vector<Eigen::VectorXd> smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const;
-    std::vector<Eigen::VectorXd> interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const;
+std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& obstacles, double max_length);
 
+    bool isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& edge) const;
 
  private:
-    std::vector<std::shared_ptr<TreeNode>> tree_;
+    // Core data structures
+    std::vector<std::shared_ptr<RRTxNode>> tree_;
     std::shared_ptr<KDTree> kdtree_;
-    std::shared_ptr<Visualization> visualization_;
-    std::shared_ptr<ObstacleChecker> obs_checker_;
+    PriorityQueue<RRTxNode, RRTxComparator> inconsistency_queue_;
+    
+    // State management
     std::unique_ptr<StateSpace> statespace_;
     std::shared_ptr<ProblemDefinition> problem_;
-    std::unordered_set<int> v_indices_;
+    std::shared_ptr<ObstacleChecker> obs_checker_;
+    std::shared_ptr<Visualization> visualization_;
 
-    std::unordered_set<int> samples_in_obstacles_; 
+    // Node tracking
+    // RRTxNode* vbot_node_ = nullptr;  // Added missing declaration
+    RRTxNode*  vbot_node_;
+    std::unordered_set<int> Vc_T_; // Store indices instead of pointers
 
-    std::unordered_map<int, QueueElement> handle_map_; 
+    std::unordered_set<int> samples_in_obstacles_;
 
-    int vbot_index_;
-    int vgoal_index_;
+
+    // Algorithm parameters
     double neighborhood_radius_;
-    double epsilon_ = 1e-6; 
-
-    int num_of_samples_;
-    double lower_bound_;
-    double upper_bound_;
-    int root_state_index_;
-    int robot_state_index_;
-    bool use_kdtree;
-    int dimension_;
+    double epsilon_ = 1e-6;
     double gamma_;
-    size_t sample_counter;
+    double delta = 20.0; 
+    double factor;
+    int num_of_samples_;
+    int dimension_;
+    int root_state_index_ = -1;
+    int robot_state_index_ = -1;
+    size_t sample_counter = 0;
     bool cap_samples_ = true;
-    double delta = 20.0; // Step size limit
+    bool update_obstacle = false;
+    bool partial_update;
+    bool ignore_sample;
 
+Eigen::VectorXd robot_position_;
+std::unordered_map<int, double> edge_length_;
+int max_length_edge_ind;
+double max_length;
+int vbot_index_;
+int vgoal_index_;
+std::unordered_set<int> v_indices_;
+double lower_bound_;
+double upper_bound_;
+bool use_kdtree;
 
-    UpdatablePriorityQueue inconsistency_queue_;
+int findNodeIndex(RRTxNode* node) const;
 
+    // Helper methods
+    bool extend(Eigen::VectorXd v);
+    void findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidate_indices);
 
-    Eigen::VectorXd robot_position_;
-
-
-
-
-
-    // Neighbor management
-    std::unordered_map<int, std::unordered_set<int>> N0_in_;   // Original incoming neighbors
-    std::unordered_map<int, std::unordered_set<int>> N0_out_;  // Original outgoing neighbors
-    std::unordered_map<int, std::unordered_set<int>> Nr_in_;   // Running incoming neighbors
-    std::unordered_map<int, std::unordered_set<int>> Nr_out_;  // Running outgoing neighbors
-
-    // Distance dictionary
-    std::unordered_map<int, std::unordered_map<int, double>> distance_;  // Key1: node index, Key2: neighbor index, Value: distance
-
-    std::unordered_set<int> Vc_T_;
-
-    std::unordered_map<int , double> edge_length_;
-    int max_length_edge_ind = -1;
-    double max_length = -std::numeric_limits<double>::infinity();
-
-
-    // RRTX functions
-    double shrinkingBallRadius() const;
-    void extend(Eigen::VectorXd v);
-    void rewireNeighbors(int v_index);
+    void rewireNeighbors(RRTxNode* v);
     void reduceInconsistency();
-    void findParent(Eigen::VectorXd v, const std::vector<size_t>& candidates);
-    void cullNeighbors(int v_index);
+    void cullNeighbors(RRTxNode* v);
+    void makeParentOf(RRTxNode* child, RRTxNode* new_parent, double edge_dist);
+    void updateLMC(RRTxNode* v);
+    void verifyQueue(RRTxNode* node);  // Fixed signature
     void propagateDescendants();
-    void verifyQueue(int v_index);
-    void updateLMC(int v_index);
-    void handleObstacleChanges();
-    void makeParentOf(int child_index, int parent_index);
-    void addNewObstacle(const std::vector<int>& added_samples);
-    void removeObstacle(const std::vector<int>& removed_samples);
-    void verifyOrphan(int v_index);
+    void verifyOrphan(RRTxNode* node);
+    double shrinkingBallRadius() const;
+    void addNewObstacle(const std::vector<int>& added_indices);
+    void removeObstacle(const std::vector<int>& removed_indices);
 
-
-    std::unordered_set<int> findSamplesNearObstacles(
-        const std::vector<Obstacle>& obstacles, 
-        double obstacle_radius
-    );
-    // Obstacle management
-    std::unordered_set<int> obstacle_samples_;
-    std::vector<Eigen::Vector2d> current_obstacles_;
+    // Path smoothing implementations
+    std::vector<Eigen::VectorXd> smoothPath(const std::vector<Eigen::VectorXd>& path, 
+                                          int window_size) const;
+    std::vector<Eigen::VectorXd> interpolatePath(const std::vector<Eigen::VectorXd>& path,
+                                               int num_intermediates) const;
 };

@@ -1,8 +1,5 @@
 // Copyright 2025 Soheil E.nia
-/**
- * TODO: cullNeighbor makes the tree to have sub-optimal connections! 
- * TODO: the only difference in my versrion is using samples_in_obstalce_ in the removeObstalce and etc. also i didin't create  the statespace after checking the parent in extent function (because weirdly the algorithm demands an lmc beofre deciding to have the sample as a tree node or not!)
- */
+
 
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
@@ -11,6 +8,7 @@
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
 #include "motion_planning/utils/ros2_manager.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
+#include <valgrind/callgrind.h>
 
 
 int main(int argc, char **argv) {
@@ -75,12 +73,16 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("world_name", "default");
     gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
+    gazebo_params.setParam("inflation", 0.0); // inflation added to obstalce radius virtually for the planner
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
     planner_params.setParam("num_of_samples", 5000);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
+    planner_params.setParam("partial_update", false); // update the tree cost of the robot or not
+    planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update
+
 
 
 
@@ -89,13 +91,13 @@ int main(int argc, char **argv) {
     auto node = std::make_shared<rclcpp::Node>("rrtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    auto obstacle_radii = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
-    // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
-    // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
-for (const auto& [name, info] : obstacle_radii) {
-    std::cout << name << ": " << info << "\n";
-}
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_radii);
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
+    for (const auto& [name, info] : obstacle_info) {
+        std::cout << name << ": " << info << "\n";
+    }
+    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_info);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Controller and Nav2Controller objects
@@ -120,14 +122,84 @@ for (const auto& [name, info] : obstacle_radii) {
 
 
 
-    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 5000);
+    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 20000);
     std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::RRTX, std::move(statespace),problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
-
-
     // Plan the static one!
     planner->plan();
+
+    //----------- Waiting for the Sim Clock to start ------------ //
+    bool simulation_is_paused = true;
+    auto node_clock = ros2_manager->get_clock();
+    // We'll store the initial sim time
+    rclcpp::Time last_time = node_clock->now();
+    std::cout << "[DEBUG] Initially, last_time = " << last_time.seconds() 
+            << " (sim seconds)\n";
+    std::cout << "[INFO] Waiting for gz-sim to unpause...\n";
+
+    while (rclcpp::ok() && simulation_is_paused)
+    {
+        // 1) Spin to process any incoming clock messages
+        rclcpp::spin_some(ros2_manager);
+
+        // 2) Get current sim time
+        rclcpp::Time current_time = node_clock->now();
+        double dt = (current_time - last_time).seconds();
+
+        // // 3) Print debug
+        // std::cout << "[DEBUG] last_time=" << last_time.seconds() 
+        //         << ", current_time=" << current_time.seconds() 
+        //         << ", dt=" << dt << "\n";
+
+        // 4) Check if it’s advanced
+        if (current_time > last_time) {
+            std::cout << "[DEBUG] => current_time is strictly greater than last_time, so sim is unpaused.\n";
+            simulation_is_paused = false;
+            std::cout << "[INFO] Simulation unpaused; starting to log data.\n";
+        }
+        else {
+            // If we land here, sim time hasn't advanced since last check
+            // std::cout << "[DEBUG] => Simulation still paused, waiting...\n";
+            rclcpp::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        last_time = current_time;
+    }
+    //----------------------------------------------------------- //
+
+
+
+
+
+    // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
+    rclcpp::Rate loop_rate(30); // 10 Hz (100ms per loop)
+
+    // Suppose you have a boolean that decides if we want a 20s limit
+    bool limited = true;  // or read from params, or pass as an argument
+
+    // Capture the "start" time if we plan to limit the loop
+    auto start_time = std::chrono::steady_clock::now();
+    auto time_limit = std::chrono::seconds(20);
+
+    std::vector<double> sim_durations;
+
+    // Start profiling
+    CALLGRIND_START_INSTRUMENTATION;
+
+
     while (rclcpp::ok()) {
+
+        // 1) If we are limiting to 20s, check if we've exceeded that
+        if (limited) {
+            auto now = std::chrono::steady_clock::now();
+            if (now - start_time > time_limit) {
+                std::cout << "[INFO] 20 seconds have passed. Exiting loop.\n";
+                break;  // exit the loop
+            }
+        }
+
+
+
         if (ros2_manager->hasNewGoal()) {
             start_position = ros2_manager->getStartPosition(); 
             problem_def->setStart(start_position);
@@ -137,10 +209,14 @@ for (const auto& [name, info] : obstacle_radii) {
         }
 
 
-        auto obstacles = obstacle_checker->getObstaclePositions();
-        auto robot = obstacle_checker->getRobotPosition();
-        // if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
-            dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot);
+        // auto obstacles = obstacle_checker->getObstaclePositions();
+        // auto robot = obstacle_checker->getRobotPosition();
+
+        auto snapshot = obstacle_checker->getAtomicSnapshot();
+        auto& obstacles = snapshot.obstacles;
+        auto& robot = snapshot.robot_position;
+        // // dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot); // UNCOMMENT THIS LATER!
+
         ////////// PLAN //////////
         auto start = std::chrono::high_resolution_clock::now();
         dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
@@ -148,7 +224,7 @@ for (const auto& [name, info] : obstacle_radii) {
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         if (duration.count()>0)
             std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
-        
+        sim_durations.push_back(duration.count());
 
         std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<RRTX*>(planner.get())->getSmoothedPathPositions(5, 2);
         ros2_manager->followPath(shortest_path_);
@@ -159,32 +235,55 @@ for (const auto& [name, info] : obstacle_radii) {
         dynamic_cast<RRTX*>(planner.get())->visualizeTree();
 
         rclcpp::spin_some(ros2_manager);
+        loop_rate.sleep();
+
+    }
+    // Stop profiling
+    CALLGRIND_STOP_INSTRUMENTATION;
+
+    if (limited == true){
+        // 1) Get the current local time
+        std::time_t now = std::time(nullptr); 
+        std::tm* local_tm = std::localtime(&now);
+
+        // 2) Extract day, month, year, hour, minute, second
+        int day    = local_tm->tm_mday;           // day of month [1-31]
+        int month  = local_tm->tm_mon + 1;        // months since January [0-11]; add 1
+        int year   = local_tm->tm_year + 1900;    // years since 1900
+        int hour   = local_tm->tm_hour;           // hours since midnight [0-23]
+        int minute = local_tm->tm_min;            // minutes after hour [0-59]
+        int second = local_tm->tm_sec;            // seconds after minute [0-60]
+
+        // 3) Build your file name, e.g. "sim_times_13_3_2025_14_58_12.csv"
+        std::string filename = "sim_times_" +
+            std::to_string(day)    + "_" +
+            std::to_string(month)  + "_" +
+            std::to_string(year)   + "_" +
+            std::to_string(hour)   + "_" +
+            std::to_string(minute) + "_" +
+            std::to_string(second) + ".csv";
+
+        std::cout << "Writing durations to: " << filename << std::endl;
+
+        // 4) Write durations to that file
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: failed to open " << filename << std::endl;
+            return 1;
+        }
+
+        for (auto &d : sim_durations) {
+            out << d << "\n";
+        }
+        out.close();
+
+        std::cout << "Done writing CSV.\n";
     }
 
-    // // Start the timer
-    // auto start_time = std::chrono::high_resolution_clock::now();
 
-    // // Run the loop for 20 seconds
-    // while (std::chrono::duration_cast<std::chrono::seconds>(
-    //         std::chrono::high_resolution_clock::now() - start_time).count() < 20) {
-    //     auto obstacles = obstacle_checker->getObstaclePositions();
-    //     auto robot = obstacle_checker->getRobotPosition();
-    //     if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
-    //         dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot);
-    //     ////////// PLAN //////////
-    //     auto start = std::chrono::high_resolution_clock::now();
-    //     dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
-    //     auto end = std::chrono::high_resolution_clock::now();
-    //     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    //     if (duration.count()>0)
-    //         std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
-        
-    //     ////////// VISUALIZE /////
-    //     // dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
-    //     // dynamic_cast<RRTX*>(planner.get())->visualizeTree();
 
-    //     rclcpp::spin_some(ros2_manager);
-    // }
+
+  
     rclcpp::shutdown();
 
 }

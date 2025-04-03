@@ -7,21 +7,22 @@
 
 
 
-class FMTXNode  {
+class FMTNode  {
 public:
     /*
         Why flat_map? it worked better than std::unordered_map --> you can also uncomment the unordered_map to test.
         Reasons: 1) Lots of looping over neighbors in FMTX
                  2) The number of neighbors are limited because we pre-sample in FMTx so cost of insertion which is log(n) in flat map due to sorting is negligble
     */
-    using NeighborMap = boost::container::flat_map<FMTXNode*, EdgeInfo>;
-    // using NeighborMap = std::unordered_map<FMTXNode*, EdgeInfo>;
+    using NeighborMap = boost::container::flat_map<FMTNode*, EdgeInfo>;
+    // using NeighborMap = std::unordered_map<FMTNode*, EdgeInfo>;
     
-    explicit FMTXNode(std::unique_ptr<State> state, int index = -1)
+    explicit FMTNode(std::unique_ptr<State> state, int index = -1)
         : state_(std::move(state)),
           index_(index),
           cost_(INFINITY),
           in_queue_(false),
+          heap_index_(-1),
           in_unvisited_(false),
           parent_(nullptr) {}
 
@@ -41,7 +42,7 @@ public:
         the fmtx to setParent function, so we are here in setParent redundantly and if we do not early exit we have to use the hasChild below or else we
         are gonna end up using "parent_children_.push_back(this)" alot!
     */
-    void setParent(FMTXNode* parent, double edge_cost) {
+    void setParent(FMTNode* parent, double edge_cost) {
         // Early exit if parent is the same
         if (parent == parent_) { 
             edge_cost_ = edge_cost; // Update cost even if parent is same
@@ -72,7 +73,7 @@ public:
         }
         
         // Break child links
-        for (FMTXNode* child : children_) {
+        for (FMTNode* child : children_) {
             if (child && child->parent_ == this) {
                 child->parent_ = nullptr;
             }
@@ -98,15 +99,17 @@ public:
         }
     }
 
-    FMTXNode* getParent() const noexcept { return parent_; }
-    const std::vector<FMTXNode*>& getChildren() const noexcept { return children_; }
-    std::vector<FMTXNode*>& getChildrenMutable() noexcept { return children_; }
+    FMTNode* getParent() const noexcept { return parent_; }
+    const std::vector<FMTNode*>& getChildren() const noexcept { return children_; }
+    std::vector<FMTNode*>& getChildrenMutable() noexcept { return children_; }
     
     void setIndex(int index) noexcept { index_ = index; } // No need!
     int getIndex() const noexcept  { return index_; }
 
 
     bool in_queue_;
+    size_t heap_index_;  // Tracks position in the priority queue
+
     bool in_unvisited_;
     double edge_cost_;
     /*
@@ -121,8 +124,8 @@ public:
         so we fill blocked_best_neighbors in the else part of the cost update in the main plan function
     */
     std::unordered_set<int> blocked_best_neighbors;
-    std::vector<FMTXNode*> children_;
-    FMTXNode* parent_;
+    std::vector<FMTNode*> children_;
+    FMTNode* parent_;
 private:
     std::unique_ptr<State> state_;
     NeighborMap neighbors_;
@@ -130,7 +133,7 @@ private:
     int index_;
     bool on_obstacle; // not using this now! maybe later instead of samples_in_obstalce!
 
-    // static bool hasChild(FMTXNode* node, const std::vector<FMTXNode*>& children) {
+    // static bool hasChild(FMTNode* node, const std::vector<FMTNode*>& children) {
     //     return std::find(children.begin(), children.end(), node) != children.end();
     // }
 };

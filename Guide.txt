@@ -156,8 +156,8 @@ but that made rrtx very fast and on par with fmtx! :) ---> because we do not exp
 
 ///////////////////////////////////////
 serious problem:
-auto node1 = std::make_shared<FMTXNode>(...);  // node1 owns the FMTXNode
-auto node2 = std::make_shared<FMTXNode>(...);  // node2 owns another FMTXNode
+auto node1 = std::make_shared<FMTNode>(...);  // node1 owns the FMTNode
+auto node2 = std::make_shared<FMTNode>(...);  // node2 owns another FMTNode
 
 // Set raw pointer links
 node1->children_.push_back(node2.get());  // node1's children_ points to node2's memory
@@ -175,32 +175,32 @@ tree_.clear();  // node1 and node2 are deleted, but:
 
 
 2. Why Aren’t parent_ and children_ Cleared Automatically?
-Raw pointers (FMTXNode*) have no idea when the object they point to is deleted.
+Raw pointers (FMTNode*) have no idea when the object they point to is deleted.
 
 They don’t participate in ownership.
 
 They don’t "know" when tree_.clear() happens.
 
-std::vector<FMTXNode*> is just a list of memory addresses.
+std::vector<FMTNode*> is just a list of memory addresses.
 
 Clearing tree_ doesn’t magically update these pointers.
 ///////////////////////////////////////
 more info:
 
 i thought when i clear the tree_ these two would also clear!
-    std::vector<FMTXNode*> children_; // direct children
-    FMTXNode* parent_;
+    std::vector<FMTNode*> children_; // direct children
+    FMTNode* parent_;
 Why Clearing tree_ Doesn't Clear parent_ and children_
 You’re encountering a classic C++ ownership misconception. Here’s the breakdown:
 
 1. What Happens When You Call tree_.clear()?
-tree_ is a std::vector<std::shared_ptr<FMTXNode>>
+tree_ is a std::vector<std::shared_ptr<FMTNode>>
 
 clear() destroys all shared_ptrs in the vector.
 
-If no other shared_ptrs reference the nodes, the FMTXNode objects are deleted from memory.
+If no other shared_ptrs reference the nodes, the FMTNode objects are deleted from memory.
 
-But parent_ and children_ are raw pointers (FMTXNode*)
+But parent_ and children_ are raw pointers (FMTNode*)
 
 They are non-owning: They don’t keep the referenced nodes alive.
 
@@ -209,8 +209,8 @@ After tree_.clear(), these pointers become dangling (pointing to freed memory).
 Example:
 cpp
 Copy
-auto node1 = std::make_shared<FMTXNode>(...);  // node1 owns the FMTXNode
-auto node2 = std::make_shared<FMTXNode>(...);  // node2 owns another FMTXNode
+auto node1 = std::make_shared<FMTNode>(...);  // node1 owns the FMTNode
+auto node2 = std::make_shared<FMTNode>(...);  // node2 owns another FMTNode
 
 // Set raw pointer links
 node1->children_.push_back(node2.get());  // node1's children_ points to node2's memory
@@ -223,29 +223,29 @@ tree_.clear();  // node1 and node2 are deleted, but:
 // node1->children_[0] is now a dangling pointer!
 // node2->parent_ is now a dangling pointer!
 2. Why Aren’t parent_ and children_ Cleared Automatically?
-Raw pointers (FMTXNode*) have no idea when the object they point to is deleted.
+Raw pointers (FMTNode*) have no idea when the object they point to is deleted.
 
 They don’t participate in ownership.
 
 They don’t "know" when tree_.clear() happens.
 
-std::vector<FMTXNode*> is just a list of memory addresses.
+std::vector<FMTNode*> is just a list of memory addresses.
 
 Clearing tree_ doesn’t magically update these pointers.
 
 3. What You Expected vs. What Actually Happens
 Your Expectation	Reality
 "tree_.clear() should also clear parent_ and children_."	tree_.clear() only deletes the shared_ptrs. Raw pointers in children_/parent_ are left dangling.
-"I never used new, so I’m safe."	Raw pointers (FMTXNode*) are just as dangerous as new if mismanaged.
+"I never used new, so I’m safe."	Raw pointers (FMTNode*) are just as dangerous as new if mismanaged.
 4. How to Fix This
 Option 1: Use weak_ptr for Non-Owning Links (Recommended)
 cpp
 Copy
-class FMTXNode : public std::enable_shared_from_this<FMTXNode> {
-    std::weak_ptr<FMTXNode> parent_;  // Safe non-owning reference
-    std::vector<std::weak_ptr<FMTXNode>> children_;  // No dangling pointers!
+class FMTNode : public std::enable_shared_from_this<FMTNode> {
+    std::weak_ptr<FMTNode> parent_;  // Safe non-owning reference
+    std::vector<std::weak_ptr<FMTNode>> children_;  // No dangling pointers!
 public:
-    void setParent(std::shared_ptr<FMTXNode> parent) {
+    void setParent(std::shared_ptr<FMTNode> parent) {
         parent_ = parent;
         if (auto p = parent_.lock()) {
             p->children_.push_back(shared_from_this());  // Safe!
@@ -275,7 +275,7 @@ Cons: Easy to forget, risky in multithreaded code.
 Option 3: Use unique_ptr + Raw Pointers (If You Control All Access)
 cpp
 Copy
-std::vector<std::unique_ptr<FMTXNode>> tree_;
+std::vector<std::unique_ptr<FMTNode>> tree_;
 
 // Guarantee that `tree_` outlives all node operations.
 // Raw pointers are safe if you never dereference them after `tree_.clear()`.
@@ -336,8 +336,8 @@ cpp
 Copy
 Edit
 // Raw pointers leading to manual disconnection
-FMTXNode* parent_;
-std::vector<FMTXNode*> children_;
+FMTNode* parent_;
+std::vector<FMTNode*> children_;
 After:
 
 cpp
@@ -346,16 +346,16 @@ Edit
 #include <memory>
 #include <vector>
 
-class FMTXNode : public std::enable_shared_from_this<FMTXNode> {
+class FMTNode : public std::enable_shared_from_this<FMTNode> {
 public:
-    std::weak_ptr<FMTXNode> parent_;
-    std::vector<std::shared_ptr<FMTXNode>> children_;
+    std::weak_ptr<FMTNode> parent_;
+    std::vector<std::shared_ptr<FMTNode>> children_;
 
     // Other members and methods
 };
 With this setup:
 
-When the tree_ vector (which holds std::shared_ptr<FMTXNode>) is cleared, each node is automatically destroyed.
+When the tree_ vector (which holds std::shared_ptr<FMTNode>) is cleared, each node is automatically destroyed.
 
 The parent pointers, being weak, do not extend the lifetime of their children, and the children pointers being shared_ptr ensure that the children are kept alive only if they are owned elsewhere.
 

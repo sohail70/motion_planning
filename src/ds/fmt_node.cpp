@@ -1,0 +1,96 @@
+#include"motion_planning/ds/fmt_node.hpp"
+#include "motion_planning/ds/fmt_node.hpp"
+
+FMTNode::FMTNode(std::unique_ptr<State> state, int index)
+    : state_(std::move(state)),
+      index_(index),
+      cost_(INFINITY),
+      in_queue_(false),
+      heap_index_(-1),
+      in_unvisited_(false),
+      parent_(nullptr) {}
+
+const Eigen::VectorXd& FMTNode::getStateValue() const { 
+    return state_->getValue(); 
+}
+
+double FMTNode::getCost() const noexcept { 
+    return cost_; 
+}
+
+void FMTNode::setCost(double cost) noexcept { 
+    cost_ = cost; 
+}
+
+FMTNode::NeighborMap& FMTNode::neighbors() noexcept { 
+    return neighbors_; 
+}
+
+const FMTNode::NeighborMap& FMTNode::neighbors() const noexcept { 
+    return neighbors_; 
+}
+
+void FMTNode::setParent(FMTNode* parent, double edge_cost) {
+    // Early exit if parent is the same
+    if (parent == parent_) { 
+        edge_cost_ = edge_cost; // Update cost even if parent is same
+        return;
+    }
+    // If parent has changed remove this node from its old parent's children list
+    if(parent_ && parent_ != parent) {
+        auto& childs = parent_->children_;
+        childs.erase(std::remove(childs.begin(), childs.end(), this), childs.end());
+    }
+    
+    parent_ = parent;
+    edge_cost_ = edge_cost;
+    
+    // Add this node to the new parent's children list
+    if(parent_ ){ //&& !hasChild(this, parent_->children_)) {
+        parent_->children_.push_back(this);
+    }
+}
+
+void FMTNode::disconnectFromGraph() {
+    // Break parent link
+    if (parent_ != nullptr) {
+        auto& siblings = parent_->children_;
+        siblings.erase(std::remove(siblings.begin(), siblings.end(), this), siblings.end());
+        parent_ = nullptr;
+    }
+    
+    // Break child links
+    for (FMTNode* child : children_) {
+        if (child && child->parent_ == this) {
+            child->parent_ = nullptr;
+        }
+    }
+    children_.clear();
+}
+
+void FMTNode::sanityCheck() const {
+    if (in_unvisited_ && in_queue_) {
+        std::cerr << "Warning: Node " << index_ 
+                  << " has both in_unvisited_ and in_queue_ set to true!" << std::endl;
+    }
+}
+
+FMTNode* FMTNode::getParent() const noexcept { 
+    return parent_; 
+}
+
+const std::vector<FMTNode*>& FMTNode::getChildren() const noexcept { 
+    return children_; 
+}
+
+std::vector<FMTNode*>& FMTNode::getChildrenMutable() noexcept { 
+    return children_; 
+}
+
+void FMTNode::setIndex(int index) noexcept { 
+    index_ = index; 
+}
+
+int FMTNode::getIndex() const noexcept { 
+    return index_; 
+}

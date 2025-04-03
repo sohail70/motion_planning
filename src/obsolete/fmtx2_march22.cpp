@@ -85,7 +85,7 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     setStart(problem_->getStart());
     std::cout << "--- \n";
     for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
-        auto node = std::make_unique<FMTXNode>(statespace_->sampleUniform(lower_bound_ , upper_bound_),tree_.size());
+        auto node = std::make_unique<FMTNode>(statespace_->sampleUniform(lower_bound_ , upper_bound_),tree_.size());
         node->in_unvisited_ = true;
         tree_.push_back(std::move(node));
     }
@@ -192,7 +192,7 @@ void FMTX::plan() {
         auto top_element = v_open_heap_.top();
         double cost = top_element.min_key;
         int zIndex = top_element.index;
-        FMTXNode* z = tree_[top_element.index].get();
+        FMTNode* z = tree_[top_element.index].get();
         // if (partial_update == true && (zIndex==robot_state_index_ || z->getCost() > robot_node_->getCost())){
         //     /*
         //         preserve the v open heap nodes! no need to clear it because we might use them on the next pass!
@@ -220,7 +220,7 @@ void FMTX::plan() {
 
                 near(xIndex);
                 double min_cost = std::numeric_limits<double>::infinity();
-                FMTXNode* best_neighbor_node = nullptr;
+                FMTNode* best_neighbor_node = nullptr;
                 double best_edge_length = 0.0;
 
                 // Single pass through neighbors to both filter and find minimum
@@ -343,7 +343,7 @@ std::vector<Eigen::VectorXd> FMTX::getPathPositions() const {
     }
 
     // Start at the robot's node
-    FMTXNode* current_node = robot_node_;
+    FMTNode* current_node = robot_node_;
 
     // Traverse the tree from the robot's node to the root
     while (current_node != nullptr) {
@@ -364,7 +364,7 @@ void FMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
 
     size_t best_index = std::numeric_limits<size_t>::max(); 
     double min_total_cost = std::numeric_limits<double>::max();
-    FMTXNode* best_node = nullptr; 
+    FMTNode* best_node = nullptr; 
 
     for (size_t index : nearest_indices) {
         auto node = tree_.at(index).get();
@@ -412,7 +412,7 @@ void FMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
 
 void FMTX::setStart(const Eigen::VectorXd& start) {
     root_state_index_ = statespace_->getNumStates();
-    auto node = std::make_unique<FMTXNode>(statespace_->addState(start),tree_.size());
+    auto node = std::make_unique<FMTNode>(statespace_->addState(start),tree_.size());
     node->setCost(0);
     node->in_queue_ = true;
     QueueElement2 new_element ={0,0};
@@ -423,7 +423,7 @@ void FMTX::setStart(const Eigen::VectorXd& start) {
 }
 void FMTX::setGoal(const Eigen::VectorXd& goal) {
     robot_state_index_ = statespace_->getNumStates();
-    auto node = std::make_unique<FMTXNode>(statespace_->addState(goal),tree_.size());
+    auto node = std::make_unique<FMTNode>(statespace_->addState(goal),tree_.size());
     node->in_unvisited_ = true;
     robot_node_ = node.get(); // Management of the node variable above will be done by the unique_ptr i'll send to tree_ below so robot_node_ is just using it!
     tree_.push_back(std::move(node));
@@ -437,7 +437,7 @@ void FMTX::near(int node_index) {
     auto indices = kdtree_->radiusSearch(node->getStateValue(), neighborhood_radius_); //!!!!! WHEN KD TREE PROVIDES DISTANCE WHY DO YOU CALC DISTS AGAIN IN BELOW! --> ALSO DO THIS FOR RRTX
     for(int idx : indices) {
         if(idx == node->getIndex()) continue;
-        FMTXNode* neighbor = tree_[idx].get();
+        FMTNode* neighbor = tree_[idx].get();
         auto dist = (node->getStateValue() - neighbor->getStateValue()).norm();
         node->neighbors()[neighbor] = FMTxEdgeInfo{dist,dist};
     }
@@ -692,20 +692,20 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 
 std::unordered_set<int> FMTX::getDescendants(int node_index) {
     std::unordered_set<int> descendants;
-    std::queue<FMTXNode*> queue;
+    std::queue<FMTNode*> queue;
     
     // Start with the initial node
     queue.push(tree_[node_index].get());
     
     while (!queue.empty()) {
-        FMTXNode* current = queue.front();
+        FMTNode* current = queue.front();
         queue.pop();
         
         // Store the index in the result set
         descendants.insert(current->getIndex());
         
         // Process children through pointers
-        for (FMTXNode* child : current->getChildren()) {
+        for (FMTNode* child : current->getChildren()) {
             queue.push(child);
         }
     }
@@ -714,15 +714,15 @@ std::unordered_set<int> FMTX::getDescendants(int node_index) {
 }
 // std::unordered_set<int> FMTX::getDescendants(int node_index) {
 //     std::unordered_set<int> descendants;
-//     std::queue<FMTXNode*> queue;
-//     std::unordered_set<FMTXNode*> processing; // Track nodes being processed
+//     std::queue<FMTNode*> queue;
+//     std::unordered_set<FMTNode*> processing; // Track nodes being processed
     
 //     // Debugging variables
 //     int cycle_counter = 0;
 //     constexpr int MAX_CYCLE_WARNINGS = 5;
 //     auto start_time = std::chrono::steady_clock::now();
 
-//     FMTXNode* start_node = tree_[node_index].get();
+//     FMTNode* start_node = tree_[node_index].get();
 //     queue.push(start_node);
 //     processing.insert(start_node);
 
@@ -739,7 +739,7 @@ std::unordered_set<int> FMTX::getDescendants(int node_index) {
 //             break;
 //         }
 
-//         FMTXNode* current = queue.front();
+//         FMTNode* current = queue.front();
 //         queue.pop();
 //         processing.erase(current);
 
@@ -754,7 +754,7 @@ std::unordered_set<int> FMTX::getDescendants(int node_index) {
 
 //         // Process children with cycle checks
 //         const auto& children = current->getChildren();
-//         for (FMTXNode* child : children) {
+//         for (FMTNode* child : children) {
 //             if (processing.count(child)) {
 //                 std::cerr << "Parent-child cycle detected!\n"
 //                           << "Parent: " << current->getIndex() << "\n"

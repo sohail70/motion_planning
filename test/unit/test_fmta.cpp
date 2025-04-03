@@ -10,9 +10,76 @@
 #include "motion_planning/utils/parse_sdf.hpp"
 #include <valgrind/callgrind.h>
 
+#include <csignal>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <cstring>
+#include <iostream>
+#include <thread>
+#include <atomic>
+
+std::atomic<bool> running{true}; // Flag to control the infinite loop
+pid_t child_pid = -1;
+
+void runRosGzBridge() {
+    // // Launch parameter_bridge as a child process with suppressed logs
+    // child_pid = fork();
+    // if (child_pid == 0) {
+    //     // Child process: Execute the ros_gz_bridge command with suppressed logs
+    //     execlp("ros2", "ros2", "run", "ros_gz_bridge", "parameter_bridge", "--ros-args", 
+    //            "-p", "config_file:=/home/sohail/jazzy_ws/src/simple_robot/params/ros_gz_bridge.yaml",
+    //            "--log-level", "error", // Suppress logs below "error" severity
+    //            (char *)NULL);
+    //     // If execlp fails, print an error and exit
+    //     std::cerr << "Failed to launch parameter_bridge: " << strerror(errno) << std::endl;
+    //     exit(EXIT_FAILURE);
+    // } else if (child_pid < 0) {
+    //     // Fork failed
+    //     std::cerr << "Failed to fork process: " << strerror(errno) << std::endl;
+    //     return;
+    // }
+
+    // // Parent process: Wait for the child process to finish
+    // int status;
+    // waitpid(child_pid, &status, 0);
+    // if (WIFEXITED(status)) {
+    //     std::cout << "ros_gz_bridge exited with status: " << WEXITSTATUS(status) << std::endl;
+    // } else {
+    //     std::cerr << "ros_gz_bridge terminated abnormally" << std::endl;
+    // }
+}
+
+void sigint_handler(int sig) {
+    if (child_pid > 0) {
+        // Terminate the child process
+        kill(child_pid, SIGTERM);
+        waitpid(child_pid, nullptr, 0);
+        child_pid = -1;
+    }
+    running = false; // Stop the main loop
+    rclcpp::shutdown();
+}
 
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
+    
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+    // Set up SIGINT handler
+    struct sigaction sa;
+    sa.sa_handler = sigint_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    if (sigaction(SIGINT, &sa, nullptr) < 0) {
+        std::cerr << "Failed to set signal handler: " << strerror(errno) << std::endl;
+        rclcpp::shutdown();
+        return EXIT_FAILURE;
+    }
+
+    // Launch ros_gz_bridge in a separate thread
+    std::thread ros_gz_bridge_thread(runRosGzBridge);
+    ros_gz_bridge_thread.detach(); // Detach the thread to run independently
+
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Params for Pure-Pursuit Controller
@@ -34,11 +101,11 @@ int main(int argc, char **argv) {
     Params DWA;
     // ========== Core motion limits ==========
     DWA.setParam("max_speed",         3.0);   // Robot can go up to 3 m/s
-    DWA.setParam("min_speed",        -2.0);   // Allow reversing if needed
+    DWA.setParam("min_speed",        -1.0);   // Allow reversing if needed
     DWA.setParam("max_yawrate",       0.8);   // Turn rate up to 1.5 rad/s
-    DWA.setParam("max_accel",         2.0);   // Accelerate up to 2 m/s^2
-    DWA.setParam("max_decel",         2.0);   // Decelerate up to 2 m/s^2
-    DWA.setParam("max_dyawrate",      1.0);   // Angular acceleration limit
+    DWA.setParam("max_accel",         3.0);   // Accelerate up to 2 m/s^2
+    DWA.setParam("max_decel",         3.0);   // Decelerate up to 2 m/s^2
+    DWA.setParam("max_dyawrate",      2.0);   // Angular acceleration limit
     DWA.setParam("robot_radius",      0.3);
 
     // ========== Sampling and horizon ==========
@@ -52,9 +119,9 @@ int main(int argc, char **argv) {
     DWA.setParam("yawrate_resolution",0.1);
 
     // ========== Cost weights ==========
-    DWA.setParam("obstacle_cost_gain",  3.0); // Higher => more aggressive obstacle avoidance
-    DWA.setParam("speed_cost_gain",     1.0); // Medium => encourages higher speed, but not crazy
-    DWA.setParam("goal_cost_gain",      1.0); // Balanced
+    DWA.setParam("obstacle_cost_gain",  5.0); // Higher => more aggressive obstacle avoidance
+    DWA.setParam("speed_cost_gain",     0.3); // Medium => encourages higher speed, but not crazy
+    DWA.setParam("goal_cost_gain",      3.0); // Balanced
     DWA.setParam("path_cost_gain",      0.3); // Enough to stay near path, but not too strict
 
     
@@ -73,31 +140,31 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("world_name", "default");
     gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
-    gazebo_params.setParam("inflation", 0.0); // inflation added to obstalce radius virtually for the planner
+    /*
+        When you use ignore_sample == true i don't think would need a inflation specially in low sample case --> math can be proved i guess.
+    */
+    gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 5000);
+    planner_params.setParam("num_of_samples", 2000);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
-    planner_params.setParam("partial_update", false); // update the tree cost of the robot or not
-    planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update
-
-
-
-
+    planner_params.setParam("obs_cache", true);
+    planner_params.setParam("partial_plot", false);
     /////////////////////////////////////////////////////////////////////////////////////////////////
+
     // Create ROS node
-    auto node = std::make_shared<rclcpp::Node>("rrtx_visualizer");
+    auto node = std::make_shared<rclcpp::Node>("fmta_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    auto obstacle_radii = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
-    // auto obstacle_radii = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
-    // auto obstacle_radii = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
-for (const auto& [name, info] : obstacle_radii) {
-    std::cout << name << ": " << info << "\n";
-}
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_radii);
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world2.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
+    for (const auto& [name, info] : obstacle_info) {
+        std::cout << name << ": " << info << "\n";
+    }
+    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_info);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Controller and Nav2Controller objects
@@ -122,14 +189,20 @@ for (const auto& [name, info] : obstacle_radii) {
 
 
 
-    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 20000);
-    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::RRTX, std::move(statespace),problem_def, obstacle_checker);
+    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 30000);
+    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTA, std::move(statespace),problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
-    // Plan the static one!
+
+    auto start = std::chrono::high_resolution_clock::now();
     planner->plan();
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "Time taken for the update : " << duration.count() 
+                << " milliseconds\n";
+
 
     //----------- Waiting for the Sim Clock to start ------------ //
-    bool simulation_is_paused = true;
+    bool simulation_is_paused = false;
     auto node_clock = ros2_manager->get_clock();
     // We'll store the initial sim time
     rclcpp::Time last_time = node_clock->now();
@@ -139,7 +212,7 @@ for (const auto& [name, info] : obstacle_radii) {
 
     while (rclcpp::ok() && simulation_is_paused)
     {
-        // 1) Spin to process any incoming clock messages
+        // 1) Spin to process any incoming clock message
         rclcpp::spin_some(ros2_manager);
 
         // 2) Get current sim time
@@ -172,10 +245,8 @@ for (const auto& [name, info] : obstacle_radii) {
 
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(30); // 10 Hz (100ms per loop)
+    rclcpp::Rate loop_rate(1); // 10 Hz (100ms per loop)
 
-    // Suppose you have a boolean that decides if we want a 20s limit
-    bool limited = true;  // or read from params, or pass as an argument
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
@@ -183,107 +254,49 @@ for (const auto& [name, info] : obstacle_radii) {
 
     std::vector<double> sim_durations;
 
-    // Start profiling
-    CALLGRIND_START_INSTRUMENTATION;
-
-
-    while (rclcpp::ok()) {
-
-        // 1) If we are limiting to 20s, check if we've exceeded that
-        if (limited) {
-            auto now = std::chrono::steady_clock::now();
-            if (now - start_time > time_limit) {
-                std::cout << "[INFO] 20 seconds have passed. Exiting loop.\n";
-                break;  // exit the loop
-            }
-        }
-
-
+    // The main loop
+    while (running && rclcpp::ok()) {
 
         if (ros2_manager->hasNewGoal()) {
             start_position = ros2_manager->getStartPosition(); 
+            auto snapshot = obstacle_checker->getAtomicSnapshot();
             problem_def->setStart(start_position);
-            problem_def->setGoal(obstacle_checker->getRobotPosition());
+            problem_def->setGoal(snapshot.robot_position);
             planner->setup(planner_params, visualization);
-            planner->plan();   // For rrtx is different because we want to have the RRTX to cap to the max num samples and give us a tree first. for fair comparison with FMTX
+            auto start = std::chrono::high_resolution_clock::now();
+            planner->plan();
+            auto end = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+            std::cout << "Time taken for the update : " << duration.count() 
+                        << " milliseconds\n";
+
         }
 
 
-        // auto obstacles = obstacle_checker->getObstaclePositions();
-        // auto robot = obstacle_checker->getRobotPosition();
 
-        auto snapshot = obstacle_checker->getAtomicSnapshot();
-        auto& obstacles = snapshot.obstacles;
-        auto& robot = snapshot.robot_position;
-        // // dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot); // UNCOMMENT THIS LATER!
+        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTA*>(planner.get())->getSmoothedPathPositions(5, 2);
+        // ros2_manager->followPath(shortest_path_);
 
-        ////////// PLAN //////////
-        auto start = std::chrono::high_resolution_clock::now();
-        dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
-        auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        if (duration.count()>0)
-            std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
-        sim_durations.push_back(duration.count());
-
-        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<RRTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-        ros2_manager->followPath(shortest_path_);
-
-        ////////// VISUALIZE /////
-        // dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
-        dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-        dynamic_cast<RRTX*>(planner.get())->visualizeTree();
-
+        // dynamic_cast<FMTA*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        // dynamic_cast<FMTA*>(planner.get())->visualizeHeapAndUnvisited();
+        dynamic_cast<FMTA*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();
-
-    }
-    // Stop profiling
-    CALLGRIND_STOP_INSTRUMENTATION;
-
-    if (limited == true){
-        // 1) Get the current local time
-        std::time_t now = std::time(nullptr); 
-        std::tm* local_tm = std::localtime(&now);
-
-        // 2) Extract day, month, year, hour, minute, second
-        int day    = local_tm->tm_mday;           // day of month [1-31]
-        int month  = local_tm->tm_mon + 1;        // months since January [0-11]; add 1
-        int year   = local_tm->tm_year + 1900;    // years since 1900
-        int hour   = local_tm->tm_hour;           // hours since midnight [0-23]
-        int minute = local_tm->tm_min;            // minutes after hour [0-59]
-        int second = local_tm->tm_sec;            // seconds after minute [0-60]
-
-        // 3) Build your file name, e.g. "sim_times_13_3_2025_14_58_12.csv"
-        std::string filename = "sim_times_" +
-            std::to_string(day)    + "_" +
-            std::to_string(month)  + "_" +
-            std::to_string(year)   + "_" +
-            std::to_string(hour)   + "_" +
-            std::to_string(minute) + "_" +
-            std::to_string(second) + ".csv";
-
-        std::cout << "Writing durations to: " << filename << std::endl;
-
-        // 4) Write durations to that file
-        std::ofstream out(filename);
-        if (!out.is_open()) {
-            std::cerr << "Error: failed to open " << filename << std::endl;
-            return 1;
-        }
-
-        for (auto &d : sim_durations) {
-            out << d << "\n";
-        }
-        out.close();
-
-        std::cout << "Done writing CSV.\n";
     }
 
-
-
-
-  
+    
+    // Cleanup
+    if (child_pid > 0) {
+        kill(child_pid, SIGTERM);
+        waitpid(child_pid, nullptr, 0);
+    }
     rclcpp::shutdown();
-
+    return 0;
 }
+
+
+
+
+
+
+

@@ -5,11 +5,13 @@
 #include "motion_planning/planners/planner.hpp"
 #include "motion_planning/ds/fmt_node.hpp"
 #include "motion_planning/utils/visualization.hpp"
+#include "boost/container/flat_map.hpp"
 #include "motion_planning/ds/priority_queue.hpp"
 
-class FMTX : public Planner {
+
+class FMTA : public Planner {
  public:
-            FMTX(std::unique_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
+            FMTA(std::unique_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
             void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
             void plan() override;
             std::vector<size_t> getPathIndex() const;
@@ -31,23 +33,7 @@ class FMTX : public Planner {
 
 
 
-            std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& obstacles, double scale_factor);
-            std::pair<std::unordered_set<int>,std::unordered_set<int>> findSamplesNearObstaclesDual(const std::vector<Obstacle>& obstacles, double scale_factor);
-
-            void updateObstacleSamples(const std::vector<Obstacle>& obstacles);
-            std::unordered_set<int> getDescendants(int node_index);
-
-
-
-            void handleAddedObstacleSamples(const std::vector<int>& added);
-            void handleRemovedObstacleSamples(const std::vector<int>& removed);
-
-            // void handleInflatedZoneAdditions(const std::vector<int>& added_inflated);
-
-
             double heuristic(int current_index);
-
-
             void clearPlannerState();
 
  private:
@@ -65,15 +51,10 @@ class FMTX : public Planner {
 
 
             PriorityQueue<FMTNode, FMTComparator> v_open_heap_;
+
+
             Eigen::VectorXd robot_position_;
             FMTNode* robot_node_;
-
-            std::unordered_set<int> samples_in_obstacles_; // Current samples in obstacles
-            std::unordered_set<int> current_; // Current samples in obstacles
-
-            std::unordered_map<int , double> edge_length_;
-            int max_length_edge_ind = -1;
-            double max_length = -std::numeric_limits<double>::infinity();
 
             int num_of_samples_;
             double lower_bound_;
@@ -84,17 +65,8 @@ class FMTX : public Planner {
             double neighborhood_radius_;
             bool obs_cache = false;
             bool partial_plot = false;
-            bool use_heuristic = false;
-            bool partial_update = false;
-            bool ignore_sample;
-            bool prune;
-
-            bool in_dynamic = false;
 
 
-            std::unordered_set<int> v_open_set_;
-
-            std::unordered_set<int> dir;
             
 
 };

@@ -1,10 +1,10 @@
 #include "motion_planning/utils/rviz_visualization.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-class FMTXNode : public rclcpp::Node {
+class FMTNode : public rclcpp::Node {
 public:
     // Constructor doesn't use shared_from_this() anymore
-    FMTXNode() : Node("fmtx_visualizer") {
+    FMTNode() : Node("fmtx_visualizer") {
         // We will set the visualizer after the node is fully constructed
     }
 
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
 
     // Create the node as a shared pointer
-    auto node = std::make_shared<FMTXNode>();
+    auto node = std::make_shared<FMTNode>();
 
     // Now initialize the visualizer
     node->initializeVisualizer();

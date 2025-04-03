@@ -32,6 +32,9 @@
  *       for the refill vopen function maybe use kd tree querying the robot_node_index with the radius of search (to be found!) and then loop thorugh that chunk and if any of those nodes are in v unvisted then add their neighbors to the vopen like the for loop in the update samples!  or maybe not use raidus but a batch size of 100 closest nodes!
  *       BUT IM NOT SURE IF IT WORKS. YOU HAVE TO COMPLETELY KNOW ABOUT THE REGION AND PU ALL THE NECESSARY NODES INTO VOPEN FOR THAT REGION SO THAT THE PLAN CONNECTION PROCEDURE DOES ITS JOB
  * 
+ * 
+ * OBSERVATION MATH EXTENSION: I think the ignore sample approach is good if you use inflation it pretty much covers that --> maybe a simple formula to find how much minimum inflation is needed to activate ignore sample approach (which should be also dependant on the number of samples)
+ *  
  */
 
 #include "motion_planning/state_space/euclidean_statespace.hpp"
@@ -41,6 +44,7 @@
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
 #include "motion_planning/utils/ros2_manager.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
+#include <valgrind/callgrind.h>
 
 #include <csignal>
 #include <sys/types.h>
@@ -133,11 +137,11 @@ int main(int argc, char **argv) {
     Params DWA;
     // ========== Core motion limits ==========
     DWA.setParam("max_speed",         3.0);   // Robot can go up to 3 m/s
-    DWA.setParam("min_speed",        -2.0);   // Allow reversing if needed
+    DWA.setParam("min_speed",        -1.0);   // Allow reversing if needed
     DWA.setParam("max_yawrate",       0.8);   // Turn rate up to 1.5 rad/s
-    DWA.setParam("max_accel",         2.0);   // Accelerate up to 2 m/s^2
-    DWA.setParam("max_decel",         2.0);   // Decelerate up to 2 m/s^2
-    DWA.setParam("max_dyawrate",      1.0);   // Angular acceleration limit
+    DWA.setParam("max_accel",         3.0);   // Accelerate up to 2 m/s^2
+    DWA.setParam("max_decel",         3.0);   // Decelerate up to 2 m/s^2
+    DWA.setParam("max_dyawrate",      2.0);   // Angular acceleration limit
     DWA.setParam("robot_radius",      0.3);
 
     // ========== Sampling and horizon ==========
@@ -151,9 +155,9 @@ int main(int argc, char **argv) {
     DWA.setParam("yawrate_resolution",0.1);
 
     // ========== Cost weights ==========
-    DWA.setParam("obstacle_cost_gain",  3.0); // Higher => more aggressive obstacle avoidance
-    DWA.setParam("speed_cost_gain",     1.0); // Medium => encourages higher speed, but not crazy
-    DWA.setParam("goal_cost_gain",      1.0); // Balanced
+    DWA.setParam("obstacle_cost_gain",  5.0); // Higher => more aggressive obstacle avoidance
+    DWA.setParam("speed_cost_gain",     0.3); // Medium => encourages higher speed, but not crazy
+    DWA.setParam("goal_cost_gain",      3.0); // Balanced
     DWA.setParam("path_cost_gain",      0.3); // Enough to stay near path, but not too strict
 
     
@@ -172,18 +176,42 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("world_name", "default");
     gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
+    /*
+        When you use ignore_sample == true i don't think would need a inflation specially in low sample case --> math can be proved i guess.
+    */
+    gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
     planner_params.setParam("num_of_samples", 5000);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
-    planner_params.setParam("partial_update", false);
+    planner_params.setParam("partial_update", true);
+    /*
+        we can cache and its useful because near obstacle there comes a time that too many z indices came up with the same best neighbor node for specific x index
+        and since there is an obs in between then we end up needing to re check the same obstacle check between nodes
+        I reckon if i use blocked_neighbor variable then we won't need this but that blocked_neighbor variable introduces it own overhead that only worth to use
+        if we are using fmta 
+
+        another thing i notices is this doesnt help much with performance in my 2D case. but im gonna leave it in case i have time to test it in more dimensions
+    
+    */
     planner_params.setParam("obs_cache", true);
     planner_params.setParam("partial_plot", false);
-    planner_params.setParam("use_heuristic", false); // TODO: Don't use this for now --> the while condition needs to change --> if robot is not in v unvisted is a good start but think about this more
-    planner_params.setParam("first_method", true);
+    planner_params.setParam("use_heuristic", false); // TODO: I need to verify if its legit workingor not.
+    planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update --> when ignore_sample true the prune is not happening anymore so doesnt matter what you put there
+    planner_params.setParam("prune", true); // prune == true means do an obstalce check in handlAdd/Remove and set the neighbor cost to inf and DO NOT  obstalce check in plan , prune==false means do not do an obstalce check in handleAdd/Remove and delay it in plan --> the delayed part makes it more expensive in case of high obstalce but in case of low obstalce its faster! (also for high number of samples the delayed part is slower)--> prune true overall is faster i guess
+    /*
+        IMPORTANT NOTE: prune vs plan? in prune we do obstacle check in local vicinity of obstalce and set cost to neighbor to inf in add obstalce and reset in remove obstalce
+                        and since we invalidated the edges between those nodes on obstalce and their neighbor, we don't need to do an obstacle check in plan function 
+                        but i wonder what if we do not do an obstacle check in add/remove obstalce and postpone the check to plan ? this is in line with fmt philosophy but
+                        the thing is then we have to do lots of obstacle checks for all the orphaned edges! as opposed to do only local obstacle checks so the question boild down
+                        to number of obstacle checks in local vicnity of the obstalce with ALL their neighbors and the number of delayed obstacle checks in plan function where only the query
+                        current edge-> best_neighbor edge. in my tests the prune version where we do not delay checks works faster but maybe at high dimensional space its better to use the delayed version!
+                        thats another topic of research i'll do later!
 
+                        all in all prune is like doing the rrtx approach in setting the distance to inf based on explicit obstacle check between a node in obstalce and its neighbors
+    */
 
     /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -191,13 +219,13 @@ int main(int argc, char **argv) {
     auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    auto obstacle_radii = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
-    // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
-    // auto obstacle_radii = parseSdfForObstacleRadii("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
-for (const auto& [name, info] : obstacle_radii) {
-    std::cout << name << ": " << info << "\n";
-}
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_radii);
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world2.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
+    for (const auto& [name, info] : obstacle_info) {
+        std::cout << name << ": " << info << "\n";
+    }
+    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_info);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Controller and Nav2Controller objects
@@ -222,10 +250,16 @@ for (const auto& [name, info] : obstacle_radii) {
 
 
 
-    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 5000);
+    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 30000);
     std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace),problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
-    planner->plan();   // if you wanted to do it right here
+
+    auto start = std::chrono::high_resolution_clock::now();
+    planner->plan();
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "Time taken for the update : " << duration.count() 
+                << " milliseconds\n";
 
 
     //----------- Waiting for the Sim Clock to start ------------ //
@@ -239,7 +273,7 @@ for (const auto& [name, info] : obstacle_radii) {
 
     while (rclcpp::ok() && simulation_is_paused)
     {
-        // 1) Spin to process any incoming clock messages
+        // 1) Spin to process any incoming clock message
         rclcpp::spin_some(ros2_manager);
 
         // 2) Get current sim time
@@ -270,20 +304,12 @@ for (const auto& [name, info] : obstacle_radii) {
 
 
 
-    // auto start = std::chrono::high_resolution_clock::now();
-    // planner->plan();
-    // auto end = std::chrono::high_resolution_clock::now();
-    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    // if (duration.count() > 0)
-    //     std::cout << "Time taken for the Static env: " << duration.count() << " milliseconds\n";
-
-
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(50); // 10 Hz (100ms per loop)
+    rclcpp::Rate loop_rate(30); // 10 Hz (100ms per loop)
 
     // Suppose you have a boolean that decides if we want a 20s limit
-    bool limited = true;  // or read from params, or pass as an argument
+    bool limited = true; 
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
@@ -294,7 +320,6 @@ for (const auto& [name, info] : obstacle_radii) {
     // The main loop
     while (running && rclcpp::ok()) {
 
-        // 1) If we are limiting to 20s, check if we've exceeded that
         if (limited) {
             auto now = std::chrono::steady_clock::now();
             if (now - start_time > time_limit) {
@@ -303,163 +328,81 @@ for (const auto& [name, info] : obstacle_radii) {
             }
         }
 
-        // 2) Planner logic ...
         if (ros2_manager->hasNewGoal()) {
             start_position = ros2_manager->getStartPosition(); 
+            auto snapshot = obstacle_checker->getAtomicSnapshot();
             problem_def->setStart(start_position);
-            problem_def->setGoal(obstacle_checker->getRobotPosition());
+            problem_def->setGoal(snapshot.robot_position);
             planner->setup(planner_params, visualization);
             // planner->plan();   // if you wanted to do it right here
         }
 
-        auto obstacles = obstacle_checker->getObstaclePositions();
-        auto robot = obstacle_checker->getRobotPosition();
-        dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
 
+        auto snapshot = obstacle_checker->getAtomicSnapshot();
+        auto& obstacles = snapshot.obstacles;
+        auto& robot = snapshot.robot_position;
+        
+
+        dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
         auto start = std::chrono::high_resolution_clock::now();
         dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
         planner->plan();
         auto end = std::chrono::high_resolution_clock::now();
+
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         if (duration.count() > 0) {
-            std::cout << "Time taken for the update : " << duration.count() 
+            std::cout << "time taken for the update : " << duration.count() 
                     << " milliseconds\n";
         }
         sim_durations.push_back(duration.count());
 
-        std::vector<Eigen::VectorXd> shortest_path_ =
-            dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+
+        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
         ros2_manager->followPath(shortest_path_);
-    
+
         dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        // dynamic_cast<FMTX*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
-
-        // if you have a rate to sleep, do it here
         loop_rate.sleep();
     }
 
+    if (limited==true){
+        std::time_t now = std::time(nullptr); 
+        std::tm* local_tm = std::localtime(&now);
 
-    // 1) Get the current local time
-    std::time_t now = std::time(nullptr); 
-    std::tm* local_tm = std::localtime(&now);
+        int day    = local_tm->tm_mday;           // day of month [1-31]
+        int month  = local_tm->tm_mon + 1;        // months since January [0-11]; add 1
+        int year   = local_tm->tm_year + 1900;    // years since 1900
+        int hour   = local_tm->tm_hour;           // hours since midnight [0-23]
+        int minute = local_tm->tm_min;            // minutes after hour [0-59]
+        int second = local_tm->tm_sec;            // seconds after minute [0-60]
 
-    // 2) Extract day, month, year, hour, minute, second
-    int day    = local_tm->tm_mday;           // day of month [1-31]
-    int month  = local_tm->tm_mon + 1;        // months since January [0-11]; add 1
-    int year   = local_tm->tm_year + 1900;    // years since 1900
-    int hour   = local_tm->tm_hour;           // hours since midnight [0-23]
-    int minute = local_tm->tm_min;            // minutes after hour [0-59]
-    int second = local_tm->tm_sec;            // seconds after minute [0-60]
+        // 3) Build your file name, e.g. "sim_times_13_3_2025_14_58_12.csv"
+        std::string filename = "sim_times_" +
+            std::to_string(day)    + "_" +
+            std::to_string(month)  + "_" +
+            std::to_string(year)   + "_" +
+            std::to_string(hour)   + "_" +
+            std::to_string(minute) + "_" +
+            std::to_string(second) + ".csv";
 
-    // 3) Build your file name, e.g. "sim_times_13_3_2025_14_58_12.csv"
-    std::string filename = "sim_times_" +
-        std::to_string(day)    + "_" +
-        std::to_string(month)  + "_" +
-        std::to_string(year)   + "_" +
-        std::to_string(hour)   + "_" +
-        std::to_string(minute) + "_" +
-        std::to_string(second) + ".csv";
+        std::cout << "Writing durations to: " << filename << std::endl;
 
-    std::cout << "Writing durations to: " << filename << std::endl;
+        // 4) Write durations to that file
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: failed to open " << filename << std::endl;
+            return 1;
+        }
 
-    // 4) Write durations to that file
-    std::ofstream out(filename);
-    if (!out.is_open()) {
-        std::cerr << "Error: failed to open " << filename << std::endl;
-        return 1;
+        for (auto &d : sim_durations) {
+            out << d << "\n";
+        }
+        out.close();
+
+        std::cout << "Done writing CSV.\n";
     }
-
-    for (auto &d : sim_durations) {
-        out << d << "\n";
-    }
-    out.close();
-
-    std::cout << "Done writing CSV.\n";
-
-
-    // // Start the timer
-    // auto start_time = std::chrono::high_resolution_clock::now();
-
-    // // Run the loop for 20 seconds
-    // while (std::chrono::duration_cast<std::chrono::seconds>(
-    //         std::chrono::high_resolution_clock::now() - start_time).count() < 20) {
-    //     auto obstacles = obstacle_checker->getObstaclePositions();
-    //     auto robot = obstacle_checker->getRobotPosition();
-    //     if (robot(0) != 0.0 && robot(1) != 0.0 && use_robot==true) // Else it will only use the setGoal to set the vbot
-    //         dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
-    //     dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
-
-    //     // dynamic_cast<FMTX*>(planner.get())->visualizePath(dynamic_cast<FMTX*>(planner.get())->getPathIndex());
-    //     // dynamic_cast<FMTX*>(planner.get())->visualizeTree();
-    //     rclcpp::spin_some(ros2_manager);
-    // }
-
-
-  // Variables for frequency calculation
-    // std::deque<std::chrono::milliseconds> loop_times; // Store last N loop durations
-    // const size_t window_size = 10; // Number of iterations to average over
-    // auto last_time = std::chrono::high_resolution_clock::now();
-
-    // while (running && rclcpp::ok()) {
-    //     auto loop_start = std::chrono::high_resolution_clock::now();
-
-    //     if (ros2_manager->hasNewGoal()) {
-    //         start_position = ros2_manager->getStartPosition(); // The goal you provided through rviz2
-    //         problem_def->setStart(start_position); // Root of the tree
-    //         problem_def->setGoal(obstacle_checker->getRobotPosition());
-    //         planner->setup(planner_params, visualization);
-    //         // planner->plan();
-    //     }
-
-    //     auto obstacles = obstacle_checker->getObstaclePositions();
-    //     auto robot = obstacle_checker->getRobotPosition();
-    //     dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
-
-    //     auto start = std::chrono::high_resolution_clock::now();
-    //     dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
-    //     planner->plan();
-    //     auto end = std::chrono::high_resolution_clock::now();
-    //     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    //     if (duration.count() > 0)
-    //         std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
-
-    //     std::vector<Eigen::VectorXd> shortest_path_;
-    //     shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-    //     ros2_manager->followPath(shortest_path_);
-
-    //     dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-    //     dynamic_cast<FMTX*>(planner.get())->visualizeTree();
-    //     rclcpp::spin_some(ros2_manager);
-
-    //     // Calculate loop duration
-    //     auto loop_end = std::chrono::high_resolution_clock::now();
-    //     auto loop_duration = std::chrono::duration_cast<std::chrono::milliseconds>(loop_end - loop_start);
-    //     loop_times.push_back(loop_duration);
-
-    //     // Keep only the last N loop durations
-    //     if (loop_times.size() > window_size) {
-    //         loop_times.pop_front();
-    //     }
-
-    //     // Calculate average loop duration and frequency
-    //     if (loop_times.size() == window_size) {
-    //         double avg_duration_ms = 0.0;
-    //         for (const auto& time : loop_times) {
-    //             avg_duration_ms += time.count();
-    //         }
-    //         avg_duration_ms /= window_size;
-
-    //         double frequency_hz = 1000.0 / avg_duration_ms; // Convert ms to Hz
-    //         std::cout << "Average loop frequency: " << frequency_hz << " Hz\n";
-    //     }
-
-    //     last_time = loop_end;
-    // }
-
-
-
-
     
     // Cleanup
     if (child_pid > 0) {

@@ -1,6 +1,6 @@
 // Copyright 2025 Soheil E.nia
 /**
- * TODO: Make a RRTXNode and FMTXNode since they need different stuff!
+ * TODO: Make a RRTXNode and FMTNode since they need different stuff!
  */
 #pragma once
 
