@@ -71,10 +71,10 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
 
     ///////////////////Neighborhood Radius////////////////////////////////
     int d = statespace_->getDimension();
-    double mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
-    double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
-    double gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
-    double factor = 2.0;
+    mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
+    zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
+    gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+    factor = 1.1;
     neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
     // neighborhood_radius_ = 5.0;
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
@@ -111,10 +111,14 @@ void FMTX::plan() {
     
     */
 
+    // std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
     while (!v_open_heap_.empty() &&
            (partial_update ? (v_open_heap_.top().first < robot_node_->getCost() ||
             robot_node_->getCost() == INFINITY ||
             robot_node_->in_queue_==true)  : true  )){
+
+
 
 
 
@@ -130,7 +134,6 @@ void FMTX::plan() {
         near(zIndex);
         for (const auto& [x, cost_to_neighbor] : z->neighbors()) {
             int xIndex = x->getIndex(); // As I refactor the code I don't need to use xIndex anymore but I still need som refactoring.
-
 
             /*
                 About the following if:
@@ -1089,9 +1092,9 @@ void FMTX::visualizeTree() {
         }
     
         // // Visualize tree components
-        // visualization_->visualizeNodes(tree_nodes, "map", 
-        //                             std::vector<float>{1.0f, 0.0f, 0.0f},  // Red for tree
-        //                             "tree_nodes");
+        visualization_->visualizeNodes(tree_nodes, "map", 
+                                    std::vector<float>{1.0f, 0.0f, 0.0f},  // Red for tree
+                                    "tree_nodes");
         
         // // Visualize vopen nodes with different color/namespace
         // visualization_->visualizeNodes(vopen_positions);
@@ -1172,7 +1175,9 @@ void FMTX::visualizeHeapAndUnvisited() {
         std::cerr << "There were nodes in v_open_heap_ with INF cost!" << std::endl;
     }
 
-    visualization_->visualizeNodes(vopen_positions);
+    // visualization_->visualizeNodes(vopen_positions);
+    visualization_->visualizeNodes(vopen_positions, "map", std::vector<float>{0.0f,1.0f,0.0f}, "vopen");
+
 }
 
 

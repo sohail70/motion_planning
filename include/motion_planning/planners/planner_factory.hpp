@@ -4,6 +4,7 @@
 
 #include "motion_planning/planners/planner.hpp"
 #include "motion_planning/planners/geometric/fmt.hpp"
+#include "motion_planning/planners/geometric/any_fmt.hpp"
 #include "motion_planning/planners/geometric/fmta.hpp"
 #include "motion_planning/planners/geometric/fmtx.hpp"
 #include "motion_planning/planners/geometric/rrtx.hpp"
@@ -32,6 +33,7 @@ class AutorRegisterPlanners {
 
 
 static AutorRegisterPlanners<FMT> autoRegisterFMT(PlannerType::FMT);
+static AutorRegisterPlanners<ANYFMT> autoRegisterANYFMT(PlannerType::ANYFMT);
 static AutorRegisterPlanners<FMTA> autoRegisterFMTa(PlannerType::FMTA);
 static AutorRegisterPlanners<FMTX> autoRegisterFMTx(PlannerType::FMTX);
 static AutorRegisterPlanners<RRTX> autoRegisterRRTx(PlannerType::RRTX);

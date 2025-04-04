@@ -64,6 +64,7 @@ target_link_libraries(gz_obs
 # Motion Planning Library
 add_library(motion_planning
     src/planners/geometric/fmt.cpp
+    src/planners/geometric/any_fmt.cpp
     src/planners/geometric/fmta.cpp
     src/planners/geometric/fmtx.cpp
     src/planners/geometric/rrtx.cpp
@@ -95,6 +96,11 @@ add_executable(test_fmt test/unit/test_fmt.cpp)
 target_link_libraries(test_fmt motion_planning gz_obs)
 ament_target_dependencies(test_fmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_fmt COMMAND test_fmt)
+
+add_executable(test_anyfmt test/unit/test_anyfmt.cpp)
+target_link_libraries(test_anyfmt motion_planning gz_obs)
+ament_target_dependencies(test_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_anyfmt COMMAND test_anyfmt)
 
 add_executable(test_rrtx test/unit/test_rrtx.cpp)
 target_link_libraries(test_rrtx motion_planning gz_obs)
