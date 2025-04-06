@@ -34,7 +34,8 @@
  * 
  * 
  * OBSERVATION MATH EXTENSION: I think the ignore sample approach is good if you use inflation it pretty much covers that --> maybe a simple formula to find how much minimum inflation is needed to activate ignore sample approach (which should be also dependant on the number of samples)
- *  
+ * 
+ * INSIGHT: What would negative edge weight in dijkstra mean here?  
  */
 
 #include "motion_planning/state_space/euclidean_statespace.hpp"

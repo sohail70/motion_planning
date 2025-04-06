@@ -3,7 +3,7 @@
 #include "motion_planning/utils/nano_flann.hpp"
 
 
-NanoFlann::NanoFlann(int dimension) : dimension_(dimension), data_(0, dimension) {
+NanoFlann::NanoFlann(int dimension) : dimension_(dimension), data_(0, dimension), num_points_(0), capacity_(0){
     kdtree_ = std::make_unique<NFKDTree>(dimension, data_, 10 /* max leaf */);
     kdtree_->index_->buildIndex();
     std::cout << "KDTree initialized with dimension: " << dimension_ << std::endl;
@@ -23,6 +23,20 @@ void NanoFlann::addPoint(const Eigen::VectorXd& stateValue) {
 
     // std::cout << "Added point: " << value.transpose() << std::endl;
     // std::cout << "Data matrix size: " << data_.rows() << "x" << data_.cols() << std::endl;
+
+
+    //     // Resize in chunks to minimize reallocations
+    // if (num_points_ >= capacity_) {
+    //     size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
+    //     data_.conservativeResize(new_capacity, dimension_);
+    //     // Initialize the newly added rows with infinity
+    //     data_.bottomRows(new_capacity - num_points_).setConstant(std::numeric_limits<double>::infinity());
+
+
+    //     capacity_ = new_capacity;
+    // }
+
+    // data_.row(num_points_++) = stateValue;
 }
 
 void NanoFlann::addPoints(const std::vector<Eigen::VectorXd>& statesValues) {

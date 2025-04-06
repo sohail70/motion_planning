@@ -1,12 +1,12 @@
 // Copyright 2025 Soheil E.nia
-#include "motion_planning/planners/geometric/fmta.hpp"
+#include "motion_planning/planners/geometric/informed_any_fmt.hpp"
 
-FMTA::FMTA(std::unique_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(std::move(statespace)), problem_(problem_def), obs_checker_(obs_checker) {
-    std::cout<< "FMTA Constructor \n";
+InformedANYFMT::InformedANYFMT(std::unique_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(std::move(statespace)), problem_(problem_def), obs_checker_(obs_checker) {
+    std::cout<< "ANY FMT Constructor \n";
 
 }
 
-void FMTA::clearPlannerState() {
+void InformedANYFMT::clearPlannerState() {
 
     for (auto& node : tree_) {
         node->disconnectFromGraph();
@@ -22,11 +22,12 @@ void FMTA::clearPlannerState() {
 }
 
 
-void FMTA::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
+void InformedANYFMT::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
     auto start = std::chrono::high_resolution_clock::now();
     clearPlannerState();
     visualization_ = visualization;
     num_of_samples_ = params.getParam<int>("num_of_samples");
+    num_batch_ = params.getParam<int>("num_batch");
     partial_plot = params.getParam<bool>("partial_plot");
     obs_cache = params.getParam<bool>("obs_cache");
     lower_bound_ = problem_->getLowerBound();
@@ -46,7 +47,6 @@ void FMTA::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     setStart(problem_->getStart());
     for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
         auto node = std::make_unique<FMTNode>(statespace_->sampleUniform(lower_bound_ , upper_bound_),tree_.size());
-        node->in_unvisited_ = true;
         tree_.push_back(std::move(node));
     }
     setGoal(problem_->getGoal());
@@ -54,18 +54,18 @@ void FMTA::setup(const Params& params, std::shared_ptr<Visualization> visualizat
 
     std::cout << "KDTree: \n\n";
     if (use_kdtree == true) {
-        // Put all the points at once because FMTA doesnt need incremental addition
+        // Put all the points at once because FMT doesnt need incremental addition
         kdtree_->addPoints(statespace_->getSamplesCopy());
         // Build the tree all at once after we fill the data_ in the KDTree
         kdtree_->buildTree();
     }
 
     ///////////////////Neighborhood Radius////////////////////////////////
-    int d = statespace_->getDimension();
-    double mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
-    double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
-    double gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
-    double factor = 2.0;
+    d = statespace_->getDimension();
+    mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
+    zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
+    gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+    factor = 1.0;
     neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
     // neighborhood_radius_ = 5.0;
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
@@ -80,24 +80,19 @@ void FMTA::setup(const Params& params, std::shared_ptr<Visualization> visualizat
 
 }
 
-void FMTA::plan() {
+void InformedANYFMT::plan() {
 
     // visualizeHeapAndUnvisited();
 
-    /*
-        Does caching obstacle for each run helps in fmta? it does in fmt but for fmta i dont think so! 
-    */
-    std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
     int uncached = 0;
     int cached = 0;
     int checks = 0;
 
-    while (!v_open_heap_.empty() &&
-           ((v_open_heap_.top().first < robot_node_->getCost() ||
-            robot_node_->in_unvisited_==true ||
-            robot_node_->in_queue_==true))){
 
-        // visualizeHeapAndUnvisited();
+    // std::cout<<v_open_heap_.getHeap().size()<<"\n";
+    std::cout<<tree_.size()<<"\n";
+    while (!v_open_heap_.empty()){
+
         auto top_element = v_open_heap_.top();
         double cost = top_element.first;
         FMTNode* z = top_element.second;
@@ -107,27 +102,7 @@ void FMTA::plan() {
         for (const auto& [x, cost_to_neighbor] : z->neighbors()) {
             int xIndex = x->getIndex(); // As I refactor the code I don't need to use xIndex anymore but I still need som refactoring.
 
-
-            /*
-                Important note: if you are skeptical on why the tree it self is not optimal i gotta say the path from robot to root is indeed optimal
-                                and the reason you see some not optimal routes is that you early exit because of the conditions after the "&"
-                                i.e.,:
-                                ((v_open_heap_.top().first < robot_node_->getCost() ||
-                                    robot_node_->in_unvisited_==true ||
-                                    robot_node_->in_queue_==true)))
-
-                also if you let go of the above condtion and use my repair condtion below instead of "if (x->in_unvisited_==true  ){"
-                if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){ 
-
-                you'll see it'll get optimal but it will take much more time to create the whole graph as opposed to the original fmt itself because
-                in fmta your queue is biased toward the robot (Also obstalce cache helps less here! you can check the uncache and cache value!)
-
-                so an important insight i got here is if the queue is BFS the "if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){" condtion is implicitly
-                like "if (x->in_unvisited_==true  ){" in static planning but in A* like (DFS like!) my condtion gets to repair the wrong first pass and does redundant stuff 
-                because the first pass did some wrong connections!
-            */
-
-            if (x->in_unvisited_==true  ){
+            if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){
                 checks++;
                 near(xIndex);
                 double min_cost = std::numeric_limits<double>::infinity();
@@ -135,8 +110,6 @@ void FMTA::plan() {
                 double best_edge_length = 0.0;
 
                 for (const auto& [neighbor, dist] : x->neighbors()) {
-                    if(x->blocked_best_neighbors.count(neighbor->getIndex()) > 0)
-                        continue;
                     if (neighbor->in_queue_) {
                         const double total_cost = neighbor->getCost() + dist.distance;
                         if (total_cost < min_cost) {
@@ -152,7 +125,7 @@ void FMTA::plan() {
 
                 int best_neighbor_index = best_neighbor_node->getIndex();
                 bool obstacle_free;
-                // // Create a key for the cache
+                // Create a key for the cache
                 if (obs_cache == true) {
                     // Create a key for the cache
                     auto edge_key = (best_neighbor_index < xIndex) ? std::make_pair(best_neighbor_index, xIndex) : std::make_pair(xIndex, best_neighbor_index);
@@ -178,33 +151,26 @@ void FMTA::plan() {
                 if (obstacle_free) {
                     double newCost = min_cost;
                     // if (newCost < x->getCost()) {
-                        x->blocked_best_neighbors.clear(); // Well if x is connected then i don't care about neighbors that can't be connected so what a better place to clearing them than here. this is for when you use heuristic
                         x->setCost(newCost);
-                        double h_value =  heuristic(xIndex);
-                        double priorityCost = newCost + h_value;
-                        v_open_heap_.add(x,priorityCost);
+                        v_open_heap_.add(x,newCost);
                         x->setParent(best_neighbor_node,best_edge_length); 
-                        x->in_unvisited_=false;
-
                     // }
                 }
-                else{
-                    x->blocked_best_neighbors.insert(best_neighbor_index);
-                }
+                
             }
         }
 
         v_open_heap_.pop();
-        z->in_unvisited_ =false;
     }
 
+    addBatchOfSamples(num_batch_);
     // std::cout<<"Obs checks: "<< checks <<"\n";
     std::cout<<"cached: "<< cached <<"\n";
     std::cout<<"uncached: "<< uncached <<"\n";
 }
 
 
-void FMTA::near(int node_index) {
+void InformedANYFMT::near(int node_index) {
     auto node = tree_[node_index].get();
     if (!node->neighbors().empty()) return;
 
@@ -218,16 +184,145 @@ void FMTA::near(int node_index) {
 }
 
 
-double FMTA::heuristic(int current_index) {
-    Eigen::VectorXd current_position = tree_.at(current_index)->getStateValue();
-    Eigen::VectorXd goal_position = tree_.at(robot_state_index_)->getStateValue();
-    return (goal_position-current_position).norm();
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+void InformedANYFMT::addBatchOfSamples(int num_samples) {
+    if (num_samples == 0)
+        return;
+    std::vector<int> added_nodes;
+
+
+    // Get nodes and positions
+    FMTNode* goal_node = tree_[root_state_index_].get();
+    FMTNode* start_node = robot_node_;
+    Eigen::VectorXd start_pos = start_node->getStateValue();
+    Eigen::VectorXd goal_pos = goal_node->getStateValue();
+
+    // Calculate ellipsoid parameters
+    Eigen::VectorXd d_vec = goal_pos - start_pos;  // Direction from start to goal
+    double c_min = d_vec.norm();
+    double c_best = start_node->getCost();
+    Eigen::VectorXd center = (start_pos + goal_pos) / 2.0;  // Midpoint
+
+    // Compute rotation matrix (align major axis with start->goal direction)
+    Eigen::MatrixXd R = computeRotationMatrix(d_vec);
+    double a = c_best / 2.0;
+    double b = std::sqrt(std::max(c_best*c_best - c_min*c_min, 0.0)) / 2.0;    // Add samples
+
+    for (int i = 0; i < num_samples; ++i) {
+        // Generate sample in ellipsoid
+        Eigen::VectorXd sample = sampleInEllipsoid(center, R, a, b);
+
+        if (!obs_checker_->isObstacleFree(sample)) 
+            continue;
+
+        auto node = std::make_unique<FMTNode>(statespace_->addState(sample), tree_.size());
+        size_t node_index = tree_.size();
+        tree_.push_back(std::move(node));
+        if (use_kdtree) {
+            kdtree_->addPoint(sample);
+        }
+        added_nodes.push_back(node_index);
+    }
+
+    if (added_nodes.empty()) return;
+
+    // Rebuild KD-tree and update radius
+    if (use_kdtree) {
+        kdtree_->buildTree();
+    }
+    neighborhood_radius_ = factor * gamma * std::pow(std::log(tree_.size()) / tree_.size(), 1.0 / d);
+
+    // Update neighbors for new nodes
+    for (int idx : added_nodes) {
+        updateNeighbors(idx);
+        FMTNode* node = tree_[idx].get();
+        for (const auto& [neighbor, _] : node->neighbors()) {
+            if (!neighbor->in_queue_ && neighbor->getCost() < INFINITY) {
+                v_open_heap_.add(neighbor, neighbor->getCost());
+            }
+        }
+    }
+
+    visualizeHeapAndUnvisited();
+}
+
+Eigen::MatrixXd InformedANYFMT::computeRotationMatrix(const Eigen::VectorXd& dir) {
+    Eigen::VectorXd u = dir.normalized();
+    Eigen::MatrixXd A = Eigen::MatrixXd::Identity(dir.size(), dir.size());
+    A.col(0) = u;
+    Eigen::HouseholderQR<Eigen::MatrixXd> qr(A);
+    Eigen::MatrixXd Q = qr.householderQ();
+    if (Q.col(0).dot(u) < 0) Q.col(0) *= -1;
+    return Q;
 }
 
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////
+/*
+    In informed sampling, the ellipsoid should be centered at the midpoint between start and goal, with the major axis aligned from start to goal.
+*/
+Eigen::VectorXd InformedANYFMT::sampleInEllipsoid(const Eigen::VectorXd& center,
+                                                const Eigen::MatrixXd& R,
+                                                double a, double b) {
+    // Generate in unit ball
+    Eigen::VectorXd y = sampleUnitBall(center.size());
+    
+    // Scale to ellipsoid
+    Eigen::VectorXd y_scaled(y.size());
+    y_scaled[0] = a * y[0];
+    for(int i = 1; i < y.size(); ++i) 
+        y_scaled[i] = b * y[i];
+    
+    // Rotate and translate to world frame
+    return R * y_scaled + center;
+}
 
-std::vector<size_t> FMTA::getPathIndex() const {
+Eigen::VectorXd InformedANYFMT::sampleUnitBall(int dim) {
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    static std::normal_distribution<double> normal(0, 1);
+    static std::uniform_real_distribution<double> uniform(0, 1);
+
+    Eigen::VectorXd v(dim);
+    double norm = 0;
+    do {
+        for (int i = 0; i < dim; ++i) {
+            v[i] = normal(gen);
+        }
+        norm = v.norm();
+    } while (norm == 0);
+    
+    v.normalize();
+    double r = pow(uniform(gen), 1.0 / dim);
+    return r * v;
+}
+
+void InformedANYFMT::updateNeighbors(int node_index) {
+    auto node = tree_[node_index].get();
+    
+    // Clear existing neighbors if needed (optional)
+    // node->neighbors().clear();
+
+    auto indices = kdtree_->radiusSearch(node->getStateValue(), neighborhood_radius_);
+    
+    for(int idx : indices) {
+        if(idx == node->getIndex()) continue;
+        
+        FMTNode* neighbor = tree_.at(idx).get();
+        const double dist = (node->getStateValue() - neighbor->getStateValue()).norm();
+
+        // Add neighbor to current node's list if not already present
+        if(!node->neighbors().contains(neighbor)) {
+            node->neighbors().emplace(neighbor, EdgeInfo{dist, dist});
+        }
+
+        // Add reverse connection to neighbor's list if not present
+        if(!neighbor->neighbors().contains(node)) {
+            neighbor->neighbors().emplace(node, EdgeInfo{dist, dist});
+        }
+    }
+}
+
+std::vector<size_t> InformedANYFMT::getPathIndex() const {
     int idx = robot_state_index_;
     std::vector<size_t> path_index;
     while (idx != -1) {
@@ -237,7 +332,7 @@ std::vector<size_t> FMTA::getPathIndex() const {
     return path_index;
 }
 
-std::vector<Eigen::VectorXd> FMTA::getPathPositions() const {
+std::vector<Eigen::VectorXd> InformedANYFMT::getPathPositions() const {
     std::vector<Eigen::VectorXd> path_positions;
 
     if (robot_node_ != nullptr) {
@@ -255,7 +350,7 @@ std::vector<Eigen::VectorXd> FMTA::getPathPositions() const {
     return path_positions;
 }
 
-void FMTA::setRobotIndex(const Eigen::VectorXd& robot_position) {
+void InformedANYFMT::setRobotIndex(const Eigen::VectorXd& robot_position) {
     robot_position_ = robot_position;
 
     const double MAX_SEARCH_RADIUS = 5.0; // Meters
@@ -309,7 +404,7 @@ void FMTA::setRobotIndex(const Eigen::VectorXd& robot_position) {
     std::cout << "No valid node found and no previous robot_node_. Setting robot_node_ to nullptr.\n";
 }
 
-void FMTA::setStart(const Eigen::VectorXd& start) {
+void InformedANYFMT::setStart(const Eigen::VectorXd& start) {
     root_state_index_ = statespace_->getNumStates();
     auto node = std::make_unique<FMTNode>(statespace_->addState(start),tree_.size());
     node->setCost(0);
@@ -318,20 +413,19 @@ void FMTA::setStart(const Eigen::VectorXd& start) {
     v_open_heap_.add(node.get(), 0);
 
     tree_.push_back(std::move(node));
-    std::cout << "FMTA: Start node created on Index: " << robot_state_index_ << "\n";
+    std::cout << "InformedANYFMT: Start node created on Index: " << robot_state_index_ << "\n";
 }
-void FMTA::setGoal(const Eigen::VectorXd& goal) {
+void InformedANYFMT::setGoal(const Eigen::VectorXd& goal) {
     robot_state_index_ = statespace_->getNumStates();
     auto node = std::make_unique<FMTNode>(statespace_->addState(goal),tree_.size());
-    node->in_unvisited_ = true;
 
     robot_node_ = node.get(); // Management of the node variable above will be done by the unique_ptr i'll send to tree_ below so robot_node_ is just using it!
     tree_.push_back(std::move(node));
-    std::cout << "FMTA: Goal node created on Index: " << root_state_index_ << "\n";
+    std::cout << "InformedANYFMT: Goal node created on Index: " << root_state_index_ << "\n";
 }
 
 
-std::vector<Eigen::VectorXd> FMTA::getSmoothedPathPositions(int num_intermediates, int smoothing_passes) const {
+std::vector<Eigen::VectorXd> InformedANYFMT::getSmoothedPathPositions(int num_intermediates, int smoothing_passes) const {
     // Check for invalid inputs
     if (num_intermediates < 1) {
         throw std::invalid_argument("num_intermediates must be at least 1");
@@ -359,7 +453,7 @@ std::vector<Eigen::VectorXd> FMTA::getSmoothedPathPositions(int num_intermediate
 }
 
 
-std::vector<Eigen::VectorXd> FMTA::interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const {
+std::vector<Eigen::VectorXd> InformedANYFMT::interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const {
     std::vector<Eigen::VectorXd> new_path;
 
     // Check for invalid inputs
@@ -398,7 +492,7 @@ std::vector<Eigen::VectorXd> FMTA::interpolatePath(const std::vector<Eigen::Vect
 }
 
 
-std::vector<Eigen::VectorXd> FMTA::smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const {
+std::vector<Eigen::VectorXd> InformedANYFMT::smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const {
     // Check for invalid inputs
     if (path.size() <= 2 || window_size < 1) {
         return path; // Return original path if no smoothing is needed
@@ -429,7 +523,7 @@ std::vector<Eigen::VectorXd> FMTA::smoothPath(const std::vector<Eigen::VectorXd>
     return smoothed_path;
 }
 
-void FMTA::visualizeTree() {
+void InformedANYFMT::visualizeTree() {
     if (partial_plot==true) {
         std::vector<Eigen::VectorXd> nodes;
         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
@@ -494,7 +588,7 @@ void FMTA::visualizeTree() {
 
 }
 
-void FMTA::visualizePath(std::vector<size_t> path_indices) {
+void InformedANYFMT::visualizePath(std::vector<size_t> path_indices) {
     std::vector<Eigen::VectorXd> nodes;
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
 
@@ -517,7 +611,7 @@ void FMTA::visualizePath(std::vector<size_t> path_indices) {
 }
 
 
-void FMTA::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_) {
+void InformedANYFMT::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_) {
     // Extract nodes and edges from the smoothed path
     std::vector<Eigen::VectorXd> nodes;
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
@@ -540,7 +634,7 @@ void FMTA::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_pa
 }
 
 
-void FMTA::visualizeHeapAndUnvisited() {
+void InformedANYFMT::visualizeHeapAndUnvisited() {
     std::vector<Eigen::VectorXd> vopen_positions;
     bool found_conflict = false;
 
@@ -562,7 +656,6 @@ void FMTA::visualizeHeapAndUnvisited() {
     if (found_conflict) {
         std::cerr << "There were nodes in v_open_heap_ with INF cost!" << std::endl;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     visualization_->visualizeNodes(vopen_positions);
 }

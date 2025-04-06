@@ -374,241 +374,232 @@ This design change shifts the responsibility of memory management to the smart p
 
 -----------------
 
+why my condtion works?
+
+The proof is built on the optimality property of Dijkstra’s algorithm and the priority queue ordering. Once a node’s cost is finalized, no other node can offer a better (cheaper) path to it because:
+The algorithm only processes nodes in increasing order of cost.
+The algorithm guarantees that when a node’s cost is finalized, it is the smallest possible cost.
+Thus, mathematically speaking, once 𝑥
+x’s cost has been finalized via z3 ​
+ , the condition for updating 
+x’s cost via z2 ​
+will not be satisfied because no path through z2
+can provide a cheaper cost than the path through z3​
+even though the cost to root of z2 is less than cost to root of z3! (because the edge distance to z2 is longer than to z3)
 
 
-Copy
-Algorithm: FMTX* (Final Integrated Version)
-1 V ← {x_init} ∪ SampleFree(n); E ← ∅
-2 V_unvisited ← V\{x_init}; V_open ← {x_init}
-3 x_robot ← None  # Target robot node
-4 c(x_robot) ← ∞  # Initialize robot path cost
-
-5 while V_open ≠ ∅ and (
-      (min(V_open) < c(x_robot)) or 
-      (c(x_robot) = ∞) or 
-      (x_robot ∈ V_unvisited) or 
-      (x_robot ∈ V_open)
-    ):
-    
-6   z ← arg min_{y∈V_open} c(y)          # Moved from original line 25
-7   N_z ← Near(V\{z}, z, r_n)            # Moved from original line 26
-8   V_open_new ← ∅
-9   X_near = {x ∈ N_z | x ∈ V_unvisited ∨ c(x) > c(z) + Cost(z,x)}
-
-10  for x ∈ X_near do
-11    N_x ← Near(V\{x}, x, r_n)
-12    Save(N_x, x)
-13    Y_near ← N_x ∩ V_open
-14    y_min ← arg min_{y∈Y_near} [c(y) + Cost(y,x)]
-    
-15    if CollisionFree(y_min, x):
-16      if y_min ≠ x.parent:              # Your setParent logic
-17        if x.parent ≠ ∅:
-18          x.parent.children.remove(x)
-19        y_min.children.add(x)
-20      c(x) ← c(y_min) + Cost(y_min,x)
-21      E ← E ∪ {(y_min, x)}
-22      V_open_new ← V_open_new ∪ {x}
-23      V_unvisited ← V_unvisited\{x}
-
-24  V_open ← (V_open ∪ V_open_new)\{z}
-25  if x_robot ∈ V_open ∪ V_unvisited:    # Update robot path cost
-26    c(x_robot) ← GetRobotPathCost() 
-
-27  if V_open = ∅: return Failure
-
-28 return OptimizedPath(x_robot, T = (V, E))
-
-
-------------------------------
-Algorithm: FMTX* (Final Commented Version)
 # === Initialization ===
 1. Initialize:
-    V ← {x_init} ∪ SampleFree(n)          # All nodes (start + random samples)
-    E ← ∅                                 # Edges (implicit via neighbor lists)
-    V_unvisited ← V \ {x_init}            # Nodes not yet processed
-    V_open ← {x_init}                     # Priority queue sorted by node cost
-    O_prev ← ∅                            # Track previous obstacles for delta
-    x_robot ← ∅                           # Node nearest to actual robot position
-    r_n ← ComputeRadius(|V|)              # Neighborhood radius per FMT* formula
+    V ← {x_init} ∪ SampleFree(n)          # All nodes
+    E ← ∅                                 # Edges (implicit via neighbors)
+    V_open ← {x_init}                     # Priority queue sorted by g-value
+    O_prev ← ∅                            # Previous obstacle state
+    x_robot ← ∅                           # Robot's nearest node
+    r_n ← ComputeRadius(|V|)              # Neighborhood radius
 
-# === Main Loop: Replan Until Goal or Timeout ===
+# === Main Loop ===
 2. While RobotNotAtGoal() and V_open ≠ ∅:
-3.   # Update robot's nearest node in tree
+3.   # Update robot's node
 4.   robot_pos ← GetRobotPosition()
-5.   x_robot ← FindNearestNode(robot_pos, V)  # KD-tree lookup
-6.   O_new ← GetObstacles()                   # Latest sensor input
+5.   x_robot ← FindNearestNode(robot_pos, V)  # KD-tree search
+6.   O_new ← GetObstacles()
 
-# === Handle Newly Added Obstacles ===
-7.   for o ∈ (O_new \ O_prev):                # Delta detection
-8.     S_conflict ← RadiusSearch(o)           # Nodes in obstacle-inflated zone
-9.     for x ∈ S_conflict:
-10.      # Invalidate affected edges
-11.      for (y, edge) ∈ Near(x):
-12.        if EdgeBlocked(x,y):               # Collision check
-13.          edge.distance ← ∞                # Infinite traversal cost
-14.          y.neighbors[x].distance ← ∞      # Bidirectional edge update
-    
-15.      # Orphan affected subtree
-16.      orphans ← GetDescendants(x)          # All nodes downstream of x
-17.      V_unvisited ← V_unvisited ∪ orphans   # Reset processing state
-18.      V_open ← V_open \ orphans             # Remove from active queue
-19.      ∀n ∈ orphans: c(n)←∞, parent(n)←∅    # Cost/parent reset
-    
-20.      # Reactivate neighbors for reconsideration
-21.      for y ∈ Near(orphans):
-22.        if y ∉ (V_open ∪ V_unvisited):
-23.          V_open ← V_open ∪ {y}            # Add to processing queue
+    # === Handle Added Obstacles ===
+7.   for o ∈ (O_new \ O_prev):            # Delta obstacles
+8.     EO ← {(x, y) ∈ E | EdgeIntersectsObstacle(x, y, o)}  # Edges intersecting o
+9.     orphans ← ∅                        # Nodes to orphan
+10.    for (x, y) ∈ EO:
+11.      edge(x, y).distance ← ∞          # Block edge
+12.      if parent(x) == y:               # Orphan x if parent edge is blocked
+13.        orphans.add(x)
+14.      if parent(y) == x:               # Orphan y if parent edge is blocked
+15.        orphans.add(y)
+16.    # Propagate orphans and descendants
+17.    Vc_T ← orphans ∪ GetDescendants(orphans)
+18.    for x ∈ Vc_T:
+19.      if x ∈ V_open: V_open.remove(x)  # Remove from queue
+20.      c(x) ← ∞                         # Reset cost
+21.      if parent(x) ≠ ∅:
+22.        parent(x).children.remove(x)   # Remove parent link
+23.        parent(x) ← ∅
+24.    # Reactivate neighbors of orphans
+25.    for x ∈ Vc_T:
+26.      Y_valid ← {y ∈ Near(x) | c(y) < ∞ ∧ y ∉ V_open}
+27.      for y ∈ Y_valid:
+28.        V_open.insert(y)             # Add neighbors to queue
 
-# === Handle Removed Obstacles ===
-24.   for o ∈ (O_prev \ O_new):               # Delta detection
-25.     S_freed ← RadiusSearch(o)             # Nodes in freed zone
-26.     for x ∈ S_freed:
-27.      # Restore previously blocked edges
-28.      for (y, edge) ∈ Near(x):
-29.        if ¬EdgeBlocked(x,y):              # Obstacle-free check
-30.          edge.distance ← Cost(x,y)        # Original traversal cost
-31.          y.neighbors[x].distance ← Cost(x,y)
-    
-32.      # Reactivate node for processing
-33.      V_unvisited ← V_unvisited ∪ {x}      # Mark for reprocessing
-34.      for y ∈ Near(x):
-35.        if y ∉ (V_open ∪ V_unvisited):
-36.          V_open ← V_open ∪ {y}            # Add neighbors to queue
+    # === Handle Removed Obstacles ===
+29.   for o ∈ (O_prev \ O_new):           # Vanished obstacles
+30.     EO_prev ← {(v, u) ∈ E | EdgeBlocked(v, u, o)}  # Edges previously blocked by o
+31.     EO_new ← {(v, u) ∈ EO_prev | ¬EdgeBlocked(v, u, O_new)}  # Now collision-free
+32.     VO ← {v | (v, u) ∈ EO_new} ∪ {u | (v, u) ∈ EO_new}  # Nodes connected to restored edges
+33.     # Restore edges
+34.     for (v, u) ∈ EO_new:
+35.       edge(v, u).distance ← OriginalCost(v, u)  # Restore edge
+36.     # Reactivate neighbors
+37.     for v ∈ VO:
+38.       Y_valid ← {y ∈ Near(v) | c(y) < ∞ ∧ y ∉ V_open}
+39.       for y ∈ Y_valid:
+40.         V_open.insert(y)              # Add to queue
 
-37.   O_prev ← O_new                          # Update obstacle memory
-
-# === Core Planning: Expand Lowest-Cost Nodes ===
-38.   while V_open ≠ ∅ and (
-        (min(V_open) < c(x_robot)) ∨         # Cheaper path exists
-        (x_robot ∈ V_unvisited) ∨            # Robot node unprocessed
-        (x_robot ∈ V_open)                   # Robot node still queued
-      ):
-39.     z ← ExtractMin(V_open)               # Expand cheapest node
-40.     N_z ← Near(z) ∩ {x | x unvisited OR x has worse cost}  # Candidate nodes
-    
-41.     for x ∈ N_z:                         # Process each candidate
-42.       Y_near ← Near(x) ∩ V_open          # Potential parents
-43.       y_min ← arg min[y∈Y_near] (c(y) + Cost(y,x))  # Optimal parent
-    
-44.       if y_min ≠ ∅ and CollisionFree(y_min, x):
-45.         # Rewire tree structure
-46.         if parent(x) ≠ ∅: 
-47.           parent(x).children.remove(x)   # Remove old parent link
-48.         parent(x) ← y_min                # Set new parent
-49.         y_min.children.add(x)            # Maintain bidirectional link
-        
-50.         # Update node cost and state
-51.         new_cost ← c(y_min) + Cost(y_min,x)
-52.         if new_cost < c(x):              # Only improve costs
-53.           c(x) ← new_cost                # Update node cost
-54.           if x ∈ V_open: 
-55.             UpdatePriority(V_open, x)    # Re-sort queue
-56.           else:
-57.             V_open ← V_open ∪ {x}        # Add to processing queue
-58.           V_unvisited ← V_unvisited \ {x} # Mark as processed
-
-# === Final Path Extraction ===
-59. Return ReconstructPath(x_robot)          # Backtrack from robot node to start
-
-
-
---------------------prune case that we do not do collision check in dynamic phase but the above case is also prune but i kept collision free so one don't need collision check in update obstalce------------------------
-Algorithm: FMTX* (Complete Validated Version)
-# === Initialization ===
-1. Initialize:
-    V ← {x_init} ∪ SampleFree(n)          # All nodes (start + random samples)
-    E ← ∅                                 # Edges (implicit via neighbor lists)
-    V_unvisited ← V \ {x_init}            # Nodes not yet processed
-    V_open ← {x_init}                     # Priority queue sorted by node cost
-    O_prev ← ∅                            # Track previous obstacles for delta
-    x_robot ← ∅                           # Node nearest to actual robot position
-    r_n ← ComputeRadius(|V|)              # Neighborhood radius per FMT* formula
-
-# === Main Loop: Replan Until Goal or Timeout ===
-2. While RobotNotAtGoal() and V_open ≠ ∅:
-3.   # Update robot's nearest node in tree
-4.   robot_pos ← GetRobotPosition()
-5.   x_robot ← FindNearestNode(robot_pos, V)  # KD-tree lookup
-6.   O_new ← GetObstacles()                   # Latest sensor input
-
-# === Handle Newly Added Obstacles ===
-7.   for o ∈ (O_new \ O_prev):                # Delta detection
-8.     S_conflict ← RadiusSearch(o)           # Nodes in obstacle-inflated zone
-9.     for x ∈ S_conflict:
-10.      # Invalidate affected edges
-11.      for (y, edge) ∈ Near(x):
-12.        if EdgeBlocked(x,y):               # Collision check
-13.          edge.distance ← ∞                # Infinite traversal cost
-14.          y.neighbors[x].distance ← ∞      # Bidirectional edge update
-    
-15.      # Orphan affected subtree
-16.      orphans ← GetDescendants(x)          # All nodes downstream of x
-17.      V_unvisited ← V_unvisited ∪ orphans   # Reset processing state
-18.      V_open ← V_open \ orphans             # Remove from active queue
-19.      ∀n ∈ orphans: c(n)←∞, parent(n)←∅    # Cost/parent reset
-    
-20.      # Reactivate neighbors for reconsideration
-21.      for y ∈ Near(orphans):
-22.        if y ∉ (V_open ∪ V_unvisited):
-23.          V_open ← V_open ∪ {y}            # Add to processing queue
-
-# === Handle Removed Obstacles ===
-24.   for o ∈ (O_prev \ O_new):               # Delta detection
-25.     S_freed ← RadiusSearch(o)             # Nodes in freed zone
-26.     for x ∈ S_freed:
-27.      # Remove from open set if present (critical fix)
-28.      if x ∈ V_open:
-29.        V_open ← V_open \ {x}
-    
-30.      # Restore previously blocked edges
-31.      for (y, edge) ∈ Near(x):
-32.        if ¬EdgeBlocked(x,y):              # Obstacle-free check
-33.          edge.distance ← Cost(x,y)        # Original traversal cost
-34.          y.neighbors[x].distance ← Cost(x,y)
-    
-35.      # Reactivate node for processing
-36.      V_unvisited ← V_unvisited ∪ {x}      # Mark for reprocessing
-37.      for y ∈ Near(x):
-38.        if y ∉ (V_open ∪ V_unvisited):
-39.          V_open ← V_open ∪ {y}            # Add neighbors to queue
-
-# === Core Planning: Expand Lowest-Cost Nodes ===
-40.   while V_open ≠ ∅ and (
-        (min(V_open) < c(x_robot)) ∨         # Cheaper path exists
-        (x_robot ∈ V_unvisited) ∨            # Robot node unprocessed
-        (x_robot ∈ V_open)                   # Robot node still queued
-      ):
-41.     z ← ExtractMin(V_open)               # Expand cheapest node
-42.     N_z ← Near(z) ∩ {x | x unvisited OR x has worse cost}  # Candidate nodes
-    
-43.     for x ∈ N_z:                         # Process each candidate
-44.       Y_near ← Near(x) ∩ V_open          # Potential parents
-45.       y_min ← arg min[y∈Y_near] (c(y) + Cost(y,x))  # Optimal parent
-    
-46.       # Collision check only during initial static phase (O_prev=∅)
+    # === Core Planning ===
+41.   while V_open ≠ ∅ and (c(V_open.top()) < c(x_robot) ∨ x_robot ∈ V_open):
+42.     z ← ExtractMin(V_open)
+43.     N_z ← {x ∈ Near(z) | c(x) > c(z) + Cost(z,x)} 
+44.     for x ∈ N_z:
+45.       Y_near ← {y ∈ Near(x) | y ∈ V_open}  
+46.       y_min ← arg min[y∈Y_near] (c(y) + Cost(y,x))
 47.       collision_free ← True
-48.       if O_prev = ∅: 
+48.       if O_prev = ∅:                  # Collision check during static planning
 49.         collision_free ← CollisionFree(y_min, x)
-        
-50.       if y_min ≠ ∅ and collision_free:   # Final edge validation
-51.         # Rewire tree structure
-52.         if parent(x) ≠ ∅: 
-53.           parent(x).children.remove(x)   # Remove old parent link
-54.         parent(x) ← y_min                # Set new parent
-55.         y_min.children.add(x)            # Maintain bidirectional link
-        
-56.         # Update node cost and state
-57.         new_cost ← c(y_min) + Cost(y_min,x)
-58.         if new_cost < c(x):              # Only improve costs
-59.           c(x) ← new_cost                # Update node cost
-60.           if x ∈ V_open: 
-61.             UpdatePriority(V_open, x)    # Re-sort queue
-62.           else:
-63.             V_open ← V_open ∪ {x}        # Add to processing queue
-64.           V_unvisited ← V_unvisited \ {x} # Mark as processed
+50.       if y_min ≠ ∅ and collision_free:
+51.         if parent(x) ≠ ∅:             # Rewire
+52.           parent(x).children.remove(x)
+53.         parent(x) ← y_min
+54.         c(x) ← c(y_min) + Cost(y_min,x)
+55.         if x ∈ V_open: 
+56.           UpdatePriority(V_open, x) 
+57.         else: 
+58.           V_open.insert(x)
 
-65.   O_prev ← O_new                          # Update obstacle memory
+    # Update obstacle state
+59.   O_prev ← O_new
 
-# === Final Path Extraction ===
-66. Return ReconstructPath(x_robot)          # Backtrack from robot node to start
+# === Path Extraction ===
+60. Return ReconstructPath(x_robot)
+
+
+
+
+//////////////////////concice version of above///////////////
+# === Initialization ===
+1. Initialize:
+    V ← {x_init} ∪ SampleFree(n)          
+    V_open ← {x_init}                     # Priority queue (g-value sorted)
+    O_prev ← ∅                            
+    x_robot ← ∅                           
+    r_n ← ComputeRadius(|V|)              
+
+# === Main Loop ===
+2. While RobotNotAtGoal() and V_open ≠ ∅:
+3.   robot_pos ← GetRobotPosition()
+4.   x_robot ← FindNearestNode(robot_pos, V)  
+5.   O_new ← GetObstacles()
+
+    # === Handle Added Obstacles ===
+6.   for o ∈ (O_new \ O_prev):            
+7.     EO ← {(x, y) ∈ E | EdgeIntersectsObstacle(x, y, o)}  
+8.     orphans ← {x, y for (x, y) ∈ EO if parent(x) == y or parent(y) == x}  # ★ Combine orphan check
+9.     Vc_T ← orphans ∪ GetDescendants(orphans)
+10.    for x ∈ Vc_T:
+11.      if x ∈ V_open: V_open.remove(x)  
+12.      c(x), parent(x) ← ∞, ∅            # ★ Reset in one line
+13.      if parent(x): parent(x).children.remove(x)  
+14.    # Reactivate valid neighbors
+15.    for x ∈ Vc_T:
+16.      for y ∈ {y ∈ Near(x) | c(y) < ∞ ∧ y ∉ V_open}:  # ★ Inline filter
+17.        V_open.insert(y)              
+
+    # === Handle Removed Obstacles ===
+18.   for o ∈ (O_prev \ O_new):           
+19.     EO_prev ← {(v, u) ∈ E | EdgeBlocked(v, u, o)}  
+20.     EO_new ← {(v, u) ∈ EO_prev | ¬EdgeBlocked(v, u, O_new)}  
+21.     for (v, u) ∈ EO_new: edge(v, u).distance ← OriginalCost(v, u)  
+22.     VO ← {v, u for (v, u) ∈ EO_new}  # ★ Flatten nodes
+23.     for v ∈ VO:
+24.       for y ∈ {y ∈ Near(v) | c(y) < ∞ ∧ y ∉ V_open}:  
+25.         V_open.insert(y)              
+
+    # === Core Planning ===
+26.   while V_open ≠ ∅ and (c(V_open.top()) < c(x_robot) ∨ x_robot ∈ V_open):
+27.     z ← ExtractMin(V_open)
+28.     for x ∈ {x ∈ Near(z) | c(x) > c(z) + Cost(z, x)}:  # ★ Inline filter
+29.       y_min ← arg min[y ∈ Near(x) ∩ V_open] (c(y) + Cost(y, x))  # ★ Combine Y_near
+30.       if y_min and (O_prev ≠ ∅ ∨ CollisionFree(y_min, x)):  # ★ Simplify collision check
+31.         if parent(x): parent(x).children.remove(x)  
+32.         parent(x), c(x) ← y_min, c(y_min) + Cost(y_min, x)
+33.         AddOrUpdate(V_open, x)        # ★ Combine lines 55–58
+
+    # Update obstacle state
+34.   O_prev ← O_new
+
+# === Path Extraction ===
+35. Return ReconstructPath(x_robot)
+
+
+
+
+/////////////////////modularized//////////////////
+# === Initialization ===
+1. Initialize:
+2.    V ← {x_init} ∪ SampleFree(n)          
+3.    V_open ← {x_init}                     # Priority queue (g-value sorted)
+4.    O_prev ← ∅                            # Previous obstacle state
+5.    x_robot ← ∅                           # Robot's nearest node
+6.    r_n ← ComputeRadius(|V|)              # Neighborhood radius
+
+# === Main Loop ===
+7. While RobotNotAtGoal() and V_open ≠ ∅:
+8.    robot_pos ← GetRobotPosition()
+9.    x_robot ← FindNearestNode(robot_pos, V)  
+10.   O_new ← GetObstacles()
+11.   UpdateObstacles(O_prev, O_new)        # Handle obstacle changes
+12.   FMTStarExpand()                       # Core planning logic
+13.   O_prev ← O_new                        # Update obstacle state
+
+# === Path Extraction ===
+14. Return ReconstructPath(x_robot)
+
+# === Obstacle Handling Functions ===
+15. Function UpdateObstacles(O_prev, O_new):
+16.    added_obs ← O_new \ O_prev
+17.    removed_obs ← O_prev \ O_new
+18.    if added_obs ≠ ∅:
+19.        AddObstacles(added_obs)          # Invalidate edges, orphan nodes
+20.    if removed_obs ≠ ∅:
+21.        RemoveObstacles(removed_obs)     # Restore edges, reactivate nodes
+
+22. Function AddObstacles(added_obs):
+23.    for o ∈ added_obs:
+24.        EO ← {(x, y) ∈ E | EdgeIntersectsObstacle(x, y, o)}
+25.        orphans ← {x, y for (x, y) ∈ EO if parent(x) == y or parent(y) == x}
+26.        Vc_T ← orphans ∪ GetDescendants(orphans)
+27.        for x ∈ Vc_T:                    # Reset costs and parents
+28.            if x ∈ V_open: V_open.remove(x)
+29.            c(x), parent(x) ← ∞, ∅
+30.            if parent(x): parent(x).children.remove(x)
+31.        QueueNeighbors(Vc_T)             # Add valid neighbors to queue
+
+32. Function RemoveObstacles(removed_obs):
+33.    for o ∈ removed_obs:
+34.        EO_prev ← {(v, u) ∈ E | EdgeBlocked(v, u, o)}
+35.        EO_new ← {(v, u) ∈ EO_prev | ¬EdgeBlocked(v, u, O_new)}
+36.        for (v, u) ∈ EO_new: 
+37.            edge(v, u).distance ← OriginalCost(v, u)  # Restore edge cost
+38.        VO ← {v, u for (v, u) ∈ EO_new}  # Nodes connected to restored edges
+39.        QueueNeighbors(VO)               # Add neighbors to queue
+
+40. Function QueueNeighbors(nodes):
+41.    for x ∈ nodes:
+42.        for y ∈ Near(x):
+43.            if c(y) < ∞ and y ∉ V_open:  # Finite cost and not in queue
+44.                V_open.insert(y)         # Explicitly add to queue
+
+# === Core Functions ===
+45. Function UpdateParent(x, y_new):
+46.    if x.parent == y_new: return
+47.    if x.parent: x.parent.children.remove(x)
+48.    x.parent ← y_new
+49.    if y_new: y_new.children.add(x)
+
+50. Function FMTStarExpand():
+51.    while V_open ≠ ∅ ∧ (c(V_open.top()) < c(x_robot) ∨ x_robot ∈ V_open):
+52.        z ← ExtractMin(V_open)
+53.        for x ∈ {x ∈ Near(z) | c(x) > c(z) + Cost(z, x)}:
+54.            y_min ← argmin_{y ∈ Near(x) ∩ V_open} [c(y) + Cost(y, x)]
+55.            if y_min ∧ (O_prev ≠ ∅ ∨ CollisionFree(y_min, x)):
+56.                new_cost ← c(y_min) + Cost(y_min, x)
+57.                UpdateParent(x, y_min)
+58.                c(x) ← new_cost
+59.                if x ∈ V_open: UpdatePriority(V_open, x)
+60.                else: V_open.insert(x)

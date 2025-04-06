@@ -148,13 +148,13 @@ void FMT::plan() {
 
                 if (obstacle_free) {
                     double newCost = min_cost;
-                    if (newCost < x->getCost()) {
+                    // if (newCost < x->getCost()) {
                         x->setCost(newCost);
                         v_open_heap_.add(x,newCost);
                         x->setParent(best_neighbor_node,best_edge_length); 
                         x->in_unvisited_=false;
 
-                    }
+                    // }
                 }
                 
             }

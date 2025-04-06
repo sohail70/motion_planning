@@ -1,8 +1,4 @@
 // Copyright 2025 Soheil E.nia
-/*
-    TODO: Add informed sampling to this A star approach and compare it to BIT-star
-*/
-
 
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
@@ -150,7 +146,8 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 2000);
+    planner_params.setParam("num_of_samples", 300);
+    planner_params.setParam("num_batch", 1); // Adding samples (any time!)
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("obs_cache", true);
@@ -158,10 +155,11 @@ int main(int argc, char **argv) {
     /////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Create ROS node
-    auto node = std::make_shared<rclcpp::Node>("fmta_visualizer");
+    auto node = std::make_shared<rclcpp::Node>("informed_anyfmt_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world2.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
     for (const auto& [name, info] : obstacle_info) {
@@ -185,6 +183,7 @@ int main(int argc, char **argv) {
 
 
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
+    auto snapshot = obstacle_checker->getAtomicSnapshot(); //This triggers to save the current obstalce positions
     problem_def->setStart(start_position); //Root of the tree
     // problem_def->setStart(Eigen::VectorXd::Zero(dim));
     problem_def->setGoal(Eigen::VectorXd::Ones(dim) * 50); // where the robot starts!
@@ -193,7 +192,7 @@ int main(int argc, char **argv) {
 
 
     std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 30000);
-    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTA, std::move(statespace),problem_def, obstacle_checker);
+    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::InformedANYFMT, std::move(statespace),problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -204,65 +203,16 @@ int main(int argc, char **argv) {
                 << " milliseconds\n";
 
 
-    //----------- Waiting for the Sim Clock to start ------------ //
-    bool simulation_is_paused = false;
-    auto node_clock = ros2_manager->get_clock();
-    // We'll store the initial sim time
-    rclcpp::Time last_time = node_clock->now();
-    std::cout << "[DEBUG] Initially, last_time = " << last_time.seconds() 
-            << " (sim seconds)\n";
-    std::cout << "[INFO] Waiting for gz-sim to unpause...\n";
 
-    while (rclcpp::ok() && simulation_is_paused)
-    {
-        // 1) Spin to process any incoming clock message
-        rclcpp::spin_some(ros2_manager);
+    rclcpp::Rate loop_rate(3000);
 
-        // 2) Get current sim time
-        rclcpp::Time current_time = node_clock->now();
-        double dt = (current_time - last_time).seconds();
-
-        // // 3) Print debug
-        // std::cout << "[DEBUG] last_time=" << last_time.seconds() 
-        //         << ", current_time=" << current_time.seconds() 
-        //         << ", dt=" << dt << "\n";
-
-        // 4) Check if it’s advanced
-        if (current_time > last_time) {
-            std::cout << "[DEBUG] => current_time is strictly greater than last_time, so sim is unpaused.\n";
-            simulation_is_paused = false;
-            std::cout << "[INFO] Simulation unpaused; starting to log data.\n";
-        }
-        else {
-            // If we land here, sim time hasn't advanced since last check
-            // std::cout << "[DEBUG] => Simulation still paused, waiting...\n";
-            rclcpp::sleep_for(std::chrono::milliseconds(1));
-        }
-
-        last_time = current_time;
-    }
-    //----------------------------------------------------------- //
-
-
-
-
-
-    // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
-    rclcpp::Rate loop_rate(1); // 10 Hz (100ms per loop)
-
-
-    // Capture the "start" time if we plan to limit the loop
-    auto start_time = std::chrono::steady_clock::now();
-    auto time_limit = std::chrono::seconds(20);
-
-    std::vector<double> sim_durations;
 
     // The main loop
     while (running && rclcpp::ok()) {
 
         if (ros2_manager->hasNewGoal()) {
             start_position = ros2_manager->getStartPosition(); 
-            auto snapshot = obstacle_checker->getAtomicSnapshot();
+            auto snapshot = obstacle_checker->getAtomicSnapshot(); // In case i changed the robot/obstalce positions manually for the new plan
             problem_def->setStart(start_position);
             problem_def->setGoal(snapshot.robot_position);
             planner->setup(planner_params, visualization);
@@ -275,14 +225,18 @@ int main(int argc, char **argv) {
 
         }
 
+        auto start = std::chrono::high_resolution_clock::now();
+        planner->plan();
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        std::cout << "time taken for the update : " << duration.count() << " milliseconds\n";
 
-
-        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTA*>(planner.get())->getSmoothedPathPositions(5, 2);
+        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<InformedANYFMT*>(planner.get())->getSmoothedPathPositions(5, 2);
         // ros2_manager->followPath(shortest_path_);
 
-        // dynamic_cast<FMTA*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-        // dynamic_cast<FMTA*>(planner.get())->visualizeHeapAndUnvisited();
-        dynamic_cast<FMTA*>(planner.get())->visualizeTree();
+        // dynamic_cast<InformedANYFMT*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        // dynamic_cast<InformedANYFMT*>(planner.get())->visualizeHeapAndUnvisited();
+        dynamic_cast<InformedANYFMT*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();
     }

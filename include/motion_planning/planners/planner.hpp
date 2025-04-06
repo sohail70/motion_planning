@@ -16,11 +16,13 @@
 enum class PlannerType{
     FMT,
     ANYFMT,
+    InformedANYFMT,
     FMTA,
     FMTX,
     RRTX,
-    RRTSTAR,
+    RRTStar,
     RRT,
+    BITStar,
 };
 
 

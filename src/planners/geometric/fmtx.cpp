@@ -74,7 +74,7 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
     zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
     gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
-    factor = 1.1;
+    factor = 2.0;
     neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
     // neighborhood_radius_ = 5.0;
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
@@ -115,7 +115,7 @@ void FMTX::plan() {
 
     while (!v_open_heap_.empty() &&
            (partial_update ? (v_open_heap_.top().first < robot_node_->getCost() ||
-            robot_node_->getCost() == INFINITY ||
+            robot_node_->getCost() == INFINITY || //I think the above condtion also covers this because if the cost is inf the heap pops till the end because the above condition would be always true
             robot_node_->in_queue_==true)  : true  )){
 
 
@@ -308,7 +308,7 @@ void FMTX::plan() {
 
                 if (obstacle_free) {
                     double newCost = min_cost;
-                    if (newCost < x->getCost()) {
+                    // if (newCost < x->getCost()) { // Seems like we don't need this if condtion!(if you think about it its redundant) because newCost is indeed less than x->getCost()
                         // if (use_heuristic==true) x->blocked_best_neighbors.clear(); // Well if x is connected then i don't care about neighbors that can't be connected so what a better place to clearing them than here. this is for when you use heuristic
                         x->setCost(newCost);
                         double h_value = use_heuristic ? heuristic(xIndex) : 0.0;
@@ -336,7 +336,7 @@ void FMTX::plan() {
                         edge_length_[xIndex] = best_edge_length;
                         x->in_unvisited_=false;
 
-                    }
+                    // }
                 }
                 // else{
                 //     /*
@@ -629,7 +629,7 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 
     // DOESNT MATTER IF THIS LOOP WOULD GO HIGHER OR LOWER THAN THE BELOW FOR LOOP BECAUSE THE VUNVISTED UPDATE LOOP IS GONNA HELP THE BELOW LOOP
     for (auto node_index : orphan_nodes) {
-        tree_.at(node_index)->in_unvisited_ = true;
+        // tree_.at(node_index)->in_unvisited_ = true;
         auto node = tree_.at(node_index).get();
         
         if (node->in_queue_) {
@@ -1092,9 +1092,9 @@ void FMTX::visualizeTree() {
         }
     
         // // Visualize tree components
-        visualization_->visualizeNodes(tree_nodes, "map", 
-                                    std::vector<float>{1.0f, 0.0f, 0.0f},  // Red for tree
-                                    "tree_nodes");
+        // visualization_->visualizeNodes(tree_nodes, "map", 
+        //                             std::vector<float>{1.0f, 0.0f, 0.0f},  // Red for tree
+        //                             "tree_nodes");
         
         // // Visualize vopen nodes with different color/namespace
         // visualization_->visualizeNodes(vopen_positions);

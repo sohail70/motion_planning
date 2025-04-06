@@ -66,8 +66,10 @@ add_library(motion_planning
     src/planners/geometric/fmt.cpp
     src/planners/geometric/any_fmt.cpp
     src/planners/geometric/fmta.cpp
+    src/planners/geometric/informed_any_fmt.cpp
     src/planners/geometric/fmtx.cpp
     src/planners/geometric/rrtx.cpp
+    src/planners/geometric/bit_star.cpp
     src/planners/planner_factory.cpp
     src/state_space/euclidean_state.cpp
     src/state_space/euclidean_statespace.cpp
@@ -102,11 +104,22 @@ target_link_libraries(test_anyfmt motion_planning gz_obs)
 ament_target_dependencies(test_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_anyfmt COMMAND test_anyfmt)
 
+
+add_executable(test_informed_anyfmt test/unit/test_informed_anyfmt.cpp)
+target_link_libraries(test_informed_anyfmt motion_planning gz_obs)
+ament_target_dependencies(test_informed_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_informed_anyfmt COMMAND test_informed_anyfmt)
+
+
 add_executable(test_rrtx test/unit/test_rrtx.cpp)
 target_link_libraries(test_rrtx motion_planning gz_obs)
 ament_target_dependencies(test_rrtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_rrtx COMMAND test_rrtx)
 
+add_executable(test_bitstar test/unit/test_bitstar.cpp)
+target_link_libraries(test_bitstar motion_planning gz_obs)
+ament_target_dependencies(test_bitstar rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_bitstar COMMAND test_bitstar)
 
 
 add_executable(test_kdtree test/unit/test_kdtree.cpp)

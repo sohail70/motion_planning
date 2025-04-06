@@ -146,7 +146,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 5000);
+    planner_params.setParam("num_of_samples", 0);
     planner_params.setParam("num_batch", 100); // Adding samples (any time!)
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
@@ -158,7 +158,8 @@ int main(int argc, char **argv) {
     auto node = std::make_shared<rclcpp::Node>("anyfmt_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world2.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
     for (const auto& [name, info] : obstacle_info) {

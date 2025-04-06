@@ -65,7 +65,7 @@ void ANYFMT::setup(const Params& params, std::shared_ptr<Visualization> visualiz
     mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
     zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
     gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
-    factor = 1.1;
+    factor = 1.0;
     neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
     // neighborhood_radius_ = 5.0;
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
@@ -150,11 +150,11 @@ void ANYFMT::plan() {
 
                 if (obstacle_free) {
                     double newCost = min_cost;
-                    if (newCost < x->getCost()) {
+                    // if (newCost < x->getCost()) {
                         x->setCost(newCost);
                         v_open_heap_.add(x,newCost);
                         x->setParent(best_neighbor_node,best_edge_length); 
-                    }
+                    // }
                 }
                 
             }
@@ -187,6 +187,8 @@ void ANYFMT::near(int node_index) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void ANYFMT::addBatchOfSamples(int num_samples) {
+    if (num_samples==0)
+        return;
     std::vector<int> added_nodes;
     const size_t start_index = tree_.size();
 
@@ -240,7 +242,7 @@ void ANYFMT::addBatchOfSamples(int num_samples) {
     }
 
     // std::cout<<v_open_heap_.getHeap().size()<<"\n";
-    // visualizeHeapAndUnvisited();
+    visualizeHeapAndUnvisited();
 }
 
 void ANYFMT::updateNeighbors(int node_index) {
@@ -254,7 +256,7 @@ void ANYFMT::updateNeighbors(int node_index) {
     for(int idx : indices) {
         if(idx == node->getIndex()) continue;
         
-        FMTNode* neighbor = tree_[idx].get();
+        FMTNode* neighbor = tree_.at(idx).get();
         const double dist = (node->getStateValue() - neighbor->getStateValue()).norm();
 
         // Add neighbor to current node's list if not already present

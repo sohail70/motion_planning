@@ -26,4 +26,6 @@ class NanoFlann : public KDTree {
           int dimension_;
           Eigen::MatrixXd data_;
           std::unique_ptr<NFKDTree> kdtree_;
+          int num_points_;
+          int capacity_;
 }; 
