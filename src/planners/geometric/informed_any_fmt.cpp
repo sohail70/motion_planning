@@ -18,6 +18,7 @@ void InformedANYFMT::clearPlannerState() {
     v_open_heap_.clear();
     root_state_index_ = -1;
     robot_state_index_ = -1;
+    obstacle_check_cache.clear(); // This is needed for any time algs of the fmt variants!
 
 }
 
@@ -243,7 +244,7 @@ void InformedANYFMT::addBatchOfSamples(int num_samples) {
         }
     }
 
-    visualizeHeapAndUnvisited();
+    // visualizeHeapAndUnvisited();
 }
 
 Eigen::MatrixXd InformedANYFMT::computeRotationMatrix(const Eigen::VectorXd& dir) {
@@ -325,10 +326,16 @@ void InformedANYFMT::updateNeighbors(int node_index) {
 std::vector<size_t> InformedANYFMT::getPathIndex() const {
     int idx = robot_state_index_;
     std::vector<size_t> path_index;
+
     while (idx != -1) {
         path_index.push_back(idx);
-        idx = tree_.at(idx)->getParent()->getIndex();
+
+        FMTNode* parent = tree_.at(idx)->getParent();
+        if (!parent) break;
+
+        idx = parent->getIndex();
     }
+
     return path_index;
 }
 
@@ -592,22 +599,19 @@ void InformedANYFMT::visualizePath(std::vector<size_t> path_indices) {
     std::vector<Eigen::VectorXd> nodes;
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
 
-    // Add nodes to the list
     for (const auto& index : path_indices) {
         nodes.push_back(tree_.at(index)->getStateValue());
     }
 
-    // Add edges to the list
     for (const auto& index : path_indices) {
-        int parent_index = tree_.at(index)->getParent()->getIndex();
-        if (parent_index != -1) {
-            edges.emplace_back(tree_.at(parent_index)->getStateValue(), tree_.at(index)->getStateValue());
+        FMTNode* parent = tree_.at(index)->getParent();
+        if (parent) {
+            edges.emplace_back(parent->getStateValue(), tree_.at(index)->getStateValue());
         }
     }
 
-    // Use the visualization class to visualize nodes and edges
     // visualization_->visualizeNodes(nodes);
-    visualization_->visualizeEdges(edges,"map","0.0,1.0,0.0");
+    visualization_->visualizeEdges(edges, "map", "0.0,1.0,0.0");
 }
 
 

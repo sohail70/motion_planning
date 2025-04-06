@@ -18,6 +18,8 @@ void ANYFMT::clearPlannerState() {
     v_open_heap_.clear();
     root_state_index_ = -1;
     robot_state_index_ = -1;
+    obstacle_check_cache.clear(); // This is needed for any time algs of the fmt variants!
+
 
 }
 
@@ -151,6 +153,10 @@ void ANYFMT::plan() {
                 if (obstacle_free) {
                     double newCost = min_cost;
                     // if (newCost < x->getCost()) {
+                        if (!obs_checker_->isObstacleFree(x->getStateValue()))
+                            std::cout<<"1 \n";
+                        if (!obs_checker_->isObstacleFree(best_neighbor_node->getStateValue()))
+                            std::cout<<"2 \n";
                         x->setCost(newCost);
                         v_open_heap_.add(x,newCost);
                         x->setParent(best_neighbor_node,best_edge_length); 
@@ -164,7 +170,7 @@ void ANYFMT::plan() {
     }
 
     addBatchOfSamples(num_batch_);
-    // std::cout<<"Obs checks: "<< checks <<"\n";
+    std::cout<<"checks: "<< checks <<"\n";
     std::cout<<"cached: "<< cached <<"\n";
     std::cout<<"uncached: "<< uncached <<"\n";
 }
@@ -274,10 +280,16 @@ void ANYFMT::updateNeighbors(int node_index) {
 std::vector<size_t> ANYFMT::getPathIndex() const {
     int idx = robot_state_index_;
     std::vector<size_t> path_index;
+
     while (idx != -1) {
         path_index.push_back(idx);
-        idx = tree_.at(idx)->getParent()->getIndex();
+
+        FMTNode* parent = tree_.at(idx)->getParent();
+        if (!parent) break;
+
+        idx = parent->getIndex();
     }
+
     return path_index;
 }
 
@@ -541,22 +553,19 @@ void ANYFMT::visualizePath(std::vector<size_t> path_indices) {
     std::vector<Eigen::VectorXd> nodes;
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
 
-    // Add nodes to the list
     for (const auto& index : path_indices) {
         nodes.push_back(tree_.at(index)->getStateValue());
     }
 
-    // Add edges to the list
     for (const auto& index : path_indices) {
-        int parent_index = tree_.at(index)->getParent()->getIndex();
-        if (parent_index != -1) {
-            edges.emplace_back(tree_.at(parent_index)->getStateValue(), tree_.at(index)->getStateValue());
+        FMTNode* parent = tree_.at(index)->getParent();
+        if (parent) {
+            edges.emplace_back(parent->getStateValue(), tree_.at(index)->getStateValue());
         }
     }
 
-    // Use the visualization class to visualize nodes and edges
     // visualization_->visualizeNodes(nodes);
-    visualization_->visualizeEdges(edges,"map","0.0,1.0,0.0");
+    visualization_->visualizeEdges(edges, "map", "0.0,1.0,0.0");
 }
 
 

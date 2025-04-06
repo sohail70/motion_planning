@@ -122,7 +122,7 @@ void FMT::plan() {
                 }
 
                 int best_neighbor_index = best_neighbor_node->getIndex();
-                bool obstacle_free;
+                bool obstacle_free = false;
                 // Create a key for the cache
                 if (obs_cache == true) {
                     // Create a key for the cache
@@ -149,6 +149,12 @@ void FMT::plan() {
                 if (obstacle_free) {
                     double newCost = min_cost;
                     // if (newCost < x->getCost()) {
+                        if (!obs_checker_->isObstacleFree(x->getStateValue()))
+                            std::cout<<"1 \n";
+                        if (!obs_checker_->isObstacleFree(best_neighbor_node->getStateValue()))
+                            std::cout<<"2 \n";
+
+
                         x->setCost(newCost);
                         v_open_heap_.add(x,newCost);
                         x->setParent(best_neighbor_node,best_edge_length); 

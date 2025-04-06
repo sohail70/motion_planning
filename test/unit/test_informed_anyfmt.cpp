@@ -158,8 +158,8 @@ int main(int argc, char **argv) {
     auto node = std::make_shared<rclcpp::Node>("informed_anyfmt_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world2.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
     for (const auto& [name, info] : obstacle_info) {
@@ -212,9 +212,9 @@ int main(int argc, char **argv) {
 
         if (ros2_manager->hasNewGoal()) {
             start_position = ros2_manager->getStartPosition(); 
-            auto snapshot = obstacle_checker->getAtomicSnapshot(); // In case i changed the robot/obstalce positions manually for the new plan
+            // auto snapshot = obstacle_checker->getAtomicSnapshot(); // In case i changed the robot/obstalce positions manually for the new plan
             problem_def->setStart(start_position);
-            problem_def->setGoal(snapshot.robot_position);
+            // problem_def->setGoal(snapshot.robot_position);
             planner->setup(planner_params, visualization);
             auto start = std::chrono::high_resolution_clock::now();
             planner->plan();
@@ -235,6 +235,8 @@ int main(int argc, char **argv) {
         // ros2_manager->followPath(shortest_path_);
 
         // dynamic_cast<InformedANYFMT*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        dynamic_cast<InformedANYFMT*>(planner.get())->visualizePath(dynamic_cast<InformedANYFMT*>(planner.get())->getPathIndex());
+
         // dynamic_cast<InformedANYFMT*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<InformedANYFMT*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);

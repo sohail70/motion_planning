@@ -158,8 +158,8 @@ int main(int argc, char **argv) {
     auto node = std::make_shared<rclcpp::Node>("anyfmt_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world2.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
     for (const auto& [name, info] : obstacle_info) {
@@ -235,6 +235,7 @@ int main(int argc, char **argv) {
         // ros2_manager->followPath(shortest_path_);
 
         // dynamic_cast<ANYFMT*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        dynamic_cast<ANYFMT*>(planner.get())->visualizePath(dynamic_cast<ANYFMT*>(planner.get())->getPathIndex());
         // dynamic_cast<ANYFMT*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<ANYFMT*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
