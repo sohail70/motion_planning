@@ -7,6 +7,7 @@
 #include "motion_planning/planners/geometric/any_fmt.hpp"
 #include "motion_planning/planners/geometric/fmta.hpp"
 #include "motion_planning/planners/geometric/informed_any_fmt.hpp"
+#include "motion_planning/planners/geometric/informed_any_fmta.hpp"
 #include "motion_planning/planners/geometric/fmtx.hpp"
 #include "motion_planning/planners/geometric/rrtx.hpp"
 #include "motion_planning/planners/geometric/bit_star.hpp"
@@ -38,6 +39,7 @@ static AutorRegisterPlanners<FMT> autoRegisterFMT(PlannerType::FMT);
 static AutorRegisterPlanners<ANYFMT> autoRegisterANYFMT(PlannerType::ANYFMT);
 static AutorRegisterPlanners<FMTA> autoRegisterFMTa(PlannerType::FMTA);
 static AutorRegisterPlanners<InformedANYFMT> autoRegisterInformedANYFMT(PlannerType::InformedANYFMT);
+static AutorRegisterPlanners<InformedANYFMTA> autoRegisterInformedANYFMTA(PlannerType::InformedANYFMTA);
 static AutorRegisterPlanners<FMTX> autoRegisterFMTx(PlannerType::FMTX);
 static AutorRegisterPlanners<RRTX> autoRegisterRRTx(PlannerType::RRTX);
 static AutorRegisterPlanners<BITStar> autoRegisterBITStar(PlannerType::BITStar);

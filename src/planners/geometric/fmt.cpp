@@ -173,6 +173,8 @@ void FMT::plan() {
     // std::cout<<"Obs checks: "<< checks <<"\n";
     std::cout<<"cached: "<< cached <<"\n";
     std::cout<<"uncached: "<< uncached <<"\n";
+    std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
+
 }
 
 

@@ -9,9 +9,9 @@
 #include "motion_planning/ds/priority_queue.hpp"
 
 
-class FMT : public Planner {
+class InformedANYFMTA : public Planner {
  public:
-            FMT(std::unique_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
+            InformedANYFMTA(std::unique_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
             void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
             void plan() override;
             std::vector<size_t> getPathIndex() const;
@@ -33,7 +33,14 @@ class FMT : public Planner {
 
 
 
+            double heuristic(int current_index);
             void clearPlannerState();
+            
+            void addBatchOfSamples(int num_samples);
+            void updateNeighbors(int node_index);
+            Eigen::VectorXd sampleInEllipsoid(const Eigen::VectorXd& center, const Eigen::MatrixXd& R, double a, double b);
+            Eigen::MatrixXd computeRotationMatrix(const Eigen::VectorXd& dir);
+            Eigen::VectorXd sampleUnitBall(int d);
 
  private:
             std::shared_ptr<State> start_;
@@ -51,12 +58,14 @@ class FMT : public Planner {
 
             PriorityQueue<FMTNode, FMTComparator> v_open_heap_;
 
+            std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
 
             Eigen::VectorXd robot_position_;
             FMTNode* robot_node_;
 
 
             int num_of_samples_;
+            int num_batch_;
             double lower_bound_;
             double upper_bound_;
             int root_state_index_;
@@ -65,5 +74,12 @@ class FMT : public Planner {
             double neighborhood_radius_;
             bool obs_cache = false;
             bool partial_plot = false;
+
+            int d;
+            double mu;
+            double zetaD;
+            double gamma;
+            double factor;
+
 };
 

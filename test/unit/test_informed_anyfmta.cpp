@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
 
     Params planner_params;
     planner_params.setParam("num_of_samples", 300);
-    planner_params.setParam("num_batch", 1); // Adding samples (any time!)
+    planner_params.setParam("num_batch", 10); // Adding samples (any time!)
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("obs_cache", true);
@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
     /////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Create ROS node
-    auto node = std::make_shared<rclcpp::Node>("informed_anyfmt_visualizer");
+    auto node = std::make_shared<rclcpp::Node>("informed_anyfmta_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
@@ -192,7 +192,7 @@ int main(int argc, char **argv) {
 
 
     std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 30000);
-    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::InformedANYFMT, std::move(statespace),problem_def, obstacle_checker);
+    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::InformedANYFMTA, std::move(statespace),problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -204,7 +204,7 @@ int main(int argc, char **argv) {
 
 
 
-    rclcpp::Rate loop_rate(3000);
+    rclcpp::Rate loop_rate(1);
 
 
     // The main loop
@@ -231,14 +231,14 @@ int main(int argc, char **argv) {
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         std::cout << "time taken for the update : " << duration.count() << " milliseconds\n";
 
-        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<InformedANYFMT*>(planner.get())->getSmoothedPathPositions(5, 2);
+        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<InformedANYFMTA*>(planner.get())->getSmoothedPathPositions(5, 2);
         // ros2_manager->followPath(shortest_path_);
 
-        // dynamic_cast<InformedANYFMT*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-        dynamic_cast<InformedANYFMT*>(planner.get())->visualizePath(dynamic_cast<InformedANYFMT*>(planner.get())->getPathIndex());
+        // dynamic_cast<InformedANYFMTA*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        dynamic_cast<InformedANYFMTA*>(planner.get())->visualizePath(dynamic_cast<InformedANYFMTA*>(planner.get())->getPathIndex());
 
-        // dynamic_cast<InformedANYFMT*>(planner.get())->visualizeHeapAndUnvisited();
-        dynamic_cast<InformedANYFMT*>(planner.get())->visualizeTree();
+        // dynamic_cast<InformedANYFMTA*>(planner.get())->visualizeHeapAndUnvisited();
+        dynamic_cast<InformedANYFMTA*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();
     }

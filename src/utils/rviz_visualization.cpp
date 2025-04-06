@@ -130,7 +130,7 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
     marker.id = 2;
     marker.type = visualization_msgs::msg::Marker::LINE_LIST;
     marker.action = visualization_msgs::msg::Marker::ADD;
-    marker.scale.x = 0.05; // Line width
+    marker.scale.x = 0.2; // Line width
 
     // Parse the color string
     std::stringstream ss(color_str);

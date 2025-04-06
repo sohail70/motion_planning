@@ -158,7 +158,16 @@ void ANYFMT::plan() {
                         if (!obs_checker_->isObstacleFree(best_neighbor_node->getStateValue()))
                             std::cout<<"2 \n";
                         x->setCost(newCost);
-                        v_open_heap_.add(x,newCost);
+
+                        // v_open_heap_.add(x,newCost);
+                        if (x->in_queue_ == true){
+                            v_open_heap_.update(x,newCost);
+                            std::cout<<"Really? \n";
+                        } else{
+                            v_open_heap_.add(x,newCost);
+                        }
+
+
                         x->setParent(best_neighbor_node,best_edge_length); 
                     // }
                 }
@@ -173,6 +182,8 @@ void ANYFMT::plan() {
     std::cout<<"checks: "<< checks <<"\n";
     std::cout<<"cached: "<< cached <<"\n";
     std::cout<<"uncached: "<< uncached <<"\n";
+    std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
+
 }
 
 

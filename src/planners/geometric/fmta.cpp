@@ -177,7 +177,7 @@ void FMTA::plan() {
 
                 if (obstacle_free) {
                     double newCost = min_cost;
-                    // if (newCost < x->getCost()) {
+                    if (newCost < x->getCost()) {
                         x->blocked_best_neighbors.clear(); // Well if x is connected then i don't care about neighbors that can't be connected so what a better place to clearing them than here. this is for when you use heuristic
                         x->setCost(newCost);
                         double h_value =  heuristic(xIndex);
@@ -186,7 +186,7 @@ void FMTA::plan() {
                         x->setParent(best_neighbor_node,best_edge_length); 
                         x->in_unvisited_=false;
 
-                    // }
+                    }
                 }
                 else{
                     x->blocked_best_neighbors.insert(best_neighbor_index);
@@ -201,6 +201,8 @@ void FMTA::plan() {
     // std::cout<<"Obs checks: "<< checks <<"\n";
     std::cout<<"cached: "<< cached <<"\n";
     std::cout<<"uncached: "<< uncached <<"\n";
+    std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
+
 }
 
 

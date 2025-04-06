@@ -33,7 +33,6 @@ class ANYFMT : public Planner {
 
 
 
-            double heuristic(int current_index);
             void clearPlannerState();
             
             void addBatchOfSamples(int num_samples);

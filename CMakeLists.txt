@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.10)
 project(MotionPlanning)
 # add_compile_options(-g -O0)  # Force debug symbols and disable optimizations
 set(CMAKE_CXX_STANDARD 17)
-# set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Release)
 # set(CMAKE_BUILD_TYPE RelWithDebInfo)
- set(CMAKE_BUILD_TYPE Debug)
+#  set(CMAKE_BUILD_TYPE Debug)
 
 find_package(Eigen3 REQUIRED)
 find_package(nanoflann REQUIRED)
@@ -67,6 +67,7 @@ add_library(motion_planning
     src/planners/geometric/any_fmt.cpp
     src/planners/geometric/fmta.cpp
     src/planners/geometric/informed_any_fmt.cpp
+    src/planners/geometric/informed_any_fmta.cpp
     src/planners/geometric/fmtx.cpp
     src/planners/geometric/rrtx.cpp
     src/planners/geometric/bit_star.cpp
@@ -110,6 +111,10 @@ target_link_libraries(test_informed_anyfmt motion_planning gz_obs)
 ament_target_dependencies(test_informed_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_informed_anyfmt COMMAND test_informed_anyfmt)
 
+add_executable(test_informed_anyfmta test/unit/test_informed_anyfmta.cpp)
+target_link_libraries(test_informed_anyfmta motion_planning gz_obs)
+ament_target_dependencies(test_informed_anyfmta rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_informed_anyfmta COMMAND test_informed_anyfmta)
 
 add_executable(test_rrtx test/unit/test_rrtx.cpp)
 target_link_libraries(test_rrtx motion_planning gz_obs)

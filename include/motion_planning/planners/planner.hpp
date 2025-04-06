@@ -17,6 +17,7 @@ enum class PlannerType{
     FMT,
     ANYFMT,
     InformedANYFMT,
+    InformedANYFMTA,
     FMTA,
     FMTX,
     RRTX,
