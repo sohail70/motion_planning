@@ -128,9 +128,11 @@ void FMTA::plan() {
             */
 
             if (x->in_unvisited_==true  ){
+            // if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){
+
                 checks++;
                 near(xIndex);
-                double min_cost = std::numeric_limits<double>::infinity();
+                double min_cost = x->getCost();
                 FMTNode* best_neighbor_node = nullptr;
                 double best_edge_length = 0.0;
 

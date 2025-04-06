@@ -146,7 +146,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 300);
+    planner_params.setParam("num_of_samples", 50);
     planner_params.setParam("num_batch", 10); // Adding samples (any time!)
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
@@ -204,7 +204,7 @@ int main(int argc, char **argv) {
 
 
 
-    rclcpp::Rate loop_rate(1);
+    rclcpp::Rate loop_rate(3000);
 
 
     // The main loop

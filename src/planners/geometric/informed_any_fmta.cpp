@@ -99,9 +99,9 @@ void InformedANYFMTA::plan() {
         double cost = top_element.first;
         FMTNode* z = top_element.second;
         int zIndex = z->getIndex();
-        std::vector<Eigen::VectorXd> nodes;
-        nodes.push_back(z->getStateValue());
-        visualization_->visualizeNodes(nodes);
+        // std::vector<Eigen::VectorXd> nodes;
+        // nodes.push_back(z->getStateValue());
+        // visualization_->visualizeNodes(nodes);
 
         near(zIndex);
         for (const auto& [x, cost_to_neighbor] : z->neighbors()) {
@@ -109,7 +109,7 @@ void InformedANYFMTA::plan() {
             if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){
                 checks++;
                 near(xIndex);
-                double min_cost = std::numeric_limits<double>::infinity();
+                double min_cost = x->getCost();
                 FMTNode* best_neighbor_node = nullptr;
                 double best_edge_length = 0.0;
 
@@ -155,9 +155,6 @@ void InformedANYFMTA::plan() {
              
 
                 if (obstacle_free) {
-                    if (x->getIndex()==303){
-                        std::cout<<"soheil \n";
-                    }
                     double newCost = min_cost;
                     if (newCost < x->getCost()) {
                         x->blocked_best_neighbors.clear(); // Well if x is connected then i don't care about neighbors that can't be connected so what a better place to clearing them than here. this is for when you use heuristic
@@ -168,7 +165,6 @@ void InformedANYFMTA::plan() {
                         // v_open_heap_.add(x,priorityCost);
                         if (x->in_queue_ == true){
                             v_open_heap_.update(x,priorityCost);
-                            std::cout<<"really? \n";
                         } else{
                             v_open_heap_.add(x,priorityCost);
                         }
@@ -239,7 +235,7 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
     double b = std::sqrt(std::max(c_best*c_best - c_min*c_min, 0.0)) / 2.0;    // Add samples
 
 
-    std::vector<Eigen::VectorXd> nodes;
+    // std::vector<Eigen::VectorXd> nodes;
 
     for (int i = 0; i < num_samples; ++i) {
         // Generate sample in ellipsoid
@@ -248,7 +244,7 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
         if (!obs_checker_->isObstacleFree(sample)) 
             continue;
 
-        nodes.push_back(sample);
+        // nodes.push_back(sample);
 
         auto node = std::make_unique<FMTNode>(statespace_->addState(sample), tree_.size());
         size_t node_index = tree_.size();
@@ -260,7 +256,7 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
     }
 
     if (added_nodes.empty()) return;
-    visualization_->visualizeNodes(nodes);
+    // visualization_->visualizeNodes(nodes);
 
     // Rebuild KD-tree and update radius
     if (use_kdtree) {

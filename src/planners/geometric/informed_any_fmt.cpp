@@ -157,7 +157,6 @@ void InformedANYFMT::plan() {
                         // v_open_heap_.add(x,newCost);
                         if (x->in_queue_ == true){
                             v_open_heap_.update(x,newCost);
-                            std::cout<<"really \n";
                         } else{
                             v_open_heap_.add(x,newCost);
                         }
@@ -287,8 +286,10 @@ Eigen::VectorXd InformedANYFMT::sampleInEllipsoid(const Eigen::VectorXd& center,
 }
 
 Eigen::VectorXd InformedANYFMT::sampleUnitBall(int dim) {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
+    // static std::random_device rd;
+    // static std::mt19937 gen(rd());
+
+    static std::mt19937 gen(12345);
     static std::normal_distribution<double> normal(0, 1);
     static std::uniform_real_distribution<double> uniform(0, 1);
 
