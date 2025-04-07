@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
 
     Params planner_params;
     planner_params.setParam("num_of_samples", 50);
-    planner_params.setParam("num_batch", 10); // Adding samples (any time!)
+    planner_params.setParam("num_batch", 100); // Adding samples (any time!)
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("obs_cache", true);
@@ -206,9 +206,16 @@ int main(int argc, char **argv) {
 
     rclcpp::Rate loop_rate(3000);
 
+    int counter = 0;
+
+    CALLGRIND_START_INSTRUMENTATION;
+
 
     // The main loop
     while (running && rclcpp::ok()) {
+        // if(counter>100)
+        //     break;
+        counter++;
 
         if (ros2_manager->hasNewGoal()) {
             start_position = ros2_manager->getStartPosition(); 
@@ -242,6 +249,7 @@ int main(int argc, char **argv) {
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();
     }
+    CALLGRIND_STOP_INSTRUMENTATION;
 
     
     // Cleanup

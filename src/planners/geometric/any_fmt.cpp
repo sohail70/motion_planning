@@ -162,7 +162,6 @@ void ANYFMT::plan() {
                         // v_open_heap_.add(x,newCost);
                         if (x->in_queue_ == true){
                             v_open_heap_.update(x,newCost);
-                            std::cout<<"Really? \n";
                         } else{
                             v_open_heap_.add(x,newCost);
                         }
@@ -170,6 +169,14 @@ void ANYFMT::plan() {
 
                         x->setParent(best_neighbor_node,best_edge_length); 
                     // }
+                }
+                else{
+                    // Remove the blocked neighbor from x's neighbor list
+                    x->neighbors().erase(best_neighbor_node);
+                    // Also remove x from the neighbor's neighbor list to maintain symmetry
+                    if (best_neighbor_node->neighbors().contains(x)) {
+                        best_neighbor_node->neighbors().erase(x);
+                    }
                 }
                 
             }

@@ -89,6 +89,7 @@ void InformedANYFMT::plan() {
     int cached = 0;
     int checks = 0;
 
+    // auto start = std::chrono::high_resolution_clock::now();
 
     // std::cout<<v_open_heap_.getHeap().size()<<"\n";
     std::cout<<tree_.size()<<"\n";
@@ -104,7 +105,6 @@ void InformedANYFMT::plan() {
             int xIndex = x->getIndex(); // As I refactor the code I don't need to use xIndex anymore but I still need som refactoring.
 
             if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){
-                checks++;
                 near(xIndex);
                 double min_cost = std::numeric_limits<double>::infinity();
                 FMTNode* best_neighbor_node = nullptr;
@@ -120,6 +120,7 @@ void InformedANYFMT::plan() {
                         }
                     }
                 }
+
                 if (!best_neighbor_node) {
                     continue;
                 }
@@ -154,6 +155,7 @@ void InformedANYFMT::plan() {
                     // if (newCost < x->getCost()) {
                         x->setCost(newCost);
 
+                        checks++;
                         // v_open_heap_.add(x,newCost);
                         if (x->in_queue_ == true){
                             v_open_heap_.update(x,newCost);
@@ -164,18 +166,47 @@ void InformedANYFMT::plan() {
                         x->setParent(best_neighbor_node,best_edge_length); 
                     // }
                 }
-                
+                else{
+                    // Remove the blocked neighbor from x's neighbor list
+                    x->neighbors().erase(best_neighbor_node);
+                    // Also remove x from the neighbor's neighbor list to maintain symmetry
+                    if (best_neighbor_node->neighbors().contains(x)) {
+                        best_neighbor_node->neighbors().erase(x);
+                    }
+                }
             }
         }
 
         v_open_heap_.pop();
     }
 
-    addBatchOfSamples(num_batch_);
-    // std::cout<<"Obs checks: "<< checks <<"\n";
+    if(robot_node_->getCost()==INFINITY)
+        addBatchOfSamplesUninformed(num_batch_);
+    else
+        addBatchOfSamples(num_batch_);
+    // auto end = std::chrono::high_resolution_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    // std::cout << "time taken for  : " << duration.count() << " milliseconds\n";    
+
+
+    std::cout<<"checks: "<< checks <<"\n";
     std::cout<<"cached: "<< cached <<"\n";
     std::cout<<"uncached: "<< uncached <<"\n";
     std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
+
+    std::ofstream cost_file("robot_costs_1_ifmt.txt", std::ios::app);  // Open file in append mode
+    if (cost_file.is_open()) {
+        // double cost = robot_node_->getCost();
+        double cost = checks;
+        cost_file << cost << "\n";  // Write the cost to the file
+        std::cout << "Cost saved: " << cost << std::endl;
+    } else {
+        std::cerr << "Unable to open file for writing costs." << std::endl;
+    }
+
+    cost_file.close();  // Close the file after writing
+
+
 }
 
 
@@ -234,7 +265,6 @@ void InformedANYFMT::addBatchOfSamples(int num_samples) {
     }
 
     if (added_nodes.empty()) return;
-
     // Rebuild KD-tree and update radius
     if (use_kdtree) {
         kdtree_->buildTree();
@@ -332,6 +362,66 @@ void InformedANYFMT::updateNeighbors(int node_index) {
         }
     }
 }
+
+
+
+void InformedANYFMT::addBatchOfSamplesUninformed(int num_samples) {
+    if (num_samples==0)
+        return;
+    std::vector<int> added_nodes;
+    const size_t start_index = tree_.size();
+
+    // Add samples one by one and update KD-tree incrementally
+    for (int i = 0; i < num_samples; ++i) {
+        // Create new node
+        Eigen::VectorXd sample = Eigen::VectorXd::Random(d);
+        sample = lower_bound_ + (upper_bound_ - lower_bound_) * (sample.array() + 1) / 2;
+
+        if (!obs_checker_->isObstacleFree(sample)) 
+            continue;
+
+        auto node = std::make_unique<FMTNode>(statespace_->addState(sample), tree_.size());
+        size_t node_index = tree_.size(); // Get index BEFORE pushing
+        // Store the new sample
+        Eigen::VectorXd new_sample = node->getStateValue();
+        
+        // Add to tree and KD-tree
+        tree_.push_back(std::move(node));
+        if (use_kdtree) {
+            kdtree_->addPoint(new_sample);  // Add point immediately
+        }
+        added_nodes.push_back(node_index);
+    }
+    if(added_nodes.empty())
+        return;
+
+    // Build KD-tree after all points are added
+    if (use_kdtree) {
+        kdtree_->buildTree();  // Final build
+    }
+
+    // Update neighborhood radius
+    neighborhood_radius_ = factor * gamma * std::pow(
+        std::log(tree_.size()) / tree_.size(), 
+        1.0 / statespace_->getDimension()
+    );
+
+
+    
+    // Process neighbors for newly added nodes
+    for (int node_index : added_nodes) {
+        auto node = tree_.at(node_index).get();
+        updateNeighbors(node_index);  // Find neighbors using the built KD-tree
+        // Update neighbors in the heap
+        for (const auto& [neighbor, dist] : node->neighbors()) {
+            const int n_idx = neighbor->getIndex();
+            if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) continue;
+            v_open_heap_.add(neighbor, neighbor->getCost());
+        }
+    }
+
+}
+
 
 std::vector<size_t> InformedANYFMT::getPathIndex() const {
     int idx = robot_state_index_;

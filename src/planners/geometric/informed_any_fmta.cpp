@@ -52,6 +52,13 @@ void InformedANYFMTA::setup(const Params& params, std::shared_ptr<Visualization>
     }
     setGoal(problem_->getGoal());
 
+    // Precompute heuristics for all existing nodes
+    for (auto& n : tree_) {
+        double h = (n->getStateValue() - robot_position_).norm();
+        n->cacheHeuristic(h);
+    }
+
+
 
     std::cout << "KDTree: \n\n";
     if (use_kdtree == true) {
@@ -90,6 +97,7 @@ void InformedANYFMTA::plan() {
     int checks = 0;
 
 
+    // auto start = std::chrono::high_resolution_clock::now();
     // std::cout<<v_open_heap_.getHeap().size()<<"\n";
     std::cout<<tree_.size()<<"\n";
 
@@ -107,15 +115,15 @@ void InformedANYFMTA::plan() {
         for (const auto& [x, cost_to_neighbor] : z->neighbors()) {
             int xIndex = x->getIndex(); // As I refactor the code I don't need to use xIndex anymore but I still need som refactoring.
             if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){
-                checks++;
                 near(xIndex);
                 double min_cost = x->getCost();
                 FMTNode* best_neighbor_node = nullptr;
                 double best_edge_length = 0.0;
 
+                auto start = std::chrono::high_resolution_clock::now();
                 for (const auto& [neighbor, dist] : x->neighbors()) {
-                    if(x->blocked_best_neighbors.count(neighbor->getIndex()) > 0)
-                        continue;
+                    // if(x->blocked_best_neighbors.count(neighbor->getIndex()) > 0)
+                    //     continue;
                     if (neighbor->in_queue_) {
                         const double total_cost = neighbor->getCost() + dist.distance;
                         if (total_cost < min_cost) {
@@ -125,6 +133,7 @@ void InformedANYFMTA::plan() {
                         }
                     }
                 }
+
                 if (!best_neighbor_node) {
                     continue;
                 }
@@ -157,11 +166,15 @@ void InformedANYFMTA::plan() {
                 if (obstacle_free) {
                     double newCost = min_cost;
                     if (newCost < x->getCost()) {
-                        x->blocked_best_neighbors.clear(); // Well if x is connected then i don't care about neighbors that can't be connected so what a better place to clearing them than here. this is for when you use heuristic
+                        // x->blocked_best_neighbors.clear(); // Well if x is connected then i don't care about neighbors that can't be connected so what a better place to clearing them than here. this is for when you use heuristic
                         x->setCost(newCost);
-                        double h_value =  heuristic(xIndex);
+
+                        // double h_value =  heuristic(xIndex);
+                        double h_value = x->getHeuristic();
+
                         double priorityCost = newCost + h_value;
 
+                        checks++;
                         // v_open_heap_.add(x,priorityCost);
                         if (x->in_queue_ == true){
                             v_open_heap_.update(x,priorityCost);
@@ -174,7 +187,15 @@ void InformedANYFMTA::plan() {
                     }
                 }
                 else{
-                    x->blocked_best_neighbors.insert(best_neighbor_index);
+                    // x->blocked_best_neighbors.insert(best_neighbor_index);
+
+                    // Remove the blocked neighbor from x's neighbor list
+                    x->neighbors().erase(best_neighbor_node);
+                    // Also remove x from the neighbor's neighbor list to maintain symmetry
+                    if (best_neighbor_node->neighbors().contains(x)) {
+                        best_neighbor_node->neighbors().erase(x);
+                    }
+
                 }
                 
             }
@@ -183,11 +204,32 @@ void InformedANYFMTA::plan() {
         v_open_heap_.pop();
     }
 
-    addBatchOfSamples(num_batch_);
-    // std::cout<<"Obs checks: "<< checks <<"\n";
+    if(robot_node_->getCost()==INFINITY)
+        addBatchOfSamplesUninformed(num_batch_);
+    else
+        addBatchOfSamples(num_batch_);
+
+
+    // auto end = std::chrono::high_resolution_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    // std::cout << "time taken for  : " << duration.count() << " milliseconds\n";    
+
+    std::cout<<"checks: "<< checks <<"\n";
     std::cout<<"cached: "<< cached <<"\n";
     std::cout<<"uncached: "<< uncached <<"\n";
     std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
+
+    std::ofstream cost_file("robot_costs_2_ifmta.txt", std::ios::app);  // Open file in append mode
+    if (cost_file.is_open()) {
+        // double cost = robot_node_->getCost();
+        double cost = checks;
+        cost_file << cost << "\n";  // Write the cost to the file
+        std::cout << "Cost saved: " << cost << std::endl;
+    } else {
+        std::cerr << "Unable to open file for writing costs." << std::endl;
+    }
+
+    cost_file.close();  // Close the file after writing
 
 }
 
@@ -247,6 +289,11 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
         // nodes.push_back(sample);
 
         auto node = std::make_unique<FMTNode>(statespace_->addState(sample), tree_.size());
+
+        // Cache heuristic for new node
+        double h = (sample - robot_position_).norm();
+        node->cacheHeuristic(h);
+
         size_t node_index = tree_.size();
         tree_.push_back(std::move(node));
         if (use_kdtree) {
@@ -357,6 +404,66 @@ void InformedANYFMTA::updateNeighbors(int node_index) {
         }
     }
 }
+
+
+
+void InformedANYFMTA::addBatchOfSamplesUninformed(int num_samples) {
+    if (num_samples==0)
+        return;
+    std::vector<int> added_nodes;
+    const size_t start_index = tree_.size();
+
+    // Add samples one by one and update KD-tree incrementally
+    for (int i = 0; i < num_samples; ++i) {
+        // Create new node
+        Eigen::VectorXd sample = Eigen::VectorXd::Random(d);
+        sample = lower_bound_ + (upper_bound_ - lower_bound_) * (sample.array() + 1) / 2;
+
+        if (!obs_checker_->isObstacleFree(sample)) 
+            continue;
+
+        auto node = std::make_unique<FMTNode>(statespace_->addState(sample), tree_.size());
+        size_t node_index = tree_.size(); // Get index BEFORE pushing
+        // Store the new sample
+        Eigen::VectorXd new_sample = node->getStateValue();
+        
+        // Add to tree and KD-tree
+        tree_.push_back(std::move(node));
+        if (use_kdtree) {
+            kdtree_->addPoint(new_sample);  // Add point immediately
+        }
+        added_nodes.push_back(node_index);
+    }
+    if(added_nodes.empty())
+        return;
+
+    // Build KD-tree after all points are added
+    if (use_kdtree) {
+        kdtree_->buildTree();  // Final build
+    }
+
+    // Update neighborhood radius
+    neighborhood_radius_ = factor * gamma * std::pow(
+        std::log(tree_.size()) / tree_.size(), 
+        1.0 / statespace_->getDimension()
+    );
+
+
+    
+    // Process neighbors for newly added nodes
+    for (int node_index : added_nodes) {
+        auto node = tree_.at(node_index).get();
+        updateNeighbors(node_index);  // Find neighbors using the built KD-tree
+        // Update neighbors in the heap
+        for (const auto& [neighbor, dist] : node->neighbors()) {
+            const int n_idx = neighbor->getIndex();
+            if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) continue;
+            v_open_heap_.add(neighbor, neighbor->getCost());
+        }
+    }
+
+}
+
 
 std::vector<size_t> InformedANYFMTA::getPathIndex() const {
     int idx = robot_state_index_;

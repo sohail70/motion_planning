@@ -204,48 +204,6 @@ int main(int argc, char **argv) {
                 << " milliseconds\n";
 
 
-    //----------- Waiting for the Sim Clock to start ------------ //
-    bool simulation_is_paused = false;
-    auto node_clock = ros2_manager->get_clock();
-    // We'll store the initial sim time
-    rclcpp::Time last_time = node_clock->now();
-    std::cout << "[DEBUG] Initially, last_time = " << last_time.seconds() 
-            << " (sim seconds)\n";
-    std::cout << "[INFO] Waiting for gz-sim to unpause...\n";
-
-    while (rclcpp::ok() && simulation_is_paused)
-    {
-        // 1) Spin to process any incoming clock message
-        rclcpp::spin_some(ros2_manager);
-
-        // 2) Get current sim time
-        rclcpp::Time current_time = node_clock->now();
-        double dt = (current_time - last_time).seconds();
-
-        // // 3) Print debug
-        // std::cout << "[DEBUG] last_time=" << last_time.seconds() 
-        //         << ", current_time=" << current_time.seconds() 
-        //         << ", dt=" << dt << "\n";
-
-        // 4) Check if it’s advanced
-        if (current_time > last_time) {
-            std::cout << "[DEBUG] => current_time is strictly greater than last_time, so sim is unpaused.\n";
-            simulation_is_paused = false;
-            std::cout << "[INFO] Simulation unpaused; starting to log data.\n";
-        }
-        else {
-            // If we land here, sim time hasn't advanced since last check
-            // std::cout << "[DEBUG] => Simulation still paused, waiting...\n";
-            rclcpp::sleep_for(std::chrono::milliseconds(1));
-        }
-
-        last_time = current_time;
-    }
-    //----------------------------------------------------------- //
-
-
-
-
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
     rclcpp::Rate loop_rate(1); // 10 Hz (100ms per loop)

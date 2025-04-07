@@ -37,6 +37,8 @@ class InformedANYFMTA : public Planner {
             void clearPlannerState();
             
             void addBatchOfSamples(int num_samples);
+            void addBatchOfSamplesUninformed(int num_samples);
+
             void updateNeighbors(int node_index);
             Eigen::VectorXd sampleInEllipsoid(const Eigen::VectorXd& center, const Eigen::MatrixXd& R, double a, double b);
             Eigen::MatrixXd computeRotationMatrix(const Eigen::VectorXd& dir);

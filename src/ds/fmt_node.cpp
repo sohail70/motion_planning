@@ -5,6 +5,7 @@ FMTNode::FMTNode(std::unique_ptr<State> state, int index)
     : state_(std::move(state)),
       index_(index),
       cost_(INFINITY),
+      heuristic_(0.0),
       in_queue_(false),
       heap_index_(-1),
       in_unvisited_(false),
@@ -94,3 +95,11 @@ void FMTNode::setIndex(int index) noexcept {
 int FMTNode::getIndex() const noexcept { 
     return index_; 
 }
+
+
+double FMTNode::getHeuristic() const { return heuristic_; }
+void FMTNode::cacheHeuristic(double h) { 
+    heuristic_ = h;
+    heuristic_cached_ = true;
+}
+bool FMTNode::isHeuristicCached() const { return heuristic_cached_; }

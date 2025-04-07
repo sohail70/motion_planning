@@ -56,6 +56,13 @@ public:
     void setIndex(int index) noexcept;
     int getIndex() const noexcept;
 
+    double getHeuristic() const;
+    void cacheHeuristic(double h);
+    bool isHeuristicCached() const;
+
+
+
+
     bool in_queue_;
     size_t heap_index_;  // Tracks position in the priority queue
 
@@ -83,6 +90,9 @@ private:
     int index_;
     bool on_obstacle; // not using this now! maybe later instead of samples_in_obstalce!
 
+
+    double heuristic_;
+    bool heuristic_cached_ = false;
     // static bool hasChild(FMTNode* node, const std::vector<FMTNode*>& children) {
     //     return std::find(children.begin(), children.end(), node) != children.end();
     // }
