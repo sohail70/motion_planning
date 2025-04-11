@@ -92,6 +92,9 @@ public:
     PriorityQueue() = default;
 
     void clear() {
+        for (auto& entry : heap_) {
+            entry.second->in_queue_ = false;
+        }
         heap_.clear();
     }
 
@@ -202,6 +205,9 @@ public:
     PriorityQueue2() = default;
 
     void clear() {
+        for (auto& entry : heap_) {
+            entry.second->in_queue_ = false;
+        }
         heap_.clear();
     }
 

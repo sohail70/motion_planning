@@ -90,10 +90,13 @@ void BITStar::setup(const Params& params, std::shared_ptr<Visualization> visuali
     std::cout << "Time taken by setup: " << duration.count() << " milliseconds\n";
     std::cout << "---\n";
 }
-
+/*
+ prune samples
+ move from samples_ to tree_ and update kd tree for both of the structure in the plan! 
+*/
 void BITStar::plan() {
     if (vertex_queue_.empty() && edge_queue_.empty()) {
-        prune();
+        prune(); // you need to prune samples too --> you forgot it! ****************
         std::cout<<tree_.size()<<"\n";
         // samples_.clear(); // Clearing samples would violate uniform sampling assumption! // also messes up with your kdtree_samples_ indices consistency with samples_ vector!
         if (robot_node_->getCost() == INFINITY) {

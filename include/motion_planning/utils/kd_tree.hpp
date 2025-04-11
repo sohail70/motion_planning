@@ -5,6 +5,7 @@
 #include "motion_planning/state_space/state.hpp"
 #include "motion_planning/state_space/euclidean_state.hpp"
 #include "motion_planning/pch.hpp"
+#include "motion_planning/ds/ifmt_node.hpp"
 class KDTree {
  public:
      virtual ~KDTree() = default;
@@ -20,7 +21,12 @@ class KDTree {
      virtual std::pair<std::vector<size_t>, std::vector<size_t>> radiusSearchDual(const Eigen::VectorXd& query, double radius1, double radius2) const = 0;
      virtual void clear() = 0; 
      virtual bool removePoint(const Eigen::VectorXd& query) = 0;
+     virtual bool removeByIndex(size_t index) = 0;
 
+    //  virtual Eigen::VectorXd getPoint(size_t index) const = 0
+    //  virtual size_t size() const = 0;
+    
+     virtual bool validateAgainstSamples(const std::vector<std::shared_ptr<IFMTNode>>& samples) const = 0;
 
  private:
 

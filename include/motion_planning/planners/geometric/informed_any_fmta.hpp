@@ -53,6 +53,7 @@ class InformedANYFMTA : public Planner {
             void visualizeTree();
 
             void prune();
+            void pruneSamples();
 
             
  private:
@@ -64,14 +65,14 @@ class InformedANYFMTA : public Planner {
             std::shared_ptr<KDTree> kdtree_tree_;
 
 
-    std::vector<std::shared_ptr<IFMTNode>> tree_;
-    std::vector<std::shared_ptr<IFMTNode>> samples_;
-    std::shared_ptr<IFMTNode> robot_node_;
+            std::vector<std::shared_ptr<IFMTNode>> tree_;
+            std::vector<std::shared_ptr<IFMTNode>> samples_;
+            std::shared_ptr<IFMTNode> robot_node_;
 
 //     PriorityQueue<EdgeCandidate,std::greater<EdgeCandidate> > edge_queue_;
     
-        std::priority_queue<IEdgeCandidate, std::vector<IEdgeCandidate>, 
-                       std::greater<IEdgeCandidate>> edge_queue_;
+            std::priority_queue<IEdgeCandidate, std::vector<IEdgeCandidate>, 
+                        std::greater<IEdgeCandidate>> edge_queue_;
     
 
 

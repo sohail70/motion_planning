@@ -213,3 +213,44 @@ void NanoFlann::removeRow(Eigen::MatrixXd& matrix, size_t rowToRemove) {
     }
     matrix.conservativeResize(numRows, numCols);
 }
+
+bool NanoFlann::removeByIndex(size_t index) {
+    if (index >= data_.rows()) return false;
+    
+    // Mirror swap-and-pop from samples_
+    if (index != data_.rows() - 1) {
+        data_.row(index) = data_.row(data_.rows() - 1);
+    }
+    data_.conservativeResize(data_.rows() - 1, Eigen::NoChange);
+    return true;
+}
+
+
+// Eigen::VectorXd NanoFlann::getPoint(size_t index) const {
+//     return data_.row(index);
+// }
+
+// size_t NanoFlann::size() const { return data_.rows(); }
+
+
+
+
+
+// Compare with external samples vector
+bool NanoFlann::validateAgainstSamples(const std::vector<std::shared_ptr<IFMTNode>>& samples) const {
+    if (data_.rows() != samples.size()) {
+        std::cerr << "Size mismatch: KD-tree has " << data_.rows() 
+                    << " points, samples has " << samples.size() << "\n";
+        return false;
+    }
+
+    for (size_t i = 0; i < samples.size(); ++i) {
+        if (!data_.row(i).isApprox(samples[i]->getStateValue().transpose(), 1e-6)) {
+            std::cerr << "Mismatch at index " << i << ":\n"
+                        << "KD-tree: " << data_.row(i) << "\n"
+                        << "Sample:  " << samples[i]->getStateValue().transpose() << "\n";
+            return false;
+        }
+    }
+    return true;
+}

@@ -6,6 +6,8 @@ IFMTNode::IFMTNode(std::shared_ptr<State> state, int index)
       cost_(INFINITY),
       heuristic_(0.0),
       in_queue_(false),
+      in_samples_(false),
+      samples_index_(-1),
       heap_index_(-1),
       in_unvisited_(false),
       parent_(std::weak_ptr<IFMTNode>()),
