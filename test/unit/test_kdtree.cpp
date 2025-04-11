@@ -27,19 +27,25 @@ int main() {
     kd->buildTree();
 
     // Print the KD-tree data
-    std::cout << "KD-Tree Data:\n";
+    std::cout << "Initial KD-Tree Data:\n";
     kd->printData();
 
-    // Define the query point
-    Eigen::VectorXd queryPoint(dim);
-    queryPoint << -13.5007, 26.5381;
+    // Define the point to remove (Point 1)
+    Eigen::VectorXd pointToRemove(dim);
+    pointToRemove << -4.69771, -1.71217;
 
-    // Perform k-nearest neighbor search with k=1
-    std::cout << "KNN Search Results for Query Point (" << queryPoint.transpose() << "):\n";
-    auto neighbors = kd->knnSearch(queryPoint, 1); // k=1
-    for (size_t idx : neighbors) {
-        std::cout << "Nearest Neighbor: " << points.row(idx) << "\n";
+    // Remove Point 1
+    std::cout << "\nAttempting to remove Point 1 (" << pointToRemove.transpose() << ")...\n";
+    bool removed = kd->removePoint(pointToRemove);
+    if (removed) {
+        std::cout << "Removal successful!\n";
+    } else {
+        std::cout << "Removal failed (point not found).\n";
     }
+
+    // Print the updated KD-tree data
+    std::cout << "\nUpdated KD-Tree Data:\n";
+    kd->printData();
 
     return 0;
 }

@@ -1,96 +1,107 @@
+// Copyright 2025 Soheil E.Nia
 #pragma once
+
+#include "motion_planning/pch.hpp"
 #include "motion_planning/planners/planner.hpp"
-#include "motion_planning/ds/fmt_node.hpp"
-#include "motion_planning/utils/nano_flann.hpp"
-#include <queue>
+#include "motion_planning/ds/bit_node.hpp"
+#include "motion_planning/utils/visualization.hpp"
+#include "boost/container/flat_map.hpp"
+#include "motion_planning/ds/priority_queue.hpp"
 
 class BITStar : public Planner {
 public:
-    struct BITNode;
+    BITStar(std::unique_ptr<StateSpace> statespace, 
+                   std::shared_ptr<ProblemDefinition> problem_def,
+                   std::shared_ptr<ObstacleChecker> obs_checker);
     
-    struct QueueComparator {
-        bool operator()(const std::pair<double, BITNode*>& a, 
-                       const std::pair<double, BITNode*>& b) const {
-            return a.first > b.first;
-        }
-    };
-
-    // Modify queues to use order counters
-    struct EdgeComparator {
-        bool operator()(const std::tuple<double, int, double, BITNode*, BITNode*>& a,
-                    const std::tuple<double, int, double, BITNode*, BITNode*>& b) const {
-            return std::get<0>(a) > std::get<0>(b); // First compare cost
-        }
-    };
-
-
-    BITStar(std::unique_ptr<StateSpace> statespace,
-           std::shared_ptr<ProblemDefinition> problem_def,
-           std::shared_ptr<ObstacleChecker> obs_checker);
-           
-    void setStart(const Eigen::VectorXd& start) override;
-    void setGoal(const Eigen::VectorXd& goal) override;
     void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
     void plan() override;
+    std::vector<std::shared_ptr<BITNode>> getPathNodes() const;
+
+    std::vector<Eigen::VectorXd> getPathPositions() const;
+    void setStart(const Eigen::VectorXd& start) override;
+    void setGoal(const Eigen::VectorXd& goal) override;
+    void setRobotIndex(const Eigen::VectorXd& robot_position);
+
+    void near(int node_index);
+    void near2sample( const std::shared_ptr<BITNode>& node, std::vector<std::shared_ptr<BITNode>>& near_nodes);
+    void near2tree( const std::shared_ptr<BITNode>& node, std::vector<std::shared_ptr<BITNode>>& near_nodes);
+
     void visualizeTree();
+    void visualizeHeapAndUnvisited();
+    void visualizePath(const std::vector<std::shared_ptr<BITNode>>& path_nodes);
 
-    struct BITNode : public FMTNode {
-        double h_hat;    // Heuristic estimate to goal
-        double g;       // Cost-to-come from start
-        bool expanded;
-        bool in_unconnected;
-        
-        BITNode(std::unique_ptr<State> state, int index)
-            : FMTNode(std::move(state), index), h_hat(INFINITY), g(INFINITY),
-              expanded(false), in_unconnected(true) {}
-    };
+    void visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_);
+    std::vector<Eigen::VectorXd> getSmoothedPathPositions(int num_intermediates, int smoothing_window) const;
+    std::vector<Eigen::VectorXd> smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const;
+    std::vector<Eigen::VectorXd> interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const;
 
+    double heuristic(int current_index);
+    void clearPlannerState();
+    
+    void addBatchOfSamples(int num_samples);
+    void addBatchOfSamplesUninformed(int num_samples);
+
+    Eigen::VectorXd sampleInEllipsoid(const Eigen::VectorXd& center, const Eigen::MatrixXd& R, double a, double b);
+    Eigen::MatrixXd computeRotationMatrix(const Eigen::VectorXd& dir);
+    Eigen::VectorXd sampleUnitBall(int d);
+    void prune();
+    void updateChildrenCosts(std::shared_ptr<BITNode> node);
 
 private:
-    // Queues
-    std::priority_queue<std::pair<double, BITNode*>, 
-                       std::vector<std::pair<double, BITNode*>>,
-                       QueueComparator> vertex_queue_;
-    
-    // In BITStar class
-    int qe_order_ = 0;
-    int qv_order_ = 0;
 
 
-    std::priority_queue<std::tuple<double, int, double, BITNode*, BITNode*>,
-                    std::vector<std::tuple<double, int, double, BITNode*, BITNode*>>,
-                    EdgeComparator> edge_queue_;
+    // std::vector<Eigen::VectorXd> nodes;
 
+    std::shared_ptr<State> start_;
+    std::shared_ptr<State> goal_;
+    std::vector<std::shared_ptr<State>> path_;
+    std::vector<std::shared_ptr<BITNode>> tree_;
+    std::shared_ptr<KDTree> kdtree_samples_;
+    std::shared_ptr<KDTree> kdtree_tree_;
 
-
-    std::vector<std::unique_ptr<BITNode>> nodes_;
-    std::vector<BITNode*> unconnected_;
-    std::vector<BITNode*> solution_nodes_;
-
-    std::vector<BITNode*> x_reuse_; // Add to class
-
-    
-    BITNode* start_node_;
-    BITNode* goal_node_;
-    double ci_;         // Current best solution cost
-    double radius_;     // Connection radius
-    int batch_size_;
-    int samples_added_;
-    
-    std::shared_ptr<NanoFlann> kdtree_;
     std::unique_ptr<StateSpace> statespace_;
     std::shared_ptr<ProblemDefinition> problem_;
     std::shared_ptr<Visualization> visualization_;
     std::shared_ptr<ObstacleChecker> obs_checker_;
 
-    void initialize();
-    void processBatch();
-    void prune();
-    void expandVertex(BITNode* vertex);
-    void addEdge(BITNode* parent, BITNode* child, double cost);
-    void updateSolution();
-    void sampleBatch(bool initial_batch = false);
-    double heuristic(const Eigen::VectorXd& state) const;
-    std::vector<BITNode*> findNear(BITNode* node, const std::vector<BITNode*>& nodes);
+    // PriorityQueue<std::shared_ptr<BITNode>, FMTBITComparator> vertex_queue_;
+    std::priority_queue<
+    std::pair<double, std::shared_ptr<BITNode>>,
+    std::vector<std::pair<double, std::shared_ptr<BITNode>>>,
+    FMTBITComparator
+> vertex_queue_;
+    
+    std::vector<std::shared_ptr<BITNode>> samples_;
+    std::vector<std::shared_ptr<BITNode>> vsol_;
+    std::vector<std::shared_ptr<BITNode>> unconnected_;
+    std::vector<std::shared_ptr<BITNode>> unexpanded_;
+    
+    std::shared_ptr<BITNode> robot_node_;
+    Eigen::VectorXd robot_position_;
+    
+    std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
+    std::priority_queue<EdgeCandidate, std::vector<EdgeCandidate>, 
+                       std::greater<EdgeCandidate>> edge_queue_;
+    
+    std::unordered_set<std::shared_ptr<BITNode>> unprocessed_nodes_;
+    std::vector<std::shared_ptr<BITNode>> unconnected_nodes_container_;
 
+    double ci_ = std::numeric_limits<double>::infinity();
+    double current_best_cost_ = INFINITY;
+    double lower_bound_;
+    double upper_bound_;
+    double neighborhood_radius_;
+    int num_of_samples_;
+    int num_batch_;
+    int root_state_index_;
+    int robot_state_index_;
+    int d;
+    double mu;
+    double zetaD;
+    double gamma;
+    double factor;
+    bool use_kdtree;
+    bool obs_cache = false;
+    bool partial_plot = false;
 };

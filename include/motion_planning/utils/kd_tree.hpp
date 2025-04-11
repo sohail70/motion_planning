@@ -18,6 +18,9 @@ class KDTree {
      virtual void printData() const = 0;
      // To find nodes in the r-neighborhood and a*r-neighborhood with a<1 in one pass!
      virtual std::pair<std::vector<size_t>, std::vector<size_t>> radiusSearchDual(const Eigen::VectorXd& query, double radius1, double radius2) const = 0;
+     virtual void clear() = 0; 
+     virtual bool removePoint(const Eigen::VectorXd& query) = 0;
+
 
  private:
 

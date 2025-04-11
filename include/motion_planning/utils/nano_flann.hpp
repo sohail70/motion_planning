@@ -21,6 +21,12 @@ class NanoFlann : public KDTree {
           std::vector<size_t> radiusSearch(const Eigen::VectorXd& query , double radius) const override;
           std::pair<std::vector<size_t>, std::vector<size_t>> radiusSearchDual(const Eigen::VectorXd& query, double radius1, double radius2) const override;
           void printData() const override;
+          void clear() override;
+
+          bool removePoint(const Eigen::VectorXd& query) override;
+          void removeRow(Eigen::MatrixXd& matrix, size_t rowToRemove);
+
+
 
  private:
           int dimension_;

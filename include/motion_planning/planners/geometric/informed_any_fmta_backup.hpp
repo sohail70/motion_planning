@@ -3,7 +3,7 @@
 
 #include "motion_planning/pch.hpp"
 #include "motion_planning/planners/planner.hpp"
-#include "motion_planning/ds/ifmt_node.hpp"
+#include "motion_planning/ds/fmt_node.hpp"
 #include "motion_planning/utils/visualization.hpp"
 #include "boost/container/flat_map.hpp"
 #include "motion_planning/ds/priority_queue.hpp"
@@ -14,8 +14,7 @@ class InformedANYFMTA : public Planner {
             InformedANYFMTA(std::unique_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
             void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
             void plan() override;
-            void plan2();
-            // std::vector<size_t> getPathIndex() const;
+            std::vector<size_t> getPathIndex() const;
             std::vector<Eigen::VectorXd> getPathPositions() const;
             void setStart(const Eigen::VectorXd& start) override;
             void setGoal(const Eigen::VectorXd& goal) override;
@@ -23,12 +22,10 @@ class InformedANYFMTA : public Planner {
 
 
             void near(int node_index);
-            std::vector<std::pair<std::shared_ptr<IFMTNode>,EdgeInfo>> near2(const std::vector<std::shared_ptr<IFMTNode>>& search_set,std::shared_ptr<IFMTNode> node, bool sort);
-            void near2sample( const std::shared_ptr<IFMTNode>& node, std::vector<std::pair<std::shared_ptr<IFMTNode>,EdgeInfo >>& near_nodes);
-            void near2tree( const std::shared_ptr<IFMTNode>& node, std::vector<std::pair<std::shared_ptr<IFMTNode>,EdgeInfo >>& near_nodes);
 
+            void visualizeTree();
             void visualizeHeapAndUnvisited();
-            // void visualizePath(std::vector<size_t> path_indices);
+            void visualizePath(std::vector<size_t> path_indices);
             void visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_);
             std::vector<Eigen::VectorXd> getSmoothedPathPositions(int num_intermediates, int smoothing_window ) const;
             std::vector<Eigen::VectorXd> smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const;
@@ -47,33 +44,12 @@ class InformedANYFMTA : public Planner {
             Eigen::MatrixXd computeRotationMatrix(const Eigen::VectorXd& dir);
             Eigen::VectorXd sampleUnitBall(int d);
 
-
-            std::vector<std::shared_ptr<IFMTNode>> getPathNodes() const;
-            void visualizePath(const std::vector<std::shared_ptr<IFMTNode>>& path_nodes);
-            void visualizeTree();
-
-            void prune();
-
-            
  private:
             std::shared_ptr<State> start_;
             std::shared_ptr<State> goal_;
             std::vector<std::shared_ptr<State>> path_;
-
-            std::shared_ptr<KDTree> kdtree_samples_;
-            std::shared_ptr<KDTree> kdtree_tree_;
-
-
-    std::vector<std::shared_ptr<IFMTNode>> tree_;
-    std::vector<std::shared_ptr<IFMTNode>> samples_;
-    std::shared_ptr<IFMTNode> robot_node_;
-
-//     PriorityQueue<EdgeCandidate,std::greater<EdgeCandidate> > edge_queue_;
-    
-        std::priority_queue<IEdgeCandidate, std::vector<IEdgeCandidate>, 
-                       std::greater<IEdgeCandidate>> edge_queue_;
-    
-
+            std::vector<std::shared_ptr<FMTNode>> tree_;
+            std::shared_ptr<KDTree> kdtree_;
 
             std::unique_ptr<StateSpace> statespace_;
             std::shared_ptr<ProblemDefinition> problem_;
@@ -82,14 +58,12 @@ class InformedANYFMTA : public Planner {
             std::shared_ptr<ObstacleChecker> obs_checker_;
 
 
-        //     PriorityQueue<IFMTNode, IFMTComparator> v_open_heap_;
-            PriorityQueue2<IFMTNode, IFMTComparator> v_open_heap_;
-
-            std::vector<std::shared_ptr<IFMTNode>> open_nodes;
+            PriorityQueue<FMTNode, FMTComparator> v_open_heap_;
 
             std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
 
             Eigen::VectorXd robot_position_;
+            FMTNode* robot_node_;
 
 
             int num_of_samples_;

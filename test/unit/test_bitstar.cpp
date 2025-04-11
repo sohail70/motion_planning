@@ -147,20 +147,19 @@ int main(int argc, char **argv) {
 
     Params planner_params;
     planner_params.setParam("num_of_samples", 0);
-    planner_params.setParam("num_batch", 100); // Adding samples (any time!)
+    planner_params.setParam("num_batch", 2); // Adding samples (any time!)
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("obs_cache", true);
     planner_params.setParam("partial_plot", false);
-    planner_params.setParam("bitstar_radius", 5.0);
     /////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Create ROS node
     auto node = std::make_shared<rclcpp::Node>("bitstar_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
-    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world2.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
     for (const auto& [name, info] : obstacle_info) {
@@ -207,9 +206,16 @@ int main(int argc, char **argv) {
 
     rclcpp::Rate loop_rate(3000);
 
+    int counter = 0;
+
+    CALLGRIND_START_INSTRUMENTATION;
+
 
     // The main loop
     while (running && rclcpp::ok()) {
+        // if(counter>100)
+        //     break;
+        counter++;
 
         if (ros2_manager->hasNewGoal()) {
             start_position = ros2_manager->getStartPosition(); 
@@ -236,11 +242,14 @@ int main(int argc, char **argv) {
         // ros2_manager->followPath(shortest_path_);
 
         // dynamic_cast<BITStar*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        dynamic_cast<BITStar*>(planner.get())->visualizePath(dynamic_cast<BITStar*>(planner.get())->getPathNodes());
+
         // dynamic_cast<BITStar*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<BITStar*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();
     }
+    CALLGRIND_STOP_INSTRUMENTATION;
 
     
     // Cleanup

@@ -166,3 +166,50 @@ void NanoFlann::printData() const {
         std::cout << "Point " << i << ": " << data_.row(i) << "\n";
     }
 }
+
+void NanoFlann::clear() {
+    data_.resize(0, dimension_); // Clear all stored points
+    kdtree_->index_->buildIndex(); // Rebuild the empty index
+}
+
+
+
+// Add this to the public section of NanoFlann in nano_flann.hpp
+bool NanoFlann::removePoint(const Eigen::VectorXd& query) {
+    if (data_.rows() == 0) {
+        return false;  // No points to remove
+    }
+
+    // 1. Find the nearest neighbor (k=1)
+    std::vector<size_t> nearestIndices = knnSearch(query, 1);
+    if (nearestIndices.empty()) {
+        return false;  // No neighbors found (shouldn't happen if tree is built)
+    }
+
+    size_t rowToRemove = nearestIndices[0];
+
+    // Optional: Check if the found point matches the query (if exact removal is needed)
+    // if ((data_.row(rowToRemove) - query.transpose()).norm() > 1e-6) {
+    //     return false;  // Nearest neighbor is not an exact match
+    // }
+
+    // 2. Remove the row from data_
+    removeRow(data_, rowToRemove);
+
+    // 3. Rebuild the KD-tree
+    kdtree_->index_->buildIndex();
+
+    return true;
+}
+
+// Helper function to remove a row from an Eigen::MatrixXd
+void NanoFlann::removeRow(Eigen::MatrixXd& matrix, size_t rowToRemove) {
+    size_t numRows = matrix.rows() - 1;
+    size_t numCols = matrix.cols();
+
+    if (rowToRemove < numRows) {
+        matrix.block(rowToRemove, 0, numRows - rowToRemove, numCols) = 
+            matrix.bottomRows(numRows - rowToRemove);
+    }
+    matrix.conservativeResize(numRows, numCols);
+}

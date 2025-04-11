@@ -146,8 +146,8 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 50);
-    planner_params.setParam("num_batch", 100); // Adding samples (any time!)
+    planner_params.setParam("num_of_samples", 0);
+    planner_params.setParam("num_batch", 2); // Adding samples (any time!)
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("obs_cache", true);
@@ -242,7 +242,9 @@ int main(int argc, char **argv) {
         // ros2_manager->followPath(shortest_path_);
 
         // dynamic_cast<InformedANYFMTA*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-        dynamic_cast<InformedANYFMTA*>(planner.get())->visualizePath(dynamic_cast<InformedANYFMTA*>(planner.get())->getPathIndex());
+        dynamic_cast<InformedANYFMTA*>(planner.get())->visualizePath(dynamic_cast<InformedANYFMTA*>(planner.get())->getPathNodes());
+
+
 
         // dynamic_cast<InformedANYFMTA*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<InformedANYFMTA*>(planner.get())->visualizeTree();
