@@ -446,6 +446,11 @@ void InformedANYFMTA::processNode(
 
     if (!best_neighbor_node) return;
 
+    if (best_neighbor_node->getCost() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()){
+        return;
+    }
+
+
     // Collision check (common logic)
     if (!obs_checker_->isObstacleFree(x->getStateValue(), best_neighbor_node->getStateValue())) return;
 
@@ -798,6 +803,77 @@ void InformedANYFMTA::prune() {
 
     
 }
+
+// void InformedANYFMTA::prune() {
+//     // Create vector of nodes with their current indices
+//     std::vector<std::pair<std::shared_ptr<IFMTNode>, size_t>> indexed_nodes;
+//     for (size_t i = 0; i < tree_.size(); ++i) {
+//         indexed_nodes.emplace_back(tree_[i], i);
+//         tree_[i]->setIndex(i); // Update node's index
+//     }
+
+//     // Sort nodes by cost descending
+//     std::sort(indexed_nodes.begin(), indexed_nodes.end(),
+//         [](const auto& a, const auto& b) { 
+//             return a.first->getCost() > b.first->getCost(); 
+//         });
+
+//     std::vector<size_t> to_remove_indices;
+//     for (const auto& pair : indexed_nodes) {
+//         auto& node = pair.first;
+//         size_t original_index = pair.second;
+
+//         double f_hat = node->getHeuristic() + 
+//                       (node->getStateValue() - tree_[root_state_index_]->getStateValue()).norm();
+//         if (f_hat > robot_node_->getCost() || 
+//             node->getCost() + node->getHeuristic() > robot_node_->getCost()) 
+//         {
+//             to_remove_indices.push_back(original_index);
+
+//             // Remove from parent's children
+//             if (auto parent = node->getParent()) {
+//                 auto& siblings = parent->getChildrenMutable();
+//                 siblings.erase(
+//                     std::remove_if(siblings.begin(), siblings.end(),
+//                         [&node](const std::weak_ptr<IFMTNode>& weak_child) {
+//                             auto child = weak_child.lock();
+//                             return child && child == node;
+//                         }),
+//                     siblings.end());
+//             }
+//         }
+//     }
+
+//     // Sort indices in descending order for safe removal
+//     std::sort(to_remove_indices.rbegin(), to_remove_indices.rend());
+
+//     // Remove from KD-tree using original indices
+//     for (auto idx : to_remove_indices) {
+//         kdtree_tree_->removeByIndex(idx);
+//     }
+
+//     // Remove from tree_ vector with swap-and-pop
+//     for (auto idx : to_remove_indices) {
+//         if (idx >= tree_.size()) continue;
+        
+//         // Swap with last element
+//         if (idx != tree_.size() - 1) {
+//             std::swap(tree_[idx], tree_.back());
+//             // Update swapped node's index
+//             tree_[idx]->setIndex(idx);
+//         }
+//         tree_.pop_back();
+//     }
+
+//     // Update indices for remaining nodes
+//     for (size_t i = 0; i < tree_.size(); ++i) {
+//         tree_[i]->setIndex(i);
+//     }
+
+//     // Rebuild KD-tree once
+//     kdtree_tree_->buildTree();
+// }
+
 
 void InformedANYFMTA::pruneSamples() {
     const double current_best_cost = robot_node_->getCost();
