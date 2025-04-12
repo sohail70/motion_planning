@@ -7,6 +7,7 @@ IFMTNode::IFMTNode(std::shared_ptr<State> state, int index)
       heuristic_(0.0),
       in_queue_(false),
       in_samples_(false),
+      is_connected_(false),
       samples_index_(-1),
       heap_index_(-1),
       in_unvisited_(false),

@@ -37,6 +37,7 @@ public:
     size_t heap_index_;
     bool in_unvisited_;
     bool in_samples_;
+    bool is_connected_;
     int samples_index_;
     double edge_cost_;
     std::unordered_set<int> blocked_best_neighbors;

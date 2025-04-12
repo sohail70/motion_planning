@@ -55,6 +55,14 @@ class InformedANYFMTA : public Planner {
             void prune();
             void pruneSamples();
 
+            void processNode(
+                std::shared_ptr<IFMTNode> x,
+                std::shared_ptr<IFMTNode> z,
+                const EdgeInfo& cost_to_neighbor,
+                bool is_sample_neighbor
+            );
+
+
             
  private:
             std::shared_ptr<State> start_;
