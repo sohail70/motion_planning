@@ -215,6 +215,7 @@ void ANYFMT::addBatchOfSamples(int num_samples) {
         return;
     std::vector<int> added_nodes;
     const size_t start_index = tree_.size();
+    std::vector<Eigen::VectorXd> nodes_;
 
     // Add samples one by one and update KD-tree incrementally
     for (int i = 0; i < num_samples; ++i) {
@@ -236,6 +237,7 @@ void ANYFMT::addBatchOfSamples(int num_samples) {
             kdtree_->addPoint(new_sample);  // Add point immediately
         }
         added_nodes.push_back(node_index);
+        nodes_.push_back(sample);
     }
     if(added_nodes.empty())
         return;
@@ -264,6 +266,13 @@ void ANYFMT::addBatchOfSamples(int num_samples) {
             v_open_heap_.add(neighbor, neighbor->getCost());
         }
     }
+    ///////
+
+    // visualization_->visualizeNodes(nodes_);
+
+
+
+
 
     // std::cout<<v_open_heap_.getHeap().size()<<"\n";
     visualizeHeapAndUnvisited();

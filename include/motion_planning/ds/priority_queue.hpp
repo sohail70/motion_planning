@@ -29,10 +29,18 @@ struct IFMTComparator {
 
 
 // This is speicifically for std priorty queue and thats why the ">" is different --> for my custom priority queue you can see i have if(comare_()) so it means if the compare is true which means if a<b then its true which means its min heap by default1
+// struct FMTBITComparator {
+//     bool operator()(const std::pair<double, std::shared_ptr<BITNode>>& a,
+//                     const std::pair<double, std::shared_ptr<BITNode>>& b) const {
+//         return a.first > b.first; // Min-heap --> because in std::priority queue max heap is the default!
+//     }
+// };
+
+// if you wanna use PriorityQueue2 class
 struct FMTBITComparator {
     bool operator()(const std::pair<double, std::shared_ptr<BITNode>>& a,
                     const std::pair<double, std::shared_ptr<BITNode>>& b) const {
-        return a.first > b.first; // Min-heap --> because in std::priority queue max heap is the default!
+        return a.first < b.first; 
     }
 };
 

@@ -46,6 +46,7 @@ public:
     Eigen::MatrixXd computeRotationMatrix(const Eigen::VectorXd& dir);
     Eigen::VectorXd sampleUnitBall(int d);
     void prune();
+    void pruneSamples();
     void updateChildrenCosts(std::shared_ptr<BITNode> node);
 
 private:
@@ -65,13 +66,18 @@ private:
     std::shared_ptr<Visualization> visualization_;
     std::shared_ptr<ObstacleChecker> obs_checker_;
 
-    // PriorityQueue<std::shared_ptr<BITNode>, FMTBITComparator> vertex_queue_;
-    std::priority_queue<
-    std::pair<double, std::shared_ptr<BITNode>>,
-    std::vector<std::pair<double, std::shared_ptr<BITNode>>>,
-    FMTBITComparator
-> vertex_queue_;
+//     // PriorityQueue<std::shared_ptr<BITNode>, FMTBITComparator> vertex_queue_;
+//     std::priority_queue<
+//     std::pair<double, std::shared_ptr<BITNode>>,
+//     std::vector<std::pair<double, std::shared_ptr<BITNode>>>,
+//     FMTBITComparator
+// > vertex_queue_;
     
+
+    PriorityQueue2<BITNode, FMTBITComparator> vertex_queue_;
+
+
+
     std::vector<std::shared_ptr<BITNode>> samples_;
     std::vector<std::shared_ptr<BITNode>> vsol_;
     std::vector<std::shared_ptr<BITNode>> unconnected_;

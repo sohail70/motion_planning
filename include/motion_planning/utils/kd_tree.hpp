@@ -6,6 +6,7 @@
 #include "motion_planning/state_space/euclidean_state.hpp"
 #include "motion_planning/pch.hpp"
 #include "motion_planning/ds/ifmt_node.hpp"
+#include "motion_planning/ds/bit_node.hpp"
 class KDTree {
  public:
      virtual ~KDTree() = default;
@@ -27,6 +28,7 @@ class KDTree {
     //  virtual size_t size() const = 0;
     
      virtual bool validateAgainstSamples(const std::vector<std::shared_ptr<IFMTNode>>& samples) const = 0;
+     virtual bool validateAgainstSamples(const std::vector<std::shared_ptr<BITNode>>& samples) const = 0;
 
  private:
 

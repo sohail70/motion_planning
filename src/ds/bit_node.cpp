@@ -6,7 +6,9 @@ BITNode::BITNode(std::shared_ptr<State> state, int index)
       cost_(INFINITY),
       heuristic_(0.0),
       in_queue_(false),
-      is_new_(false),
+      in_samples_(false),
+      unexpand_(false),
+      samples_index_(-1),
       is_pruned_(false),
       heap_index_(-1) {}
 

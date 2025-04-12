@@ -254,3 +254,23 @@ bool NanoFlann::validateAgainstSamples(const std::vector<std::shared_ptr<IFMTNod
     }
     return true;
 }
+
+
+// Compare with external samples vector
+bool NanoFlann::validateAgainstSamples(const std::vector<std::shared_ptr<BITNode>>& samples) const {
+    if (data_.rows() != samples.size()) {
+        std::cerr << "Size mismatch: KD-tree has " << data_.rows() 
+                    << " points, samples has " << samples.size() << "\n";
+        return false;
+    }
+
+    for (size_t i = 0; i < samples.size(); ++i) {
+        if (!data_.row(i).isApprox(samples[i]->getStateValue().transpose(), 1e-6)) {
+            std::cerr << "Mismatch at index " << i << ":\n"
+                        << "KD-tree: " << data_.row(i) << "\n"
+                        << "Sample:  " << samples[i]->getStateValue().transpose() << "\n";
+            return false;
+        }
+    }
+    return true;
+}

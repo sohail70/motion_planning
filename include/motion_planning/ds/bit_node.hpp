@@ -35,7 +35,10 @@ public:
     void updateCostAndPropagate();
 
     bool in_queue_;
-    bool is_new_;
+    bool in_samples_;
+    bool unexpand_;
+    int samples_index_;
+
     bool is_pruned_;
     size_t heap_index_;  // Tracks position in the priority queue
     double edge_cost_;

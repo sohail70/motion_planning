@@ -29,6 +29,7 @@ class NanoFlann : public KDTree {
         //   Eigen::VectorXd getPoint(size_t index) const;
         //   size_t size() const;
           bool validateAgainstSamples(const std::vector<std::shared_ptr<IFMTNode>>& samples) const;
+          bool validateAgainstSamples(const std::vector<std::shared_ptr<BITNode>>& samples) const;
 
 
  private:

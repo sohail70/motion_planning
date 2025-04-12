@@ -394,11 +394,22 @@ void InformedANYFMTA::plan() {
 
         // First loop: Process samples (potential new connections)
         for (const auto& [x, cost_to_neighbor] : near_z_samples) {
+            // if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() >= robot_node_->getCost()) {
+            //     v_open_heap_.clear();
+            //     break;
+            // }
+            // if (x->getCost() <= z->getCost() + cost_to_neighbor.distance) break;
+
             processNode(x, z, cost_to_neighbor, true); // true = is_sample_neighbor
         }
 
         // Second loop: Process tree nodes (rewiring only)
         for (const auto& [x, cost_to_neighbor] : near_z_tree) {
+            // if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() >= robot_node_->getCost()) {
+            //     v_open_heap_.clear();
+            //     break;
+            // }
+            // if (x->getCost() <= z->getCost() + cost_to_neighbor.distance) break;
             processNode(x, z, cost_to_neighbor, false); // false = not a sample
         }
         
@@ -701,7 +712,6 @@ void InformedANYFMTA::near2sample( const std::shared_ptr<IFMTNode>& node, std::v
     std::vector<size_t> neighbor_indices = 
         kdtree_samples_->radiusSearch(node->getStateValue(), neighborhood_radius_);
     
-    //maybe also do a sorting!!!!******************************** based on just gvalue(node ) --> because i only need the ordering and current vertex is enough to preserve ordering IM SURE OF IT EVEN THOUGH I NEED TO PROVE IT!
     
     // Fill results in-place
     near_nodes.reserve(neighbor_indices.size());
@@ -713,6 +723,8 @@ void InformedANYFMTA::near2sample( const std::shared_ptr<IFMTNode>& node, std::v
             near_nodes.push_back(std::make_pair(neighbor,EdgeInfo{dist,dist}));
         }
     }
+
+    //maybe also do a sorting!!!!******************************** based on just gvalue(node ) --> because i only need the ordering and current vertex is enough to preserve ordering IM SURE OF IT EVEN THOUGH I NEED TO PROVE IT!
     // Sort the collected nodes by (node_cost + dist + neighbor_heuristic)
     std::sort(
         near_nodes.begin(),
