@@ -1,7 +1,7 @@
 // Copyright 2025 Soheil E.nia
 #include "motion_planning/planners/geometric/informed_any_fmt.hpp"
 
-InformedANYFMT::InformedANYFMT(std::unique_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(std::move(statespace)), problem_(problem_def), obs_checker_(obs_checker) {
+InformedANYFMT::InformedANYFMT(std::shared_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(statespace), problem_(problem_def), obs_checker_(obs_checker) {
     std::cout<< "ANY FMT Constructor \n";
 
 }
@@ -47,8 +47,8 @@ void InformedANYFMT::setup(const Params& params, std::shared_ptr<Visualization> 
     std::cout << "Taking care of the samples: \n \n";
     setStart(problem_->getStart());
     for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
-        auto node = std::make_unique<FMTNode>(statespace_->sampleUniform(lower_bound_ , upper_bound_),tree_.size());
-        tree_.push_back(std::move(node));
+        auto node = std::make_shared<FMTNode>(statespace_->sampleUniform(lower_bound_ , upper_bound_),tree_.size());
+        tree_.push_back(node);
     }
     setGoal(problem_->getGoal());
 
@@ -255,9 +255,9 @@ void InformedANYFMT::addBatchOfSamples(int num_samples) {
         if (!obs_checker_->isObstacleFree(sample)) 
             continue;
 
-        auto node = std::make_unique<FMTNode>(statespace_->addState(sample), tree_.size());
+        auto node = std::make_shared<FMTNode>(statespace_->addState(sample), tree_.size());
         size_t node_index = tree_.size();
-        tree_.push_back(std::move(node));
+        tree_.push_back(node);
         if (use_kdtree) {
             kdtree_->addPoint(sample);
         }
@@ -380,13 +380,13 @@ void InformedANYFMT::addBatchOfSamplesUninformed(int num_samples) {
         if (!obs_checker_->isObstacleFree(sample)) 
             continue;
 
-        auto node = std::make_unique<FMTNode>(statespace_->addState(sample), tree_.size());
+        auto node = std::make_shared<FMTNode>(statespace_->addState(sample), tree_.size());
         size_t node_index = tree_.size(); // Get index BEFORE pushing
         // Store the new sample
         Eigen::VectorXd new_sample = node->getStateValue();
         
         // Add to tree and KD-tree
-        tree_.push_back(std::move(node));
+        tree_.push_back(node);
         if (use_kdtree) {
             kdtree_->addPoint(new_sample);  // Add point immediately
         }
@@ -513,21 +513,21 @@ void InformedANYFMT::setRobotIndex(const Eigen::VectorXd& robot_position) {
 
 void InformedANYFMT::setStart(const Eigen::VectorXd& start) {
     root_state_index_ = statespace_->getNumStates();
-    auto node = std::make_unique<FMTNode>(statespace_->addState(start),tree_.size());
+    auto node = std::make_shared<FMTNode>(statespace_->addState(start),tree_.size());
     node->setCost(0);
     // node->in_queue_ = true;
     // QueueElement2 new_element ={0,0};
     v_open_heap_.add(node.get(), 0);
 
-    tree_.push_back(std::move(node));
+    tree_.push_back(node);
     std::cout << "InformedANYFMT: Start node created on Index: " << robot_state_index_ << "\n";
 }
 void InformedANYFMT::setGoal(const Eigen::VectorXd& goal) {
     robot_state_index_ = statespace_->getNumStates();
-    auto node = std::make_unique<FMTNode>(statespace_->addState(goal),tree_.size());
+    auto node = std::make_shared<FMTNode>(statespace_->addState(goal),tree_.size());
 
     robot_node_ = node.get(); // Management of the node variable above will be done by the unique_ptr i'll send to tree_ below so robot_node_ is just using it!
-    tree_.push_back(std::move(node));
+    tree_.push_back(node);
     std::cout << "InformedANYFMT: Goal node created on Index: " << root_state_index_ << "\n";
 }
 

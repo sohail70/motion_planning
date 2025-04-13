@@ -13,12 +13,12 @@ class StateSpace {
     }
 
     virtual ~StateSpace() = default;
-    virtual std::unique_ptr<State> addState(const Eigen::VectorXd& value) = 0;
-    virtual std::unique_ptr<State> sampleUniform(double min, double max) = 0;
+    virtual std::shared_ptr<State> addState(const Eigen::VectorXd& value) = 0;
+    virtual std::shared_ptr<State> sampleUniform(double min, double max) = 0;
     virtual void sampleUniform(double min, double max, int k) = 0;
-    virtual double distance(const std::unique_ptr<State>& state1, const std::unique_ptr<State>& state2) const = 0;
-    virtual std::unique_ptr<State> interpolate(const std::unique_ptr<State>& state1, const std::unique_ptr<State>& state2, double t) const = 0;
-    virtual bool isValid(const std::unique_ptr<State>& state) const = 0;
+    virtual double distance(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2) const = 0;
+    virtual std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const = 0;
+    virtual bool isValid(const std::shared_ptr<State>& state) const = 0;
 
 
 
@@ -40,8 +40,15 @@ class StateSpace {
 
 
  protected:
+    std::vector<std::shared_ptr<State>> state_objects_;
+    std::mutex state_mutex_;
 
-    std::unique_ptr<State> addState(std::unique_ptr<State> state) {
+
+    std::shared_ptr<State> addState(std::shared_ptr<State> state) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+
+        state_objects_.push_back(state);  // Keep alive
+
         if (num_states_ >= states_.rows()) {
             int new_capacity = static_cast<int>(states_.rows() * 1.5);
             states_.conservativeResize(new_capacity, Eigen::NoChange);

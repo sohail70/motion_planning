@@ -1,10 +1,10 @@
 // Copyright 2025 Soheil E.nia
 #include "motion_planning/planners/geometric/bit_star.hpp"
 
-BITStar::BITStar(std::unique_ptr<StateSpace> statespace,
+BITStar::BITStar(std::shared_ptr<StateSpace> statespace,
                                std::shared_ptr<ProblemDefinition> problem_def,
                                std::shared_ptr<ObstacleChecker> obs_checker)
-    : statespace_(std::move(statespace)),
+    : statespace_(statespace),
       problem_(problem_def),
       obs_checker_(obs_checker) {
     std::cout << "ANY FMT Constructor\n";
@@ -101,6 +101,7 @@ void BITStar::plan() {
         }
         std::cout<<"tree: "<<tree_.size()<<"\n";
         std::cout<<"samples: "<<samples_.size()<<"\n";
+        std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
         // samples_.clear(); // Clearing samples would violate uniform sampling assumption! // also messes up with your kdtree_samples_ indices consistency with samples_ vector!
         if (robot_node_->getCost() == INFINITY) {
             addBatchOfSamplesUninformed(num_batch_);
@@ -180,12 +181,22 @@ void BITStar::plan() {
 
         // Process sample neighbors
         for (auto& neighbor : x_near) {
+            // Skip processing if vmin is not unexpand AND neighbor is not new --> because we checked that edge before and its redundant to check again
+            if (!vmin->unexpand_ && !neighbor->is_new_) {
+                // neighbor->is_new_ = false;
+                continue;
+            }
+
             double edge_cost = (vmin->getStateValue() - neighbor->getStateValue()).norm();
-            double a_hat = (vmin->getStateValue() - tree_.at(root_state_index_)->getStateValue()).norm() + edge_cost + neighbor->getHeuristic();
+            double a_hat = (vmin->getStateValue() - tree_.at(root_state_index_)->getStateValue()).norm() 
+                        + edge_cost + neighbor->getHeuristic();
+            
             if (a_hat < ci_) {
                 double cost = vmin->getCost() + edge_cost + neighbor->getHeuristic();
                 edge_queue_.emplace(a_hat, vmin, neighbor);
             }
+
+            neighbor->is_new_ = false;
         }
 
         // Additional processing for new vertices
@@ -392,6 +403,7 @@ void BITStar::addBatchOfSamplesUninformed(int num_samples) {
         auto node = std::make_shared<BITNode>(statespace_->addState(sample), -1);// later use setIndex and tree_.size() because right now its not being added to the tree_ (tau)
         node->cacheHeuristic((sample - robot_node_->getStateValue()).norm());
         node->in_samples_ = true;
+        node->is_new_ = true;
         node->samples_index_ = samples_.size();
         samples_.push_back(node);
 
@@ -438,6 +450,7 @@ void BITStar::addBatchOfSamples(int num_samples) {
         auto node = std::make_shared<BITNode>(statespace_->addState(sample), -1);
         node->cacheHeuristic((sample - robot_node_->getStateValue()).norm());
         node->in_samples_ = true;
+        node->is_new_ = true;
         node->samples_index_ = samples_.size();
         samples_.push_back(node);
         // visualization_->visualizeNodes(nodes);
@@ -539,6 +552,7 @@ void BITStar::prune() {
             // Add to reuse if meets criteria
             if (f_hat < ci_) {
                 node->in_samples_ = true;
+                node->is_new_= true;
                 node->samples_index_ = samples_.size();
                 samples_.push_back(node);
                 kdtree_samples_->addPoint(node->getStateValue());
@@ -698,6 +712,7 @@ void BITStar::setGoal(const Eigen::VectorXd& goal) {
     robot_node_ = node;
     samples_.push_back(node);
     node->in_samples_ = true;
+    node->is_new_ = true;
     node->samples_index_ = 0;
     kdtree_samples_->addPoint(node->getStateValue());
     kdtree_samples_->buildTree();

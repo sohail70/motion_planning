@@ -12,14 +12,14 @@ class EuclideanStateSpace : public StateSpace {
  public:
     explicit EuclideanStateSpace(int dimension,int capacity);
 
-    std::unique_ptr<State> addState(const Eigen::VectorXd& value);
-    std::unique_ptr<State> sampleUniform(double min, double max);
+    std::shared_ptr<State> addState(const Eigen::VectorXd& value);
+    std::shared_ptr<State> sampleUniform(double min, double max);
     void sampleUniform(double min, double max, int k);
     
 
-    double distance(const std::unique_ptr<State>& state1, const std::unique_ptr<State>& state2) const override;
-    std::unique_ptr<State> interpolate(const std::unique_ptr<State>& state1, const std::unique_ptr<State>& state2, double t) const;
-    bool isValid(const std::unique_ptr<State>& state) const override;
+    double distance(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2) const override;
+    std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const;
+    bool isValid(const std::shared_ptr<State>& state) const override;
 
  private:
 };

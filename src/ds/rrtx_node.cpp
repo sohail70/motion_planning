@@ -1,7 +1,7 @@
 #include "motion_planning/ds/rrtx_node.hpp"
 
-RRTxNode::RRTxNode(std::unique_ptr<State> state, int index)
-    : state_(std::move(state)),
+RRTxNode::RRTxNode(std::shared_ptr<State> state, int index)
+    : state_(state),
       parent_(nullptr),
       index_(index),
       in_queue_(false),

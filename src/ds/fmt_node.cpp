@@ -1,8 +1,8 @@
 #include"motion_planning/ds/fmt_node.hpp"
 #include "motion_planning/ds/fmt_node.hpp"
 
-FMTNode::FMTNode(std::unique_ptr<State> state, int index)
-    : state_(std::move(state)),
+FMTNode::FMTNode(std::shared_ptr<State> state, int index)
+    : state_(state),
       index_(index),
       cost_(INFINITY),
       heuristic_(0.0),

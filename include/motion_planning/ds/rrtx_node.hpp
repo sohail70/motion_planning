@@ -9,7 +9,7 @@ class RRTxNode {
 public:
     using EdgeMap = boost::container::flat_map<RRTxNode*, EdgeInfo>;
 
-    explicit RRTxNode(std::unique_ptr<State> state, int index = -1);
+    explicit RRTxNode(std::shared_ptr<State> state, int index = -1);
     
     const Eigen::VectorXd& getStateValue() const;
     void setCost(double cost) noexcept;
@@ -51,7 +51,7 @@ public:
     size_t heap_index_;  // Tracks position in the priority queue
 
 private:
-    std::unique_ptr<State> state_;
+    std::shared_ptr<State> state_;
     
     // std::unordered_map<RRTxNode*, EdgeInfo> incoming_edges_;
     // std::unordered_map<RRTxNode*, EdgeInfo> outgoing_edges_;

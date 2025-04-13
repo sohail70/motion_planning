@@ -32,18 +32,23 @@ public:
     double getHeuristic() const;
     void cacheHeuristic(double h);
     bool isHeuristicCached() const;
+    void updateCostAndPropagate();
 
     bool in_queue_;
     size_t heap_index_;
     bool in_unvisited_;
     bool in_samples_;
+    bool is_new_;
+    bool unexpand_;
     bool is_connected_;
     int samples_index_;
     double edge_cost_;
     std::unordered_set<int> blocked_best_neighbors;
 
 private:
-    std::shared_ptr<State> state_;
+    // std::shared_ptr<State> state_;
+    std::weak_ptr<State> state_;
+    Eigen::VectorXd state_value_;
     NeighborMap neighbors_;
     double cost_;
     int index_;

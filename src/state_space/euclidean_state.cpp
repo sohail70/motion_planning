@@ -9,8 +9,8 @@ EuclideanState::EuclideanState(const Eigen::VectorXd& value): value_(value) {
     // std::cout << "EulideanState Constructor 2 \n";
 }
 
-std::unique_ptr<State> EuclideanState::clone() const {
-    return std::make_unique<EuclideanState>(value_);
+std::shared_ptr<State> EuclideanState::clone() const {
+    return std::make_shared<EuclideanState>(value_);
 }
 bool EuclideanState::equals(const State& other) const {
     const auto& otherState = dynamic_cast<const EuclideanState&>(other);

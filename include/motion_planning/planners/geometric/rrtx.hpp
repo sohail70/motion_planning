@@ -9,7 +9,7 @@
 
 class RRTX : public Planner {
  public:
-    RRTX(std::unique_ptr<StateSpace> statespace, 
+    RRTX(std::shared_ptr<StateSpace> statespace, 
         std::shared_ptr<ProblemDefinition> problem_def,
         std::shared_ptr<ObstacleChecker> obs_checker);
     
@@ -47,7 +47,7 @@ std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& ob
     PriorityQueue<RRTxNode, RRTxComparator> inconsistency_queue_;
     
     // State management
-    std::unique_ptr<StateSpace> statespace_;
+    std::shared_ptr<StateSpace> statespace_;
     std::shared_ptr<ProblemDefinition> problem_;
     std::shared_ptr<ObstacleChecker> obs_checker_;
     std::shared_ptr<Visualization> visualization_;

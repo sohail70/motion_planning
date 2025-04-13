@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
 
     Params planner_params;
     planner_params.setParam("num_of_samples", 0);
-    planner_params.setParam("num_batch", 1); // Adding samples (any time!)
+    planner_params.setParam("num_batch", 50); // Adding samples (any time!)
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("obs_cache", true);
@@ -191,8 +191,8 @@ int main(int argc, char **argv) {
 
 
 
-    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 30000);
-    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::InformedANYFMTA, std::move(statespace),problem_def, obstacle_checker);
+    std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 30000);
+    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::InformedANYFMTA, statespace,problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
 
     auto start = std::chrono::high_resolution_clock::now();

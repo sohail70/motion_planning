@@ -1,25 +1,25 @@
 #include "motion_planning/planners/geometric/rrtx.hpp"
 
-RRTX::RRTX(std::unique_ptr<StateSpace> statespace, 
+RRTX::RRTX(std::shared_ptr<StateSpace> statespace, 
     std::shared_ptr<ProblemDefinition> problem_def,
-    std::shared_ptr<ObstacleChecker> obs_checker): statespace_(std::move(statespace)), problem_(problem_def), obs_checker_(obs_checker){
+    std::shared_ptr<ObstacleChecker> obs_checker): statespace_(statespace), problem_(problem_def), obs_checker_(obs_checker){
         std::cout<<"RRTX constructor \n";
 }
 
 
 void RRTX::setStart(const Eigen::VectorXd& start) {
     robot_state_index_ = statespace_->getNumStates();
-    tree_.push_back(std::make_unique<RRTxNode>(statespace_->addState(start) ,  tree_.size()));
+    tree_.push_back(std::make_shared<RRTxNode>(statespace_->addState(start) ,  tree_.size()));
     std::cout << "RRTX: Start node created on Index: " << robot_state_index_ << "\n";
 }
 void RRTX::setGoal(const Eigen::VectorXd& goal) {
     root_state_index_ = statespace_->getNumStates();
-    auto node = std::make_unique<RRTxNode>(statespace_->addState(goal) ,  tree_.size());
+    auto node = std::make_shared<RRTxNode>(statespace_->addState(goal) ,  tree_.size());
     vbot_index_ = 1;
     vbot_node_ = node.get();
 
     
-    tree_.push_back(std::move(node)); // Fixed parenthesis
+    tree_.push_back(node); // Fixed parenthesis
     std::cout << "RRTX: Goal node created on Index: " << root_state_index_ << "\n";
 }
 

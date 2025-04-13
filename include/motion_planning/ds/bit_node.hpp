@@ -36,6 +36,7 @@ public:
 
     bool in_queue_;
     bool in_samples_;
+    bool is_new_;
     bool unexpand_;
     int samples_index_;
 

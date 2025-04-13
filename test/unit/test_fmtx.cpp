@@ -251,8 +251,8 @@ int main(int argc, char **argv) {
 
 
 
-    std::unique_ptr<StateSpace> statespace = std::make_unique<EuclideanStateSpace>(dim, 30000);
-    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, std::move(statespace),problem_def, obstacle_checker);
+    std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 30000);
+    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMTX, statespace,problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
 
     auto start = std::chrono::high_resolution_clock::now();

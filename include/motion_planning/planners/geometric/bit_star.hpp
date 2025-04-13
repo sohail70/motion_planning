@@ -10,7 +10,7 @@
 
 class BITStar : public Planner {
 public:
-    BITStar(std::unique_ptr<StateSpace> statespace, 
+    BITStar(std::shared_ptr<StateSpace> statespace, 
                    std::shared_ptr<ProblemDefinition> problem_def,
                    std::shared_ptr<ObstacleChecker> obs_checker);
     
@@ -61,7 +61,7 @@ private:
     std::shared_ptr<KDTree> kdtree_samples_;
     std::shared_ptr<KDTree> kdtree_tree_;
 
-    std::unique_ptr<StateSpace> statespace_;
+    std::shared_ptr<StateSpace> statespace_;
     std::shared_ptr<ProblemDefinition> problem_;
     std::shared_ptr<Visualization> visualization_;
     std::shared_ptr<ObstacleChecker> obs_checker_;

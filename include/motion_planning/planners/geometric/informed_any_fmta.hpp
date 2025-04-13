@@ -11,7 +11,7 @@
 
 class InformedANYFMTA : public Planner {
  public:
-            InformedANYFMTA(std::unique_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
+            InformedANYFMTA(std::shared_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
             void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
             void plan() override;
             void plan2();
@@ -59,7 +59,8 @@ class InformedANYFMTA : public Planner {
                 std::shared_ptr<IFMTNode> x,
                 std::shared_ptr<IFMTNode> z,
                 const EdgeInfo& cost_to_neighbor,
-                bool is_sample_neighbor
+                bool is_sample_neighbor,
+                std::vector<std::shared_ptr<IFMTNode>>& new_open_
             );
 
 
@@ -84,7 +85,7 @@ class InformedANYFMTA : public Planner {
     
 
 
-            std::unique_ptr<StateSpace> statespace_;
+            std::shared_ptr<StateSpace> statespace_;
             std::shared_ptr<ProblemDefinition> problem_;
             
             std::shared_ptr<Visualization> visualization_;
@@ -93,6 +94,7 @@ class InformedANYFMTA : public Planner {
 
         //     PriorityQueue<IFMTNode, IFMTComparator> v_open_heap_;
             PriorityQueue2<IFMTNode, IFMTComparator> v_open_heap_;
+            std::vector<std::shared_ptr<IFMTNode>> new_opens_;
 
             std::vector<std::shared_ptr<IFMTNode>> open_nodes;
 

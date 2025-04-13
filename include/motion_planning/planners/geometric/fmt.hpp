@@ -11,7 +11,7 @@
 
 class FMT : public Planner {
  public:
-            FMT(std::unique_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
+            FMT(std::shared_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
             void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
             void plan() override;
             std::vector<size_t> getPathIndex() const;
@@ -42,7 +42,7 @@ class FMT : public Planner {
             std::vector<std::shared_ptr<FMTNode>> tree_;
             std::shared_ptr<KDTree> kdtree_;
 
-            std::unique_ptr<StateSpace> statespace_;
+            std::shared_ptr<StateSpace> statespace_;
             std::shared_ptr<ProblemDefinition> problem_;
             
             std::shared_ptr<Visualization> visualization_;

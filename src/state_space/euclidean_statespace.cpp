@@ -9,15 +9,15 @@ EuclideanStateSpace::EuclideanStateSpace(int dimension,int capacity):StateSpace(
     std::cout << "Euclidean state space constructor \n";
 }
 
-std::unique_ptr<State> EuclideanStateSpace::addState(const Eigen::VectorXd& value) {
-    return StateSpace::addState(std::make_unique<EuclideanState>(value));
+std::shared_ptr<State> EuclideanStateSpace::addState(const Eigen::VectorXd& value) {
+    return StateSpace::addState(std::make_shared<EuclideanState>(value));
 }
 
 
-std::unique_ptr<State> EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0) {
+std::shared_ptr<State> EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0) {
     Eigen::VectorXd values = Eigen::VectorXd::Random(dimension_); // Generate values in [-1,1]
     values = min + (max - min) * (values.array() + 1) / 2; // Scale to [min, max]
-    return StateSpace::addState(std::make_unique<EuclideanState>(values));
+    return StateSpace::addState(std::make_shared<EuclideanState>(values));
 }
 
 void EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0, int k = 1) {
@@ -27,20 +27,20 @@ void EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0, int 
 
     for (int i = 0; i < k; ++i) {
         Eigen::VectorXd sample = states_.row(i);
-        StateSpace::addState(std::make_unique<EuclideanState>(sample));
+        StateSpace::addState(std::make_shared<EuclideanState>(sample));
     }
 }
 
-double EuclideanStateSpace::distance(const std::unique_ptr<State>& state1 , const std::unique_ptr<State>& state2) const {
+double EuclideanStateSpace::distance(const std::shared_ptr<State>& state1 , const std::shared_ptr<State>& state2) const {
     return (state1->getValue() - state2->getValue()).norm(); // Euclidean distance
 }
 
-std::unique_ptr<State> EuclideanStateSpace::interpolate(const std::unique_ptr<State>& state1, const std::unique_ptr<State>& state2, double t) const { // t in [0, 1]
+std::shared_ptr<State> EuclideanStateSpace::interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const { // t in [0, 1]
     Eigen::VectorXd interpolated = state1->getValue() + t * (state2->getValue() - state1->getValue());
-    return std::make_unique<EuclideanState>(interpolated);
+    return std::make_shared<EuclideanState>(interpolated);
 }
 
-bool EuclideanStateSpace::isValid(const std::unique_ptr<State>& state) const {
+bool EuclideanStateSpace::isValid(const std::shared_ptr<State>& state) const {
     // Add validation logic here (e.g., check bounds)
     return true;
 }

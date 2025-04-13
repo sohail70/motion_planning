@@ -1,12 +1,13 @@
 #include "motion_planning/ds/bit_node.hpp"
 
 BITNode::BITNode(std::shared_ptr<State> state, int index)
-    : state_(std::move(state)),
+    : state_(state),
       index_(index),
       cost_(INFINITY),
       heuristic_(0.0),
       in_queue_(false),
       in_samples_(false),
+      is_new_(false),
       unexpand_(false),
       samples_index_(-1),
       is_pruned_(false),

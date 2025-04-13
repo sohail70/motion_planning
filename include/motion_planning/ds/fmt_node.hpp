@@ -15,7 +15,7 @@ public:
     using NeighborMap = boost::container::flat_map<FMTNode*, EdgeInfo>;
     // using NeighborMap = std::unordered_map<FMTNode*, EdgeInfo>;
     
-    explicit FMTNode(std::unique_ptr<State> state, int index = -1);
+    explicit FMTNode(std::shared_ptr<State> state, int index = -1);
     
     const Eigen::VectorXd& getStateValue() const;
     double getCost() const noexcept;
@@ -84,7 +84,7 @@ public:
     FMTNode* parent_;
 
 private:
-    std::unique_ptr<State> state_;
+    std::shared_ptr<State> state_;
     NeighborMap neighbors_;
     double cost_;
     int index_;

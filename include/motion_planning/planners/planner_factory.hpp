@@ -14,9 +14,9 @@
 
 class PlannerFactory {
  public:
-    using Creator = std::function<std::unique_ptr<Planner>(std::unique_ptr<StateSpace>, std::shared_ptr<ProblemDefinition> , std::shared_ptr<ObstacleChecker> )>;
+    using Creator = std::function<std::unique_ptr<Planner>(std::shared_ptr<StateSpace>, std::shared_ptr<ProblemDefinition> , std::shared_ptr<ObstacleChecker> )>;
 
-    std::unique_ptr<Planner> createPlanner(PlannerType, std::unique_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem , std::shared_ptr<ObstacleChecker> obs_checker );
+    std::unique_ptr<Planner> createPlanner(PlannerType, std::shared_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem , std::shared_ptr<ObstacleChecker> obs_checker );
     void registerPlanner(PlannerType, Creator);
     static PlannerFactory& getInstance();
  private:
@@ -28,8 +28,8 @@ template<typename pType>
 class AutorRegisterPlanners { 
  public:
    AutorRegisterPlanners(const PlannerType& type){
-      PlannerFactory::getInstance().registerPlanner(type,[](std::unique_ptr<StateSpace> statespace, std::shared_ptr<ProblemDefinition> problem , std::shared_ptr<ObstacleChecker> obs_checker ){
-         return std::make_unique<pType>(std::move(statespace), problem , obs_checker);
+      PlannerFactory::getInstance().registerPlanner(type,[](std::shared_ptr<StateSpace> statespace, std::shared_ptr<ProblemDefinition> problem , std::shared_ptr<ObstacleChecker> obs_checker ){
+         return std::make_unique<pType>(statespace, problem , obs_checker);
       });
    }
 };
