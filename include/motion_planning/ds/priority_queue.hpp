@@ -226,7 +226,7 @@ public:
 
     void add(std::shared_ptr<NodeType> node, double priority) {
         if (node->in_queue_) return;
-        node->in_queue_ = true;
+        // node->in_queue_ = true;
         heap_.emplace_back(priority, node);
         node->heap_index_ = heap_.size() - 1;
         heapifyUp(node->heap_index_);
@@ -262,7 +262,7 @@ public:
         heap_[idx] = heap_.back();
         last_node->heap_index_ = idx;
         heap_.pop_back();
-        node->in_queue_ = false;
+        // node->in_queue_ = false;
 
         // Restore heap property
         if (idx < heap_.size()) {

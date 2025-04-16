@@ -107,12 +107,15 @@ class InformedANYFMTA : public Planner {
             int num_batch_;
             double lower_bound_;
             double upper_bound_;
+            double max_edge_length_;
             int root_state_index_;
             int robot_state_index_;
             bool use_kdtree;
             double neighborhood_radius_;
             bool obs_cache = false;
             bool partial_plot = false;
+
+            double ci_ = std::numeric_limits<double>::infinity();
 
             int d;
             double mu;

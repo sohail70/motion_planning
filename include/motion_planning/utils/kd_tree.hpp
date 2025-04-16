@@ -25,7 +25,7 @@ class KDTree {
      virtual bool removeByIndex(size_t index) = 0;
 
     //  virtual Eigen::VectorXd getPoint(size_t index) const = 0
-    //  virtual size_t size() const = 0;
+     virtual size_t size() const = 0;
     
      virtual bool validateAgainstSamples(const std::vector<std::shared_ptr<IFMTNode>>& samples) const = 0;
      virtual bool validateAgainstSamples(const std::vector<std::shared_ptr<BITNode>>& samples) const = 0;

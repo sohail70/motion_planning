@@ -83,6 +83,13 @@ void IFMTNode::disconnectFromGraph() {
         parent_.reset();
     }
 
+    this->samples_index_ = -1;
+    this->in_samples_ = false;
+    this->unexpand_ = false;
+    this->in_queue_ = false;
+    this->cost_ = INFINITY;
+
+
     for (auto& child_weak : children_) {
         if (auto child = child_weak.lock()) {
             if (child->parent_.lock().get() == this) {
@@ -119,6 +126,14 @@ void IFMTNode::cacheHeuristic(double h) {
     heuristic_ = h;
     heuristic_cached_ = true;
 }
+
+double IFMTNode::getGHat() const { return g_hat_; }
+void IFMTNode::cacheGHat(double g_hat) { 
+    g_hat_ = g_hat;
+    g_hat_cached_ = true;
+}
+
+
 bool IFMTNode::isHeuristicCached() const { return heuristic_cached_; }
 
 

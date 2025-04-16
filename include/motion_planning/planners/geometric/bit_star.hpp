@@ -98,6 +98,7 @@ private:
     double lower_bound_;
     double upper_bound_;
     double neighborhood_radius_;
+    double max_edge_length_;
     int num_of_samples_;
     int num_batch_;
     int root_state_index_;

@@ -86,6 +86,8 @@ void InformedANYFMTA::setup(const Params& params, std::shared_ptr<Visualization>
 
     int n  = tree_.size() + samples_.size();
     neighborhood_radius_ = factor * gamma * std::pow(std::log(n) / n, 1.0 / d);
+    max_edge_length_ = 15;
+    neighborhood_radius_ = std::min(neighborhood_radius_,max_edge_length_);
     // neighborhood_radius_ = 5.0;
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
     auto end = std::chrono::high_resolution_clock::now();
@@ -235,11 +237,13 @@ void InformedANYFMTA::setup(const Params& params, std::shared_ptr<Visualization>
 
 //                             checks++;
 //                             // v_open_heap_.add(x,priorityCost);
+                                    // x->in_queue_ = true;
 //                             if (x!=robot_node_){
 //                                 if (x->in_queue_ == true){
 //                                     v_open_heap_.update(x,priorityCost);
 //                                 } else{
 //                                     v_open_heap_.add(x,priorityCost);
+                                        // x->in_queue_ = true;
 //                                 }
 //                             }
 
@@ -256,14 +260,14 @@ void InformedANYFMTA::setup(const Params& params, std::shared_ptr<Visualization>
 //                                 kdtree_samples_->buildTree();
 //                                 // Then update samples vector
 //                                 if (idx != samples_.size() - 1) {
-//                                     std::swap(samples_[idx], samples_.back());
-//                                     samples_[idx]->samples_index_ = idx;
+//                                     std::swap(samples_.at(idx), samples_.back());
+//                                     samples_.at(idx)->samples_index_ = idx;
 //                                 }
 //                                 samples_.pop_back();
                                 
 //                                 // Update remaining indices
 //                                 for (size_t i = idx; i < samples_.size(); ++i) {
-//                                     samples_[i]->samples_index_ = i;
+//                                     samples_.at(i)->samples_index_ = i;
 //                                 }
                                 
 //                                 // Update node state
@@ -274,7 +278,7 @@ void InformedANYFMTA::setup(const Params& params, std::shared_ptr<Visualization>
 //                                 //     // Convert samples to Eigen matrix
 //                                 // Eigen::MatrixXd samples_matrix(samples_.size(), 2);
 //                                 // for (size_t i = 0; i < samples_.size(); ++i) {
-//                                 //     samples_matrix.row(i) = samples_[i]->getStateValue();
+//                                 //     samples_matrix.row(i) = samples_.at(i)->getStateValue();
 //                                 // }
 //                                 // std::cout<<"samples_" <<samples_matrix<<"\n";
 //                                 // // Compare with KD-tree's data
@@ -362,6 +366,7 @@ void InformedANYFMTA::plan() {
             // }
 
             v_open_heap_.add(node, priority);
+            node->in_queue_ = true;
         }
 
 
@@ -372,8 +377,14 @@ void InformedANYFMTA::plan() {
     std::cout<<"tree: "<<tree_.size()<<"\n";
     std::cout<<"samples: "<<samples_.size()<<"\n";
     std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
+    std::cout<<"r: "<<neighborhood_radius_<<"\n";
+    if(tree_.size()==155 && samples_.size()==80){
+        std::cout<<"start \n";
+    }
 
+    int cc = 0;
     while (!v_open_heap_.empty() ){
+        cc++;
     // while (!v_open_heap_.empty()){
 
         // addBatchOfSamplesUninformed(num_batch_);
@@ -382,7 +393,7 @@ void InformedANYFMTA::plan() {
         double priority = top_element.first;
         std::shared_ptr<IFMTNode> z = top_element.second;
         int zIndex = z->getIndex();
-
+        v_open_heap_.pop();
     new_opens_.clear();
 
         // std::vector<Eigen::VectorXd> nodes;
@@ -398,10 +409,12 @@ void InformedANYFMTA::plan() {
             since im not using sorting and process edges randomly then the first few of them might get processes and collision checked uselessly! 
 
         */
-        if (priority > robot_node_->getCost()){ // DOES THIS CAUSE ISSUE FOR REWIRING????????*****************
+        if (priority>robot_node_->getCost() || z->getCost() + z->getHeuristic() > robot_node_->getCost()){ // DOES THIS CAUSE ISSUE FOR REWIRING????????*****************
+            std::cout<<"SALAALLAALAMAMALM \n";
             v_open_heap_.clear();
             break;
         }
+
         std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>> near_z_samples;
         near2sample(z, near_z_samples);  // Get neighbors from samples
 
@@ -418,29 +431,40 @@ void InformedANYFMTA::plan() {
             }
             // Skip edges that can't improve the solution
             if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost() && z->unexpand_==false) {
-            // if ((z->getStateValue()-tree_.at(root_state_index_)->getStateValue()).norm() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost() && z->unexpand_==false) {
+            // if (z->getGHat() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost() && z->unexpand_==false) {
                 // should_delete_ = true;
-                std::cout<<"clean \n";
-                v_open_heap_.clear();        
+                // int a = 0;
+                // for (auto& node : tree_) {
+                //     a++;
+                //     if(node->unexpand_==true){
+                //         std::cout<<"why \n";
+                //     }
+                // }
+                // std::cout<<"clean \n";
+                // v_open_heap_.clear();        
                 // return;
                 break; // Exit loop early (sorted edges)
             }
             processNode(x, z, cost_to_neighbor, true,new_opens_);
             x->is_new_ = false;
         }
-        if(counter>0)
-            std::cout<<"couter: "<<counter<<"\n";
+        // if(counter>0)
+        //     std::cout<<"couter: "<<counter<<"\n";
 
+
+        
         if(z->unexpand_==true){
             std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>> near_z_tree;
             near2tree(z, near_z_tree);  // Get neighbors from tree
 
             
             for (const auto& [x, cost_to_neighbor] : near_z_tree) {
-                // if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()) {
-                // if ((z->getStateValue()-tree_.at(root_state_index_)->getStateValue()).norm() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()) {
+                if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()) {
+                // if (z->getGHat() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()) {
                 //     break; // Exit loop early (sorted edges)
-                // }
+                    continue;
+                    // break;
+                }
                 processNode(x, z, cost_to_neighbor, false,new_opens_);
                 // break;
             }
@@ -454,8 +478,8 @@ void InformedANYFMTA::plan() {
         //     return; 
         // }
 
-        v_open_heap_.pop();
-        // Update priority queue (common logic)
+        z->in_queue_ = false;
+        // // Update priority queue (common logic)
         // for (auto open_: new_opens_){
         //     // double priorityCost = open_->getCost() + open_->getHeuristic();
         //     double priorityCost = open_->getCost();  // MAKING IT TO HAVE HIGHER PRIORITY BECAUSE I NEED REWIREING!!! AND v_open_heap.clear() messes thing up
@@ -464,6 +488,7 @@ void InformedANYFMTA::plan() {
         //             v_open_heap_.update(open_, priorityCost);
         //         } else {
         //             v_open_heap_.add(open_, priorityCost);
+        //             open_->in_queue_ = true;
         //         }
         //     // }
 
@@ -479,6 +504,7 @@ void InformedANYFMTA::plan() {
 
         // visualizeTree();
     }
+    std::cout<<"ccccccccccc : "<<cc<<"\n";
 
 
     // for (auto& node : tree_) {
@@ -538,7 +564,8 @@ void InformedANYFMTA::processNode(
 
     // Update costs and structures
     if (min_cost < x->getCost()) {
-        x->setCost(min_cost);
+        double old_cost = x->getCost();
+        // x->setCost(min_cost); // Don't use this because updateCostAndPropagate won't get trigered with this!!
         x->setParent(best_neighbor_node, best_edge_length);
         x->updateCostAndPropagate();
 
@@ -549,16 +576,17 @@ void InformedANYFMTA::processNode(
             kdtree_samples_->removeByIndex(idx);
             
             if (idx != samples_.size() - 1) {
-                std::swap(samples_[idx], samples_.back());
-                samples_[idx]->samples_index_ = idx;
+                std::swap(samples_.at(idx), samples_.back());
+                samples_.at(idx)->samples_index_ = idx;
             }
             samples_.pop_back();
             
             // Update remaining indices
             for (size_t i = idx; i < samples_.size(); ++i) {
-                samples_[i]->samples_index_ = i;
+                samples_.at(i)->samples_index_ = i;
             }
             
+            x->unexpand_ = true; // THERE IS DIFFERENT IF YOU DO IT HERE OR DOING IT BELOW THE CONDTIONS --> from full rewring vs one step rewiring (relying on samples to make optimal tree)
             x->in_samples_ = false;
             x->samples_index_ = -1;
             kdtree_samples_->buildTree();
@@ -571,17 +599,25 @@ void InformedANYFMTA::processNode(
             kdtree_tree_->buildTree();
         }
         new_opens_.push_back(x);
-        x->unexpand_ = true;
+        // x->unexpand_ = true;
+
         // Update priority queue (common logic)
-        // double priorityCost = x->getCost() + x->getHeuristic();
-        double priorityCost = x->getCost();
+        double priorityCost = x->getCost() + x->getHeuristic();
+        // double priorityCost = x->getCost(); // with this you can put the unexpanded nodes on higher levels of the queue (not necessarily higher than some of the expanded nodes but some will be up) --> but do i need to do this?? why not rely on the g+h ??
         // if (x != robot_node_) {
             if (x->in_queue_) {
                 v_open_heap_.update(x, priorityCost);
             } else {
                 v_open_heap_.add(x, priorityCost);
+                    x->in_queue_ = true;
             }
         // }
+
+        // v_open_heap_.removeIf([](const auto& node) {
+        //     return node->getCost() + node->getHeuristic() >= robot_node_->getCost();
+        // });
+
+
     }
 }
 
@@ -600,7 +636,7 @@ void InformedANYFMTA::near2sample( const std::shared_ptr<IFMTNode>& node, std::v
     // Fill results in-place
     near_nodes.reserve(neighbor_indices.size());
     for (size_t idx : neighbor_indices) {
-        auto neighbor = samples_[idx];
+        auto neighbor = samples_.at(idx);
         double dist = (neighbor->getStateValue() - node->getStateValue()).norm();
 
         if (neighbor != node) {  // Exclude the query node itself
@@ -620,6 +656,18 @@ void InformedANYFMTA::near2sample( const std::shared_ptr<IFMTNode>& node, std::v
             return key_a < key_b; // Ascending order (lowest first)
         }
     );
+
+    
+    // std::sort(
+    // near_nodes.begin(),
+    // near_nodes.end(),
+    // [node_cost = node->getCost(), current_best = robot_node_->getCost()](const auto& a, const auto& b) {
+    //     const double f_a = node_cost + a.second.distance + a.first->getHeuristic();
+    //     const double f_b = node_cost + b.second.distance + b.first->getHeuristic();
+    //     // Sort by absolute difference from current_best (ascending)
+    //     return std::abs(f_a - current_best) < std::abs(f_b - current_best);
+    // }
+    // );
 
 
 }
@@ -676,23 +724,25 @@ void InformedANYFMTA::prune() {
         if (f_hat > robot_node_->getCost() || node->getCost() + node->getHeuristic() > robot_node_->getCost()) {
             to_remove.push_back(node);
             
-            // Remove from parent's children (using lock() for weak_ptr)
-            if (auto parent = node->getParent()) {
-                auto& siblings = parent->getChildrenMutable();
-                siblings.erase(
-                    std::remove_if(siblings.begin(), siblings.end(),
-                        [&node](const std::weak_ptr<IFMTNode>& weak_child) {
-                            auto child = weak_child.lock();
-                            return child && child == node;
-                        }),
-                    siblings.end());
-            }
+            // // Remove from parent's children (using lock() for weak_ptr)
+            // if (auto parent = node->getParent()) {
+            //     auto& siblings = parent->getChildrenMutable();
+            //     siblings.erase(
+            //         std::remove_if(siblings.begin(), siblings.end(),
+            //             [&node](const std::weak_ptr<IFMTNode>& weak_child) {
+            //                 auto child = weak_child.lock();
+            //                 return child && child == node;
+            //             }),
+            //         siblings.end());
+            // }
 
             node->unexpand_ = false;
 
             // Add to reuse if meets criteria
             if (f_hat < robot_node_->getCost()) {
                 node->in_samples_ = true;
+                // node->unexpand_ = true; // Not sure about this! --> samples will end up in unexpanded if they are good no need to rush it!
+
                 node->samples_index_ = samples_.size();
                 samples_.push_back(node);
                 kdtree_samples_->addPoint(node->getStateValue());
@@ -800,10 +850,11 @@ void InformedANYFMTA::prune() {
 void InformedANYFMTA::pruneSamples() {
     const double current_best_cost = robot_node_->getCost();
     std::vector<size_t> to_remove_indices;
+    std::cout << "Before prune: " << samples_.size() << "\n";
 
     // Step 1: Identify samples to remove (in reverse order for safe deletion)
     for (size_t i = samples_.size(); i-- > 0; ) {
-        auto& sample = samples_[i];
+        auto& sample = samples_.at(i);
         double f_value = (sample->getStateValue() - tree_[root_state_index_]->getStateValue()).norm() + 
                          (sample->getStateValue() - robot_node_->getStateValue()).norm();
         
@@ -812,33 +863,37 @@ void InformedANYFMTA::pruneSamples() {
         }
     }
 
+    // Sort indices in descending order to handle removal safely
+    std::sort(to_remove_indices.rbegin(), to_remove_indices.rend());
+
     // Step 2: Batch remove from samples_ and KD-tree
-    if (!to_remove_indices.empty()) {
-        // Remove from KD-tree first
-        for (auto idx : to_remove_indices) {
-            // kdtree_samples_->removePoint(samples_[idx]->getStateValue());
-            kdtree_samples_->removeByIndex(samples_[idx]->samples_index_);
-
-            samples_[idx]->in_samples_ = false;
-            samples_[idx]->samples_index_ = -1;
-        }
-
-        // Remove from samples_ vector (using swap-and-pop for O(1) removal)
-        for (auto idx : to_remove_indices) {
-            if (idx != samples_.size() - 1) {
-                std::swap(samples_[idx], samples_.back());
-                samples_[idx]->samples_index_ = idx; // Update index of swapped node
-            }
-            samples_.pop_back();
-        }
-
-        // Rebuild KD-tree once after all removals
-        kdtree_samples_->buildTree();
+    for (auto idx : to_remove_indices) {
+        // Get the sample to remove
+        auto& sample = samples_.at(idx);
         
-        // Update remaining indices
-        for (size_t i = 0; i < samples_.size(); ++i) {
-            samples_[i]->samples_index_ = i;
+        // Mark as not in samples
+        sample->in_samples_ = false;
+        sample->samples_index_ = -1;
+
+        // Remove from KD-tree using the current index
+        kdtree_samples_->removeByIndex(idx);
+
+        // Remove from samples_ vector using swap-and-pop
+        if (idx != samples_.size() - 1) {
+            std::swap(samples_.at(idx), samples_.back());
+            // Update the swapped node's index
+            samples_.at(idx)->samples_index_ = idx;
         }
+        samples_.pop_back();
+    }
+
+    // Rebuild KD-tree after all removals
+    kdtree_samples_->buildTree();
+
+    // Verify consistency
+    if (samples_.size() != kdtree_samples_->size()) {
+        std::cout << "Size mismatch after pruning: " 
+                  << samples_.size() << " vs " << kdtree_samples_->size() << "\n";
     }
 }
 
@@ -857,7 +912,8 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
     Eigen::VectorXd goal_pos = goal_node->getStateValue();
 
     // Calculate ellipsoid parameters
-    Eigen::VectorXd d_vec = goal_pos - start_pos;  // Direction from start to goal
+    // Eigen::VectorXd d_vec = goal_pos - start_pos;  // Direction from start to goal
+    Eigen::VectorXd d_vec = start_pos - goal_pos;
     double c_min = d_vec.norm();
     double c_best = start_node->getCost();
     Eigen::VectorXd center = (start_pos + goal_pos) / 2.0;  // Midpoint
@@ -905,7 +961,7 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
         // Cache heuristic for new node
 
         node->cacheHeuristic(h);
-
+        node->cacheGHat((sample - tree_.at(root_state_index_)->getStateValue()).norm());
         size_t node_index = tree_.size();
         // tree_.push_back(std::move(node));
         node->in_samples_ = true;
@@ -932,6 +988,7 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
 
     double n = tree_.size() + samples_.size();
     neighborhood_radius_ = factor * gamma * std::pow(std::log(n) / n, 1.0 / d);
+    neighborhood_radius_ = std::min(neighborhood_radius_,max_edge_length_);
 
 
 
@@ -947,12 +1004,14 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
     //         double priorityCost = neighbor->getCost() + h_value;
 
     //         // v_open_heap_.add(neighbor.get(), priorityCost);
+                    // neighbor->in_queue_ = true;
     //         // open_nodes.push_back(neighbor);
 
     //         if (neighbor->in_queue_ == true){
     //             v_open_heap_.update(neighbor,priorityCost);
     //         } else{
     //             v_open_heap_.add(neighbor,priorityCost);
+                    // neighbor->in_queue_ = true;
     //         }
 
     //     }
@@ -1068,6 +1127,7 @@ void InformedANYFMTA::addBatchOfSamplesUninformed(int num_samples) {
 
 
         node->cacheHeuristic(h);
+        node->cacheGHat((sample - tree_.at(root_state_index_)->getStateValue()).norm());
         
         // Add to tree and KD-tree
         // tree_.push_back(std::move(node));
@@ -1087,6 +1147,7 @@ void InformedANYFMTA::addBatchOfSamplesUninformed(int num_samples) {
     // Update neighborhood radius
     double n = tree_.size() + samples_.size();
     neighborhood_radius_ = factor * gamma * std::pow(std::log(n) / n, 1.0 / d);
+    neighborhood_radius_ = std::min(neighborhood_radius_,max_edge_length_);
 
     
     // // Process neighbors for newly added nodes
@@ -1101,12 +1162,14 @@ void InformedANYFMTA::addBatchOfSamplesUninformed(int num_samples) {
     //         double priorityCost = neighbor->getCost() + h_value;
 
     //         // v_open_heap_.add(neighbor.get(), priorityCost);
+                    // neighbor->in_queue_ = true;
     //         // open_nodes.push_back(neighbor);
 
     //         if (neighbor->in_queue_ == true){
     //             v_open_heap_.update(neighbor,priorityCost);
     //         } else{
     //             v_open_heap_.add(neighbor,priorityCost);
+                    // neighbor->in_queue_ = true;
     //         }
 
 
@@ -1211,10 +1274,12 @@ void InformedANYFMTA::setStart(const Eigen::VectorXd& start) {
     node->setCost(0);
     double h = (node->getStateValue() - robot_node_->getStateValue()).norm();
     node->cacheHeuristic(h);
+    node->cacheGHat(0);
     node->unexpand_=true;
 
     // node->in_queue_ = true;
     v_open_heap_.add(node, node->getCost() + node->getHeuristic());
+    node->in_queue_  = true;
     open_nodes.push_back(node);
     tree_.push_back(node);
     kdtree_tree_->addPoint(node->getStateValue());
@@ -1496,13 +1561,20 @@ void InformedANYFMTA::visualizePath(const std::vector<std::shared_ptr<IFMTNode>>
 
 void InformedANYFMTA::visualizeTree() {
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-
+    std::vector<Eigen::VectorXd> nodes_tree_;
+    std::vector<Eigen::VectorXd> nodes_sample_;
     for (const auto& node : tree_) {
         if (auto parent = node->getParent()) {
             edges.emplace_back(parent->getStateValue(), node->getStateValue());
         }
+        nodes_tree_.push_back(node->getStateValue());
     }
-    
+
+    for (const auto& node : samples_) {
+        nodes_sample_.push_back(node->getStateValue());
+    }
+    // visualization_->visualizeNodes(nodes_tree_,"map",std::vector<float>{0.0,1.0,0.0} , "nodes_tree");
+    // visualization_->visualizeNodes(nodes_sample_,"map",std::vector<float>{0.0,0.0,1.0} , "samples_tree");
     visualization_->visualizeEdges(edges, "map");
 }
 

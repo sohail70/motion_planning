@@ -274,3 +274,8 @@ bool NanoFlann::validateAgainstSamples(const std::vector<std::shared_ptr<BITNode
     }
     return true;
 }
+
+
+size_t NanoFlann::size() const{
+    return data_.rows();
+}

@@ -32,6 +32,10 @@ public:
     double getHeuristic() const;
     void cacheHeuristic(double h);
     bool isHeuristicCached() const;
+
+    double getGHat() const;
+    void cacheGHat(double g_hat);
+
     void updateCostAndPropagate();
 
     bool in_queue_;
@@ -56,6 +60,8 @@ private:
     std::vector<std::weak_ptr<IFMTNode>> children_;
     double heuristic_;
     bool heuristic_cached_ = false;
+    bool g_hat_cached_ = false;
+    double g_hat_;
 };
 struct IEdgeCandidate {
     double estimated_cost;

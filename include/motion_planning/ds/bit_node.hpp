@@ -32,6 +32,8 @@ public:
     void cacheHeuristic(double h);
     bool isHeuristicCached() const;
 
+    double getGHat() const;
+    void cacheGHat(double g_hat);
     void updateCostAndPropagate();
 
     bool in_queue_;
@@ -54,6 +56,8 @@ private:
     bool on_obstacle;
     double heuristic_;
     bool heuristic_cached_ = false;
+    bool g_hat_cached_ = false;
+    double g_hat_;
 };
 
 struct EdgeCandidate {

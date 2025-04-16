@@ -51,6 +51,11 @@ void BITNode::disconnectFromGraph() {
         siblings.erase(std::remove(siblings.begin(), siblings.end(), shared_from_this()), siblings.end());
         parent_.reset();
     }
+    this->samples_index_ = -1;
+    this->in_samples_ = false;
+    this->unexpand_ = false;
+    this->in_queue_ = false;
+    this->cost_ = INFINITY;
     
     // Fix: Remove .lock() since children_ stores shared_ptr directly
     for (auto& child : children_) {
@@ -84,6 +89,11 @@ double BITNode::getHeuristic() const { return heuristic_; }
 void BITNode::cacheHeuristic(double h) { 
     heuristic_ = h;
     heuristic_cached_ = true;
+}
+double BITNode::getGHat() const { return g_hat_; }
+void BITNode::cacheGHat(double g_hat) { 
+    g_hat_ = g_hat;
+    g_hat_cached_ = true;
 }
 bool BITNode::isHeuristicCached() const { return heuristic_cached_; }
 
