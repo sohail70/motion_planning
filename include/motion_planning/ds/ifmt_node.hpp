@@ -5,6 +5,10 @@
 #include "motion_planning/ds/edge_info.hpp"
 #include <memory>
 
+
+
+
+
 class IFMTNode : public std::enable_shared_from_this<IFMTNode> {
 public:
     using NeighborMap = boost::container::flat_map<std::shared_ptr<IFMTNode>, EdgeInfo>;
@@ -38,6 +42,10 @@ public:
 
     void updateCostAndPropagate();
 
+    size_t getUniqueId() const { 
+        return reinterpret_cast<size_t>(this); 
+    }
+
     bool in_queue_;
     size_t heap_index_;
     bool in_unvisited_;
@@ -47,7 +55,8 @@ public:
     bool is_connected_;
     int samples_index_;
     double edge_cost_;
-    std::unordered_set<int> blocked_best_neighbors;
+    std::unordered_set<std::shared_ptr<IFMTNode>> blocked_best_neighbors;
+
 
 private:
     // std::shared_ptr<State> state_;
@@ -76,3 +85,12 @@ struct IEdgeCandidate {
         return estimated_cost > other.estimated_cost;
     }
 };
+
+namespace std {
+    template <>
+    struct hash<IFMTNode> {
+        size_t operator()(const IFMTNode& node) const noexcept {
+            return std::hash<size_t>{}(node.getUniqueId());
+        }
+    };
+}

@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.10)
 project(MotionPlanning)
 # add_compile_options(-g -O0)  # Force debug symbols and disable optimizations
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_BUILD_TYPE Release)
+# set(CMAKE_BUILD_TYPE Release)
 # set(CMAKE_BUILD_TYPE RelWithDebInfo)
-#  set(CMAKE_BUILD_TYPE Debug)
+ set(CMAKE_BUILD_TYPE Debug)
 
 find_package(Eigen3 REQUIRED)
 find_package(nanoflann REQUIRED)
@@ -102,10 +102,10 @@ enable_testing()
 # ament_target_dependencies(test_fmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 # add_test(NAME test_fmt COMMAND test_fmt)
 
-# add_executable(test_anyfmt test/unit/test_anyfmt.cpp)
-# target_link_libraries(test_anyfmt motion_planning gz_obs)
-# ament_target_dependencies(test_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-# add_test(NAME test_anyfmt COMMAND test_anyfmt)
+add_executable(test_anyfmt test/unit/test_anyfmt.cpp)
+target_link_libraries(test_anyfmt motion_planning gz_obs)
+ament_target_dependencies(test_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_anyfmt COMMAND test_anyfmt)
 
 
 # add_executable(test_informed_anyfmt test/unit/test_informed_anyfmt.cpp)

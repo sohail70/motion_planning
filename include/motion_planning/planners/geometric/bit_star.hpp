@@ -85,13 +85,14 @@ private:
     
     std::shared_ptr<BITNode> robot_node_;
     Eigen::VectorXd robot_position_;
-    
     std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
     std::priority_queue<EdgeCandidate, std::vector<EdgeCandidate>, 
                        std::greater<EdgeCandidate>> edge_queue_;
     
     std::unordered_set<std::shared_ptr<BITNode>> unprocessed_nodes_;
     std::vector<std::shared_ptr<BITNode>> unconnected_nodes_container_;
+
+    int collision_check_ = 0;
 
     double ci_ = std::numeric_limits<double>::infinity();
     double current_best_cost_ = INFINITY;

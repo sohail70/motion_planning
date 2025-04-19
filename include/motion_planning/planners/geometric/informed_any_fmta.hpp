@@ -7,7 +7,14 @@
 #include "motion_planning/utils/visualization.hpp"
 #include "boost/container/flat_map.hpp"
 #include "motion_planning/ds/priority_queue.hpp"
-
+struct PairHash2 {
+    template <class T1, class T2>
+    std::size_t operator()(const std::pair<T1, T2>& p) const {
+        auto h1 = std::hash<T1>{}(p.first);
+        auto h2 = std::hash<T2>{}(p.second);
+        return h1 ^ (h2 << 1);
+    }
+};
 
 class InformedANYFMTA : public Planner {
  public:
@@ -116,6 +123,15 @@ class InformedANYFMTA : public Planner {
             bool partial_plot = false;
 
             double ci_ = std::numeric_limits<double>::infinity();
+
+            int collision_check_ = 0;
+
+            // Debug tracking members
+            // std::unordered_set<std::pair<size_t, size_t>> processed_edges_;
+            std::unordered_set<std::pair<size_t, size_t>, PairHash2> processed_edges_;
+
+            size_t duplicate_checks_ = 0;
+            size_t total_checks_ = 0;
 
             int d;
             double mu;

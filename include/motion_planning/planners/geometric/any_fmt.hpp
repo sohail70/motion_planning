@@ -70,6 +70,8 @@ class ANYFMT : public Planner {
             bool obs_cache = false;
             bool partial_plot = false;
 
+            int collision_check_ = 0;
+
             int d;
             double mu;
             double zetaD;

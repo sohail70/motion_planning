@@ -88,7 +88,7 @@ void IFMTNode::disconnectFromGraph() {
     this->unexpand_ = false;
     this->in_queue_ = false;
     this->cost_ = INFINITY;
-
+    this->blocked_best_neighbors.clear();
 
     for (auto& child_weak : children_) {
         if (auto child = child_weak.lock()) {

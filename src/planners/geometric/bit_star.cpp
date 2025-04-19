@@ -28,6 +28,7 @@ void BITStar::clearPlannerState() {
     root_state_index_ = -1;
     robot_state_index_ = -1;
     obstacle_check_cache.clear();
+    collision_check_ = 0;
 }
 
 void BITStar::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
@@ -99,24 +100,19 @@ void BITStar::setup(const Params& params, std::shared_ptr<Visualization> visuali
 
 
 void BITStar::plan() {
+    if(std::abs(robot_node_->getCost() - tree_[root_state_index_]->getHeuristic()) <0.01){
+        return;
+    }
+
+
     if (vertex_queue_.empty() && edge_queue_.empty()) {
-        if (samples_.size() != kdtree_samples_->size()) {
-            std::cout<< "IIIIIIIIIINNNN 000 phase WRONG SIZE" << samples_.size() << " vs "<< kdtree_samples_->size()<<"\n";
-        }
-        if(samples_.size()==19){
-            std::cout<<"asdasd \n";
+        std::cout<<"GGGGGGGGGGGGGGGGGGGGGGGGGGGG \n";
+        for (auto s : samples_){
+            s->is_new_ = false;
         }
         prune(); 
         pruneSamples();
 
-        if (samples_.size() != kdtree_samples_->size()) {
-            std::cout<< "IIIIIIIIIINNNN 1st phase WRONG SIZE" << samples_.size() << " vs "<< kdtree_samples_->size()<<"\n";
-        }
-
-        std::cout<<"tree: "<<tree_.size()<<"\n";
-        std::cout<<"samples: "<<samples_.size()<<"\n";
-        std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
-        std::cout<<"r: "<<neighborhood_radius_<<"\n";
 
         // samples_.clear(); // Clearing samples would violate uniform sampling assumption! // also messes up with your kdtree_samples_ indices consistency with samples_ vector!
         if (robot_node_->getCost() == INFINITY) {
@@ -125,75 +121,30 @@ void BITStar::plan() {
             addBatchOfSamples(num_batch_);
         }
 
-        if (samples_.size() != kdtree_samples_->size()) {
-            std::cout<< "IIIIIIIIIINNNN 1.5555st phase WRONG SIZE" << samples_.size() << " vs "<< kdtree_samples_->size()<<"\n";
-        }
+
         // Add all tree nodes to the vertex queue
         for (auto& node : tree_) {
             double priority = node->getCost() + node->getHeuristic();
             // vertex_queue_.add(node, priority);
             // vertex_queue_.emplace(priority, node);
 
-            // node->status = BITNode::IN_QUEUE;
 
             vertex_queue_.add(node, priority);
             node->in_queue_ = true;
         }
     }
-
+    std::cout<<"tree: "<<tree_.size()<<"\n";
+    std::cout<<"samples: "<<samples_.size()<<"\n";
+    std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
+    std::cout<<"r: "<<neighborhood_radius_<<"\n";
+    std::cout<<"collision check: "<<collision_check_<<"\n";
     // I think the paper meant a do-while because at time where edge_queue is empty we need to at least do it once!
     while (!vertex_queue_.empty() && (edge_queue_.empty() || vertex_queue_.top().first < edge_queue_.top().estimated_cost)){
         auto [current_cost, vmin] = vertex_queue_.top();
         vertex_queue_.pop();
         vmin->in_queue_ = false;
 
-        // // bool in_unexpanded = std::find(unexpanded_.begin(), unexpanded_.end(), vmin) != unexpanded_.end();
-        // std::vector<std::shared_ptr<BITNode>> x_near;
-
-        // if (vmin->in_samples_) {
-        //     near2sample(vmin,x_near);
-        // } else {
-        //     std::unordered_set<std::shared_ptr<BITNode>> x_new_set(samples_.begin(), samples_.end());
-        //     std::vector<std::shared_ptr<BITNode>> intersection;
-        //     for (const auto& node : unconnected_) {
-        //         if (x_new_set.count(node)) {
-        //             intersection.push_back(node);
-        //         }
-        //     }
-        //     near2sample(vmin,x_near);
-        // }
-
-        // // Process neighbors
-        // for (auto& neighbor : x_near) {
-        //     double edge_cost = (vmin->getStateValue() - neighbor->getStateValue()).norm();
-        //     double a_hat = vmin->getCost() +edge_cost + neighbor->getHeuristic();
-        //     if (a_hat < ci_) {
-        //         double edge_cost = a_hat;
-        //         double cost = vmin->getCost() + edge_cost + neighbor->getHeuristic();
-        //         edge_queue_.emplace(cost, vmin, neighbor);
-        //     }
-        // }
-
-        // if (vmin->in_samples_) {
-        //     std::vector<std::shared_ptr<BITNode>> v_near;
-        //     near2tree(vmin, v_near);
-        //     for (auto& v : v_near) {
-
-        //         double edge_cost = (vmin->getStateValue() - v->getStateValue()).norm();
-        //         double a_hat = vmin->getCost() +edge_cost + v->getHeuristic();
-        //         double path_cost = vmin->getCost() + edge_cost;
-
-        //         if (v != vmin && a_hat < ci_ && path_cost < v->getCost()) {
-        //             double cost = path_cost + v->getHeuristic();
-        //             edge_queue_.emplace(cost, vmin, v);
-        //         }
-        //     }
-        //     vmin->in_samples_ = false;
-        //     // Remove from unexpanded
-        //     unexpanded_.erase(std::remove(unexpanded_.begin(), unexpanded_.end(), vmin), 
-        //                     unexpanded_.end());
-        // }
-        // ////////////////////////////////////
+       
 
         std::vector<std::shared_ptr<BITNode>> x_near;
 
@@ -217,7 +168,7 @@ void BITStar::plan() {
                 // edge_queue_.emplace(cost, vmin, neighbor);
             }
 
-            neighbor->is_new_ = false;
+            // neighbor->is_new_ = false; // for the whole process of this while search i think neighbor can be is_new_ true and only when we get out of this while loop we can set it to is_new_=false because according to the paper Xnew is for the whole duration of processing this new batch!
         }
 
         // Additional processing for new vertices
@@ -262,12 +213,13 @@ void BITStar::plan() {
         if (vmin->getCost() + c_hat + xmin->getHeuristic() < ci_ ){
             if( vmin->getCost() + c_hat < xmin->getCost()){
                 
+                collision_check_++;
                 double edge_cost = obs_checker_->isObstacleFree(vmin->getStateValue(), xmin->getStateValue()) 
                                 ? c_hat : std::numeric_limits<double>::infinity();
 
                 if (vmin->getCost() + edge_cost + xmin->getHeuristic() < ci_ &&
                     vmin->getCost() + edge_cost < xmin->getCost()) {
-                    std::cout<<"prev cost : "<<xmin->getCost() << "current : "<<vmin->getCost() + edge_cost<<"\n";
+                    // std::cout<<"prev cost : "<<xmin->getCost() << "current : "<<vmin->getCost() + edge_cost<<"\n";
                     xmin->setParent(vmin, edge_cost);
                     xmin->updateCostAndPropagate();
                     // xmin->setIndex(tree_.size()); // Even though i guess when we are gonna prune every thing will be a mess index wise!
@@ -296,7 +248,7 @@ void BITStar::plan() {
                         xmin->in_samples_ = false;
                         xmin->samples_index_ = -1;
                         kdtree_samples_->buildTree();
-
+                        xmin->is_new_ = false; //since we delete xmin from samples_ we do not have access to it any more in looping thourhg the samples_ again!
                     xmin->unexpand_ = true;
 
                     }
@@ -312,7 +264,7 @@ void BITStar::plan() {
                     double priority =  xmin->getCost() + xmin->getHeuristic();
                     if (xmin->in_queue_) {
                         vertex_queue_.update(xmin, priority);
-                        std::cout<<"UPDATE \n";
+                        // std::cout<<"UPDATE \n";
                     } else {
                         vertex_queue_.add(xmin, priority);
                         xmin->in_queue_ = true;
@@ -441,7 +393,7 @@ void BITStar::addBatchOfSamplesUninformed(int num_samples) {
         node->is_new_ = true;
         node->samples_index_ = samples_.size();
         samples_.push_back(node);
-
+        // std::cout<<"sample: "<<sample<<"\n";
         kdtree_samples_->addPoint(sample);
     }
     if(counter==0) return;
@@ -493,6 +445,8 @@ void BITStar::addBatchOfSamples(int num_samples) {
         node->samples_index_ = samples_.size();
         samples_.push_back(node);
         // visualization_->visualizeNodes(nodes);
+        // std::cout<<"sample: "<<sample<<"\n";
+
 
         kdtree_samples_->addPoint(sample);
     }
@@ -977,7 +931,7 @@ void BITStar::visualizeTree() {
         nodes_sample_.push_back(node->getStateValue());
     }
     // visualization_->visualizeNodes(nodes_tree_,"map",std::vector<float>{0.0,1.0,0.0} , "nodes_tree");
-    // visualization_->visualizeNodes(nodes_sample_,"map",std::vector<float>{0.0,0.0,1.0} , "nodes_sample");
+    visualization_->visualizeNodes(nodes_sample_,"map",std::vector<float>{0.0,0.0,1.0} , "nodes_sample");
     visualization_->visualizeEdges(edges, "map");
 }
 

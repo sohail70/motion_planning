@@ -144,6 +144,7 @@ void ANYFMT::plan() {
                     }
                 }
                 else { //SOMETIMES BEST_NEIGHBOR_INDEX is -1 which means all the Ynear nodes has inf cost --> inf cost means its either samples_in_obstalces or vUnvisted or it was made to inf in the handleAddObstalce! --> THESE nodes shouldn't be in vOpen --> sometimes a node lingers in vOpen because of early exit so you have to erase it in handleAddObstalce or you have to check some ifs in Ynear node push_back!
+                    collision_check_++;
                     obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
                 }
 
@@ -190,6 +191,7 @@ void ANYFMT::plan() {
     std::cout<<"cached: "<< cached <<"\n";
     std::cout<<"uncached: "<< uncached <<"\n";
     std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
+    std::cout<<"collision check: "<<collision_check_ <<"\n";
 
 }
 

@@ -22,6 +22,7 @@ void InformedANYFMTA::clearPlannerState() {
     root_state_index_ = -1;
     robot_state_index_ = -1;
     obstacle_check_cache.clear(); // This is needed for any time algs of the fmt variants!
+    collision_check_ = 0;
 
 }
 
@@ -340,6 +341,13 @@ void InformedANYFMTA::setup(const Params& params, std::shared_ptr<Visualization>
 
 
 void InformedANYFMTA::plan() {
+    if(std::abs(robot_node_->getCost() - tree_[root_state_index_]->getHeuristic()) <0.01){
+        return;
+    }
+    // processed_edges_.clear();
+    // duplicate_checks_ = 0;
+    // total_checks_ = 0;
+
 
     // visualizeHeapAndUnvisited();
 
@@ -353,17 +361,35 @@ void InformedANYFMTA::plan() {
     if(v_open_heap_.empty()){
         prune();
         pruneSamples();
-
+        for (auto& sample : samples_) {
+            sample->is_new_ = false;
+        }
         if(robot_node_->getCost()==INFINITY)
             addBatchOfSamplesUninformed(num_batch_);
         else
             addBatchOfSamples(num_batch_);
 
+        
+        const double UNEXPAND_RESET_PROBABILITY = 0.3; // 30% chance to clear unexpand_
+
         for (auto& node : tree_) {
-            double priority = node->getCost() + node->getHeuristic();
+            // if (node->unexpand_ && (rand() / (double)RAND_MAX) < UNEXPAND_RESET_PROBABILITY) {
+            //     node->unexpand_ = false;
+            // }
+            // double priority = node->getCost() + node->getHeuristic();
+
+            // double priority = node->getHeuristic();
+
             // if(node->unexpand_==true){
             //     std::cout<<"why \n";
             // }
+
+            // node->is_new_ = false;
+            double priority;
+            if(robot_node_->getCost() == INFINITY)
+                priority =  node->getHeuristic();
+            else
+                priority = node->getCost() + node->getHeuristic();
 
             v_open_heap_.add(node, priority);
             node->in_queue_ = true;
@@ -378,6 +404,7 @@ void InformedANYFMTA::plan() {
     std::cout<<"samples: "<<samples_.size()<<"\n";
     std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
     std::cout<<"r: "<<neighborhood_radius_<<"\n";
+    std::cout<<"Collision check: "<<collision_check_<<"\n";
     if(tree_.size()==155 && samples_.size()==80){
         std::cout<<"start \n";
     }
@@ -410,8 +437,21 @@ void InformedANYFMTA::plan() {
 
         */
         if (priority>robot_node_->getCost() || z->getCost() + z->getHeuristic() > robot_node_->getCost()){ // DOES THIS CAUSE ISSUE FOR REWIRING????????*****************
-            std::cout<<"SALAALLAALAMAMALM \n";
+            std::cout<<"SALAMMMMMMMMMMM:"<<v_open_heap_.getHeap().size() << "\n";
+            // for (const auto& entry : v_open_heap_.getHeap()) {
+            //     // double priority = entry.first;
+            //     // if (priority < robot_node_->getCost()) {
+            //     //     std::cout<<"NO WAAAAAAAAYYYYY \n" ;// At least one node is still relevant
+            //     // }
+            //     entry.second->unexpand_ = false;
+            // }
+
+
             v_open_heap_.clear();
+
+
+
+
             break;
         }
 
@@ -430,7 +470,7 @@ void InformedANYFMTA::plan() {
                 continue;
             }
             // Skip edges that can't improve the solution
-            if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost() && z->unexpand_==false) {
+            if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost() ) {
             // if (z->getGHat() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost() && z->unexpand_==false) {
                 // should_delete_ = true;
                 // int a = 0;
@@ -443,16 +483,19 @@ void InformedANYFMTA::plan() {
                 // std::cout<<"clean \n";
                 // v_open_heap_.clear();        
                 // return;
+
+                // continue;
                 break; // Exit loop early (sorted edges)
             }
             processNode(x, z, cost_to_neighbor, true,new_opens_);
-            x->is_new_ = false;
+            // x->is_new_ = false; // not correct to do it here because is_new_ should be true for the whole duration of this new batch when ever its being called --> so i make them false later when i loop thorugh the samples_. also not all of these new samples gets to be in near2samples output so they remain unconnected but later we have to loop thorugh the samples and make them false i guess
         }
         // if(counter>0)
         //     std::cout<<"couter: "<<counter<<"\n";
 
 
         
+        // if(z->unexpand_==true && robot_node_->getCost()!=INFINITY){ //&& z->is_new_==false){
         if(z->unexpand_==true){
             std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>> near_z_tree;
             near2tree(z, near_z_tree);  // Get neighbors from tree
@@ -462,10 +505,12 @@ void InformedANYFMTA::plan() {
                 if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()) {
                 // if (z->getGHat() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()) {
                 //     break; // Exit loop early (sorted edges)
-                    continue;
-                    // break;
+                    // continue;
+                    // x->unexpand_ = false;
+                    break;
                 }
-                processNode(x, z, cost_to_neighbor, false,new_opens_);
+                // if(x->unexpand_==false)
+                    processNode(x, z, cost_to_neighbor, false,new_opens_);
                 // break;
             }
             z->unexpand_ =false;
@@ -513,7 +558,16 @@ void InformedANYFMTA::plan() {
     //     }
     // }
 
+    // Add debug summary at end
+    std::cout << "\n--- Collision Check Report ---\n"
+              << "Total checks: " << total_checks_ << "\n"
+              << "Duplicate edges: " << duplicate_checks_ << " ("
+              << (duplicate_checks_ * 100.0 / total_checks_) << "%)\n"
+              << "Unique edges checked: " << processed_edges_.size() << "\n"
+              << "Tree size: " << tree_.size() << "\n"
+              << "Sample size: " << samples_.size() << "\n";
 
+    
 }
 
 
@@ -545,6 +599,9 @@ void InformedANYFMTA::processNode(
 
 
     for (const auto& [neighbor, dist] : near_x) {
+        // if(x->blocked_best_neighbors.count(neighbor) > 0) // Didn't lower the collision checks attempts!
+        //     continue;
+
         if (neighbor->in_queue_ && (neighbor->getCost() + dist.distance < min_cost)) {
             min_cost = neighbor->getCost() + dist.distance;
             best_neighbor_node = neighbor;
@@ -558,9 +615,35 @@ void InformedANYFMTA::processNode(
         return;
     }
 
+    // Generate unique edge ID (sorted to avoid directional duplicates)
+    auto make_edge_id = [](auto a, auto b) {
+        return std::make_pair(std::min(a->getUniqueId(), b->getUniqueId()),
+                         std::max(a->getUniqueId(), b->getUniqueId()));
+    };
+
+    // Track edge processing BEFORE collision check
+    auto edge_id = make_edge_id(x, best_neighbor_node);
+    
+    // Debug: Check if edge was already processed
+    if (processed_edges_.count(edge_id)) {
+        std::cout << "DUPLICATE EDGE: " 
+                  << x->getStateValue().transpose() << " <-> "
+                  << best_neighbor_node->getStateValue().transpose()
+                  << " | Total duplicates: " << ++duplicate_checks_ <<"| "<<x->getCost() <<" vs " <<min_cost <<"\n";
+    } else {
+        processed_edges_.insert(edge_id);
+    }
+
+    collision_check_++;
+    total_checks_++;
+
+
 
     // Collision check (common logic)
-    if (!obs_checker_->isObstacleFree(x->getStateValue(), best_neighbor_node->getStateValue())) return;
+    if (!obs_checker_->isObstacleFree(x->getStateValue(), best_neighbor_node->getStateValue())){
+        // x->blocked_best_neighbors.insert(best_neighbor_node);
+        return;
+    }
 
     // Update costs and structures
     if (min_cost < x->getCost()) {
@@ -589,6 +672,7 @@ void InformedANYFMTA::processNode(
             x->unexpand_ = true; // THERE IS DIFFERENT IF YOU DO IT HERE OR DOING IT BELOW THE CONDTIONS --> from full rewring vs one step rewiring (relying on samples to make optimal tree)
             x->in_samples_ = false;
             x->samples_index_ = -1;
+            x->is_new_ = false; // since we delete x from samples_ we do not have access to it through the samples_ any more so looping through the samples_ later to make it false doesnt make this specific node false! even though it doesnt matter because this node is out of the picture i guess!
             kdtree_samples_->buildTree();
         }
 
@@ -600,9 +684,20 @@ void InformedANYFMTA::processNode(
         }
         new_opens_.push_back(x);
         // x->unexpand_ = true;
+        if(x==robot_node_){
+            std::cout<<"FOUND SOLUTION \n";
+            v_open_heap_.clear();
+        }
+
 
         // Update priority queue (common logic)
-        double priorityCost = x->getCost() + x->getHeuristic();
+        // double priorityCost = x->getCost() + x->getHeuristic();
+        double priorityCost;
+        if(robot_node_->getCost() == INFINITY)
+            priorityCost =  x->getHeuristic();
+        else
+            priorityCost = x->getCost() + x->getHeuristic();
+            
         // double priorityCost = x->getCost(); // with this you can put the unexpanded nodes on higher levels of the queue (not necessarily higher than some of the expanded nodes but some will be up) --> but do i need to do this?? why not rely on the g+h ??
         // if (x != robot_node_) {
             if (x->in_queue_) {
@@ -613,12 +708,36 @@ void InformedANYFMTA::processNode(
             }
         // }
 
+
+        // if(x->unexpand_==true){
+        //     std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>> near_x_tree;
+        //     near2tree(x, near_x_tree);  // Get neighbors from tree
+
+            
+        //     for (const auto& [xx, cost_to_neighbor] : near_x_tree) {
+        //         if (x->getCost() + cost_to_neighbor.distance + xx->getHeuristic() > robot_node_->getCost()) {
+        //         // if (z->getGHat() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()) {
+        //         //     break; // Exit loop early (sorted edges)
+        //             // continue;
+        //             break;
+        //         }
+        //         processNode(xx, x, cost_to_neighbor, false,new_opens_);
+        //         // break;
+        //     }
+        //     x->unexpand_ =false;
+        // }
+
+
+
         // v_open_heap_.removeIf([](const auto& node) {
         //     return node->getCost() + node->getHeuristic() >= robot_node_->getCost();
         // });
 
 
     }
+
+
+
 }
 
 
@@ -688,17 +807,33 @@ void InformedANYFMTA::near2tree( const std::shared_ptr<IFMTNode>& node, std::vec
             near_nodes.push_back(std::make_pair(neighbor,EdgeInfo{dist,dist}));
         }
     }
+    // std::sort(near_nodes.begin(), near_nodes.end(), [](const auto& a, const auto& b) {
+    //     // New samples first, then old ones
+    //     if (a.first->is_new_ != b.first->is_new_) return a.first->is_new_;
+    //     return a.second.distance < b.second.distance;
+    // });
 
-    // std::sort(
-    //     near_nodes.begin(),
-    //     near_nodes.end(),
-    //     [node_cost = node->getCost()](const auto& a, const auto& b) {
-    //         // Calculate sorting keys
-    //         const double key_a = node_cost + a.second.distance + a.first->getHeuristic();
-    //         const double key_b = node_cost + b.second.distance + b.first->getHeuristic();
-    //         return key_a < key_b; // Ascending order (lowest first)
+    // should we prioritize new samples first???
+    std::sort(
+        near_nodes.begin(),
+        near_nodes.end(),
+        [node_cost = node->getCost()](const auto& a, const auto& b) {
+            // Calculate sorting keys
+            const double key_a = node_cost + a.second.distance + a.first->getHeuristic();
+            const double key_b = node_cost + b.second.distance + b.first->getHeuristic();
+            return key_a < key_b; // Ascending order (lowest first)
+        }
+    );
+
+    // std::sort(near_nodes.begin(), near_nodes.end(),
+    //     [node](const auto& a, const auto& b) {
+    //         // Key = potential cost reduction if rewired
+    //         double key_a = a.first->getCost() - (node->getCost() + a.second.distance);
+    //         double key_b = b.first->getCost() - (node->getCost() + b.second.distance);
+    //         return key_a > key_b; // Descending order (most improvement first)
     //     }
     // );
+
 
 
 }
@@ -1574,7 +1709,7 @@ void InformedANYFMTA::visualizeTree() {
         nodes_sample_.push_back(node->getStateValue());
     }
     // visualization_->visualizeNodes(nodes_tree_,"map",std::vector<float>{0.0,1.0,0.0} , "nodes_tree");
-    // visualization_->visualizeNodes(nodes_sample_,"map",std::vector<float>{0.0,0.0,1.0} , "samples_tree");
+    visualization_->visualizeNodes(nodes_sample_,"map",std::vector<float>{0.0,0.0,1.0} , "samples_tree");
     visualization_->visualizeEdges(edges, "map");
 }
 
