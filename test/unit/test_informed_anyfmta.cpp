@@ -236,7 +236,7 @@ int main(int argc, char **argv) {
         planner->plan();
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        std::cout << "time taken for the update : " << duration.count() << " milliseconds\n";
+        // std::cout << "time taken for the update : " << duration.count() << " milliseconds\n";
 
         // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<InformedANYFMTA*>(planner.get())->getSmoothedPathPositions(5, 2);
         // ros2_manager->followPath(shortest_path_);

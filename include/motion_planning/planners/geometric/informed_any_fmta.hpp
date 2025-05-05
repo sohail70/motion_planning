@@ -67,7 +67,8 @@ class InformedANYFMTA : public Planner {
                 std::shared_ptr<IFMTNode> z,
                 const EdgeInfo& cost_to_neighbor,
                 bool is_sample_neighbor,
-                std::vector<std::shared_ptr<IFMTNode>>& new_open_
+                std::vector<std::shared_ptr<IFMTNode>>& new_open_,
+                bool& connected
             );
 
 

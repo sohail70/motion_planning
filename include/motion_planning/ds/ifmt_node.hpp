@@ -12,6 +12,18 @@
 class IFMTNode : public std::enable_shared_from_this<IFMTNode> {
 public:
     using NeighborMap = boost::container::flat_map<std::shared_ptr<IFMTNode>, EdgeInfo>;
+    struct NeighborInfo {
+        std::shared_ptr<IFMTNode> node;
+        EdgeInfo edge_;
+        // double distance;
+        // double distance_original;
+        
+        // For sorting comparison --> sorting only based on c+h and not involving g because for the duration of a batch, g could change but c+h is the same so we sort ony once per batch and then maybe update the fmin (g+c+h) because g has changed
+        bool operator<(const NeighborInfo& other) const {
+            return (edge_.distance + node->getHeuristic()) < 
+                   (other.edge_.distance + other.node->getHeuristic());
+        }
+    };
     
     explicit IFMTNode(std::shared_ptr<State> state, int index = -1);
     
@@ -57,6 +69,79 @@ public:
     double edge_cost_;
     std::unordered_set<std::shared_ptr<IFMTNode>> blocked_best_neighbors;
 
+    //----------------
+    std::vector<NeighborInfo> neighbors_sorted_;
+    size_t next_neighbor_idx_ = 0;
+    double current_min_f_ = INFINITY;
+
+    // // Implementation of key neighbor methods
+    // inline void addNeighbor(std::shared_ptr<IFMTNode> node, double distance) {
+    //     neighbors_sorted_.push_back({
+    //         node, 
+    //         distance, 
+    //         distance,  // distance_original
+    //     });
+    //     // Mark for re-sort on next access
+    //     next_neighbor_idx_ = 0;
+    //     current_min_f_ = INFINITY;
+    // }
+
+    inline void addNeighbor(std::shared_ptr<IFMTNode> node, double distance) {
+        // Prevent duplicates
+        auto it = std::find_if(neighbors_sorted_.begin(), neighbors_sorted_.end(),
+            [&node](const NeighborInfo& ni) { return ni.node == node; });
+        
+        if(it == neighbors_sorted_.end()) {
+            neighbors_sorted_.push_back({node, distance, distance});
+            // Insertion sort to maintain order (better for incremental additions)
+            for(auto rit = neighbors_sorted_.rbegin(); rit != neighbors_sorted_.rend()-1; ++rit) {
+                if(*rit < *(rit+1)) break;
+                std::iter_swap(rit, rit+1);
+            }
+            updateCurrentMinF();
+        }
+    }
+
+
+
+    inline void removeNeighbor(std::shared_ptr<IFMTNode> node) {
+        neighbors_sorted_.erase(
+            std::remove_if(neighbors_sorted_.begin(), neighbors_sorted_.end(),
+                [&node](const NeighborInfo& info) {
+                    return info.node == node;
+                }),
+            neighbors_sorted_.end());
+        updateCurrentMinF();
+    }
+
+    inline void sortNeighbors() {
+        std::sort(neighbors_sorted_.begin(), neighbors_sorted_.end());
+        next_neighbor_idx_ = 0;
+        updateCurrentMinF();
+    }
+
+    inline void updateCurrentMinF() {
+        if (next_neighbor_idx_ < neighbors_sorted_.size()) {
+            const auto& next = neighbors_sorted_[next_neighbor_idx_];
+            current_min_f_ = cost_ + next.edge_.distance + next.node->getHeuristic();
+        } else {
+            if(index_ != 0)
+                current_min_f_ = INFINITY;
+        }
+    }
+
+    inline void advanceNeighbor() {
+        if (next_neighbor_idx_ < neighbors_sorted_.size()) {
+            ++next_neighbor_idx_;
+            updateCurrentMinF();
+        }
+    }
+
+
+
+    //---------------
+
+
 
 private:
     // std::shared_ptr<State> state_;
@@ -71,6 +156,9 @@ private:
     bool heuristic_cached_ = false;
     bool g_hat_cached_ = false;
     double g_hat_;
+
+
+
 };
 struct IEdgeCandidate {
     double estimated_cost;

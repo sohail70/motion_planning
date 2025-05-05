@@ -100,7 +100,8 @@ void BITStar::setup(const Params& params, std::shared_ptr<Visualization> visuali
 
 
 void BITStar::plan() {
-    if(std::abs(robot_node_->getCost() - tree_[root_state_index_]->getHeuristic()) <0.01){
+    if(std::abs(robot_node_->getCost() - tree_[root_state_index_]->getHeuristic()) <0.01 || robot_node_->getCost()<104.0) {
+        prune();
         return;
     }
 

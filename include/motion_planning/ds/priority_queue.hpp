@@ -99,6 +99,22 @@ public:
 
     PriorityQueue() = default;
 
+    void bulkAdd(const std::vector<std::pair<double, NodeType*>>& elements) {
+        // Step 1: Add elements without heapifying
+        for (const auto& elem : elements) {
+            NodeType* node = elem.second;
+            // if (node->in_queue_) continue; // Skip duplicates
+            // node->in_queue_ = true;
+            heap_.emplace_back(elem.first, node);
+            node->heap_index_ = heap_.size() - 1;
+        }
+
+        // Step 2: Heapify the entire vector in O(k)
+        for (int i = static_cast<int>(heap_.size()) / 2 - 1; i >= 0; --i) {
+            heapifyDown(static_cast<size_t>(i));
+        }
+    }
+
     void clear() {
         for (auto& entry : heap_) {
             entry.second->in_queue_ = false;

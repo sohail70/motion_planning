@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.10)
 project(MotionPlanning)
 # add_compile_options(-g -O0)  # Force debug symbols and disable optimizations
 set(CMAKE_CXX_STANDARD 17)
-# set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Release)
 # set(CMAKE_BUILD_TYPE RelWithDebInfo)
- set(CMAKE_BUILD_TYPE Debug)
+#  set(CMAKE_BUILD_TYPE Debug)
 
 find_package(Eigen3 REQUIRED)
 find_package(nanoflann REQUIRED)
@@ -87,10 +87,10 @@ target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann 
 
 # Tests
 enable_testing()
-# add_executable(test_fmtx test/unit/test_fmtx.cpp)
-# target_link_libraries(test_fmtx motion_planning gz_obs)
-# ament_target_dependencies(test_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-# add_test(NAME test_fmtx COMMAND test_fmtx)
+add_executable(test_fmtx test/unit/test_fmtx.cpp)
+target_link_libraries(test_fmtx motion_planning gz_obs)
+ament_target_dependencies(test_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_fmtx COMMAND test_fmtx)
 
 # add_executable(test_fmta test/unit/test_fmta.cpp)
 # target_link_libraries(test_fmta motion_planning gz_obs)

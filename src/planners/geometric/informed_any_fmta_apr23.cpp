@@ -340,242 +340,383 @@ void InformedANYFMTA::setup(const Params& params, std::shared_ptr<Visualization>
 
 
 
+// void InformedANYFMTA::plan() {
+//     if(std::abs(robot_node_->getCost() - tree_[root_state_index_]->getHeuristic()) <0.01){
+//         return;
+//     }
+//     // processed_edges_.clear();
+//     // duplicate_checks_ = 0;
+//     // total_checks_ = 0;
+
+
+//     // visualizeHeapAndUnvisited();
+
+//     int uncached = 0;
+//     int cached = 0;
+//     int checks = 0;
+//     /*
+//         YOU NEED TO PRUNE THE SAMPLES_ ALSO IN THE PRUNE *********************
+    
+//     */
+//     if(v_open_heap_.empty()){
+//         prune();
+//         pruneSamples();
+//         for (auto& sample : samples_) {
+//             sample->is_new_ = false;
+//         }
+//         if(robot_node_->getCost()==INFINITY)
+//             addBatchOfSamplesUninformed(num_batch_);
+//         else
+//             addBatchOfSamples(num_batch_);
+
+//         // for(auto& node : tree_) {
+//         //     // node->sortNeighbors();
+//         //     // node->updateCurrentMinF();
+//         //     node->neighbors_sorted_.clear();  
+//         //     v_open_heap_.add(
+//         //         node, 
+//         //         node->current_min_f_  // Directly use edge-based priority
+//         //     );
+//         //     node->in_queue_ = true;
+//         // }
+
+//         //////////
+//         for (auto& v : tree_) {
+//             v->neighbors_sorted_.clear();
+//             // 1) sample‐neighbors
+//             for (auto& s : samples_) {
+//               double d = (s->getStateValue() - v->getStateValue()).norm();
+//               v->addNeighbor(s, d);
+//             }
+//             // 2) tree‐neighbors
+//             for (auto& t : tree_) {
+//               if (t != v) {
+//                 double d = (t->getStateValue() - v->getStateValue()).norm();
+//                 v->addNeighbor(t, d);
+//               }
+//             }
+//             // 3) sort ONCE by (c + h) and init f_min
+//             v->sortNeighbors();      // sets next_neighbor_idx_ = 0
+//             v->updateCurrentMinF();  // fills current_min_f_ = g + best(c+h)
+//             if (v->current_min_f_ < INFINITY) {
+//               v_open_heap_.add(v, v->current_min_f_);
+//               v->in_queue_ = true;
+//             }
+//           }
+
+
+
+//         /////////
+        
+
+
+//     } 
+
+//     // auto start = std::chrono::high_resolution_clock::now();
+//     // std::cout<<v_open_heap_.getHeap().size()<<"\n";
+//     std::cout<<"tree: "<<tree_.size()<<"\n";
+//     std::cout<<"samples: "<<samples_.size()<<"\n";
+//     std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
+//     std::cout<<"r: "<<neighborhood_radius_<<"\n";
+//     std::cout<<"Collision check: "<<collision_check_<<"\n";
+//     if(tree_.size()==155 && samples_.size()==80){
+//         std::cout<<"start \n";
+//     }
+
+//     while (!v_open_heap_.empty() ){
+
+//         // addBatchOfSamplesUninformed(num_batch_);
+
+//         auto top_element = v_open_heap_.top();
+//         double priority = top_element.first;
+//         std::shared_ptr<IFMTNode> z = top_element.second;
+//         int zIndex = z->getIndex();
+//         v_open_heap_.pop();
+
+//         if (priority>robot_node_->getCost() || z->getCost() + z->getHeuristic() > robot_node_->getCost()){ // DOES THIS CAUSE ISSUE FOR REWIRING????????*****************
+//             v_open_heap_.clear();
+//             break;
+//         }
+
+//         std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>> near_z_samples;
+//         near2sample(z, near_z_samples);  // Get neighbors from samples
+
+
+//         int counter = 0;
+//         // First loop: Process samples (potential new connections)
+//         for (const auto& [x, cost_to_neighbor] : z->neighbors_sorted_) {
+
+
+            
+//             if (!z->unexpand_ && !x->is_new_) {
+//                 // x->is_new_ = false;
+//                 counter++;
+//                 continue;
+//             }
+//             // Skip edges that can't improve the solution
+//             if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost() ) {
+            
+//                 break; // Exit loop early (sorted edges)
+//             }
+//             processNode(x, z, cost_to_neighbor, true,new_opens_);
+//             // x->is_new_ = false; // not correct to do it here because is_new_ should be true for the whole duration of this new batch when ever its being called --> so i make them false later when i loop thorugh the samples_. also not all of these new samples gets to be in near2samples output so they remain unconnected but later we have to loop thorugh the samples and make them false i guess
+//         }
+
+//         z->advanceNeighbor();
+//         // // if(z->unexpand_==true && robot_node_->getCost()!=INFINITY){ //&& z->is_new_==false){
+//         // if(z->unexpand_==true){
+//         //     std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>> near_z_tree;
+//         //     near2tree(z, near_z_tree);  // Get neighbors from tree
+
+            
+//         //     for (const auto& [x, cost_to_neighbor] : near_z_tree) {
+//         //         if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()) {
+//         //             break;
+//         //         }
+//         //         processNode(x, z, cost_to_neighbor, false,new_opens_);
+//         //     }
+//         //     z->unexpand_ =false;
+//         // }
+
+
+//         z->in_queue_ = false;
+      
+//     }
+    
+// }
+
+
+
 void InformedANYFMTA::plan() {
-    if(std::abs(robot_node_->getCost() - tree_[root_state_index_]->getHeuristic()) <0.01 || robot_node_->getCost()<104.0) {
-        prune();
+    if(std::abs(robot_node_->getCost() - tree_[root_state_index_]->getHeuristic()) <0.01){
         return;
     }
-    // processed_edges_.clear();
-    // duplicate_checks_ = 0;
-    // total_checks_ = 0;
-
-
-    // visualizeHeapAndUnvisited();
-
-    int uncached = 0;
-    int cached = 0;
-    int checks = 0;
-    /*
-        YOU NEED TO PRUNE THE SAMPLES_ ALSO IN THE PRUNE *********************
-    
-    */
-    if(v_open_heap_.empty()){
+    // … your existing batch‐setup up to:
+    if (v_open_heap_.empty()) {
         prune();
         pruneSamples();
-        for (auto& sample : samples_) {
-            sample->is_new_ = false;
-        }
-        if(robot_node_->getCost()==INFINITY)
+        if (robot_node_->getCost()==INFINITY)
             addBatchOfSamplesUninformed(num_batch_);
         else
             addBatchOfSamples(num_batch_);
 
-        
-        const double UNEXPAND_RESET_PROBABILITY = 0.3; // 30% chance to clear unexpand_
+        // ─ Build & sort every node’s neighbor list ONCE ─
+        for (auto& v : tree_) {
+            v->neighbors_sorted_.clear();
 
-        for (auto& node : tree_) {
-            // if (node->unexpand_ && (rand() / (double)RAND_MAX) < UNEXPAND_RESET_PROBABILITY) {
-            //     node->unexpand_ = false;
+            // 1) sample‐neighbors
+            auto indices_samples = kdtree_samples_->radiusSearch(v->getStateValue(), neighborhood_radius_);
+            for (auto idx : indices_samples) {
+                auto s = samples_[idx];
+                if (s == v) continue;                      // no self‐loops
+                double d = (s->getStateValue() - v->getStateValue()).norm();
+                v->addNeighbor(s, d);
+            }
+
+            // // 2) tree‐neighbors
+            // auto indices_tree = kdtree_tree_->radiusSearch(v->getStateValue(), neighborhood_radius_);
+            // for (auto idx : indices_tree) {
+            //     auto t = tree_[idx];
+            //     if (t == v) continue;                      // skip yourself
+            //     double d = (t->getStateValue() - v->getStateValue()).norm();
+            //     v->addNeighbor(t, d);
             // }
-            // double priority = node->getCost() + node->getHeuristic();
 
-            // double priority = node->getHeuristic();
+            // 3) one sort by (distance + h) and init the cursor/f_min
+            v->sortNeighbors();     // sets next_neighbor_idx_ = 0
+            v->updateCurrentMinF(); // computes current_min_f_ = g(v) + best(distance + h)
 
-            // if(node->unexpand_==true){
-            //     std::cout<<"why \n";
-            // }
-
-            // node->is_new_ = false;
-            double priority;
-            // if(robot_node_->getCost() == INFINITY)
-            //     priority =  node->getHeuristic();
-            // else
-                priority = node->getCost() + node->getHeuristic();
-
-            v_open_heap_.add(node, priority);
-            node->in_queue_ = true;
+            // 4) seed the heap with that one best edge
+            if (v->current_min_f_ < INFINITY) {
+                v_open_heap_.add(v, v->current_min_f_);
+                v->in_queue_ = true;
+            }
         }
-
-
-    } 
-
-    // auto start = std::chrono::high_resolution_clock::now();
-    // std::cout<<v_open_heap_.getHeap().size()<<"\n";
-    std::cout<<"tree: "<<tree_.size()<<"\n";
-    std::cout<<"samples: "<<samples_.size()<<"\n";
-    std::cout<<"cost: "<<robot_node_->getCost()<<"\n";
-    std::cout<<"r: "<<neighborhood_radius_<<"\n";
-    std::cout<<"Collision check: "<<collision_check_<<"\n";
-    if(tree_.size()==155 && samples_.size()==80){
-        std::cout<<"start \n";
     }
+    std::cout<<"Collision check: "<<collision_check_<<"\n";
 
-    int cc = 0;
-    while (!v_open_heap_.empty() ){
-        cc++;
-    // while (!v_open_heap_.empty()){
-
-        // addBatchOfSamplesUninformed(num_batch_);
-
-        auto top_element = v_open_heap_.top();
-        double priority = top_element.first;
-        std::shared_ptr<IFMTNode> z = top_element.second;
-        int zIndex = z->getIndex();
+    // ─ Main loop: one edge per pop ─
+    while (!v_open_heap_.empty()) {
+        auto [f_v, z] = v_open_heap_.top();
         v_open_heap_.pop();
-    new_opens_.clear();
+        z->in_queue_ = false;
 
-        // std::vector<Eigen::VectorXd> nodes;
-        // nodes.push_back(z->getStateValue());
-        // visualization_->visualizeNodes(nodes);
-
-        // std::vector<std::shared_ptr<IFMTNode>> tree_samples_ = tree_;
-        // tree_samples_.insert(tree_samples_.end(), samples_.begin(), samples_.end());
+        // prune by solution cost
+        if (f_v >= robot_node_->getCost())
+            break;
 
         /*
-            sorting makes it so that at first the best heursitc edges gets processed and those might get to the goal sooner and update the ci_(robotnode)
-            and then after that many edges could be avoided because of the if condtion and it saves collision checks!
-            since im not using sorting and process edges randomly then the first few of them might get processes and collision checked uselessly! 
-
+            In BIT*, unexpand_ controls only the tree‑to‑tree rewiring step, not the sample‑to‑tree connections.
+            You should split it into two flags, or scope it like this:
         */
-        if (priority>robot_node_->getCost() || z->getCost() + z->getHeuristic() > robot_node_->getCost()){ // DOES THIS CAUSE ISSUE FOR REWIRING????????*****************
-            std::cout<<"SALAMMMMMMMMMMM:"<<v_open_heap_.getHeap().size() << "\n";
-            // for (const auto& entry : v_open_heap_.getHeap()) {
-            //     // double priority = entry.first;
-            //     // if (priority < robot_node_->getCost()) {
-            //     //     std::cout<<"NO WAAAAAAAAYYYYY \n" ;// At least one node is still relevant
-            //     // }
-            //     entry.second->unexpand_ = false;
-            // }
 
+        // if (!z->unexpand_)
+        //     continue;
 
-            v_open_heap_.clear();
-
-
-
-
-            break;
+        if (z->next_neighbor_idx_ >= z->neighbors_sorted_.size()) {
+            // no more edges for z
+            continue;
         }
 
-        std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>> near_z_samples;
-        near2sample(z, near_z_samples);  // Get neighbors from samples
-
-
-        int counter = 0;
-        // First loop: Process samples (potential new connections)
-        // bool should_delete_ = false;
-        bool connected = false;
-        for (const auto& [x, cost_to_neighbor] : near_z_samples) {
-            
-            if (!z->unexpand_ && !x->is_new_) {
-            // if ( !x->is_new_ && x!=robot_node_) { //this one get rid of the old samples completely and never uses them --> saw less collision checks but low convergence rate 
-                // x->is_new_ = false;
-                counter++;
-                continue;
-            }
-            // Skip edges that can't improve the solution
-            if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost() ) {
-            // if (z->getGHat() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost() && z->unexpand_==false) {
-                // should_delete_ = true;
-                // int a = 0;
-                // for (auto& node : tree_) {
-                //     a++;
-                //     if(node->unexpand_==true){
-                //         std::cout<<"why \n";
-                //     }
-                // }
-                // std::cout<<"clean \n";
-                // v_open_heap_.clear();        
-                // return;
-
-                // continue;
-                break; // Exit loop early (sorted edges)
-            }
-            processNode(x, z, cost_to_neighbor, true,new_opens_,connected);
-            // x->is_new_ = false; // not correct to do it here because is_new_ should be true for the whole duration of this new batch when ever its being called --> so i make them false later when i loop thorugh the samples_. also not all of these new samples gets to be in near2samples output so they remain unconnected but later we have to loop thorugh the samples and make them false i guess
-
-            // if (connected)
-                // break;
-        }
-        // if(counter>0)
-        //     std::cout<<"couter: "<<counter<<"\n";
-
+        // double next_competitor_f = std::numeric_limits<double>::infinity();
+        // if (!v_open_heap_.empty())
+        //     next_competitor_f = v_open_heap_.top().first;
 
         
-        // if(z->unexpand_==true && robot_node_->getCost()!=INFINITY){ //&& z->is_new_==false){
-        if(z->unexpand_==true){
-            std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>> near_z_tree;
-            near2tree(z, near_z_tree);  // Get neighbors from tree
+        // while (z->current_min_f_ <= next_competitor_f
+        //         && z->current_min_f_ < robot_node_->getCost()
+        //         && z->next_neighbor_idx_ < z->neighbors_sorted_.size())
+        //     {
 
-            
-            for (const auto& [x, cost_to_neighbor] : near_z_tree) {
-                if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()) {
-                // if (z->getGHat() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()) {
-                //     break; // Exit loop early (sorted edges)
-                    // continue;
-                    // x->unexpand_ = false;
-                    break;
+        // while (z->next_neighbor_idx_ < z->neighbors_sorted_.size()) {
+
+
+            // 1) grab exactly one neighbor: z->neighbors_sorted_[next_neighbor_idx_]
+            auto& ni = z->neighbors_sorted_[ z->next_neighbor_idx_ ];
+            auto  x  = ni.node;
+            double f_edge = z->getCost() + ni.edge_.distance + x->getHeuristic();
+            // if (f_edge >= robot_node_->getCost()) {
+            //     break;  // Skip remaining edges
+            // }
+
+            // Process the next candidate edge for this node
+            if (z->next_neighbor_idx_ < z->neighbors_sorted_.size() && f_edge < robot_node_->getCost() ) {
+                auto& ni = z->neighbors_sorted_[z->next_neighbor_idx_];
+                auto x = ni.node;
+                double edge_cost = ni.edge_.distance;
+                collision_check_++;
+
+                double f_hat = z->getGHat() + ni.edge_.distance + x->getHeuristic();
+                if (f_hat >= robot_node_->getCost()) {
+                    z->advanceNeighbor();
+                    continue;
                 }
-                // if(x->unexpand_==false)
-                    processNode(x, z, cost_to_neighbor, false,new_opens_,connected);
-                // break;
+
+
+                // Lazy collision check
+                if (obs_checker_->isObstacleFree(z->getStateValue(), x->getStateValue())) {
+                    // FMT-style connection logic
+                    if (z->getCost() + edge_cost < x->getCost()) {
+                        x->setCost(z->getCost() + edge_cost);
+                        x->setParent(z, edge_cost);
+                        x->updateCostAndPropagate();
+
+                        // Handle sample promotion
+                        if (x->in_samples_) {
+                            // Remove from samples
+                            const size_t idx = x->samples_index_;
+                            kdtree_samples_->removeByIndex(idx);
+                            if (idx != samples_.size() - 1) {
+                                std::swap(samples_[idx], samples_.back());
+                                samples_[idx]->samples_index_ = idx;
+                            }
+                            samples_.pop_back();
+                            x->in_samples_ = false;
+                            x->unexpand_ = true;
+                            // Add to tree
+                            tree_.push_back(x);
+                            kdtree_tree_->addPoint(x->getStateValue());
+                        }
+
+                        // 2) Build x's neighbor list from scratch
+                        x->neighbors_sorted_.clear();
+
+                        //  2a) sample‑neighbors: every remaining sample within radius
+                        auto samp_inds = kdtree_samples_->radiusSearch(x->getStateValue(), neighborhood_radius_);
+                        for (auto i : samp_inds) {
+                            auto s = samples_[i];
+                            double d = (s->getStateValue() - x->getStateValue()).norm();
+                            x->addNeighbor(s, d);
+                        }
+
+                        // //  2b) tree‑neighbors: every other tree node within radius
+                        // auto tree_inds = kdtree_tree_->radiusSearch(x->getStateValue(), neighborhood_radius_);
+                        // for (auto i : tree_inds) {
+                        //     auto t = tree_[i];
+                        //     if (t == x) continue;
+                        //     double d = (t->getStateValue() - x->getStateValue()).norm();
+                        //     x->addNeighbor(t, d);
+                        // }
+
+
+                        
+                        // Update queue priorities for affected nodes
+                        x->sortNeighbors();
+                        x->updateCurrentMinF();
+
+                        if (x->current_min_f_ < robot_node_->getCost() && !x->in_queue_) {
+                            v_open_heap_.add(x, x->current_min_f_);
+                            x->in_queue_ = true;
+                        }
+                    }
+                }
             }
-            z->unexpand_ =false;
+
+            // Inside the main loop after processing sample neighbors
+            if (z->unexpand_) {
+                // Tree-to-tree rewiring (BIT*-style)
+                auto tree_neighbors = kdtree_tree_->radiusSearch(z->getStateValue(), neighborhood_radius_);
+                
+                for (size_t idx : tree_neighbors) {
+                    auto t = tree_[idx];
+                    if (t == z || t == z->getParent()) continue;  // Skip self and parent
+
+                    const double edge_cost = (z->getStateValue() - t->getStateValue()).norm();
+                    const double f_hat = z->getGHat() + edge_cost + t->getHeuristic();
+                    
+                    // Prune early if this connection can't help
+                    if (f_hat >= robot_node_->getCost()) continue;
+                    if (z->getCost() + edge_cost >= t->getCost()) continue;
+
+                    // Lazy collision check
+                    collision_check_++;
+                    if (!obs_checker_->isObstacleFree(z->getStateValue(), t->getStateValue())) continue;
+
+                    // Rewiring: z becomes t's new parent
+                    if (z->getCost() + edge_cost < t->getCost()) {
+                        t->setCost(z->getCost() + edge_cost);
+                        t->setParent(z, edge_cost);
+                        t->updateCostAndPropagate();
+
+                        // Update queue for affected nodes
+                        t->sortNeighbors();
+                        t->updateCurrentMinF();
+                        
+                        if (t->current_min_f_ < robot_node_->getCost()) {
+                            if (t->in_queue_) {
+                                v_open_heap_.update(t, t->current_min_f_);
+                            } else {
+                                v_open_heap_.add(t, t->current_min_f_);
+                                t->in_queue_ = true;
+                            }
+                        }
+                    }
+                }
+                
+                z->unexpand_ = false;  // Mark as processed (BIT*'s "expanded")
+            }
+
+
+
+
+
+            // // 3) consume that neighbor and expose the next
+            z->advanceNeighbor();    // bumps next_neighbor_idx_ & recomputes current_min_f_
+
+        // }
+
+        // Mark node as fully expanded after processing all edges
+        // z->unexpand_ = false;
+
+        // 4) re‑insert z if it still has edges worth trying
+        if (z->current_min_f_ < robot_node_->getCost()) {
+            v_open_heap_.add(z, z->current_min_f_);
+            z->in_queue_ = true;
         }
-
-
-
-        // if(should_delete_){
-        //     v_open_heap_.clear();        
-        //     return; 
-        // }
-
-        z->in_queue_ = false;
-        // // Update priority queue (common logic)
-        // for (auto open_: new_opens_){
-        //     // double priorityCost = open_->getCost() + open_->getHeuristic();
-        //     double priorityCost = open_->getCost();  // MAKING IT TO HAVE HIGHER PRIORITY BECAUSE I NEED REWIREING!!! AND v_open_heap.clear() messes thing up
-        //     // if (open_ != robot_node_) {
-        //         if (open_->in_queue_) {
-        //             v_open_heap_.update(open_, priorityCost);
-        //         } else {
-        //             v_open_heap_.add(open_, priorityCost);
-        //             open_->in_queue_ = true;
-        //         }
-        //     // }
-
-        // }
-
-
-        // open_nodes.erase( std::remove_if( open_nodes.begin(), open_nodes.end(), [z](const std::shared_ptr<IFMTNode>& node) {
-        //             return node.get() == z;  // Compare raw pointers
-        //         }
-        //     ),
-        //     open_nodes.end()
-        // );
 
         visualizeTree();
     }
-    std::cout<<"ccccccccccc : "<<cc<<"\n";
-
-
-    // for (auto& node : tree_) {
-    //     if(node->unexpand_==true){
-    //         std::cout<<"why \n";
-    //     }
-    // }
-
-    // Add debug summary at end
-    std::cout << "\n--- Collision Check Report ---\n"
-              << "Total checks: " << total_checks_ << "\n"
-              << "Duplicate edges: " << duplicate_checks_ << " ("
-              << (duplicate_checks_ * 100.0 / total_checks_) << "%)\n"
-              << "Unique edges checked: " << processed_edges_.size() << "\n"
-              << "Tree size: " << tree_.size() << "\n"
-              << "Sample size: " << samples_.size() << "\n";
-
-    
 }
-
 
 
 
@@ -585,14 +726,9 @@ void InformedANYFMTA::processNode(
     std::shared_ptr<IFMTNode> z,
     const EdgeInfo& cost_to_neighbor,
     bool is_sample_neighbor,
-    std::vector<std::shared_ptr<IFMTNode>>& new_opens_,
-    bool& connected
+    std::vector<std::shared_ptr<IFMTNode>>& new_opens_
 ) {
-    if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() >= robot_node_->getCost()){
-        // std::cout<<"now check the next samples priority see if they have more cost!";
-        // std::cout<<"priority: "<<z->getStateValue()<<" " <<z->getCost() + cost_to_neighbor.distance + x->getHeuristic()<<"\n";
-        return;
-    }
+    if (z->getCost() + cost_to_neighbor.distance + x->getHeuristic() >= robot_node_->getCost()) return;
     if (x->getCost() <= z->getCost() + cost_to_neighbor.distance) return;
 
     // Find best neighbor (common logic)
@@ -606,7 +742,7 @@ void InformedANYFMTA::processNode(
 
 
     for (const auto& [neighbor, dist] : near_x) {
-        // if(x->blocked_best_neighbors.count(neighbor) > 0) // Didn't lower the collision checks attempts! maybe even made it worse!
+        // if(x->blocked_best_neighbors.count(neighbor) > 0) // Didn't lower the collision checks attempts!
         //     continue;
 
         if (neighbor->in_queue_ && (neighbor->getCost() + dist.distance < min_cost)) {
@@ -622,33 +758,8 @@ void InformedANYFMTA::processNode(
         return;
     }
 
-    // Generate unique edge ID (sorted to avoid directional duplicates)
-    auto make_edge_id = [](auto a, auto b) {
-        return std::make_pair(std::min(a->getUniqueId(), b->getUniqueId()),
-                         std::max(a->getUniqueId(), b->getUniqueId()));
-    };
-
-    // Track edge processing BEFORE collision check
-    auto edge_id = make_edge_id(x, best_neighbor_node);
-    
-    // Debug: Check if edge was already processed
-    if (processed_edges_.count(edge_id)) {
-        std::cout << "DUPLICATE EDGE: " 
-                  << x->getStateValue().transpose() << " <-> "
-                  << best_neighbor_node->getStateValue().transpose()
-                  << " | Total duplicates: " << ++duplicate_checks_ <<"| "<<x->getCost() <<" vs " <<min_cost <<"\n";
-        if(x->getCost() == INFINITY) // Well if its a duplicate and the cost is inf then retrun because its blocked!--> it lowers the collision check but you need to undesrtand why we even this happens!!!
-            return;
-    } else {
-        processed_edges_.insert(edge_id);
-    }
-
-    // if (processed_edges_.count(edge_id)) {
-    //     return;
-    // }
 
     collision_check_++;
-    total_checks_++;
 
 
 
@@ -660,7 +771,6 @@ void InformedANYFMTA::processNode(
 
     // Update costs and structures
     if (min_cost < x->getCost()) {
-        connected = true;
         double old_cost = x->getCost();
         // x->setCost(min_cost); // Don't use this because updateCostAndPropagate won't get trigered with this!!
         x->setParent(best_neighbor_node, best_edge_length);
@@ -696,56 +806,25 @@ void InformedANYFMTA::processNode(
             kdtree_tree_->addPoint(x->getStateValue());
             kdtree_tree_->buildTree();
         }
-        new_opens_.push_back(x);
         // x->unexpand_ = true;
         if(x==robot_node_){
             std::cout<<"FOUND SOLUTION \n";
-            v_open_heap_.clear();
         }
 
 
         // Update priority queue (common logic)
-        // double priorityCost = x->getCost() + x->getHeuristic();
         double priorityCost;
         // if(robot_node_->getCost() == INFINITY)
         //     priorityCost =  x->getHeuristic();
         // else
             priorityCost = x->getCost() + x->getHeuristic();
             
-        // double priorityCost = x->getCost(); // with this you can put the unexpanded nodes on higher levels of the queue (not necessarily higher than some of the expanded nodes but some will be up) --> but do i need to do this?? why not rely on the g+h ??
-        // if (x != robot_node_) {
-            if (x->in_queue_) {
-                v_open_heap_.update(x, priorityCost);
-            } else {
-                v_open_heap_.add(x, priorityCost);
-                    x->in_queue_ = true;
-            }
-        // }
-
-
-        // if(x->unexpand_==true){
-        //     std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>> near_x_tree;
-        //     near2tree(x, near_x_tree);  // Get neighbors from tree
-
-            
-        //     for (const auto& [xx, cost_to_neighbor] : near_x_tree) {
-        //         if (x->getCost() + cost_to_neighbor.distance + xx->getHeuristic() > robot_node_->getCost()) {
-        //         // if (z->getGHat() + cost_to_neighbor.distance + x->getHeuristic() > robot_node_->getCost()) {
-        //         //     break; // Exit loop early (sorted edges)
-        //             // continue;
-        //             break;
-        //         }
-        //         processNode(xx, x, cost_to_neighbor, false,new_opens_);
-        //         // break;
-        //     }
-        //     x->unexpand_ =false;
-        // }
-
-
-
-        // v_open_heap_.removeIf([](const auto& node) {
-        //     return node->getCost() + node->getHeuristic() >= robot_node_->getCost();
-        // });
+        if (x->in_queue_) {
+            v_open_heap_.update(x, priorityCost);
+        } else {
+            v_open_heap_.add(x, priorityCost);
+                x->in_queue_ = true;
+        }
 
 
     }
@@ -756,56 +835,43 @@ void InformedANYFMTA::processNode(
 
 
 
-
-
-void InformedANYFMTA::near2sample( const std::shared_ptr<IFMTNode>& node, std::vector<std::pair<std::shared_ptr<IFMTNode>,EdgeInfo >>& near_nodes) {
-    near_nodes.clear();  // Reset output vector
-    
-    // Perform radius search using kdtree_tree_
-    std::vector<size_t> neighbor_indices = 
-        kdtree_samples_->radiusSearch(node->getStateValue(), neighborhood_radius_);
-    
-    
-    // Fill results in-place
-    near_nodes.reserve(neighbor_indices.size());
-    for (size_t idx : neighbor_indices) {
-        auto neighbor = samples_.at(idx);
-        double dist = (neighbor->getStateValue() - node->getStateValue()).norm();
-
-        if (neighbor != node) {  // Exclude the query node itself
-            near_nodes.push_back(std::make_pair(neighbor,EdgeInfo{dist,dist}));
-        }
+void InformedANYFMTA::near2sample(
+    const std::shared_ptr<IFMTNode>& node,
+    std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>>& near_nodes
+) {
+    if(!node->neighbors_sorted_.empty()){
+        return;
     }
-
-    //maybe also do a sorting!!!!******************************** based on just gvalue(node ) --> because i only need the ordering and current vertex is enough to preserve ordering IM SURE OF IT EVEN THOUGH I NEED TO PROVE IT!
-    // Sort the collected nodes by (node_cost + dist + neighbor_heuristic)
-    std::sort(
-        near_nodes.begin(),
-        near_nodes.end(),
-        [node_cost = node->getCost()](const auto& a, const auto& b) {
-            // Calculate sorting keys
-            const double key_a = node_cost + a.second.distance + a.first->getHeuristic();
-            const double key_b = node_cost + b.second.distance + b.first->getHeuristic();
-            return key_a < key_b; // Ascending order (lowest first)
-        }
+    // node->neighbors_sorted_.clear();  // Reset for fresh batch
+    
+    std::vector<size_t> indices = kdtree_samples_->radiusSearch(
+        node->getStateValue(), 
+        neighborhood_radius_
     );
 
-    
-    // std::sort(
-    // near_nodes.begin(),
-    // near_nodes.end(),
-    // [node_cost = node->getCost(), current_best = robot_node_->getCost()](const auto& a, const auto& b) {
-    //     const double f_a = node_cost + a.second.distance + a.first->getHeuristic();
-    //     const double f_b = node_cost + b.second.distance + b.first->getHeuristic();
-    //     // Sort by absolute difference from current_best (ascending)
-    //     return std::abs(f_a - current_best) < std::abs(f_b - current_best);
-    // }
-    // );
+    for(size_t idx : indices) {
+        auto neighbor = samples_[idx];
+        if(neighbor != node) {
+            double dist = (neighbor->getStateValue() - node->getStateValue()).norm();
+            node->addNeighbor(neighbor, dist);  // true=is_initial
+        }
+    }
 
-
+    node->sortNeighbors();  // Final sort after batch addition
 }
 
-void InformedANYFMTA::near2tree( const std::shared_ptr<IFMTNode>& node, std::vector<std::pair<std::shared_ptr<IFMTNode>,EdgeInfo >>& near_nodes) {
+void InformedANYFMTA::near2tree(
+    const std::shared_ptr<IFMTNode>& node,
+    std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>>& near_nodes
+) {
+    // // Directly use the node's cached neighbors
+    near_nodes.reserve(node->neighbors_sorted_.size());
+    for(const auto& ni : node->neighbors_sorted_) {
+        near_nodes.emplace_back(ni.node, 
+            EdgeInfo{ni.edge_.distance, ni.edge_.distance_original});
+    }
+
+
     near_nodes.clear();  // Reset output vector
     
     // Perform radius search using kdtree_tree_
@@ -821,33 +887,6 @@ void InformedANYFMTA::near2tree( const std::shared_ptr<IFMTNode>& node, std::vec
             near_nodes.push_back(std::make_pair(neighbor,EdgeInfo{dist,dist}));
         }
     }
-    // std::sort(near_nodes.begin(), near_nodes.end(), [](const auto& a, const auto& b) {
-    //     // New samples first, then old ones
-    //     if (a.first->is_new_ != b.first->is_new_) return a.first->is_new_;
-    //     return a.second.distance < b.second.distance;
-    // });
-
-    // should we prioritize new samples first???
-    std::sort(
-        near_nodes.begin(),
-        near_nodes.end(),
-        [node_cost = node->getCost()](const auto& a, const auto& b) {
-            // Calculate sorting keys
-            const double key_a = node_cost + a.second.distance + a.first->getHeuristic();
-            const double key_b = node_cost + b.second.distance + b.first->getHeuristic();
-            return key_a < key_b; // Ascending order (lowest first)
-        }
-    );
-
-    // std::sort(near_nodes.begin(), near_nodes.end(),
-    //     [node](const auto& a, const auto& b) {
-    //         // Key = potential cost reduction if rewired
-    //         double key_a = a.first->getCost() - (node->getCost() + a.second.distance);
-    //         double key_b = b.first->getCost() - (node->getCost() + b.second.distance);
-    //         return key_a > key_b; // Descending order (most improvement first)
-    //     }
-    // );
-
 
 
 }
@@ -1138,7 +1177,6 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
     double n = tree_.size() + samples_.size();
     neighborhood_radius_ = factor * gamma * std::pow(std::log(n) / n, 1.0 / d);
     neighborhood_radius_ = std::min(neighborhood_radius_,max_edge_length_);
-    neighborhood_radius_ = max_edge_length_;
 
 
 
@@ -1298,7 +1336,6 @@ void InformedANYFMTA::addBatchOfSamplesUninformed(int num_samples) {
     double n = tree_.size() + samples_.size();
     neighborhood_radius_ = factor * gamma * std::pow(std::log(n) / n, 1.0 / d);
     neighborhood_radius_ = std::min(neighborhood_radius_,max_edge_length_);
-    neighborhood_radius_ = max_edge_length_;
 
     
     // // Process neighbors for newly added nodes
@@ -1427,6 +1464,7 @@ void InformedANYFMTA::setStart(const Eigen::VectorXd& start) {
     node->cacheHeuristic(h);
     node->cacheGHat(0);
     node->unexpand_=true;
+    node->current_min_f_ = node->getCost()+node->getHeuristic();
 
     // node->in_queue_ = true;
     v_open_heap_.add(node, node->getCost() + node->getHeuristic());

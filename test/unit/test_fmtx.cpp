@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 5000);
+    planner_params.setParam("num_of_samples", 30000);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("partial_update", true);
@@ -361,7 +361,7 @@ int main(int argc, char **argv) {
         std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
         ros2_manager->followPath(shortest_path_);
 
-        dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        // dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         // dynamic_cast<FMTX*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
