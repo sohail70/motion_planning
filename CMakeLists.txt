@@ -123,10 +123,10 @@ target_link_libraries(test_bitstar motion_planning gz_obs)
 ament_target_dependencies(test_bitstar rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_bitstar COMMAND test_bitstar)
 
-# add_executable(test_rrtx test/unit/test_rrtx.cpp)
-# target_link_libraries(test_rrtx motion_planning gz_obs)
-# ament_target_dependencies(test_rrtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-# add_test(NAME test_rrtx COMMAND test_rrtx)
+add_executable(test_rrtx test/unit/test_rrtx.cpp)
+target_link_libraries(test_rrtx motion_planning gz_obs)
+ament_target_dependencies(test_rrtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_rrtx COMMAND test_rrtx)
 
 
 # add_executable(test_kdtree test/unit/test_kdtree.cpp)

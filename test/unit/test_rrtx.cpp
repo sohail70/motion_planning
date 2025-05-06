@@ -173,6 +173,7 @@ int main(int argc, char **argv) {
 
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
     rclcpp::Rate loop_rate(30); // 10 Hz (100ms per loop)
+    auto global_start = std::chrono::steady_clock::now();
 
     // Suppose you have a boolean that decides if we want a 20s limit
     bool limited = true;  // or read from params, or pass as an argument
@@ -182,6 +183,7 @@ int main(int argc, char **argv) {
     auto time_limit = std::chrono::seconds(20);
 
     std::vector<double> sim_durations;
+    std::vector<std::tuple<double, double>> sim_duration_2;
 
     // Start profiling
     CALLGRIND_START_INSTRUMENTATION;
@@ -218,13 +220,20 @@ int main(int argc, char **argv) {
         // // dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot); // UNCOMMENT THIS LATER!
 
         ////////// PLAN //////////
-        auto start = std::chrono::high_resolution_clock::now();
+        auto start = std::chrono::steady_clock::now();
         dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
-        auto end = std::chrono::high_resolution_clock::now();
+        auto end = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         if (duration.count()>0)
             std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
         sim_durations.push_back(duration.count());
+
+        // New metrics (elapsed_s, duration_ms)
+        double elapsed_s = std::chrono::duration<double>(start - global_start).count();
+        double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
+        sim_duration_2.emplace_back(elapsed_s, duration_ms);
+
+
 
         std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<RRTX*>(planner.get())->getSmoothedPathPositions(5, 2);
         ros2_manager->followPath(shortest_path_);
@@ -241,41 +250,62 @@ int main(int argc, char **argv) {
     // Stop profiling
     CALLGRIND_STOP_INSTRUMENTATION;
 
-    if (limited == true){
-        // 1) Get the current local time
-        std::time_t now = std::time(nullptr); 
-        std::tm* local_tm = std::localtime(&now);
+    const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations
 
-        // 2) Extract day, month, year, hour, minute, second
-        int day    = local_tm->tm_mday;           // day of month [1-31]
-        int month  = local_tm->tm_mon + 1;        // months since January [0-11]; add 1
-        int year   = local_tm->tm_year + 1900;    // years since 1900
-        int hour   = local_tm->tm_hour;           // hours since midnight [0-23]
-        int minute = local_tm->tm_min;            // minutes after hour [0-59]
-        int second = local_tm->tm_sec;            // seconds after minute [0-60]
 
-        // 3) Build your file name, e.g. "sim_times_13_3_2025_14_58_12.csv"
-        std::string filename = "sim_times_" +
-            std::to_string(day)    + "_" +
-            std::to_string(month)  + "_" +
-            std::to_string(year)   + "_" +
-            std::to_string(hour)   + "_" +
+    if (limited) {
+        std::time_t now_time = std::time(nullptr); 
+        std::tm* local_tm = std::localtime(&now_time);
+
+        int day    = local_tm->tm_mday;
+        int month  = local_tm->tm_mon + 1;
+        int year   = local_tm->tm_year + 1900;
+        int hour   = local_tm->tm_hour;
+        int minute = local_tm->tm_min;
+        int second = local_tm->tm_sec;
+
+        // Create base filename with timestamp
+        std::string planner_type = "rrtx";
+        std::string base_filename = "sim_" + planner_type + "_" +
+            std::to_string(day) + "_" +
+            std::to_string(month) + "_" +
+            std::to_string(year) + "_" +
+            std::to_string(hour) + "_" +
             std::to_string(minute) + "_" +
-            std::to_string(second) + ".csv";
+            std::to_string(second);
 
-        std::cout << "Writing durations to: " << filename << std::endl;
+        if (SAVE_TIMED_DATA) {
+            // Save timed data (elapsed_s, duration_ms)
+            std::string filename = base_filename + "_timed.csv";
+            std::cout << "Writing timed durations to: " << filename << std::endl;
 
-        // 4) Write durations to that file
-        std::ofstream out(filename);
-        if (!out.is_open()) {
-            std::cerr << "Error: failed to open " << filename << std::endl;
-            return 1;
+            std::ofstream out(filename);
+            if (!out.is_open()) {
+                std::cerr << "Error: failed to open " << filename << std::endl;
+                return 1;
+            }
+
+            out << "elapsed_s,duration_ms\n"; // CSV header
+            for (const auto& [elapsed, duration] : sim_duration_2) {
+                out << elapsed << "," << duration << "\n";
+            }
+            out.close();
+        } else {
+            // Save raw durations (legacy format)
+            std::string filename = base_filename + "_raw.csv";
+            std::cout << "Writing raw durations to: " << filename << std::endl;
+
+            std::ofstream out(filename);
+            if (!out.is_open()) {
+                std::cerr << "Error: failed to open " << filename << std::endl;
+                return 1;
+            }
+
+            for (const auto& d : sim_durations) {
+                out << d << "\n";
+            }
+            out.close();
         }
-
-        for (auto &d : sim_durations) {
-            out << d << "\n";
-        }
-        out.close();
 
         std::cout << "Done writing CSV.\n";
     }
