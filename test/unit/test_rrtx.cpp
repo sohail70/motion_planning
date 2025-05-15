@@ -11,8 +11,112 @@
 #include <valgrind/callgrind.h>
 
 
+
+#include <gz/transport/Node.hh>
+#include <gz/msgs/world_control.pb.h>
+#include <gz/msgs/server_control.pb.h>  // Often contains Boolean definition
+#include <gz/msgs/boolean.pb.h>  // For Boolean response
+
+// 2. Corrected simulation control function
+void resetAndPlaySimulation()
+{
+    // Create Gazebo transport node
+    gz::transport::Node node;
+    
+    // Reset the world
+    {
+        gz::msgs::WorldControl reset_req;
+        reset_req.mutable_reset()->set_all(true);
+        
+        // Boolean response type is now properly included
+        gz::msgs::Boolean reset_res;
+        bool result;
+        unsigned int timeout = 3000; // ms
+        
+        bool executed = node.Request("/world/default/control", 
+                                   reset_req,
+                                   timeout,
+                                   reset_res,
+                                   result);
+        
+        if (!executed || !result || !reset_res.data()) {
+            std::cerr << "Failed to reset world" << std::endl;
+            return;
+        }
+        std::cout << "World reset successfully" << std::endl;
+    }
+
+    // Brief pause to ensure reset completes
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    // Play the simulation
+    {
+        gz::msgs::WorldControl play_req;
+        play_req.set_pause(false);  // Unpause to play
+        
+        gz::msgs::Boolean play_res;
+        bool result;
+        
+        bool executed = node.Request("/world/default/control",
+                                   play_req,
+                                   3000,
+                                   play_res,
+                                   result);
+        
+        if (!executed || !result || !play_res.data()) {
+            std::cerr << "Failed to play simulation" << std::endl;
+            return;
+        }
+        std::cout << "Simulation playing successfully" << std::endl;
+    }
+}
+
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 1) Parse your flags
+    int num_samples = 10000;
+    double factor = 2.0;
+    unsigned int seed = 42;
+    int run_secs = 30;
+
+    for(int i = 1; i < argc; ++i) {
+        std::string s{argv[i]};
+        if(s == "--samples" && i+1 < argc) {
+        num_samples = std::stoi(argv[++i]);
+        }
+        else if(s == "--factor" && i+1 < argc) {
+        factor = std::stod(argv[++i]);
+        }
+        else if(s == "--seed" && i+1 < argc) {
+        seed = std::stoi(argv[++i]);
+        }
+        else if(s == "--duration" && i+1 < argc) {
+        run_secs = std::stoi(argv[++i]);
+        }
+        else if(s == "--help") {
+        std::cout << "Usage: " << argv[0]
+                    << " [--samples N] [--factor F] [--seed S] [--duration T]\n";
+        return 0;
+        }
+    }
+
+    // 2) Seed RNG
+    std::srand(seed);
+    std::cout << "[INFO] seed=" << seed
+                << ", samples=" << num_samples
+                << ", factor=" << factor
+                << ", duration=" << run_secs << "s\n";
+
+    // ─────────────────────────────────────────────────────────────────────────────
+
+
+
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Params for Pure-Pursuit Controller
@@ -77,7 +181,8 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 5000);
+    planner_params.setParam("num_of_samples", num_samples);
+    planner_params.setParam("factor", factor);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("partial_update", false); // update the tree cost of the robot or not
@@ -85,8 +190,8 @@ int main(int argc, char **argv) {
 
 
 
-
     /////////////////////////////////////////////////////////////////////////////////////////////////
+
     // Create ROS node
     auto node = std::make_shared<rclcpp::Node>("rrtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
@@ -122,55 +227,55 @@ int main(int argc, char **argv) {
 
 
 
-    std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 20000);
+    std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 20000, seed);
     std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::RRTX, statespace,problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
     // Plan the static one!
     planner->plan();
 
-    //----------- Waiting for the Sim Clock to start ------------ //
-    bool simulation_is_paused = true;
-    auto node_clock = ros2_manager->get_clock();
-    // We'll store the initial sim time
-    rclcpp::Time last_time = node_clock->now();
-    std::cout << "[DEBUG] Initially, last_time = " << last_time.seconds() 
-            << " (sim seconds)\n";
-    std::cout << "[INFO] Waiting for gz-sim to unpause...\n";
+    // //----------- Waiting for the Sim Clock to start ------------ //
+    // bool simulation_is_paused = true;
+    // auto node_clock = ros2_manager->get_clock();
+    // // We'll store the initial sim time
+    // rclcpp::Time last_time = node_clock->now();
+    // std::cout << "[DEBUG] Initially, last_time = " << last_time.seconds() 
+    //         << " (sim seconds)\n";
+    // std::cout << "[INFO] Waiting for gz-sim to unpause...\n";
 
-    while (rclcpp::ok() && simulation_is_paused)
-    {
-        // 1) Spin to process any incoming clock messages
-        rclcpp::spin_some(ros2_manager);
+    // while (rclcpp::ok() && simulation_is_paused)
+    // {
+    //     // 1) Spin to process any incoming clock messages
+    //     rclcpp::spin_some(ros2_manager);
 
-        // 2) Get current sim time
-        rclcpp::Time current_time = node_clock->now();
-        double dt = (current_time - last_time).seconds();
+    //     // 2) Get current sim time
+    //     rclcpp::Time current_time = node_clock->now();
+    //     double dt = (current_time - last_time).seconds();
 
-        // // 3) Print debug
-        // std::cout << "[DEBUG] last_time=" << last_time.seconds() 
-        //         << ", current_time=" << current_time.seconds() 
-        //         << ", dt=" << dt << "\n";
+    //     // // 3) Print debug
+    //     // std::cout << "[DEBUG] last_time=" << last_time.seconds() 
+    //     //         << ", current_time=" << current_time.seconds() 
+    //     //         << ", dt=" << dt << "\n";
 
-        // 4) Check if it’s advanced
-        if (current_time > last_time) {
-            std::cout << "[DEBUG] => current_time is strictly greater than last_time, so sim is unpaused.\n";
-            simulation_is_paused = false;
-            std::cout << "[INFO] Simulation unpaused; starting to log data.\n";
-        }
-        else {
-            // If we land here, sim time hasn't advanced since last check
-            // std::cout << "[DEBUG] => Simulation still paused, waiting...\n";
-            rclcpp::sleep_for(std::chrono::milliseconds(1));
-        }
+    //     // 4) Check if it’s advanced
+    //     if (current_time > last_time) {
+    //         std::cout << "[DEBUG] => current_time is strictly greater than last_time, so sim is unpaused.\n";
+    //         simulation_is_paused = false;
+    //         std::cout << "[INFO] Simulation unpaused; starting to log data.\n";
+    //     }
+    //     else {
+    //         // If we land here, sim time hasn't advanced since last check
+    //         // std::cout << "[DEBUG] => Simulation still paused, waiting...\n";
+    //         rclcpp::sleep_for(std::chrono::milliseconds(1));
+    //     }
 
-        last_time = current_time;
-    }
-    //----------------------------------------------------------- //
-
-
+    //     last_time = current_time;
+    // }
+    // //----------------------------------------------------------- //
 
 
+    resetAndPlaySimulation();
 
+    
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
     rclcpp::Rate loop_rate(30); // 10 Hz (100ms per loop)
     auto global_start = std::chrono::steady_clock::now();
@@ -180,7 +285,7 @@ int main(int argc, char **argv) {
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
-    auto time_limit = std::chrono::seconds(20);
+    auto time_limit = std::chrono::seconds(run_secs);
 
     std::vector<double> sim_durations;
     std::vector<std::tuple<double, double>> sim_duration_2;
@@ -235,13 +340,13 @@ int main(int argc, char **argv) {
 
 
 
-        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<RRTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-        ros2_manager->followPath(shortest_path_);
+        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<RRTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+        // ros2_manager->followPath(shortest_path_);
 
         ////////// VISUALIZE /////
         // dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
-        dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-        dynamic_cast<RRTX*>(planner.get())->visualizeTree();
+        // dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        // dynamic_cast<RRTX*>(planner.get())->visualizeTree();
 
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();
@@ -251,6 +356,7 @@ int main(int argc, char **argv) {
     CALLGRIND_STOP_INSTRUMENTATION;
 
     const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations
+    int num_of_samples_ = planner_params.getParam<int>("num_of_samples");
 
 
     if (limited) {
@@ -267,6 +373,7 @@ int main(int argc, char **argv) {
         // Create base filename with timestamp
         std::string planner_type = "rrtx";
         std::string base_filename = "sim_" + planner_type + "_" +
+            std::to_string(num_of_samples_) + "samples_" + 
             std::to_string(day) + "_" +
             std::to_string(month) + "_" +
             std::to_string(year) + "_" +

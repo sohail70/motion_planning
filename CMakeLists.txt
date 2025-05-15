@@ -133,10 +133,10 @@ add_test(NAME test_rrtx COMMAND test_rrtx)
 # target_link_libraries(test_kdtree motion_planning)
 # add_test(NAME test_kdtree COMMAND test_kdtree)
 
-# add_executable(test_gz test/unit/test_gz.cpp)
-# target_link_libraries(test_gz gz_obs visualization motion_planning)
-# ament_target_dependencies(test_gz rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-# add_test(NAME test_gz COMMAND test_gz)
+add_executable(test_gz test/unit/test_gz.cpp)
+target_link_libraries(test_gz gz_obs visualization motion_planning)
+ament_target_dependencies(test_gz rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_gz COMMAND test_gz)
 
 
 

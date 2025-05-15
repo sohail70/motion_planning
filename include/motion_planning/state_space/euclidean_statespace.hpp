@@ -10,7 +10,7 @@
 
 class EuclideanStateSpace : public StateSpace {
  public:
-    explicit EuclideanStateSpace(int dimension,int capacity);
+    explicit EuclideanStateSpace(int dimension,int capacity, unsigned int seed = 42);
 
     std::shared_ptr<State> addState(const Eigen::VectorXd& value);
     std::shared_ptr<State> sampleUniform(double min, double max);

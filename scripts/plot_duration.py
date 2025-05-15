@@ -1,106 +1,254 @@
 import glob
 import os
+import re
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
-from scipy import stats
+import matplotlib.pyplot as plt
+from matplotlib.ticker import AutoMinorLocator
+from scipy.stats import linregress
 
 def get_planner_name(filename):
-    """Extract planner type from filename"""
     base = os.path.basename(filename)
-    if 'fmtx' in base.lower():
-        return 'FMTx'
-    elif 'rrtx' in base.lower():
-        return 'RRTX'
-    else:
-        return os.path.splitext(base)[0]  # fallback
+    if 'fmtx'  in base.lower(): planner = 'FMTx'
+    elif 'rrtx' in base.lower(): planner = 'RRTx'
+    else: planner = os.path.splitext(base)[0]
+    m = re.search(r"(\d+)samples_", base.lower())
+    return planner, int(m.group(1)) if m else 0
 
-def plot_comparison(csv_files):
-    """Plot and compare planner performance"""
-    plt.figure(figsize=(12, 6))
-    cmap = plt.get_cmap('tab10')
-    
-    # Load and plot all files
-    all_data = []
-    for i, filename in enumerate(csv_files):
+def load_grouped_data(files):
+    data = {}
+    for f in files:
+        planner, samples = get_planner_name(f)
         try:
-            df = pd.read_csv(filename)
-            planner = get_planner_name(filename)
-            color = cmap(i)
-            
-            if 'elapsed_s' in df.columns:  # Timed data
-                plt.plot(df['elapsed_s'], df['duration_ms'], 
-                         color=color, label=planner, alpha=0.7)
-                plt.xlabel("Time (seconds)")
-            else:  # Raw data
-                plt.plot(df.iloc[:, 0],  # First column as durations
-                         color=color, label=planner, alpha=0.7)
-                plt.xlabel("Iteration")
-            
-            all_data.append((planner, df))
-            
+            df = pd.read_csv(f)
+            data.setdefault(samples, {}).setdefault(planner, []).append(df)
         except Exception as e:
-            print(f"Error with {filename}: {e}")
+            print(f"Error loading {f}: {e}")
+    return data
 
-    plt.ylabel("Duration (ms)")
-    plt.title("Planner Performance Comparison")
-    plt.legend()
-    plt.grid(True)
+def bootstrap_median_ci(data, n_boot=1000, ci=95):
+    meds = []
+    for _ in range(n_boot):
+        sample = np.random.choice(data, size=len(data), replace=True)
+        meds.append(np.median(sample))
+    lo = np.percentile(meds, (100-ci)/2)
+    hi = np.percentile(meds, 100-(100-ci)/2)
+    return lo, hi
+
+def summarize_planners(data):
+    rows = []
+    for samples, planners in data.items():
+        for planner, dfs in planners.items():
+            meds = [np.median(d['duration_ms']) for d in dfs]
+            med = np.median(meds)
+            lo, hi = bootstrap_median_ci(meds)
+            rows.append({'samples': samples, 'planner': planner,
+                         'median_ms': med, 'ci_lo': lo, 'ci_hi': hi})
+    return pd.DataFrame(rows).sort_values(['samples','planner']).reset_index(drop=True)
+
+def plot_ecdf(data, samples_list):
+    plt.figure(figsize=(8,5))
+    for samples in samples_list:
+        for planner, dfs in data[samples].items():
+            all_durs = np.concatenate([d['duration_ms'] for d in dfs])
+            s = np.sort(all_durs)
+            ecdf = np.arange(1, len(s)+1)/len(s)
+            plt.step(s, ecdf, where='post', label=f"{planner} ({samples})")
+    plt.xlabel("Duration (ms)")
+    plt.ylabel("ECDF")
+    plt.title("ECDF of replanning durations")
+    plt.grid('--', lw=0.5)
+    plt.legend(fontsize='small')
+    plt.tight_layout()
+    plt.show()
+
+def plot_boxplot(data, samples_list):
+    recs = []
+    for samples in samples_list:
+        for planner, dfs in data[samples].items():
+            for med in [np.median(d['duration_ms']) for d in dfs]:
+                recs.append({'samples': samples, 'planner': planner, 'med_ms': med})
+    df = pd.DataFrame(recs)
+    plt.figure(figsize=(8,5))
+    ax = plt.subplot()
+    df.boxplot(column='med_ms', by=['samples','planner'], ax=ax)
+    plt.suptitle("")
+    plt.xlabel("Sample size, Planner")
+    plt.ylabel("Trial median (ms)")
+    plt.xticks(rotation=45)
+    plt.grid('--', lw=0.5)
+    plt.tight_layout()
     plt.show()
     
-    # Statistical analysis if we have exactly 2 planners
-    if len(all_data) == 2:
-        perform_statistical_analysis(all_data[0], all_data[1])
+def estimate_complexity(n_values, time_values):
+    """
+    Estimates the time complexity from empirical data.
+    Returns the best-fit complexity class and R² score.
+    """
+    n = np.array(n_values)
+    t = np.array(time_values)
+    if len(n) < 2:
+        return "Insufficient data", 0.0
 
-def perform_statistical_analysis(planner_a, planner_b):
-    """Compare two planners statistically"""
-    name_a, data_a = planner_a
-    name_b, data_b = planner_b
+    # Log-log regression to estimate exponent
+    try:
+        log_n = np.log(n)
+        log_t = np.log(t)
+        slope, _, r_value, _, _ = linregress(log_n, log_t)
+        k = slope
+    except:
+        k = 1  # Fallback if regression fails
+
+    # Define candidate complexity functions
+    candidates = {
+        'O(1)': np.ones_like(n),
+        'O(n)': n,
+        'O(n log n)': n * np.log(n),
+        'O(n²)': n**2,
+        'O(n³)': n**3,
+        'O(log n)': np.log(n),
+        'O(2ⁿ)': 2**n,
+        f'O(n^{k:.2f})': n**k,
+        f'O(n^{k:.2f} log n)': n**k * np.log(n)
+    }
+
+    best_fit = None
+    best_r2 = -np.inf
+
+    for name, f_n in candidates.items():
+        if np.any(f_n <= 0):
+            continue  # Skip invalid candidates
+        try:
+            # Fit T(n) = a * f(n)
+            a = np.sum(t * f_n) / np.sum(f_n**2)
+            t_pred = a * f_n
+            ss_res = np.sum((t - t_pred)**2)
+            ss_tot = np.sum((t - np.mean(t))**2)
+            #ss_tot = np.sum(t**2)
+
+            r2 = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+            if r2 > best_r2:
+                best_r2 = r2
+                best_fit = name
+        except:
+            continue
+
+    return best_fit, best_r2
+
+def plot_complexity(data):
+    # gather summary
+    df_sum = summarize_planners(data)
+    fig, ax = plt.subplots(1,2, figsize=(12,4))
+
+    for i, planner in enumerate(['FMTx','RRTx']):
+        sub = df_sum[df_sum['planner']==planner]
+        n = sub['samples'].values
+        t = sub['median_ms'].values
+        # log-log
+        ax[0].loglog(n, t, '-o', label=planner)
+        # normalized
+        ax[1].plot(n, t/(n * np.log(n)), '-o', label=planner)
+
+    # ——— quantitative complexity checks ———
+    print("\nFitting log–log slope:")
+    for planner in ['FMTx','RRTx']:
+        sub = df_sum[df_sum['planner']==planner]
+        x = np.log(sub['samples'])
+        y = np.log(sub['median_ms'])
+        slope, intercept, r, p, se = linregress(x, y)
+        print(f"  {planner}: slope={slope:.3f}, R²={r**2:.3f}")
+
+    print("\nChecking constancy of T/(n·log n):")
+    for planner in ['FMTx','RRTx']:
+        sub = df_sum[df_sum['planner']==planner]
+        C = sub['median_ms'] / (sub['samples'] * np.log(sub['samples']))
+        print(f"  {planner}: mean C={C.mean():.3e}, CV={C.std()/C.mean():.2f}")
+
+
+    ax[0].set_xlabel("Samples (n)")
+    ax[0].set_ylabel("Median duration (ms)")
+    ax[0].set_title("Log-Log: runtime vs. n")
+    ax[0].grid(True, which='both', linestyle='--', linewidth=0.5)
+    ax[0].legend(fontsize='small')
+
+    ax[1].set_xlabel("Samples (n)")
+    ax[1].set_ylabel("median_ms / (n·log n)")
+    ax[1].set_title("Normalized by n·log n")
+    ax[1].grid(True, linestyle='--', linewidth=0.5)
+    ax[1].legend(fontsize='small')
+
+    plt.tight_layout()
+    plt.show()
     
-    # Get duration data (handle both raw and timed formats)
-    durations_a = data_a['duration_ms'] if 'duration_ms' in data_a.columns else data_a.iloc[:, 0]
-    durations_b = data_b['duration_ms'] if 'duration_ms' in data_b.columns else data_b.iloc[:, 0]
-    
-    print(f"\n=== {name_a} vs {name_b} Performance ===")
-    print(f"{'Metric':<15} {name_a:<10} {name_b:<10}")
-    print("-"*40)
-    
-    stats_data = [
-        ("Median", np.median),
-        ("Mean", np.mean),
-        ("Std Dev", np.std),
-        ("95%ile", lambda x: np.percentile(x, 95))
-    ]
-    
-    for stat_name, func in stats_data:
-        val_a = f"{func(durations_a):.1f} ms"
-        val_b = f"{func(durations_b):.1f} ms"
-        print(f"{stat_name:<15} {val_a:<10} {val_b:<10}")
-    
-    # Mann-Whitney U test
-    stat, p = stats.mannwhitneyu(durations_a, durations_b)
-    print(f"\nStatistical Test:")
-    print(f"U = {stat:.1f}, p = {p:.6f}")
-    if p < 0.001:
-        print("STRONG significant difference (p < 0.001)")
-    elif p < 0.05:
-        print("Significant difference (p < 0.05)")
-    
-    # Speed ratio
-    ratio = np.median(durations_b) / np.median(durations_a)
-    print(f"\n{name_a} is {ratio:.1f}x faster than {name_b}")
+    # New: Estimate and print complexity
+    print("\nEmpirical Complexity Estimation:")
+    df_sum = summarize_planners(data)
+    for planner in ['FMTx', 'RRTx']:
+        sub = df_sum[df_sum['planner'] == planner]
+        n = sub['samples'].values
+        t = sub['median_ms'].values
+        best_fit, r2 = estimate_complexity(n, t)
+        print(f"  {planner}: {best_fit} (R²={r2:.2f})")
+
+
+
+def plot_trajectory_subplots(data, samples_list):
+    fig, axes = plt.subplots(2, 2, figsize=(12,8))
+    grid = np.linspace(0, 30, 300)
+    colors = {'FMTx':'#3060D0', 'RRTx':'#D03030'}  # median lines
+    bg_colors = {'FMTx':'#DCE6F1','RRTx':'#F4CCCC'}   # envelopes
+
+    for ax, samples in zip(axes.flat, samples_list):
+        if samples not in data:
+            ax.set_visible(False)
+            continue
+        for planner in ['FMTx','RRTx']:
+            if planner not in data[samples]:
+                continue
+            curves = []
+            for df in data[samples][planner]:
+                t = df['elapsed_s'].values
+                y = df['duration_ms'].values
+                curves.append(np.interp(grid, t, y, np.nan, np.nan))
+            stacked = np.vstack(curves)
+            lo = np.nanpercentile(stacked,5, axis=0)
+            hi = np.nanpercentile(stacked,95,axis=0)
+            med = np.nanmedian(stacked,axis=0)
+            ax.fill_between(grid, lo, hi,
+                            facecolor=bg_colors[planner], alpha=0.3)
+            ax.plot(grid, med, color=colors[planner], lw=2,
+                    label=f"{planner} median")
+        ax.set_title(f"{samples} samples")
+        ax.set_xlabel("Elapsed time (s)")
+        ax.set_ylabel("Duration (ms)")
+        ax.grid(True, linestyle='--', linewidth=0.5)
+        ax.legend(fontsize='small')
+
+    plt.tight_layout()
+    plt.show()
 
 def main():
-    # Find all data files (both formats)
-    files = sorted(glob.glob("../build/sim_*_*.csv"))
-    
+    files = sorted(glob.glob("../build/new/test/sim_*_*.csv"))
     if not files:
-        print("No data files found in ../build/")
-        print("Expected files like:")
-        print("sim_fmtx_*_timed.csv, sim_rrtx_*_raw.csv")
+        print("No data files found.")
         return
-    
-    plot_comparison(files)
+    data = load_grouped_data(files)
+    samples_list = sorted(data.keys())[:4]
 
-if __name__ == "__main__":
+    # 1) Summary table
+    df_sum = summarize_planners(data)
+    print("\nSummary (median ± 95% CI):")
+    print(df_sum.pivot(index='samples', columns='planner',
+                       values=['median_ms','ci_lo','ci_hi']))
+
+    # 2) ECDF
+    plot_ecdf(data, samples_list)
+    # 3) Boxplot
+    plot_boxplot(data, samples_list)
+    # 4) Complexity check
+    plot_complexity(data)
+    # 5) 2×2 trajectory + envelope
+    plot_trajectory_subplots(data, samples_list)
+
+if __name__=='__main__':
     main()

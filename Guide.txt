@@ -11,11 +11,14 @@ kcachegrind callgrind.out
 pkill -f "parameter_bridge"
 pkill -f "gz"
 
+taskset -c 0-5 gz sim dynamic_world.sdf 
+watch -n 0.5 "ps -eo pid,comm,psr,%cpu --sort=psr | grep -E ' 6 | 7 '"
+watch -n 0.5 'ps -eo pid,comm,psr,%cpu --sort=-%cpu | grep -E "test_rrtx|gz|vlc|COMMAND"'
 
-
-ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=/home/sohail/jazzy_ws/src/simple_robot/params/ros_gz_bridge.yaml 
+taskset -c 0-5 ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=/home/sohail/jazzy_ws/src/simple_robot/params/ros_gz_bridge.yaml 
 ros2 run teleop_twist_keyboard teleop_twist_keyboard 
 
+./fmtx_sim --samples 2000 --factor 1.5 --seed 42 --duration 30
 
 
 to run nav2 server run this:

@@ -73,8 +73,10 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     int d = statespace_->getDimension();
     mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
     zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
-    gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
-    factor = 2.0;
+    gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
+    // gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+
+    factor = params.getParam<int>("factor");
     neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
     // neighborhood_radius_ = 5.0;
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
@@ -658,6 +660,38 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 
     */
 
+
+    /*
+        Time Complexity Comparison: Inserting k New Elements into a Heap of Size M
+        Method 1: Individual Insertions (add one by one)
+        Time Complexity:
+        O(klogM)
+        Each insertion takes O(logM) time (due to heapifyUp).
+
+        For k insertions: O(klogM).
+
+        Method 2: Bulk Insertion (bulkAdd)
+        Time Complexity: O(M+k)
+        Collecting elements: O(k).
+
+        Heap construction (Floyd’s method): 
+        O(M+k), where M is the existing heap size.
+
+        Which is Faster?
+        If k is small compared to M (k ≪ M)
+
+        O(klogM) vs.  O(M+k)≈O(M).
+        Since M might dominate klogM, Method 1 (individual insertions) could be faster.
+
+        If k is large (k ≈ M or k > M)
+        O(klogM) vs.  O(M+k)≈O(k).
+        Since k log ⁡ M ≫ k
+        klogM≫k, Method 2 (bulkAdd) wins.
+    */
+
+
+    // // Method 1
+
     // for (auto node_index : orphan_nodes) {
     //     auto node = tree_.at(node_index).get();
     //     near(node_index);
@@ -670,37 +704,38 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
     //     }
     // }
 //////////////////////////////
-// 1) Gather & mark
-std::vector<std::pair<double, FMTNode*>> to_enqueue;
-// to_enqueue.reserve(orphan_nodes.size() * average_degree); // optional hint
+    // // Method 2
+    // 1) Gather & mark
+    std::vector<std::pair<double, FMTNode*>> to_enqueue;
+    // to_enqueue.reserve(orphan_nodes.size() * average_degree); // optional hint
 
-for (auto node_index : orphan_nodes) {
-    FMTNode* node = tree_.at(node_index).get();
-    near(node_index);  // ensure node->neighbors() is populated
+    for (auto node_index : orphan_nodes) {
+        FMTNode* node = tree_.at(node_index).get();
+        near(node_index);  // ensure node->neighbors() is populated
 
-    for (const auto& [neighbor, dist] : node->neighbors()) {
-        // skip if already enqueued or not yet reachable
-        if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
-            continue;
+        for (const auto& [neighbor, dist] : node->neighbors()) {
+            // skip if already enqueued or not yet reachable
+            if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
+                continue;
 
-        // mark so we don’t enqueue duplicates
-        neighbor->in_queue_ = true;
+            // mark so we don’t enqueue duplicates
+            neighbor->in_queue_ = true;
 
-        // compute priority (cost-to-come + optional heuristic)
-        double h_value = use_heuristic 
-                         ? heuristic(neighbor->getIndex()) 
-                         : 0.0;
-        double priority = neighbor->getCost() + h_value;
+            // compute priority (cost-to-come + optional heuristic)
+            double h_value = use_heuristic 
+                            ? heuristic(neighbor->getIndex()) 
+                            : 0.0;
+            double priority = neighbor->getCost() + h_value;
 
-        to_enqueue.emplace_back(priority, neighbor);
+            to_enqueue.emplace_back(priority, neighbor);
+        }
     }
-}
 
-// 2) Bulk‐add into your custom priority queue in O(K)
-v_open_heap_.bulkAdd(to_enqueue);
+    // 2) Bulk‐add into your custom priority queue in O(K)
+    v_open_heap_.bulkAdd(to_enqueue);
 
-// Note: after bulkAdd, heap_index_ is set and in_queue_ remains true.
-// When you later pop/remove a node, your remove() method will reset in_queue_ = false.
+    // Note: after bulkAdd, heap_index_ is set and in_queue_ remains true.
+    // When you later pop/remove a node, your remove() method will reset in_queue_ = false.
 
 
 /////////////////////////////
@@ -759,34 +794,34 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
     // }
 
     ////////////////////////////////////////////////////
-// 1) Gather & mark neighbors of removed nodes
-std::vector<std::pair<double, FMTNode*>> to_enqueue;
-// to_enqueue.reserve(removed.size() * average_degree);  // optional hint
+    // 1) Gather & mark neighbors of removed nodes
+    std::vector<std::pair<double, FMTNode*>> to_enqueue;
+    // to_enqueue.reserve(removed.size() * average_degree);  // optional hint
 
-for (int node_index : removed) {
-    FMTNode* node = tree_.at(node_index).get();
-    near(node_index);  // ensure neighbors are cached
+    for (int node_index : removed) {
+        FMTNode* node = tree_.at(node_index).get();
+        near(node_index);  // ensure neighbors are cached
 
-    for (const auto& [neighbor, dist] : node->neighbors()) {
-        if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
-            continue;
+        for (const auto& [neighbor, dist] : node->neighbors()) {
+            if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
+                continue;
 
-        neighbor->in_queue_ = true;  // mark to avoid duplicates
+            neighbor->in_queue_ = true;  // mark to avoid duplicates
 
-        double h_value = use_heuristic 
-                         ? heuristic(neighbor->getIndex()) 
-                         : 0.0;
-        double priority = neighbor->getCost() + h_value;
+            double h_value = use_heuristic 
+                            ? heuristic(neighbor->getIndex()) 
+                            : 0.0;
+            double priority = neighbor->getCost() + h_value;
 
-        to_enqueue.emplace_back(priority, neighbor);
+            to_enqueue.emplace_back(priority, neighbor);
+        }
     }
-}
 
-// 2) Bulk‑add into the open set
-v_open_heap_.bulkAdd(to_enqueue);
+    // 2) Bulk‑add into the open set
+    v_open_heap_.bulkAdd(to_enqueue);
 
-// After bulkAdd, in_queue_ remains true; later pops will reset it.
-////////////////////////////////////////////////////////////
+    // After bulkAdd, in_queue_ remains true; later pops will reset it.
+    ////////////////////////////////////////////////////////////
 
 
 }

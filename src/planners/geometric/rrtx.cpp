@@ -238,11 +238,14 @@ void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     int d = dimension_;
     double mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
     double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
-    gamma_ = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+    gamma_ = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+    // gamma_ = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //FMT star gamma
+
 
 
     // Since i want to put a cap on the number of samples and i want RRTX to be as close as to FMTX im gonna set step size (delta) to this:
-    factor = 2.0;
+    factor = params.getParam<int>("factor");
+
     delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
     // delta = 5.0;
     std::cout << "Computed value of delta: " << delta << std::endl;

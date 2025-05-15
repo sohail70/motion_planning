@@ -206,6 +206,10 @@ private:
     bool new_goal_received_ = false;
     std::vector<Eigen::VectorXd> current_path_;
 
+    std::vector<std::vector<Eigen::Vector2d>> obstacle_trajectories_;
+    int trajectory_history_length_ = 1500; // Desired history
+
+
     // Add to private members
     Eigen::Vector3d current_goal_;
     geometry_msgs::msg::Twist current_cmd_vel_;
@@ -418,25 +422,25 @@ void visualizeDWA(const DWAVisualization& data) {
                     cylinder_obstacles.push_back(vec);
                     cylinder_radii.push_back(obstacle.dimensions.circle.radius);// + obstacle.inflation);
                 } else if (obstacle.type == Obstacle::BOX) {
-    const double inflated_width = obstacle.dimensions.box.width; // + 2*obstacle.inflation;
-    const double inflated_height = obstacle.dimensions.box.height; // + 2*obstacle.inflation;
-    
-    if (inflated_width > 0.0 && inflated_height > 0.0) {
-        box_obstacles.emplace_back(
-            obstacle.position,
-            inflated_width,
-            inflated_height,
-            obstacle.dimensions.box.rotation
-        );
-    } else {
-        std::cout << "WARNING: Invalid box dimensions - width: " 
-                  << std::fixed << std::setprecision(2)
-                  << obstacle.dimensions.box.width << " (+" << obstacle.inflation
-                  << " inflation), height: " << obstacle.dimensions.box.height
-                  << " (+" << obstacle.inflation << " inflation)"
-                  << std::endl;
-    }
-}
+                    const double inflated_width = obstacle.dimensions.box.width; // + 2*obstacle.inflation;
+                    const double inflated_height = obstacle.dimensions.box.height; // + 2*obstacle.inflation;
+                    
+                    if (inflated_width > 0.0 && inflated_height > 0.0) {
+                        box_obstacles.emplace_back(
+                            obstacle.position,
+                            inflated_width,
+                            inflated_height,
+                            obstacle.dimensions.box.rotation
+                        );
+                    } else {
+                        std::cout << "WARNING: Invalid box dimensions - width: " 
+                                << std::fixed << std::setprecision(2)
+                                << obstacle.dimensions.box.width << " (+" << obstacle.inflation
+                                << " inflation), height: " << obstacle.dimensions.box.height
+                                << " (+" << obstacle.inflation << " inflation)"
+                                << std::endl;
+                    }
+                }
             }
 
             // Get robot info
@@ -447,7 +451,39 @@ void visualizeDWA(const DWAVisualization& data) {
             robot.push_back(robot_pos_vec);
             robot_rad.push_back(1.0);
         }
+        //////////////////
+        // // Convert both cylinder & box centers into a common 2D list
+        // std::vector<Eigen::Vector2d> current_centers;
+        // for (const auto &vec : cylinder_obstacles) {
+        //     current_centers.push_back(Eigen::Vector2d(vec[0], vec[1]));
+        // }
+        // for (const auto &tpl : box_obstacles) {
+        //     const auto &pos = std::get<0>(tpl);
+        //     current_centers.push_back(pos);
+        // }
 
+        // // On first call, initialize histories
+        // if (obstacle_trajectories_.empty()) {
+        //     obstacle_trajectories_.resize(current_centers.size());
+        // }
+
+        // // Resize if obstacle count changed
+        // if (current_centers.size() != obstacle_trajectories_.size()) {
+        //     obstacle_trajectories_.assign(current_centers.size(), {});
+        // }
+
+        // // Append current positions, capping history length
+        // for (size_t i = 0; i < current_centers.size(); ++i) {
+        //     auto &hist = obstacle_trajectories_[i];
+        //     hist.push_back(current_centers[i]);
+        //     if (hist.size() > trajectory_history_length_) {
+        //         hist.erase(hist.begin());  // drop oldest
+        //     }
+        // }
+
+
+
+        /////////////////
         // Visualize elements
         visualizer_->visualizeRobotArrow(robot_position, robot_quat, "map", 
                                     {1.0f, 1.0f, 0.0f}, "robot_marker");
@@ -455,14 +491,23 @@ void visualizeDWA(const DWAVisualization& data) {
         // Visualize cylindrical obstacles
         if (!cylinder_obstacles.empty()) {
             visualizer_->visualizeCylinder(cylinder_obstacles, cylinder_radii, "map",
-                                        {0.0f, 0.0f, 1.0f}, "cylinder_obstacles");
+                                        {0.0f, 0.4f, 1.0f}, "cylinder_obstacles");
         }
         
         // Visualize box obstacles
         if (!box_obstacles.empty()) {
             visualizer_->visualizeCube(box_obstacles, "map", 
-                                    {0.0f, 0.0f, 1.0f}, "box_obstacles");
+                                    {0.0f, 0.4f, 1.0f}, "box_obstacles");
         }
+
+
+        // visualizer_->visualizeTrajectories(
+        //     obstacle_trajectories_,
+        //     "map",
+        //     {1.0f, 0.55f, 0.0f},    
+        //     "obstacle_trajectories"
+        // );
+
     }
 
 

@@ -3,8 +3,8 @@
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include <random> 
 
-EuclideanStateSpace::EuclideanStateSpace(int dimension,int capacity):StateSpace(dimension,capacity) {
-    std::srand(42); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
+EuclideanStateSpace::EuclideanStateSpace(int dimension,int capacity,unsigned int seed):StateSpace(dimension,capacity) {
+    std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
 
     std::cout << "Euclidean state space constructor \n";
 }

@@ -19,6 +19,12 @@ public:
 
     void visualizeRobotArrow( const Eigen::VectorXd& robot_position, const Eigen::VectorXd& robot_orientation, const std::string& frame_id, const std::vector<float>& color,const std::string& ns);
     void visualizeCube(const std::vector<std::tuple<Eigen::Vector2d, double, double, double>>& box_obstacles, const std::string& frame_id, const std::vector<float>& color, const std::string& ns) ;
+
+
+    void visualizeTrajectories(const std::vector<std::vector<Eigen::Vector2d>>& trajectories, 
+                          const std::string& frame_id,
+                          const std::vector<float>& color,
+                          const std::string& ns);
 private:
     rclcpp::Node::SharedPtr node_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;

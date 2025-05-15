@@ -321,3 +321,99 @@ void RVizVisualization::visualizeCube(
     // Publish all box markers
     marker_pub_2_->publish(marker_array);
 }
+
+
+
+void RVizVisualization::visualizeTrajectories(const std::vector<std::vector<Eigen::Vector2d>>& trajectories, 
+                          const std::string& frame_id,
+                          const std::vector<float>& color,
+                          const std::string& ns) {
+    // visualization_msgs::msg::MarkerArray marker_array;
+    
+    // // Clear previous markers
+    // visualization_msgs::msg::Marker clear_marker;
+    // clear_marker.header.frame_id = frame_id;
+    // clear_marker.header.stamp = node_->now();
+    // clear_marker.ns = ns;
+    // clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    // marker_array.markers.push_back(clear_marker);
+
+    // // Create new trajectory markers
+    // for (size_t i = 0; i < trajectories.size(); ++i) {
+    //     const auto& trajectory = trajectories[i];
+    //     if (trajectory.empty()) continue;
+
+    //     visualization_msgs::msg::Marker line_strip;
+    //     line_strip.header.frame_id = frame_id;
+    //     line_strip.header.stamp = node_->now();
+    //     line_strip.ns = ns;
+    //     line_strip.id = i;
+    //     line_strip.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    //     line_strip.action = visualization_msgs::msg::Marker::ADD;
+    //     line_strip.scale.x = 0.05; // Line width
+    //     line_strip.color.r = color[0];
+    //     line_strip.color.g = color[1];
+    //     line_strip.color.b = color[2];
+    //     line_strip.color.a = 1.0;
+
+    //     for (const auto& point : trajectory) {
+    //         geometry_msgs::msg::Point p;
+    //         p.x = point.x();
+    //         p.y = point.y();
+    //         p.z = 0.0;
+    //         line_strip.points.push_back(p);
+    //     }
+
+    //     marker_array.markers.push_back(line_strip);
+    // }
+
+    // marker_pub_2_->publish(marker_array);
+    /////////////////////////////////////
+    visualization_msgs::msg::MarkerArray marker_array;
+    
+    // Clear previous markers
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id;
+    clear_marker.header.stamp = node_->now();
+    clear_marker.ns = ns;
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    marker_array.markers.push_back(clear_marker);
+
+    // Create point markers for each trajectory
+    for (size_t i = 0; i < trajectories.size(); ++i) {
+        const auto& trajectory = trajectories[i];
+        if (trajectory.empty()) continue;
+
+        visualization_msgs::msg::Marker dots;
+        dots.header.frame_id = frame_id;
+        dots.header.stamp = node_->now();
+        dots.ns = ns;
+        dots.id = i;
+        dots.type = visualization_msgs::msg::Marker::SPHERE_LIST;
+        dots.action = visualization_msgs::msg::Marker::ADD;
+
+        // Dot size
+        dots.scale.x = 0.4;
+        dots.scale.y = 0.4;
+        dots.scale.z = 0.4;
+
+        // Dot color
+        dots.color.r = color[0];
+        dots.color.g = color[1];
+        dots.color.b = color[2];
+        dots.color.a = 1.0;
+
+        for (const auto& point : trajectory) {
+            geometry_msgs::msg::Point p;
+            p.x = point.x();
+            p.y = point.y();
+            p.z = 0.0;
+            dots.points.push_back(p);
+        }
+
+        marker_array.markers.push_back(dots);
+    }
+
+    marker_pub_2_->publish(marker_array);
+
+}

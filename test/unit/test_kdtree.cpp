@@ -8,7 +8,8 @@ int main() {
     std::srand(42);  // Fixed seed for reproducibility
     std::cout << "KDTree Test \n";
     int dim = 2;
-    std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 4);
+    unsigned int seed = 42;
+    std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 4, seed);
     std::shared_ptr<NanoFlann> kd = std::make_shared<NanoFlann>(dim);
 
     // Manually add the specified points to the KD-tree
