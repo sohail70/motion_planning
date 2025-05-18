@@ -244,8 +244,8 @@ void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
 
 
     // Since i want to put a cap on the number of samples and i want RRTX to be as close as to FMTX im gonna set step size (delta) to this:
-    factor = params.getParam<int>("factor");
-
+    factor = params.getParam<double>("factor");
+    std::cout<<"factor: "<<factor<<"\n";
     delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
     // delta = 5.0;
     std::cout << "Computed value of delta: " << delta << std::endl;

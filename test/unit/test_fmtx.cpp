@@ -480,7 +480,7 @@ int main(int argc, char **argv) {
 
         // dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         // dynamic_cast<FMTX*>(planner.get())->visualizeHeapAndUnvisited();
-        // dynamic_cast<FMTX*>(planner.get())->visualizeTree();
+        dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();
     }

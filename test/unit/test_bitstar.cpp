@@ -192,7 +192,7 @@ int main(int argc, char **argv) {
 
 
 
-    int seed = 42;
+    unsigned int seed = 42;
     std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 30000, seed);
     std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::BITStar, statespace,problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
