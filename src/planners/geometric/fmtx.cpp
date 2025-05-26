@@ -666,6 +666,17 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
         }
 
     }
+    /*
+        TO DO: Later i might create a hybrid approach to decide between prune true or false
+        Order of obstalce check for rrtx style is O(h ln(n)) --> h being the "added" variable and n being num of samples 
+        Order of obstalce check for fmt style is O(K) --> K being the number of orphan nodes
+    */
+    // std::cout << "Added samples: " << added.size()
+    //           << ", added.size() * log(n): " << (added.size() * std::log(num_of_samples_))
+    //           << std::endl;
+    // std::cout << "Orphan nodes count: " << orphan_nodes.size() << std::endl;
+
+
 
     /*
         one might ask why do you put orphan nodes into v_unvisited_set when you have a mechanism in the main loop to find these automatically?! 
