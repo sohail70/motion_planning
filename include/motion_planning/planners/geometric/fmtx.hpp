@@ -75,6 +75,8 @@ class FMTX : public Planner {
             int max_length_edge_ind = -1;
             double max_length = -std::numeric_limits<double>::infinity();
 
+            int checks = 0;
+
             int num_of_samples_;
             double lower_bound_;
             double upper_bound_;

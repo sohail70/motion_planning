@@ -73,8 +73,8 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     int d = statespace_->getDimension();
     mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
     zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
-    gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
-    // gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+    // gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
+    gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
 
     factor = params.getParam<double>("factor");
     std::cout<<"factor: "<<factor<<"\n";
@@ -99,8 +99,8 @@ void FMTX::plan() {
     // std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
     int uncached = 0;
     int cached = 0;
-    int checks = 0;
-
+    // int checks = 0;
+    // std::unordered_map<FMTNode*, bool> costUpdated;
     /*
         We go until the heap is empty and the top expansion node has the g_value thats less than the robot's current node g_value because why would we waste time exploring past that!
         also we consider if the g_value of the robot is infinity we need to keep poping heap nodes in the hope it reaches the robot
@@ -129,7 +129,15 @@ void FMTX::plan() {
         double cost = top_element.first;  // Changed .min_key to .first
         FMTNode* z = top_element.second;  // Changed .index to .second
         int zIndex = z->getIndex();
+        // std::cout<<"current z "<< zIndex<<"\n";
+        // std::cout<<"current z pos "<< z->getStateValue()<<"\n";
 
+        // std::vector<Eigen::VectorXd> nodes;
+        // nodes.push_back(z->getStateValue());
+        // visualization_->visualizeNodes(nodes, "map", 
+        //         std::vector<float>{1.0f, 1.0f, 0.0f},
+        //         "z");
+        // if(in_dynamic) std::this_thread::sleep_for(std::chrono::milliseconds(100));
         /*
             We find z node's (which at first is the root node and later it could be anything) neighbor and use kd tree to find and cache them 
             and after that we are safe to use z->neighbors() 
@@ -213,31 +221,49 @@ void FMTX::plan() {
                     Time taken for the update : 798 milliseconds
 
             */ 
+            // if(x->getIndex()==15 || x->getIndex()==908 || x->getIndex()==753)
+            //     std::cout<<x->getIndex() <<" "<<x->getStateValue() <<"\n";
             // if (x->in_unvisited_==true  ){
             if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){ // THE REASON I DITCHED THE x->in_unvisited_==true CONDTION IS USING COST IS IN PAR WITH MAKING THE EDGE DISTANCE TO INF AND I DON'T HAVE TO TAKE CARE OF UNVISTED ON TOP OF IT WHICH IS TIME CONSUMING AND ALSO NOT CLEAN AND REDUNDANT IN MY CASE!
+                // if(x->getIndex()==15 || x->getIndex()==908 || x->getIndex()==753)
+                //     std::cout<<"here \n";
+                // std::vector<Eigen::VectorXd> nodes;
+                // if (costUpdated[x]) {
+                //     std::cout<<"Node " << xIndex 
+                //         << " is about to be updated a second time! "
+                //         "previous cost = " << x->getCost() << "\n";
+
+                //     // nodes.push_back(x->getStateValue());
+                //     // nodes.push_back(x->getParent()->getStateValue());
+
+                // }
+
+
                 // std::cout<<x->getCost()<<"\n";
-                checks++;
+                // checks++;
                 near(xIndex);
-                // double min_cost = std::numeric_limits<double>::infinity();
-                double min_cost = x->getCost(); // Because x might have a cost it self and even if it doesnt its INFINITY by default in the FMTNode CLass
+                double min_cost = std::numeric_limits<double>::infinity(); //the above condtion doesnt let it come after x got its optimal cost after being inf/sub-optimal so no need for the next line but lets leave it for safety until i can have solid math proof
+                // double min_cost = x->getCost(); // Because x might have a cost it self and even if it doesnt its INFINITY by default in the FMTNode CLass
                 FMTNode* best_neighbor_node = nullptr;
                 double best_edge_length = 0.0;
-
+                // EdgeInfo best_edge_info;
                 /* 
                     out of those nodes that are near to x, which are also in vopen heap, which has the lowest g_value (cost to come in the paper)
                     this is also the place where you can ignore the blocked best neighbors if you wanna use heuristic otherwise its not necessary
                 
                 */
-
+                
                 for (const auto& [neighbor, dist] : x->neighbors()) {
                     // if(use_heuristic==true && x->blocked_best_neighbors.count(neighbor->getIndex()) > 0)
                         // continue;
+
                     if (neighbor->in_queue_) {
                         const double total_cost = neighbor->getCost() + dist.distance;
                         if (total_cost < min_cost) {
                             min_cost = total_cost;
                             best_neighbor_node = neighbor;
                             best_edge_length = dist.distance;
+                            // best_edge_info = dist;
                         }
                     }
                 }
@@ -246,13 +272,33 @@ void FMTX::plan() {
                 // else
                 //     std::cout<<"best is z \n";
 
-                if (!best_neighbor_node) {
+                // if (!best_neighbor_node || best_edge_info.distance ==INFINITY) {
+                //     continue;
+                // }
+                if (!best_neighbor_node ) {
                     continue;
                 }
-
+                // if (costUpdated[x]) {
+                //     std::cout<<"Node " << xIndex 
+                //         << "  updated a second time! "
+                //         "new cost = " << min_cost << "\n";
+                    
+                //     // nodes.push_back(best_neighbor_node->getStateValue());
+                //     // std::cout<<"x: "<< x->getIndex()<<"\n";
+                //     // std::cout<<"old parent(x): "<< x->getParent()->getIndex()<<"\n";
+                //     // std::cout<<"newParent: "<< best_neighbor_node->getIndex()<<"\n";
+                //     // std::cout<<"x: "<< x->getStateValue()<<"\n";
+                //     // std::cout<<"old parent(x): "<< x->getParent()->getStateValue()<<"\n";
+                //     // std::cout<<"newParent: "<< best_neighbor_node->getStateValue()<<"\n";
+                //     // // visualization_->visualizeNodes(nodes);
+                //     // visualization_->visualizeNodes(nodes, "map", 
+                //     //         std::vector<float>{1.0f, 0.0f, 1.0f},
+                //     //         "mess");
+                // }
 
                 int best_neighbor_index = best_neighbor_node->getIndex();
 
+                // checks++;
 
                 bool obstacle_free;
                 // // Create a key for the cache
@@ -282,7 +328,11 @@ void FMTX::plan() {
                     /*
                         Prune false means we are not using the rrtx like explicit obstacle check in the handle add and remove obstacle  
                         and delay that to plan() function which i don't think its good because obstalce check is only necessary in obstalce
-                        surrounding and we can rely on distance inf and cost propagation or else we have to obstalce check the whole orphaned region which is not necessary
+                        surrounding and we can rely on distance inf and cost propagation or else we have to obstalce check the whole orphaned region which is aligned with 
+                        fmt philosiphy and frankly has a better time compleixity!
+                        for example for one obstalce:
+                            RRTX --> O(nodes with edge on obstlace * log(n)) --> log(n) is for average number of neighbors in sampling based planning! ---> worst would be O(n log(n))
+                            FMTX ---> O(orphan nodes) ---> worse would be O(n) obstacle checks
                     */
                     if (prune == false){ 
                         obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
@@ -314,6 +364,7 @@ void FMTX::plan() {
                     // if (newCost < x->getCost()) { // Seems like we don't need this if condtion!(if you think about it its redundant) because newCost is indeed less than x->getCost()
                         // if (use_heuristic==true) x->blocked_best_neighbors.clear(); // Well if x is connected then i don't care about neighbors that can't be connected so what a better place to clearing them than here. this is for when you use heuristic
                         x->setCost(newCost);
+                        // costUpdated[x] = true;   // mark “done once”
                         double h_value = use_heuristic ? heuristic(xIndex) : 0.0;
                         double priorityCost = newCost + h_value;
                         // QueueElement2 new_element = {priorityCost, xIndex};
@@ -337,7 +388,7 @@ void FMTX::plan() {
                         x->setParent(best_neighbor_node,best_edge_length); 
                         // x->getChildrenMutable().clear(); // We don't need to do this even though at this current iteration this node has children but they will be removed as we iterate by the setParent function
                         edge_length_[xIndex] = best_edge_length;
-                        x->in_unvisited_=false;
+                        x->in_unvisited_=false; // I use this only when i want to test if my x_cost condtion yeilds the same number of checks as the x_unvisted check --> you can uncomment the line above my cost condtion and also the cout at the end of the function 
 
                     // }
                 }
@@ -356,9 +407,11 @@ void FMTX::plan() {
         v_open_heap_.pop();
         // z->in_queue_=false;
         z->in_unvisited_ =false;
+        // visualizeTree();
+
     }
 
-    // std::cout<<"Obs checks: "<< checks <<"\n";
+    // std::cout<<" checks: "<< checks <<"\n";
 }
 
 

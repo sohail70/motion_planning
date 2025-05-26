@@ -64,8 +64,12 @@ void FMT::setup(const Params& params, std::shared_ptr<Visualization> visualizati
     int d = statespace_->getDimension();
     double mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
     double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
-    double gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
-    double factor = 2.0;
+    double gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
+
+    // double gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+    double factor;
+    factor = params.getParam<double>("factor");
+
     neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
     // neighborhood_radius_ = 5.0;
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
@@ -88,6 +92,7 @@ void FMT::plan() {
     int uncached = 0;
     int cached = 0;
     int checks = 0;
+    std::unordered_map<FMTNode*, bool> costUpdated;
 
     while (!v_open_heap_.empty()){
 
@@ -95,12 +100,31 @@ void FMT::plan() {
         double cost = top_element.first;
         FMTNode* z = top_element.second;
         int zIndex = z->getIndex();
+        // std::cout<<"current z "<< zIndex<<"\n";
+        // std::cout<<"current z pos "<< z->getStateValue()<<"\n";
+
+        // std::vector<Eigen::VectorXd> nodes;
+        // nodes.push_back(z->getStateValue());
+        // visualization_->visualizeNodes(nodes, "map", 
+        //         std::vector<float>{1.0f, 1.0f, 0.0f},
+        //         "z");
+        // std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
         near(zIndex);
         for (const auto& [x, cost_to_neighbor] : z->neighbors()) {
             int xIndex = x->getIndex(); // As I refactor the code I don't need to use xIndex anymore but I still need som refactoring.
-
             if (x->in_unvisited_==true  ){
+            // if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){ 
+                if (costUpdated[x]) {
+                    std::cout<<"Node " << xIndex 
+                        << " is about to be updated a second time! "
+                        "previous cost = " << x->getCost() << "\n";
+
+
+                }
+
+
+
                 checks++;
                 near(xIndex);
                 double min_cost = std::numeric_limits<double>::infinity();
@@ -120,7 +144,11 @@ void FMT::plan() {
                 if (!best_neighbor_node) {
                     continue;
                 }
-
+                if (costUpdated[x]) {
+                    std::cout<<"Node " << xIndex 
+                        << "  updated a second time! "
+                        "new cost = " << min_cost << "\n";
+                }
                 int best_neighbor_index = best_neighbor_node->getIndex();
                 bool obstacle_free = false;
                 // Create a key for the cache
@@ -159,6 +187,7 @@ void FMT::plan() {
                         v_open_heap_.add(x,newCost);
                         x->setParent(best_neighbor_node,best_edge_length); 
                         x->in_unvisited_=false;
+                        costUpdated[x] = true;   // mark “done once”
 
                     // }
                 }
@@ -168,9 +197,11 @@ void FMT::plan() {
 
         v_open_heap_.pop();
         // z->in_unvisited_ =false;
+        // visualizeTree();
+
     }
 
-    // std::cout<<"Obs checks: "<< checks <<"\n";
+    std::cout<<"checks: "<< checks <<"\n";
     std::cout<<"cached: "<< cached <<"\n";
     std::cout<<"uncached: "<< uncached <<"\n";
     std::cout<<"cost: "<<robot_node_->getCost()<<"\n";

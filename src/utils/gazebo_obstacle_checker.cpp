@@ -173,7 +173,7 @@ Eigen::VectorXd GazeboObstacleChecker::quaternionToEuler(const Eigen::VectorXd& 
 }
 
 void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    std::lock_guard<std::mutex> lock(snapshot_mutex_);
     obstacle_positions_.clear();
     std::vector<Obstacle> current_dynamic_obstacles;
 

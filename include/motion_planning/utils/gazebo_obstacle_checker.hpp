@@ -102,7 +102,7 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
     };
 
     Snapshot getAtomicSnapshot() const {
-        std::lock_guard<std::mutex> lock(data_mutex_);
+        std::lock_guard<std::mutex> lock(snapshot_mutex_);
         obstacle_snapshot_ = obstacle_positions_;  // Atomic copy --> obstacle snapshot is gonna be used in is obstacle free, because obstalce_positions_ is live updating while you are in a plan() function
         return {robot_position_, obstacle_snapshot_};
     }

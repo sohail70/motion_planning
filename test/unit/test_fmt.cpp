@@ -79,6 +79,30 @@ int main(int argc, char **argv) {
     std::thread ros_gz_bridge_thread(runRosGzBridge);
     ros_gz_bridge_thread.detach(); // Detach the thread to run independently
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+        // 1) Parse your flags
+    int num_samples = 1000;
+    double factor = 1.5;
+    unsigned int seed = 42;
+    int run_secs = 30;
+
+    for(int i = 1; i < argc; ++i) {
+        std::string s{argv[i]};
+        if(s == "--samples" && i+1 < argc) {
+        num_samples = std::stoi(argv[++i]);
+        }
+        else if(s == "--factor" && i+1 < argc) {
+        factor = std::stod(argv[++i]);
+        }
+        else if(s == "--seed" && i+1 < argc) {
+        seed = std::stoi(argv[++i]);
+        }
+        else if(s == "--help") {
+        std::cout << "Usage: " << argv[0]
+                    << " [--samples N] [--factor F] [--seed S] [--duration T]\n";
+        return 0;
+        }
+    }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Params for Pure-Pursuit Controller
@@ -146,7 +170,8 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("persistent_static_obstacles", true);
 
     Params planner_params;
-    planner_params.setParam("num_of_samples", 2000);
+    planner_params.setParam("num_of_samples", num_samples);
+    planner_params.setParam("factor", factor);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("obs_cache", true);
@@ -189,7 +214,7 @@ int main(int argc, char **argv) {
 
 
 
-    unsigned int seed = 42;
+    // unsigned int seed = 42;
 
     std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 30000, seed);
     std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::FMT, statespace,problem_def, obstacle_checker);
@@ -235,6 +260,7 @@ int main(int argc, char **argv) {
         dynamic_cast<FMT*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();
+        // running = false;
     }
 
     
