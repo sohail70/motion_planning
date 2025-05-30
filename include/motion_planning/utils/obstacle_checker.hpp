@@ -22,6 +22,8 @@ struct Obstacle {
         } box;
     } dimensions;
     double inflation;
+    bool is_dynamic = false;  // true if this obstacle moves
+    // bool is_seen = false;  // true once samples-near have been processed
 
     // Add default constructor
     Obstacle() : type(CIRCLE), position(Eigen::Vector2d::Zero()), inflation(0.0) {
@@ -29,14 +31,14 @@ struct Obstacle {
     }
 
     // Circle constructor
-    Obstacle(Eigen::Vector2d pos, double rad, double infl)
-        : type(CIRCLE), position(pos), inflation(infl) {
+    Obstacle(Eigen::Vector2d pos, double rad, double infl, bool dynamic=false)
+        : type(CIRCLE), position(pos), inflation(infl),is_dynamic(dynamic) {
         dimensions.circle.radius = rad;
     }
 
     // Box constructor
-    Obstacle(Eigen::Vector2d pos, double w, double h, double rot, double infl)
-        : type(BOX), position(pos), inflation(infl) {
+    Obstacle(Eigen::Vector2d pos, double w, double h, double rot, double infl, bool dynamic=false)
+        : type(BOX), position(pos), inflation(infl), is_dynamic(dynamic) {
         dimensions.box.width = w;
         dimensions.box.height = h;
         dimensions.box.rotation = rot;

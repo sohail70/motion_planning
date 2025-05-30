@@ -103,5 +103,11 @@ class FMTX : public Planner {
             std::unordered_set<int> dir;
             
 
+
+            bool static_obs_presence;
+            std::vector<Obstacle> seen_statics_;
+
+            
+
 };
 

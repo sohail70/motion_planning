@@ -127,6 +127,10 @@ void RRTX::clearPlannerState() {
     //     node.reset();  // Explicitly reset each shared_ptr
     // }
 
+
+    // Clear the inconsistency queue
+    inconsistency_queue_.clear();
+
     for (auto& node : tree_) {
         node->disconnectFromGraph();  // Safe to call even if nodes are shared
         node.reset();
@@ -147,8 +151,7 @@ void RRTX::clearPlannerState() {
     // // Clear distance dictionary
     // distance_.clear();
 
-    // Clear the inconsistency queue
-    inconsistency_queue_.clear();
+
 
 
 
@@ -196,6 +199,7 @@ void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     num_of_samples_ = params.getParam<int>("num_of_samples");
     partial_update = params.getParam<bool>("partial_update");
     ignore_sample = params.getParam<bool>("ignore_sample");
+    static_obs_presence = params.getParam<bool>("static_obs_presence");
 
     lower_bound_ = problem_->getLowerBound();
     upper_bound_ = problem_->getUpperBound();
@@ -525,6 +529,21 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
     std::unordered_set<int> conflicting_samples;
         
     for (const auto& obstacle : obstacles) {
+
+
+        if (static_obs_presence==true && !obstacle.is_dynamic) {
+            // static: only if we haven't handled it before
+            auto it = std::find(seen_statics_.begin(), seen_statics_.end(), obstacle);
+            if (it != seen_statics_.end()) {
+                // already processed this static obstacle → skip
+                continue;
+            }
+            // first time we see this static, remember it
+            seen_statics_.push_back(obstacle);
+        }
+
+
+
         double obstacle_radius;
         if (obstacle.type == Obstacle::CIRCLE) {
             // For circles: radius + inflation

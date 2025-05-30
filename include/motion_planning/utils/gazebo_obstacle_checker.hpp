@@ -20,7 +20,7 @@ public:
     Eigen::Vector2d getRobotPosition() const;
     Eigen::VectorXd getRobotOrientation() const;
 
-    std::vector<Obstacle> getObstaclePositions() const;
+    const std::vector<Obstacle>& getObstaclePositions() const;
     void robotPoseCallback(const gz::msgs::Pose_V& msg);
 
 

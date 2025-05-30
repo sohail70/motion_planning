@@ -188,8 +188,8 @@ int main(int argc, char **argv) {
     //////////////////////////////////////////////////////////////////////////////////////////////////
     // ─────────────────────────────────────────────────────────────────────────────
     // 1) Parse your flags
-    int num_samples = 1000;
-    double factor = 1.5;
+    int num_samples = 5000;
+    double factor = 2.0;
     unsigned int seed = 42;
     int run_secs = 30;
 
@@ -298,6 +298,7 @@ int main(int argc, char **argv) {
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("partial_update", false); //update till the robot's costToInit
+    planner_params.setParam("static_obs_presence", false); // to not process static obstalces twice because obstacle checker keeps sending all the obstalces! i geuss the persisten_static_obstalces needs to be true always
     /*
         we can cache and its useful because near obstacle there comes a time that too many z indices came up with the same best neighbor node for specific x index
         and since there is an obs in between then we end up needing to re check the same obstacle check between nodes
@@ -307,7 +308,7 @@ int main(int argc, char **argv) {
         another thing i notices is this doesnt help much with performance in my 2D case. but im gonna leave it in case i have time to test it in more dimensions
     
     */
-    planner_params.setParam("obs_cache", true);
+    planner_params.setParam("obs_cache", false);
     planner_params.setParam("partial_plot", false);
     planner_params.setParam("use_heuristic", false); // TODO: I need to verify if its legit workingor not.
     planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update --> when ignore_sample true the prune is not happening anymore so doesnt matter what you put there
@@ -424,7 +425,7 @@ int main(int argc, char **argv) {
     auto global_start = std::chrono::steady_clock::now();
 
     // Suppose you have a boolean that decides if we want a 20s limit
-    bool limited = true; 
+    bool limited = false; 
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
@@ -456,7 +457,7 @@ int main(int argc, char **argv) {
         auto snapshot = obstacle_checker->getAtomicSnapshot();
         auto& obstacles = snapshot.obstacles;
         auto& robot = snapshot.robot_position;
-        
+        // std::cout<<"obstalce size: "<<obstacles.size()<<"\n";
 
         dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
         auto start = std::chrono::steady_clock::now();
@@ -478,10 +479,10 @@ int main(int argc, char **argv) {
         sim_duration_2.emplace_back(elapsed_s, duration_ms);
 
 
-        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-        // ros2_manager->followPath(shortest_path_);
+        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+        ros2_manager->followPath(shortest_path_);
 
-        // dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         // dynamic_cast<FMTX*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);

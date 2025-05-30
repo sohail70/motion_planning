@@ -117,6 +117,7 @@ public:
 
     void clear() {
         for (auto& entry : heap_) {
+            assert(entry.second != nullptr && "Null pointer in heap_ — this is a bug!");
             entry.second->in_queue_ = false;
         }
         heap_.clear();

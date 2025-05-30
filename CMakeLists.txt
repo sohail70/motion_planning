@@ -4,7 +4,17 @@ project(MotionPlanning)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Release)
 # set(CMAKE_BUILD_TYPE RelWithDebInfo)
-#  set(CMAKE_BUILD_TYPE Debug)
+# set(CMAKE_BUILD_TYPE Debug)
+
+
+
+# AddressSanitizer for debugging heap corruption
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  message(STATUS "Debug build: Enabling AddressSanitizer")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
+  set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+endif()
+
 
 find_package(Eigen3 REQUIRED)
 find_package(nanoflann REQUIRED)

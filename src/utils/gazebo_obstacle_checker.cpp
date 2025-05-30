@@ -123,7 +123,7 @@ Eigen::VectorXd GazeboObstacleChecker::getRobotOrientation() const {
     return robot_orientation_;
 }
 
-std::vector<Obstacle> GazeboObstacleChecker::getObstaclePositions() const {
+const std::vector<Obstacle>& GazeboObstacleChecker::getObstaclePositions() const {
     std::lock_guard<std::mutex> lock(data_mutex_);
     return obstacle_positions_;
 }
@@ -209,7 +209,7 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
         if (is_cylinder) {
             // obstacle = Obstacle(position, info_it->second.radius, inflation);
             double radius = (info_it != obstacle_info_.end()) ? info_it->second.radius : 5.0;
-            obstacle = Obstacle(position, radius, inflation);
+            obstacle = Obstacle(position, radius, inflation, is_moving);
         } else {
             double width = (info_it != obstacle_info_.end()) ? info_it->second.width : 10.0;
             double height = (info_it != obstacle_info_.end()) ? info_it->second.height : 10.0;
@@ -221,7 +221,7 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
                 pose.orientation().w()
             );
             double yaw = calculateYawFromQuaternion(quat);
-            obstacle = Obstacle(position, width, height, yaw, inflation);
+            obstacle = Obstacle(position, width, height, yaw, inflation, is_moving);
         }
 
         const bool within_range = !use_range || 

@@ -76,18 +76,25 @@ std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& ob
     bool partial_update;
     bool ignore_sample;
 
-Eigen::VectorXd robot_position_;
-std::unordered_map<int, double> edge_length_;
-int max_length_edge_ind;
-double max_length;
-int vbot_index_;
-int vgoal_index_;
-std::unordered_set<int> v_indices_;
-double lower_bound_;
-double upper_bound_;
-bool use_kdtree;
+    Eigen::VectorXd robot_position_;
+    std::unordered_map<int, double> edge_length_;
+    int max_length_edge_ind;
+    double max_length;
+    int vbot_index_;
+    int vgoal_index_;
+    std::unordered_set<int> v_indices_;
+    double lower_bound_;
+    double upper_bound_;
+    bool use_kdtree;
 
-int findNodeIndex(RRTxNode* node) const;
+
+
+
+    bool static_obs_presence;
+    std::vector<Obstacle> seen_statics_;
+
+
+    int findNodeIndex(RRTxNode* node) const;
 
     // Helper methods
     bool extend(Eigen::VectorXd v);

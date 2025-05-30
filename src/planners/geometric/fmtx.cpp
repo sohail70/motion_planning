@@ -8,6 +8,7 @@ FMTX::FMTX(std::shared_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefini
 
 void FMTX::clearPlannerState() {
 
+    v_open_heap_.clear(); //This function also makes the in_queue false so remember to clean it before deleting the node by node.reset()
     // // Step 1: Nullify all raw pointers --> or else if you only use tree_.clear() you have dangling pointers for parent_ and children_ that do not exist now!
     for (auto& node : tree_) {
         node->disconnectFromGraph();
@@ -16,7 +17,6 @@ void FMTX::clearPlannerState() {
     tree_.clear();
     statespace_->reset();
     kdtree_.reset();
-    v_open_heap_.clear();
     // samples_in_obstacles_.clear();
     edge_length_.clear();
     max_length_edge_ind = -1;
@@ -35,6 +35,7 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     partial_update = params.getParam<bool>("partial_update");
     use_heuristic= params.getParam<bool>("use_heuristic");
     partial_plot = params.getParam<bool>("partial_plot");
+    static_obs_presence = params.getParam<bool>("static_obs_presence");
     ignore_sample = params.getParam<bool>("ignore_sample");
     prune = params.getParam<bool>("prune");
     obs_cache = params.getParam<bool>("obs_cache");
@@ -73,8 +74,8 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     int d = statespace_->getDimension();
     mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
     zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
-    // gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
-    gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+    gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
+    // gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
 
     factor = params.getParam<double>("factor");
     std::cout<<"factor: "<<factor<<"\n";
@@ -96,7 +97,7 @@ void FMTX::plan() {
 
     // visualizeHeapAndUnvisited();
 
-    // std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
+    std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
     int uncached = 0;
     int cached = 0;
     // int checks = 0;
@@ -321,10 +322,11 @@ void FMTX::plan() {
                 //     obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
                 // }
 
-                if (in_dynamic == false){ // in_dynamic true happens in update obstacle sample and after that we don't need obstacle check unless we are not pruning!
-                    obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
-                }
-                else{
+         
+                bool perform_check = false;
+                if (in_dynamic == false) { // Initial static planning phase
+                    perform_check = true;
+                } else { // Dynamic update phase
                     /*
                         Prune false means we are not using the rrtx like explicit obstacle check in the handle add and remove obstacle  
                         and delay that to plan() function which i don't think its good because obstalce check is only necessary in obstalce
@@ -334,11 +336,39 @@ void FMTX::plan() {
                             RRTX --> O(nodes with edge on obstlace * log(n)) --> log(n) is for average number of neighbors in sampling based planning! ---> worst would be O(n log(n))
                             FMTX ---> O(orphan nodes) ---> worse would be O(n) obstacle checks
                     */
-                    if (prune == false){ 
-                        obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
+
+                    if (prune == false) { // If not pruning, we must check dynamically
+                        perform_check = true;
+                    } else {
+                        // If pruning is enabled during dynamic updates,
+                        // assume edges made invalid by obstacles were already handled (e.g., cost set to INF).
+                        // So, any edge considered here that doesn't have an INF cost is presumed free.
+                        obstacle_free = true; // Relies on prior pruning
                     }
-                    else{
-                        obstacle_free = true;
+                }
+
+                if (perform_check) {
+                    if (obs_cache == true) {
+                        // Ensure indices are valid before creating a key
+                        int current_x_index = x->getIndex(); // Assuming x is always valid
+                        int best_neighbor_node_index = best_neighbor_node->getIndex();
+
+                        // Standardize key creation
+                        auto edge_key = (best_neighbor_node_index < current_x_index) ? 
+                                        std::make_pair(best_neighbor_node_index, current_x_index) : 
+                                        std::make_pair(current_x_index, best_neighbor_node_index);
+
+                        auto cache_it = obstacle_check_cache.find(edge_key);
+                        if (cache_it != obstacle_check_cache.end()) {
+                            obstacle_free = cache_it->second;
+                            cached++;
+                        } else {
+                            obstacle_free = obs_checker_->isObstacleFree(x->getStateValue(), best_neighbor_node->getStateValue());
+                            obstacle_check_cache[edge_key] = obstacle_free;
+                            uncached++;
+                        }
+                    } else { // No obstacle caching
+                        obstacle_free = obs_checker_->isObstacleFree(x->getStateValue(), best_neighbor_node->getStateValue());
                     }
                 }
 
@@ -411,7 +441,13 @@ void FMTX::plan() {
 
     }
 
+    /*
+        Don't be tempted to clear the vopen heap after the loop because of the early exit! those frontiers in vopen are important in case the robot needs a detour from that speicifc side where those vopens are!
+    */
+
     // std::cout<<" checks: "<< checks <<"\n";
+    // std::cout<<" uncached: "<< uncached<<"\n";
+    // std::cout<<" cached: "<< cached <<"\n";
 }
 
 
@@ -449,6 +485,26 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
 ) {
     std::unordered_set<int> conflicting_samples;
     for (const auto& obstacle : obstacles) {
+        /*
+            when static_obs_presence is true. then use_range and all the static features also needs to be true
+            mind that obstalce check still sees all the static obstalces that are out of range because i design the gazeboObstalceChecker this way (presistent_static_obstalce==true)
+            but here we do not need to keep checking the static obstalces and put the surrounding neighbors in vopen!
+            i could've done it in the gazebo obstalce checker but since i separated the obstalce_positions from their snapshots since the obstalce need to be fixed during the process of plan function then its a bit conflicting to handle this in that class
+            these are all just handling corner cases in a simulation and separting dynamic and static obstalce and simulating a sensor range etc but not core to the algorthim it self.
+        */ 
+        if (static_obs_presence==true && !obstacle.is_dynamic) {
+            // static: only if we haven't handled it before
+            auto it = std::find(seen_statics_.begin(), seen_statics_.end(), obstacle);
+            if (it != seen_statics_.end()) {
+                // already processed this static obstacle → skip
+                continue;
+            }
+            // first time we see this static, remember it
+            seen_statics_.push_back(obstacle);
+        }
+
+
+
         double obstacle_radius;
         if (obstacle.type == Obstacle::CIRCLE) {
             obstacle_radius = obstacle.dimensions.circle.radius + obstacle.inflation;
@@ -672,9 +728,9 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
         Order of obstalce check for fmt style is O(K) --> K being the number of orphan nodes
     */
     // std::cout << "Added samples: " << added.size()
-    //           << ", added.size() * log(n): " << (added.size() * std::log(num_of_samples_))
-    //           << std::endl;
-    // std::cout << "Orphan nodes count: " << orphan_nodes.size() << std::endl;
+    //           << ", added.size() * ln(n): " << (added.size() * std::log(num_of_samples_))
+    //           << "\n";
+    // std::cout << "Orphan nodes count: " << orphan_nodes.size() << "\n";
 
 
 
@@ -757,50 +813,50 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
 
     // // Method 1
 
-    // for (auto node_index : orphan_nodes) {
-    //     auto node = tree_.at(node_index).get();
-    //     near(node_index);
-    //     for (const auto& [neighbor, dist] : node->neighbors()){
-    //         int index = neighbor->getIndex();
-    //         if (neighbor->in_queue_ || neighbor->getCost()==INFINITY ) continue;
-    //         double h_value = use_heuristic ? heuristic(index) : 0.0;
-    //         v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
-    //         // neighbor->in_queue_ = true;
-    //     }
-    // }
-//////////////////////////////
-    // // Method 2
-    // 1) Gather & mark
-    std::vector<std::pair<double, FMTNode*>> to_enqueue;
-    // to_enqueue.reserve(orphan_nodes.size() * average_degree); // optional hint
-
     for (auto node_index : orphan_nodes) {
-        FMTNode* node = tree_.at(node_index).get();
-        near(node_index);  // ensure node->neighbors() is populated
-
-        for (const auto& [neighbor, dist] : node->neighbors()) {
-            // skip if already enqueued or not yet reachable
-            if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
-                continue;
-
-            // mark so we don’t enqueue duplicates
-            neighbor->in_queue_ = true;
-
-            // compute priority (cost-to-come + optional heuristic)
-            double h_value = use_heuristic 
-                            ? heuristic(neighbor->getIndex()) 
-                            : 0.0;
-            double priority = neighbor->getCost() + h_value;
-
-            to_enqueue.emplace_back(priority, neighbor);
+        auto node = tree_.at(node_index).get();
+        near(node_index);
+        for (const auto& [neighbor, dist] : node->neighbors()){
+            int index = neighbor->getIndex();
+            if (neighbor->in_queue_ || neighbor->getCost()==INFINITY ) continue;
+            double h_value = use_heuristic ? heuristic(index) : 0.0;
+            v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
+            // neighbor->in_queue_ = true;
         }
     }
+//////////////////////////////
+    // // // Method 2
+    // // 1) Gather & mark
+    // std::vector<std::pair<double, FMTNode*>> to_enqueue;
+    // // to_enqueue.reserve(orphan_nodes.size() * average_degree); // optional hint
 
-    // 2) Bulk‐add into your custom priority queue in O(K)
-    v_open_heap_.bulkAdd(to_enqueue);
+    // for (auto node_index : orphan_nodes) {
+    //     FMTNode* node = tree_.at(node_index).get();
+    //     near(node_index);  // ensure node->neighbors() is populated
 
-    // Note: after bulkAdd, heap_index_ is set and in_queue_ remains true.
-    // When you later pop/remove a node, your remove() method will reset in_queue_ = false.
+    //     for (const auto& [neighbor, dist] : node->neighbors()) {
+    //         // skip if already enqueued or not yet reachable
+    //         if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
+    //             continue;
+
+    //         // mark so we don’t enqueue duplicates
+    //         neighbor->in_queue_ = true;
+
+    //         // compute priority (cost-to-come + optional heuristic)
+    //         double h_value = use_heuristic 
+    //                         ? heuristic(neighbor->getIndex()) 
+    //                         : 0.0;
+    //         double priority = neighbor->getCost() + h_value;
+
+    //         to_enqueue.emplace_back(priority, neighbor);
+    //     }
+    // }
+
+    // // 2) Bulk‐add into your custom priority queue in O(K)
+    // v_open_heap_.bulkAdd(to_enqueue);
+
+    // // Note: after bulkAdd, heap_index_ is set and in_queue_ remains true.
+    // // When you later pop/remove a node, your remove() method will reset in_queue_ = false.
 
 
 /////////////////////////////
@@ -846,47 +902,47 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
         }
     }
 
-    // for (int node_index : removed) {
-    //     auto node = tree_.at(node_index).get();
-    //     near(node_index);
-    //     for (const auto& [neighbor, dist] : node->neighbors()) {
-    //         const int n_idx = neighbor->getIndex();
-    //         if (neighbor->in_queue_ || neighbor->getCost()==INFINITY) continue;
-    //         double h_value = use_heuristic ? heuristic(n_idx) : 0.0;
-    //         v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
-    //         // neighbor->in_queue_ = true;
-    //     }
-    // }
-
-    ////////////////////////////////////////////////////
-    // 1) Gather & mark neighbors of removed nodes
-    std::vector<std::pair<double, FMTNode*>> to_enqueue;
-    // to_enqueue.reserve(removed.size() * average_degree);  // optional hint
-
     for (int node_index : removed) {
-        FMTNode* node = tree_.at(node_index).get();
-        near(node_index);  // ensure neighbors are cached
-
+        auto node = tree_.at(node_index).get();
+        near(node_index);
         for (const auto& [neighbor, dist] : node->neighbors()) {
-            if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
-                continue;
-
-            neighbor->in_queue_ = true;  // mark to avoid duplicates
-
-            double h_value = use_heuristic 
-                            ? heuristic(neighbor->getIndex()) 
-                            : 0.0;
-            double priority = neighbor->getCost() + h_value;
-
-            to_enqueue.emplace_back(priority, neighbor);
+            const int n_idx = neighbor->getIndex();
+            if (neighbor->in_queue_ || neighbor->getCost()==INFINITY) continue;
+            double h_value = use_heuristic ? heuristic(n_idx) : 0.0;
+            v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
+            // neighbor->in_queue_ = true;
         }
     }
 
-    // 2) Bulk‑add into the open set
-    v_open_heap_.bulkAdd(to_enqueue);
+    // ////////////////////////////////////////////////////
+    // // 1) Gather & mark neighbors of removed nodes
+    // std::vector<std::pair<double, FMTNode*>> to_enqueue;
+    // // to_enqueue.reserve(removed.size() * average_degree);  // optional hint
 
-    // After bulkAdd, in_queue_ remains true; later pops will reset it.
-    ////////////////////////////////////////////////////////////
+    // for (int node_index : removed) {
+    //     FMTNode* node = tree_.at(node_index).get();
+    //     near(node_index);  // ensure neighbors are cached
+
+    //     for (const auto& [neighbor, dist] : node->neighbors()) {
+    //         if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
+    //             continue;
+
+    //         neighbor->in_queue_ = true;  // mark to avoid duplicates
+
+    //         double h_value = use_heuristic 
+    //                         ? heuristic(neighbor->getIndex()) 
+    //                         : 0.0;
+    //         double priority = neighbor->getCost() + h_value;
+
+    //         to_enqueue.emplace_back(priority, neighbor);
+    //     }
+    // }
+
+    // // 2) Bulk‑add into the open set
+    // v_open_heap_.bulkAdd(to_enqueue);
+
+    // // After bulkAdd, in_queue_ remains true; later pops will reset it.
+    // ////////////////////////////////////////////////////////////
 
 
 }
@@ -1012,103 +1068,103 @@ void FMTX::setGoal(const Eigen::VectorXd& goal) {
 
 
 
-std::unordered_set<int> FMTX::getDescendants(int node_index) {
-    std::unordered_set<int> descendants;
-    std::queue<FMTNode*> queue;
+// std::unordered_set<int> FMTX::getDescendants(int node_index) {
+//     std::unordered_set<int> descendants;
+//     std::queue<FMTNode*> queue;
     
-    // Start with the initial node
-    queue.push(tree_[node_index].get());
+//     // Start with the initial node
+//     queue.push(tree_[node_index].get());
     
-    while (!queue.empty()) {
-        FMTNode* current = queue.front();
-        queue.pop();
+//     while (!queue.empty()) {
+//         FMTNode* current = queue.front();
+//         queue.pop();
         
-        descendants.insert(current->getIndex());
+//         descendants.insert(current->getIndex());
         
-        for (FMTNode* child : current->getChildren()) {
-            queue.push(child);
-        }
-    }
+//         for (FMTNode* child : current->getChildren()) {
+//             queue.push(child);
+//         }
+//     }
     
-    return descendants;
-}
+//     return descendants;
+// }
 /*
     The following is for finding if we have any cycles in our graph while we are doing dfs/bfs to find descendant
 */
 
 
-// std::unordered_set<int> FMTX::getDescendants(int node_index) {
-//     std::unordered_set<int> descendants;
-//     std::queue<FMTNode*> queue;
-//     std::unordered_set<FMTNode*> processing; // Track nodes being processed
+std::unordered_set<int> FMTX::getDescendants(int node_index) {
+    std::unordered_set<int> descendants;
+    std::queue<FMTNode*> queue;
+    std::unordered_set<FMTNode*> processing; // Track nodes being processed
     
-//     // Debugging variables
-//     int cycle_counter = 0;
-//     constexpr int MAX_CYCLE_WARNINGS = 5;
-//     auto start_time = std::chrono::steady_clock::now();
+    // Debugging variables
+    int cycle_counter = 0;
+    constexpr int MAX_CYCLE_WARNINGS = 5;
+    auto start_time = std::chrono::steady_clock::now();
 
-//     FMTNode* start_node = tree_[node_index].get();
-//     queue.push(start_node);
-//     processing.insert(start_node);
+    FMTNode* start_node = tree_[node_index].get();
+    queue.push(start_node);
+    processing.insert(start_node);
 
-//     while (!queue.empty()) {
-//         // Check for infinite loops
-//         if (++cycle_counter > tree_.size() * 2) {
-//             auto duration = std::chrono::duration_cast<std::chrono::seconds>(
-//                 std::chrono::steady_clock::now() - start_time
-//             );
-//             std::cerr << "CRITICAL WARNING: Potential infinite loop detected!\n"
-//                       << "Current node: " << queue.front()->getIndex() << "\n"
-//                       << "Elapsed time: " << duration.count() << "s\n"
-//                       << "Descendants found: " << descendants.size() << "\n";
-//             break;
-//         }
+    while (!queue.empty()) {
+        // Check for infinite loops
+        if (++cycle_counter > tree_.size() * 2) {
+            auto duration = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - start_time
+            );
+            std::cerr << "CRITICAL WARNING: Potential infinite loop detected!\n"
+                      << "Current node: " << queue.front()->getIndex() << "\n"
+                      << "Elapsed time: " << duration.count() << "s\n"
+                      << "Descendants found: " << descendants.size() << "\n";
+            break;
+        }
 
-//         FMTNode* current = queue.front();
-//         queue.pop();
-//         processing.erase(current);
+        FMTNode* current = queue.front();
+        queue.pop();
+        processing.erase(current);
 
-//         // Check if we've already processed this node
-//         if (!descendants.insert(current->getIndex()).second) {
-//             if (cycle_counter < MAX_CYCLE_WARNINGS) {
-//                 std::cerr << "Cycle detected! Already processed node: " 
-//                           << current->getIndex() << "\n";
-//             }
-//             continue;
-//         }
+        // Check if we've already processed this node
+        if (!descendants.insert(current->getIndex()).second) {
+            if (cycle_counter < MAX_CYCLE_WARNINGS) {
+                std::cerr << "Cycle detected! Already processed node: " 
+                          << current->getIndex() << "\n";
+            }
+            continue;
+        }
 
-//         // Process children with cycle checks
-//         const auto& children = current->getChildren();
-//         for (FMTNode* child : children) {
-//             if (processing.count(child)) {
-//                 std::cerr << "Parent-child cycle detected!\n"
-//                           << "Parent: " << current->getIndex() << "\n"
-//                           << "Child: " << child->getIndex() << "\n";
-//                 continue;
-//             }
+        // Process children with cycle checks
+        const auto& children = current->getChildren();
+        for (FMTNode* child : children) {
+            if (processing.count(child)) {
+                std::cerr << "Parent-child cycle detected!\n"
+                          << "Parent: " << current->getIndex() << "\n"
+                          << "Child: " << child->getIndex() << "\n";
+                continue;
+            }
 
-//             if (descendants.count(child->getIndex())) {
-//                 std::cerr << "Cross-branch cycle detected!\n"
-//                           << "Current branch: " << current->getIndex() << "\n"
-//                           << "Existing descendant: " << child->getIndex() << "\n";
-//                 continue;
-//             }
+            if (descendants.count(child->getIndex())) {
+                std::cerr << "Cross-branch cycle detected!\n"
+                          << "Current branch: " << current->getIndex() << "\n"
+                          << "Existing descendant: " << child->getIndex() << "\n";
+                continue;
+            }
 
-//             queue.push(child);
-//             processing.insert(child);
-//         }
+            queue.push(child);
+            processing.insert(child);
+        }
 
-//         cycle_counter = 0; // Reset counter if we made progress
-//     }
+        cycle_counter = 0; // Reset counter if we made progress
+    }
 
-//     // Final check for partial cycles
-//     if (!queue.empty()) {
-//         std::cerr << "WARNING: Terminated early with " << queue.size()
-//                   << " nodes remaining in queue\n";
-//     }
+    // Final check for partial cycles
+    if (!queue.empty()) {
+        std::cerr << "WARNING: Terminated early with " << queue.size()
+                  << " nodes remaining in queue\n";
+    }
 
-//     return descendants;
-// }
+    return descendants;
+}
 
 
 
