@@ -209,6 +209,8 @@ private:
     std::vector<std::vector<Eigen::Vector2d>> obstacle_trajectories_;
     int trajectory_history_length_ = 1500; // Desired history
 
+    std::vector<Eigen::Vector2d> robot_trajectory_;
+
 
     // Add to private members
     Eigen::Vector3d current_goal_;
@@ -396,6 +398,14 @@ void visualizeDWA(const DWAVisualization& data) {
             // }
         }
 
+        Eigen::Vector2d cur_pt(robot_x, robot_y);
+        robot_trajectory_.push_back(cur_pt);
+
+        // if (static_cast<int>(robot_trajectory_.size()) > trajectory_history_length_) {
+        //     robot_trajectory_.erase(robot_trajectory_.begin());
+        // }
+
+
         visualizeObstacles(robot_x, robot_y);
     }
 
@@ -481,12 +491,39 @@ void visualizeDWA(const DWAVisualization& data) {
         //     }
         // }
 
+        // ─────────────────────────────────────────────────────────────────────
+        //  ◀── INSERT CIRCLE CODE HERE ──▶
+        //
+        // Approximate a 20 m circle around (robot_x, robot_y) with many short edges:
+
+        constexpr double SENSOR_RADIUS = 20.0;    // 20 meters
+        constexpr int    NUM_SEGMENTS  = 72;      // 72 segments ⇒ 5° between points
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> circle_edges;
+        circle_edges.reserve(NUM_SEGMENTS + 1);
+
+        for (int i = 0; i < NUM_SEGMENTS; ++i) {
+            // Angle at this segment and the next
+            const double θ1 = 2.0 * M_PI * (static_cast<double>(i) / NUM_SEGMENTS);
+            const double θ2 = 2.0 * M_PI * (static_cast<double>(i + 1) / NUM_SEGMENTS);
+
+            Eigen::VectorXd p1(2), p2(2);
+            p1 << robot_position.x() + SENSOR_RADIUS * std::cos(θ1),
+                robot_position.y() + SENSOR_RADIUS * std::sin(θ1);
+            p2 << robot_position.x() + SENSOR_RADIUS * std::cos(θ2),
+                robot_position.y() + SENSOR_RADIUS * std::sin(θ2);
+
+            circle_edges.emplace_back(p1, p2);
+        }
+
+        // Now publish those edges as a LINE_LIST, using gray color "0.5,0.5,0.5":
+        visualizer_->visualizeEdges(circle_edges, "map", "0.5,0.5,0.5","sensor_range");
+
 
 
         /////////////////
         // Visualize elements
         visualizer_->visualizeRobotArrow(robot_position, robot_quat, "map", 
-                                    {1.0f, 1.0f, 0.0f}, "robot_marker");
+                                    {0.5f, 0.5f, 0.5f}, "robot_marker");
         
         // Visualize cylindrical obstacles
         if (!cylinder_obstacles.empty()) {
@@ -499,6 +536,18 @@ void visualizeDWA(const DWAVisualization& data) {
             visualizer_->visualizeCube(box_obstacles, "map", 
                                     {0.0f, 0.4f, 1.0f}, "box_obstacles");
         }
+
+        std::vector<std::vector<Eigen::Vector2d>> to_draw;
+        to_draw.push_back(robot_trajectory_);
+
+        // Use (1.0, 0.0, 0.0) for red, namespace "robot_trajectory"
+        visualizer_->visualizeTrajectories(
+            to_draw,
+            "map",
+            {1.0f, 1.0f, 0.0f},   // Yellow
+            "robot_trajectory"    // each trajectory uses ns = "robot_trajectory"
+        );
+
 
 
         // visualizer_->visualizeTrajectories(

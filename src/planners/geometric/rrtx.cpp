@@ -1009,86 +1009,253 @@ void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     reduceInconsistency();
 }
 
+// void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
+//     for (int idx : added_indices) {
+//         RRTxNode* node = tree_[idx].get();
+        
+//         if (ignore_sample) {
+//             samples_in_obstacles_.insert(idx);
+//         }
+
+//         for (auto& [u, edge] : node->outgoingEdges()) {
+//             // Common edge invalidation logic
+//             const bool should_invalidate = ignore_sample ? true : 
+//                 (edge.distance != INFINITY && 
+//                 !obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue()));
+
+//             if (!should_invalidate) continue;
+//             /*
+//                 so since we are iterating over outgoing (you can iterate over ingoing also doesnt matter!), and our focus is on "node" thne if node has collision with its neighbor u then
+//                 outgoing node's dist from node->u should be inf, also incoming node from u->node should be inf also incoming node from node->u should be inf!
+//                 so its like the outgoing of node i.e, node->u (with the focus on node!) and incoming of node (u->node) should be inf and also the incoming of u from node i.e, node->u needs to be inf, but how about outgoing of u i.e., u->node  --> this should be ALSO handled!--> don't confuse the asymetry
+//             */
+//             // Common invalidation operations
+//             edge.distance = INFINITY;
+//             u->incomingEdges().at(node).distance = INFINITY;
+//             u->outgoingEdges().at(node).distance = INFINITY;
+//             node->incomingEdges().at(u).distance = INFINITY;
+
+//             // Common parent relationship handling
+//             if (u->getParent() == node) {
+//                 u->setParent(nullptr, INFINITY);
+//                 verifyOrphan(u);
+//             }
+//             if (node->getParent() == u) {
+//                 node->setParent(nullptr, INFINITY);
+//                 verifyOrphan(node);
+//             }
+//         }
+
+//         // // Additional operations for ignore_sample mode
+//         // if (ignore_sample) {
+//         //     node->setCost(INFINITY);
+//         //     node->setLMC(INFINITY);
+//         //     edge_length_[idx] = -INFINITY;
+//         //     node->setParent(nullptr, 0.0);
+//         //     verifyOrphan(node);
+//         // }
+//     }
+// }
+// void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
+//     for (int idx : removed_indices) {
+//         RRTxNode* node = tree_[idx].get();
+
+//         if (ignore_sample) {
+//             samples_in_obstacles_.erase(idx); // Update obstacle set
+//         }
+
+//         for (auto& [u, edge] : node->outgoingEdges()) {
+//             // Mode-specific condition components
+//             const bool is_neighbor_clear = !samples_in_obstacles_.count(u->getIndex());
+//             const bool was_invalidated = (edge.distance == INFINITY);
+//             const bool is_now_clear = obs_checker_->isObstacleFree(node->getStateValue(), 
+//                                                                   u->getStateValue());
+            
+//             // Unified restoration condition
+//             const bool should_restore = ignore_sample 
+//                 ? is_neighbor_clear          // Sample tracking mode
+//                 : was_invalidated && is_now_clear;  // Explicit check mode
+
+//             if (!should_restore) continue;
+
+//             // Common restoration logic
+//             edge.distance = edge.distance_original;
+//             u->incomingEdges().at(node).distance = edge.distance_original;
+//             u->outgoingEdges().at(node).distance = edge.distance_original;
+//             node->incomingEdges().at(u).distance = edge.distance_original;
+//         }
+
+//         // Common node updates
+//         updateLMC(node);
+//         if (node->getCost() != node->getLMC()) {
+//             verifyQueue(node);
+//         }
+//     }
+// }
+// //////////////////////////////////////////////////////////////////////////////
 void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
     for (int idx : added_indices) {
         RRTxNode* node = tree_[idx].get();
-        
+        bool node_itself_is_unusable = false;
+
         if (ignore_sample) {
+            // In ignore_sample mode, if idx is in added_indices, we treat the node as unusable
+            // and mark it for special handling (e.g., its edges will be invalidated based on this mark).
             samples_in_obstacles_.insert(idx);
-        }
-
-        for (auto& [u, edge] : node->outgoingEdges()) {
-            // Common edge invalidation logic
-            const bool should_invalidate = ignore_sample ? true : 
-                (edge.distance != INFINITY && 
-                !obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue()));
-
-            if (!should_invalidate) continue;
-            /*
-                so since we are iterating over outgoing (you can iterate over ingoing also doesnt matter!), and our focus is on "node" thne if node has collision with its neighbor u then
-                outgoing node's dist from node->u should be inf, also incoming node from u->node should be inf also incoming node from node->u should be inf!
-                so its like the outgoing of node i.e, node->u (with the focus on node!) and incoming of node (u->node) should be inf and also the incoming of u from node i.e, node->u needs to be inf, but how about outgoing of u i.e., u->node  --> this should be ALSO handled!--> don't confuse the asymetry
-            */
-            // Common invalidation operations
-            edge.distance = INFINITY;
-            u->incomingEdges().at(node).distance = INFINITY;
-            u->outgoingEdges().at(node).distance = INFINITY;
-            node->incomingEdges().at(u).distance = INFINITY;
-
-            // Common parent relationship handling
-            if (u->getParent() == node) {
-                u->setParent(nullptr, INFINITY);
-                verifyOrphan(u);
-            }
-            if (node->getParent() == u) {
-                node->setParent(nullptr, INFINITY);
-                verifyOrphan(node);
+            node_itself_is_unusable = true;
+        } else {
+            // ignore_sample is false: explicitly check if the node's location is now in an obstacle.
+            if (!obs_checker_->isObstacleFree(node->getStateValue())) { // Check the node's point itself
+                node_itself_is_unusable = true;
             }
         }
 
-        // // Additional operations for ignore_sample mode
-        // if (ignore_sample) {
-        //     node->setCost(INFINITY);
-        //     node->setLMC(INFINITY);
-        //     edge_length_[idx] = -INFINITY;
-        //     node->setParent(nullptr, 0.0);
-        //     verifyOrphan(node);
-        // }
+        if (node_itself_is_unusable) {
+            // Node is inside an obstacle (or treated as such via ignore_sample).
+            // All its existing edges become invalid WITHOUT individual collision checks for these edges.
+            for (auto& [u, edge] : node->outgoingEdges()) {
+                // Invalidate this edge (node -> u)
+                edge.distance = INFINITY;
+                // And its symmetric counterparts if your graph stores them this way
+                if (u->incomingEdges().count(node)) {
+                    u->incomingEdges().at(node).distance = INFINITY;
+                }
+                if (u->outgoingEdges().count(node)) { // For u -> node
+                    u->outgoingEdges().at(node).distance = INFINITY;
+                }
+                if (node->incomingEdges().count(u)) { // For u -> node (from node's perspective)
+                    node->incomingEdges().at(u).distance = INFINITY;
+                }
+
+                // If this invalidated edge was a parent link, handle orphaning
+                if (u->getParent() == node) {
+                    u->setParent(nullptr, INFINITY);
+                    verifyOrphan(u);
+                }
+                // Note: if node->getParent() == u, this will be handled below
+                // when 'node' itself is orphaned.
+            }
+            // Also invalidate any incoming edges to 'node' not caught by iterating its outgoingEdges' symmetry
+            // (This might be redundant if outgoingEdges and their symmetric pairs cover all connections)
+            // For example, if edges are strictly directed and only stored one way initially.
+            // However, the current symmetric updates in the loop above likely cover this.
+
+            // Directly mark 'node' as unusable and orphan it.
+            node->setCost(INFINITY); // Assuming setCost updates the main cost (g-value)
+            node->setLMC(INFINITY);  // Assuming setLMC updates the lookahead-cost (rhs-value)
+            
+            RRTxNode* old_parent = node->getParent();
+            if (old_parent) {
+                // If 'node' had a parent, its link to that parent is now broken.
+                // The call to node->setParent below handles updating 'node'.
+                // We might need to ensure 'old_parent' updates its children list if applicable,
+                // though 'verifyOrphan(node)' and subsequent processing should handle graph consistency.
+            }
+            node->setParent(nullptr, INFINITY); // Sever parent link
+            verifyOrphan(node); // Ensure 'node' itself is processed by the orphan logic
+
+        } else {
+            // Node itself is in free space, and ignore_sample is false.
+            // Check its outgoing edges individually.
+            for (auto& [u, edge] : node->outgoingEdges()) {
+                if (edge.distance != INFINITY &&
+                    !obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue())) {
+                    // This specific edge (node -> u) is now blocked.
+                    edge.distance = INFINITY;
+                    if (u->incomingEdges().count(node)) {
+                        u->incomingEdges().at(node).distance = INFINITY;
+                    }
+                    if (u->outgoingEdges().count(node)) {
+                        u->outgoingEdges().at(node).distance = INFINITY;
+                    }
+                    if (node->incomingEdges().count(u)) {
+                        node->incomingEdges().at(u).distance = INFINITY;
+                    }
+
+                    // Handle parent relationships
+                    if (u->getParent() == node) {
+                        u->setParent(nullptr, INFINITY);
+                        verifyOrphan(u);
+                    }
+                    if (node->getParent() == u) {
+                        node->setParent(nullptr, INFINITY);
+                        verifyOrphan(node);
+                    }
+                }
+            }
+        }
     }
 }
+
+
 void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
     for (int idx : removed_indices) {
         RRTxNode* node = tree_[idx].get();
+        bool node_was_in_ignored_obstacle_state = false;
 
         if (ignore_sample) {
-            samples_in_obstacles_.erase(idx); // Update obstacle set
+            if (samples_in_obstacles_.count(idx)) {
+                samples_in_obstacles_.erase(idx); // Node is no longer "ignored as obstacle"
+                node_was_in_ignored_obstacle_state = true;
+            }
         }
 
-        for (auto& [u, edge] : node->outgoingEdges()) {
-            // Mode-specific condition components
-            const bool is_neighbor_clear = !samples_in_obstacles_.count(u->getIndex());
-            const bool was_invalidated = (edge.distance == INFINITY);
-            const bool is_now_clear = obs_checker_->isObstacleFree(node->getStateValue(), 
-                                                                  u->getStateValue());
+        // Determine if the node's location itself is now clear to decide if its edges *can* be restored.
+        bool node_location_is_currently_free = obs_checker_->isObstacleFree(node->getStateValue());
+
+        if ((ignore_sample && node_was_in_ignored_obstacle_state) || // Was ignored, now un-ignored
+            (!ignore_sample && node_location_is_currently_free)) {   // Wasn't ignored, and its location is free
             
-            // Unified restoration condition
-            const bool should_restore = ignore_sample 
-                ? is_neighbor_clear          // Sample tracking mode
-                : was_invalidated && is_now_clear;  // Explicit check mode
+            // Only attempt to restore edges if the node itself is considered potentially usable.
+            // If !node_location_is_currently_free (and not ignore_sample), it means 'node' is *still*
+            // in some *other* obstacle, so its edges should remain unusable/INFINITE.
 
-            if (!should_restore) continue;
+            if (node_location_is_currently_free) { // Essential check for non-ignore_sample, good for ignore_sample too
+                for (auto& [u, edge] : node->outgoingEdges()) {
+                    bool should_attempt_restore = false;
+                    if (ignore_sample) {
+                        // If node was un-ignored, and neighbor u is also not in an ignored state
+                        if (node_was_in_ignored_obstacle_state && !samples_in_obstacles_.count(u->getIndex())) {
+                            should_attempt_restore = true;
+                        }
+                    } else { // Not ignore_sample
+                        if (edge.distance == INFINITY) { // Only consider edges that were previously blocked
+                            should_attempt_restore = true;
+                        }
+                    }
 
-            // Common restoration logic
-            edge.distance = edge.distance_original;
-            u->incomingEdges().at(node).distance = edge.distance_original;
-            u->outgoingEdges().at(node).distance = edge.distance_original;
-            node->incomingEdges().at(u).distance = edge.distance_original;
+                    if (should_attempt_restore) {
+                        // Crucially, check if the edge (node->u) is *actually* free now from any obstacle
+                        if (obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue())) {
+                            edge.distance = edge.distance_original;
+                            if (u->incomingEdges().count(node)) u->incomingEdges().at(node).distance = edge.distance_original;
+                            if (u->outgoingEdges().count(node)) u->outgoingEdges().at(node).distance = edge.distance_original;
+                            if (node->incomingEdges().count(u)) node->incomingEdges().at(u).distance = edge.distance_original;
+                        }
+                        // If it's not free (e.g., blocked by another, different obstacle), its distance remains INFINITY or its current value.
+                    }
+                }
+            }
+            
+            // After attempting to restore edges, update LMC and queue if inconsistent.
+            // This should happen if the node itself became free and thus usable.
+            updateLMC(node);
+            if (node->getCost() != node->getLMC()) {
+                verifyQueue(node);
+            }
         }
-
-        // Common node updates
-        updateLMC(node);
-        if (node->getCost() != node->getLMC()) {
-            verifyQueue(node);
-        }
+        // If the node's location is *still* not free (and not ignore_sample),
+        // its LMC should remain Inf or be updated accordingly by updateLMC if all edges are Inf.
+        // It might still need verifyQueue if its previous state was different.
+        // However, the existing updateLMC/verifyQueue at the end of the outer loop in the original
+        // code seems to cover general cases. The refined logic above tries to be more precise
+        // about *when* to update LMC based on the node's own state.
+        // For simplicity and safety, the original broader updateLMC/verifyQueue might be fine:
+        // updateLMC(node);
+        // if (node->getCost() != node->getLMC()) {
+        //     verifyQueue(node);
+        // }
+        // This will work because if node_location_is_currently_free is false, updateLMC should ideally
+        // result in node->LMC being INFINITY if all its edges are INFINITY.
     }
 }

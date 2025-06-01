@@ -680,190 +680,310 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 
 }
 
-void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
-    std::unordered_set<int> orphan_nodes;
+// void FMTX::handleAddedObstacleSamples(const std::vector<int>& added) {
+//     std::unordered_set<int> orphan_nodes;
 
-    /*
-        the 2 near function i put here because of rviz new goal feature i've added to the system and since the tree_ is cleared the neighbors need to be set again 
-    */
-    for (int idx : added) {
-        if (!ignore_sample && prune) {
-            auto node = tree_[idx].get();
+//     /*
+//         the 2 near function i put here because of rviz new goal feature i've added to the system and since the tree_ is cleared the neighbors need to be set again 
+//     */
+//     for (int idx : added) {
+//         if (!ignore_sample && prune) {
+//             auto node = tree_[idx].get();
+//             near(idx);
+//             for (auto& [neighbor, edge_info] : node->neighbors()) {
+//                 if (edge_info.distance == INFINITY) continue;
+//                 /*
+//                     Note: i think we don't need to obstacle check for all the node->neighbor relatioship because i think we can utilize dualFindSample and instantly make nodes on samples_in_obstalce distances to INFINITY
+//                           but for now since rrtx didn't do optimization in this part i keep the code this way
+//                 */
+//                 bool is_free_ = obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue());
+//                 if (is_free_) continue;
+
+//                 edge_info.distance = INFINITY;
+//                 near(neighbor->getIndex());
+//                 neighbor->neighbors().at(node).distance = INFINITY;
+
+//                 if (node->getParent() == neighbor){
+//                     orphan_nodes.insert(node->getIndex()); // In the current tree_ we check if an edge connection the node and its parent is on obstalce or not, if it is, then we send it and its descendant to orphan list
+//                     auto descendants = getDescendants(node->getIndex());
+//                     orphan_nodes.insert(descendants.begin(), descendants.end());
+//                 }
+//                 if (neighbor->getParent() == node) { //We check bidirectionaly because we used "neighbor->neighbors().at(node).distance = INFINITY;" in above line
+//                     orphan_nodes.insert(neighbor->getIndex());
+//                     auto descendants = getDescendants(neighbor->getIndex());
+//                     orphan_nodes.insert(descendants.begin(), descendants.end());
+//                 }
+//             }
+//         }
+//         else{
+//             orphan_nodes.insert(idx);
+//             auto descendants = getDescendants(idx);
+//             orphan_nodes.insert(descendants.begin(), descendants.end());
+//         }
+
+//     }
+//     /*
+//         TO DO: Later i might create a hybrid approach to decide between prune true or false
+//         Order of obstalce check for rrtx style is O(h ln(n)) --> h being the "added" variable and n being num of samples 
+//         Order of obstalce check for fmt style is O(K) --> K being the number of orphan nodes
+//     */
+//     // std::cout << "Added samples: " << added.size()
+//     //           << ", added.size() * ln(n): " << (added.size() * std::log(num_of_samples_))
+//     //           << "\n";
+//     // std::cout << "Orphan nodes count: " << orphan_nodes.size() << "\n";
+
+
+
+//     /*
+//         one might ask why do you put orphan nodes into v_unvisited_set when you have a mechanism in the main loop to find these automatically?! 
+//         The reason is these help the finding of the v open nodes later in the update obstalce sample function
+//         If we only rely on that mechansim we can't find connections to other branches because we are blind to see other branches! like on the other side of the tree
+//         Imagine the one side of the plier and some nodes get better cost if they get connected to the other tip of the plier but since we didn't put the other side nodes into v open we never know!
+
+//         (side note: Also imagine if the the two tips of the the plier is far apart so you can't rely on the neighborhood raidus of one side to get to the other!)
+
+//         So that condtion in the main loop is just for one direction expansion and is good for the nodes that gor removed from the obstalce--> Although its a reasonable question here also to ask ourselves why its not the case
+//         for the remove obstlace to now know their v open at first!
+//         the difference between addObstalce and removeObstalce is adding and obstalce most certainly adds cost to orphan nodes
+//         but removing an obstlace most certainly reduces cost of the neighbor nodes! and reducing happens in the current branch and direction of the expansion that happens in dijkstra like (like fmtx) algorithm 
+//         so we don't need to worry about the other side of plier (per say!) because they are gonna connect to us! not us connecting to them (and by "us" i mean the current direction of the expansion)
+//     */
+
+
+//     // DOESNT MATTER IF THIS LOOP WOULD GO HIGHER OR LOWER THAN THE BELOW FOR LOOP BECAUSE THE VUNVISTED UPDATE LOOP IS GONNA HELP THE BELOW LOOP
+//     for (auto node_index : orphan_nodes) {
+//         // tree_.at(node_index)->in_unvisited_ = true;
+//         auto node = tree_.at(node_index).get();
+        
+//         if (node->in_queue_) {
+//             v_open_heap_.remove(node);
+//             // node->in_queue_ = false;
+//         }
+//         if (!node->getIndex() == 0) // Root of the tree must keep its zero cost!
+//             node->setCost(INFINITY); 
+//         node->setParent(nullptr, INFINITY);
+//         // node->getChildrenMutable().clear(); // We don't need to do this even though at this current iteration this node has children but they will be removed as we iterate by the setParent function
+//         edge_length_[node_index] = -std::numeric_limits<double>::infinity();
+//     }
+  
+//     /*
+//         IMPORTNAT NOTE: My assumption is we do not need to update the queue here because we only need to ADD to queue. 
+//         UPDATE IS WHEN A COST of node has changed and that happens only in the main plan function. here we only make the cost to inf and we removed. you may ask
+//         how can you be sure we don't have any vopen heap nodes left? in partial update false the vopen heap gets fully cleaned because of the while loop but in partial update true
+//         we early exit that loop so some vopen heap nodes are left! in this scenraio now imagine an obstalce is being added and at the worst case scenario it is being added to the region where there are already vopen heap nodes!
+//         the result of adding obstalce means two things! ---> some vclosed (conceptually i mean because i don't use vclose in my algorithm!) nodes become vunvisted or some vopen nodes become vunvisted! and the previously vunvisited due to partial update
+//         stays in vunvisted! mind that the cost of these per say messeup nodes will become infinity or stay infinity
+//         for expansion we need CORRECT vopen heap nodes! (by correct i mean the correct cost that resembles the changes of the environment) and one rule you need to follow for safety is to not put any vunvisted node into vopen or if some vunvisted node is in vopen you need to remove it
+//         so since the cost of nodes doesnt change to any numbers but inf! so we only need to remove them. the following addition to heap is also for covering the vunvisted node for the next batch of update in plan function
+//         in the next for loop i do the heap removal
+
+//         but in the plan function since i update the nodes cost because of the second condtion in the main if! i have to update the queue's priority --> and its only happening frequntly in obstalce removal(even though it might sometimes happens in the regular loop due to the main problem that fmt has in low sample number which is negligible when samples counters go to inf theoretically!)
+
+//     */
+
+
+//     /*
+//         Time Complexity Comparison: Inserting k New Elements into a Heap of Size M
+//         Method 1: Individual Insertions (add one by one)
+//         Time Complexity:
+//         O(klogM)
+//         Each insertion takes O(logM) time (due to heapifyUp).
+
+//         For k insertions: O(klogM).
+
+//         Method 2: Bulk Insertion (bulkAdd)
+//         Time Complexity: O(M+k)
+//         Collecting elements: O(k).
+
+//         Heap construction (Floyd’s method): 
+//         O(M+k), where M is the existing heap size.
+
+//         Which is Faster?
+//         If k is small compared to M (k ≪ M)
+
+//         O(klogM) vs.  O(M+k)≈O(M).
+//         Since M might dominate klogM, Method 1 (individual insertions) could be faster.
+
+//         If k is large (k ≈ M or k > M)
+//         O(klogM) vs.  O(M+k)≈O(k).
+//         Since k log ⁡ M ≫ k
+//         klogM≫k, Method 2 (bulkAdd) wins.
+//     */
+
+
+//     // // Method 1
+
+//     for (auto node_index : orphan_nodes) {
+//         auto node = tree_.at(node_index).get();
+//         near(node_index);
+//         for (const auto& [neighbor, dist] : node->neighbors()){
+//             int index = neighbor->getIndex();
+//             if (neighbor->in_queue_ || neighbor->getCost()==INFINITY ) continue;
+//             double h_value = use_heuristic ? heuristic(index) : 0.0;
+//             v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
+//             // neighbor->in_queue_ = true;
+//         }
+//     }
+// //////////////////////////////
+//     // // // Method 2
+//     // // 1) Gather & mark
+//     // std::vector<std::pair<double, FMTNode*>> to_enqueue;
+//     // // to_enqueue.reserve(orphan_nodes.size() * average_degree); // optional hint
+
+//     // for (auto node_index : orphan_nodes) {
+//     //     FMTNode* node = tree_.at(node_index).get();
+//     //     near(node_index);  // ensure node->neighbors() is populated
+
+//     //     for (const auto& [neighbor, dist] : node->neighbors()) {
+//     //         // skip if already enqueued or not yet reachable
+//     //         if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
+//     //             continue;
+
+//     //         // mark so we don’t enqueue duplicates
+//     //         neighbor->in_queue_ = true;
+
+//     //         // compute priority (cost-to-come + optional heuristic)
+//     //         double h_value = use_heuristic 
+//     //                         ? heuristic(neighbor->getIndex()) 
+//     //                         : 0.0;
+//     //         double priority = neighbor->getCost() + h_value;
+
+//     //         to_enqueue.emplace_back(priority, neighbor);
+//     //     }
+//     // }
+
+//     // // 2) Bulk‐add into your custom priority queue in O(K)
+//     // v_open_heap_.bulkAdd(to_enqueue);
+
+//     // // Note: after bulkAdd, heap_index_ is set and in_queue_ remains true.
+//     // // When you later pop/remove a node, your remove() method will reset in_queue_ = false.
+
+
+// /////////////////////////////
+
+
+  
+// }
+
+void FMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) { // Renamed 'added' to 'added_indices' for clarity
+    std::unordered_set<int> nodes_to_make_orphan_and_process_neighbors; // Nodes whose state changed to trigger neighbor queueing
+
+    for (int idx : added_indices) {
+        FMTNode* node = tree_[idx].get(); // Assuming tree_ stores FMTNode pointers or shared_ptr
+        bool node_itself_is_now_in_obstacle = false;
+
+        if (ignore_sample) { // Corresponds to RRTX ignore_sample = true
+            // If ignore_sample is true, 'added_indices' are nodes now considered part of an obstacle.
+            // No explicit point collision check needed here for 'node' itself if this is the mode's definition.
+            samples_in_obstacles_.insert(idx); // Mark this node as being "in an obstacle"
+            node_itself_is_now_in_obstacle = true;
+        } else if (prune) { // Corresponds to RRTX ignore_sample = false, with proactive checks
+            // Explicitly check if the node's point itself is in an obstacle
+            if (!obs_checker_->isObstacleFree(node->getStateValue())) { // Assuming this checks the point
+                node_itself_is_now_in_obstacle = true;
+            }
+        }
+        // If not ignore_sample and not prune, the original else block logic applies (make all 'added_indices' nodes orphans)
+
+        if (!ignore_sample && prune && node_itself_is_now_in_obstacle) {
+            // OPTIMIZATION: Node 'idx' itself is in an obstacle (and prune=true, ignore_sample=false).
+            // Invalidate all its existing edges WITHOUT individual collision checks for each edge.
+            near(idx); // Ensure neighbors are loaded if needed by your 'near' implementation
+            for (auto& [neighbor, edge_info] : node->neighbors()) { // Iterate existing graph neighbors
+                edge_info.distance = INFINITY;
+                // Also update the symmetric part in the neighbor
+                near(neighbor->getIndex()); // Ensure neighbor's neighbors are loaded
+                if (neighbor->neighbors().count(node)) { // Check if symmetric entry exists
+                    neighbor->neighbors().at(node).distance = INFINITY;
+                }
+
+                // If this edge was a parent link, the child becomes an orphan candidate
+                if (node->getParent() == neighbor) { // 'node' loses 'neighbor' as parent
+                    // 'node' is already determined to be an orphan due to being in an obstacle.
+                    // This specific parent link is now broken.
+                }
+                if (neighbor->getParent() == node) { // 'neighbor' loses 'node' as parent
+                    nodes_to_make_orphan_and_process_neighbors.insert(neighbor->getIndex());
+                    // No need to get descendants here yet, will do it once for all primary orphans
+                }
+            }
+            // 'node' itself is the primary orphan here
+            nodes_to_make_orphan_and_process_neighbors.insert(idx);
+
+        } else if (!ignore_sample && prune && !node_itself_is_now_in_obstacle) {
+            // PRUNE MODE, BUT NODE ITSELF IS FINE: Check its edges individually.
             near(idx);
             for (auto& [neighbor, edge_info] : node->neighbors()) {
                 if (edge_info.distance == INFINITY) continue;
-                /*
-                    Note: i think we don't need to obstacle check for all the node->neighbor relatioship because i think we can utilize dualFindSample and instantly make nodes on samples_in_obstalce distances to INFINITY
-                          but for now since rrtx didn't do optimization in this part i keep the code this way
-                */
-                bool is_free_ = obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue());
-                if (is_free_) continue;
 
-                edge_info.distance = INFINITY;
-                near(neighbor->getIndex());
-                neighbor->neighbors().at(node).distance = INFINITY;
+                // Perform collision check for this specific edge (node -> neighbor)
+                if (!obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue())) {
+                    // Edge is blocked
+                    edge_info.distance = INFINITY;
+                    near(neighbor->getIndex());
+                    if (neighbor->neighbors().count(node)) {
+                        neighbor->neighbors().at(node).distance = INFINITY;
+                    }
 
-                if (node->getParent() == neighbor){
-                    orphan_nodes.insert(node->getIndex()); // In the current tree_ we check if an edge connection the node and its parent is on obstalce or not, if it is, then we send it and its descendant to orphan list
-                    auto descendants = getDescendants(node->getIndex());
-                    orphan_nodes.insert(descendants.begin(), descendants.end());
-                }
-                if (neighbor->getParent() == node) { //We check bidirectionaly because we used "neighbor->neighbors().at(node).distance = INFINITY;" in above line
-                    orphan_nodes.insert(neighbor->getIndex());
-                    auto descendants = getDescendants(neighbor->getIndex());
-                    orphan_nodes.insert(descendants.begin(), descendants.end());
+                    // Handle parent relationships leading to orphans
+                    if (node->getParent() == neighbor) {
+                        nodes_to_make_orphan_and_process_neighbors.insert(node->getIndex());
+                    }
+                    if (neighbor->getParent() == node) {
+                        nodes_to_make_orphan_and_process_neighbors.insert(neighbor->getIndex());
+                    }
                 }
             }
+        } else { // Original logic: ignore_sample is true (node_itself_is_now_in_obstacle is true),
+                 // OR prune is false. In these cases, all nodes in 'added_indices' are directly considered orphans.
+            nodes_to_make_orphan_and_process_neighbors.insert(idx);
         }
-        else{
-            orphan_nodes.insert(idx);
-            auto descendants = getDescendants(idx);
-            orphan_nodes.insert(descendants.begin(), descendants.end());
-        }
-
     }
-    /*
-        TO DO: Later i might create a hybrid approach to decide between prune true or false
-        Order of obstalce check for rrtx style is O(h ln(n)) --> h being the "added" variable and n being num of samples 
-        Order of obstalce check for fmt style is O(K) --> K being the number of orphan nodes
-    */
-    // std::cout << "Added samples: " << added.size()
-    //           << ", added.size() * ln(n): " << (added.size() * std::log(num_of_samples_))
-    //           << "\n";
-    // std::cout << "Orphan nodes count: " << orphan_nodes.size() << "\n";
 
+    // Now, gather all descendants for the initial set of orphaned nodes
+    std::unordered_set<int> final_orphan_nodes;
+    for (int orphan_idx : nodes_to_make_orphan_and_process_neighbors) {
+        final_orphan_nodes.insert(orphan_idx);
+        auto descendants = getDescendants(orphan_idx); // Assuming getDescendants works correctly
+        final_orphan_nodes.insert(descendants.begin(), descendants.end());
+    }
 
-
-    /*
-        one might ask why do you put orphan nodes into v_unvisited_set when you have a mechanism in the main loop to find these automatically?! 
-        The reason is these help the finding of the v open nodes later in the update obstalce sample function
-        If we only rely on that mechansim we can't find connections to other branches because we are blind to see other branches! like on the other side of the tree
-        Imagine the one side of the plier and some nodes get better cost if they get connected to the other tip of the plier but since we didn't put the other side nodes into v open we never know!
-
-        (side note: Also imagine if the the two tips of the the plier is far apart so you can't rely on the neighborhood raidus of one side to get to the other!)
-
-        So that condtion in the main loop is just for one direction expansion and is good for the nodes that gor removed from the obstalce--> Although its a reasonable question here also to ask ourselves why its not the case
-        for the remove obstlace to now know their v open at first!
-        the difference between addObstalce and removeObstalce is adding and obstalce most certainly adds cost to orphan nodes
-        but removing an obstlace most certainly reduces cost of the neighbor nodes! and reducing happens in the current branch and direction of the expansion that happens in dijkstra like (like fmtx) algorithm 
-        so we don't need to worry about the other side of plier (per say!) because they are gonna connect to us! not us connecting to them (and by "us" i mean the current direction of the expansion)
-    */
-
-
-    // DOESNT MATTER IF THIS LOOP WOULD GO HIGHER OR LOWER THAN THE BELOW FOR LOOP BECAUSE THE VUNVISTED UPDATE LOOP IS GONNA HELP THE BELOW LOOP
-    for (auto node_index : orphan_nodes) {
-        // tree_.at(node_index)->in_unvisited_ = true;
+    // Process all final orphan nodes
+    for (int node_index : final_orphan_nodes) {
         auto node = tree_.at(node_index).get();
         
         if (node->in_queue_) {
-            v_open_heap_.remove(node);
-            // node->in_queue_ = false;
+            v_open_heap_.remove(node); // Assuming remove also sets node->in_queue_ = false
         }
-        if (!node->getIndex() == 0) // Root of the tree must keep its zero cost!
+        if (node->getIndex() != 0) { // Assuming 0 is a special root/goal node index
             node->setCost(INFINITY); 
-        node->setParent(nullptr, INFINITY);
-        // node->getChildrenMutable().clear(); // We don't need to do this even though at this current iteration this node has children but they will be removed as we iterate by the setParent function
-        edge_length_[node_index] = -std::numeric_limits<double>::infinity();
+        }
+        node->setParent(nullptr, INFINITY); // Sever parent link and set parent_edge_cost_
+        // Children links will be broken when their parent (this node) is no longer their parent,
+        // or when they themselves are processed as orphans and get a new parent (or nullptr).
+        // You might need an explicit RRTxNode::removeChild if setParent doesn't notify the old parent.
+        edge_length_[node_index] = -std::numeric_limits<double>::infinity(); // Or some other marker for invalid edge to parent
     }
   
-    /*
-        IMPORTNAT NOTE: My assumption is we do not need to update the queue here because we only need to ADD to queue. 
-        UPDATE IS WHEN A COST of node has changed and that happens only in the main plan function. here we only make the cost to inf and we removed. you may ask
-        how can you be sure we don't have any vopen heap nodes left? in partial update false the vopen heap gets fully cleaned because of the while loop but in partial update true
-        we early exit that loop so some vopen heap nodes are left! in this scenraio now imagine an obstalce is being added and at the worst case scenario it is being added to the region where there are already vopen heap nodes!
-        the result of adding obstalce means two things! ---> some vclosed (conceptually i mean because i don't use vclose in my algorithm!) nodes become vunvisted or some vopen nodes become vunvisted! and the previously vunvisited due to partial update
-        stays in vunvisted! mind that the cost of these per say messeup nodes will become infinity or stay infinity
-        for expansion we need CORRECT vopen heap nodes! (by correct i mean the correct cost that resembles the changes of the environment) and one rule you need to follow for safety is to not put any vunvisted node into vopen or if some vunvisted node is in vopen you need to remove it
-        so since the cost of nodes doesnt change to any numbers but inf! so we only need to remove them. the following addition to heap is also for covering the vunvisted node for the next batch of update in plan function
-        in the next for loop i do the heap removal
-
-        but in the plan function since i update the nodes cost because of the second condtion in the main if! i have to update the queue's priority --> and its only happening frequntly in obstalce removal(even though it might sometimes happens in the regular loop due to the main problem that fmt has in low sample number which is negligible when samples counters go to inf theoretically!)
-
-    */
-
-
-    /*
-        Time Complexity Comparison: Inserting k New Elements into a Heap of Size M
-        Method 1: Individual Insertions (add one by one)
-        Time Complexity:
-        O(klogM)
-        Each insertion takes O(logM) time (due to heapifyUp).
-
-        For k insertions: O(klogM).
-
-        Method 2: Bulk Insertion (bulkAdd)
-        Time Complexity: O(M+k)
-        Collecting elements: O(k).
-
-        Heap construction (Floyd’s method): 
-        O(M+k), where M is the existing heap size.
-
-        Which is Faster?
-        If k is small compared to M (k ≪ M)
-
-        O(klogM) vs.  O(M+k)≈O(M).
-        Since M might dominate klogM, Method 1 (individual insertions) could be faster.
-
-        If k is large (k ≈ M or k > M)
-        O(klogM) vs.  O(M+k)≈O(k).
-        Since k log ⁡ M ≫ k
-        klogM≫k, Method 2 (bulkAdd) wins.
-    */
-
-
-    // // Method 1
-
-    for (auto node_index : orphan_nodes) {
+    // Add valid neighbors of the final (now cost-infinity) orphans to the open heap
+    // This is your "QueueNeighbors" equivalent from the RRTX discussion
+    for (int node_index : final_orphan_nodes) {
         auto node = tree_.at(node_index).get();
-        near(node_index);
-        for (const auto& [neighbor, dist] : node->neighbors()){
-            int index = neighbor->getIndex();
-            if (neighbor->in_queue_ || neighbor->getCost()==INFINITY ) continue;
-            double h_value = use_heuristic ? heuristic(index) : 0.0;
-            v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
-            // neighbor->in_queue_ = true;
+        near(node_index); // Ensure neighbors are loaded
+        for (const auto& [neighbor_ptr, edge_data] : node->neighbors()){ // Assuming edge_data not used here, just neighbor_ptr
+            // 'neighbor_ptr' is of type FMTNode* (or RRTxNode*)
+            if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == INFINITY ) continue; 
+            // If neighbor_ptr->getCost() == INFINITY, it means it's also an orphan, so skip.
+            // We only want to queue neighbors that are still validly connected to the goal.
+
+            double h_value = use_heuristic ? heuristic(neighbor_ptr->getIndex()) : 0.0;
+            v_open_heap_.add(neighbor_ptr, neighbor_ptr->getCost() + h_value);
+            // neighbor_ptr->in_queue_ = true; // Assuming v_open_heap_.add() handles this
         }
     }
-//////////////////////////////
-    // // // Method 2
-    // // 1) Gather & mark
-    // std::vector<std::pair<double, FMTNode*>> to_enqueue;
-    // // to_enqueue.reserve(orphan_nodes.size() * average_degree); // optional hint
-
-    // for (auto node_index : orphan_nodes) {
-    //     FMTNode* node = tree_.at(node_index).get();
-    //     near(node_index);  // ensure node->neighbors() is populated
-
-    //     for (const auto& [neighbor, dist] : node->neighbors()) {
-    //         // skip if already enqueued or not yet reachable
-    //         if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
-    //             continue;
-
-    //         // mark so we don’t enqueue duplicates
-    //         neighbor->in_queue_ = true;
-
-    //         // compute priority (cost-to-come + optional heuristic)
-    //         double h_value = use_heuristic 
-    //                         ? heuristic(neighbor->getIndex()) 
-    //                         : 0.0;
-    //         double priority = neighbor->getCost() + h_value;
-
-    //         to_enqueue.emplace_back(priority, neighbor);
-    //     }
-    // }
-
-    // // 2) Bulk‐add into your custom priority queue in O(K)
-    // v_open_heap_.bulkAdd(to_enqueue);
-
-    // // Note: after bulkAdd, heap_index_ is set and in_queue_ remains true.
-    // // When you later pop/remove a node, your remove() method will reset in_queue_ = false.
-
-
-/////////////////////////////
-
-
-  
 }
+
+
 
 void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
     for (const auto& node_index : removed) {

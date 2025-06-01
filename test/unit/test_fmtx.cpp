@@ -308,11 +308,15 @@ int main(int argc, char **argv) {
         another thing i notices is this doesnt help much with performance in my 2D case. but im gonna leave it in case i have time to test it in more dimensions
     
     */
-    planner_params.setParam("obs_cache", false);
+    planner_params.setParam("obs_cache", false); // TODO: later i should implement it in the fmt node (edge info) it self but right now im using a hash map in fmtx it self which i dont think is efficient but at the same time since im in replanning mode then restarting the obs status of edges is also maybe a challenge but i think its doable
     planner_params.setParam("partial_plot", false);
     planner_params.setParam("use_heuristic", false); // TODO: I need to verify if its legit workingor not.
     planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update --> when ignore_sample true the prune is not happening anymore so doesnt matter what you put there
-    planner_params.setParam("prune", false); // prune == true means do an obstalce check in handlAdd/Remove and set the neighbor cost to inf and DO NOT  obstalce check in plan , prune==false means do not do an obstalce check in handleAdd/Remove and delay it in plan --> the delayed part makes it more expensive in case of high obstalce but in case of low obstalce its faster! (also for high number of samples the delayed part is slower)--> prune true overall is faster i guess
+    /*
+        right now ignore samples is being used with specific way of finding the samples and also the collision check also happens in fmt expand
+        later maybe i could combine it with obstale aware distance and no collision checks and see what happens
+    */
+    planner_params.setParam("prune", true); // prune == true means do an obstalce check in handlAdd/Remove and set the neighbor cost to inf and DO NOT  obstalce check in plan , prune==false means do not do an obstalce check in handleAdd/Remove and delay it in plan --> the delayed part makes it more expensive in case of high obstalce but in case of low obstalce its faster! (also for high number of samples the delayed part is slower)--> prune true overall is faster i guess
     /*
         IMPORTANT NOTE: prune vs plan? in prune we do obstacle check in local vicinity of obstalce and set cost to neighbor to inf in add obstalce and reset in remove obstalce
                         and since we invalidated the edges between those nodes on obstalce and their neighbor, we don't need to do an obstacle check in plan function 
@@ -336,6 +340,7 @@ int main(int argc, char **argv) {
     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world2.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world_box.sdf");
     for (const auto& [name, info] : obstacle_info) {
         std::cout << name << ": " << info << "\n";
     }
@@ -425,7 +430,7 @@ int main(int argc, char **argv) {
     auto global_start = std::chrono::steady_clock::now();
 
     // Suppose you have a boolean that decides if we want a 20s limit
-    bool limited = false; 
+    bool limited = true; 
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
@@ -479,10 +484,10 @@ int main(int argc, char **argv) {
         sim_duration_2.emplace_back(elapsed_s, duration_ms);
 
 
-        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
-        ros2_manager->followPath(shortest_path_);
+        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+        // ros2_manager->followPath(shortest_path_);
 
-        dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        // dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         // dynamic_cast<FMTX*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);

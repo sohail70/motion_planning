@@ -347,7 +347,7 @@ int main(int argc, char **argv) {
         ////////// VISUALIZE /////
         // dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
         // dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-        // dynamic_cast<RRTX*>(planner.get())->visualizeTree();
+        dynamic_cast<RRTX*>(planner.get())->visualizeTree();
 
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();

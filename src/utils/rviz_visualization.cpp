@@ -23,6 +23,7 @@ RVizVisualization::RVizVisualization(rclcpp::Node::SharedPtr node, const std::st
     : node_(node),marker_id_counter_(0)  {
     marker_pub_ = node_->create_publisher<visualization_msgs::msg::Marker>(marker_topic, 10);
     marker_pub_2_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("marker2", 10);
+    marker_pub_3_ = node_->create_publisher<visualization_msgs::msg::Marker>("marker3", 10);
 
 }
 
@@ -170,6 +171,58 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
     // Publish the marker
     marker_pub_->publish(marker);
 }
+
+
+void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id, const std::string& color_str, const std::string& ns) {
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = frame_id;
+    marker.header.stamp = node_->now();
+    marker.ns = ns;
+    marker.id = 10;
+    marker.type = visualization_msgs::msg::Marker::LINE_LIST;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.scale.x = 0.2; // Line width
+
+    // Parse the color string
+    std::stringstream ss(color_str);
+    std::string token;
+    std::vector<float> color_components;
+    while (std::getline(ss, token, ',')) {
+        color_components.push_back(std::stof(token));
+    }
+
+    // Set the color components
+    if (color_components.size() == 3) {
+        marker.color.r = color_components[0];  // Red
+        marker.color.g = color_components[1];  // Green
+        marker.color.b = color_components[2];  // Blue
+        marker.color.a = 1.0;  // Fully opaque
+    } else {
+        // Default to red if the color string is invalid
+        marker.color.r = 1.0;
+        marker.color.g = 0.0;
+        marker.color.b = 0.0;
+        marker.color.a = 1.0;
+    }
+
+    // Add edges to the marker
+    for (const auto& edge : edges) {
+        geometry_msgs::msg::Point start, end;
+        start.x = edge.first.x();
+        start.y = edge.first.y();
+        start.z = 0.0; // Assuming 2D
+        end.x = edge.second.x();
+        end.y = edge.second.y();
+        end.z = 0.0; // Assuming 2D
+        marker.points.push_back(start);
+        marker.points.push_back(end);
+    }
+
+    // Publish the marker
+    marker_pub_3_->publish(marker);
+}
+
+
 
 void RVizVisualization::visualizeCylinder(
     const std::vector<Eigen::VectorXd>& obstacles, 
