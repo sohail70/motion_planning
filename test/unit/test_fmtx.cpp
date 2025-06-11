@@ -316,7 +316,7 @@ int main(int argc, char **argv) {
         right now ignore samples is being used with specific way of finding the samples and also the collision check also happens in fmt expand
         later maybe i could combine it with obstale aware distance and no collision checks and see what happens
     */
-    planner_params.setParam("prune", true); // prune == true means do an obstalce check in handlAdd/Remove and set the neighbor cost to inf and DO NOT  obstalce check in plan , prune==false means do not do an obstalce check in handleAdd/Remove and delay it in plan --> the delayed part makes it more expensive in case of high obstalce but in case of low obstalce its faster! (also for high number of samples the delayed part is slower)--> prune true overall is faster i guess
+    planner_params.setParam("prune", false); // prune == true means do an obstalce check in handlAdd/Remove and set the neighbor cost to inf and DO NOT  obstalce check in plan , prune==false means do not do an obstalce check in handleAdd/Remove and delay it in plan --> the delayed part makes it more expensive in case of high obstalce but in case of low obstalce its faster! (also for high number of samples the delayed part is slower)--> prune true overall is faster i guess
     /*
         IMPORTANT NOTE: prune vs plan? in prune we do obstacle check in local vicinity of obstalce and set cost to neighbor to inf in add obstalce and reset in remove obstalce
                         and since we invalidated the edges between those nodes on obstalce and their neighbor, we don't need to do an obstacle check in plan function 
@@ -375,6 +375,7 @@ int main(int argc, char **argv) {
 
     auto start = std::chrono::high_resolution_clock::now();
     planner->plan(); // Doing static plan first just to because we are trying to compare the performance of replanning with RRTx, otherwise it can be commented out
+    dynamic_cast<FMTX*>(planner.get())->dumpTreeToCSV("tree_run_fmtx.csv");
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Time taken for the update : " << duration.count() 
@@ -484,10 +485,10 @@ int main(int argc, char **argv) {
         sim_duration_2.emplace_back(elapsed_s, duration_ms);
 
 
-        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
         // ros2_manager->followPath(shortest_path_);
 
-        // dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         // dynamic_cast<FMTX*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);

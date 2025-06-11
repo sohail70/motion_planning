@@ -40,6 +40,7 @@ std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& ob
 
     bool isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& edge) const;
 
+    void dumpTreeToCSV(const std::string& filename) const;
  private:
     // Core data structures
     std::vector<std::shared_ptr<RRTxNode>> tree_;
@@ -117,4 +118,8 @@ std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& ob
                                           int window_size) const;
     std::vector<Eigen::VectorXd> interpolatePath(const std::vector<Eigen::VectorXd>& path,
                                                int num_intermediates) const;
+
+
+
+
 };

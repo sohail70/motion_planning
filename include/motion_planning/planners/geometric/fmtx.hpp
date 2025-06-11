@@ -49,6 +49,8 @@ class FMTX : public Planner {
 
 
             void clearPlannerState();
+            
+            void dumpTreeToCSV(const std::string& filename) const;
 
  private:
             std::shared_ptr<State> start_;
@@ -106,6 +108,7 @@ class FMTX : public Planner {
 
             bool static_obs_presence;
             std::vector<Obstacle> seen_statics_;
+
 
             
 

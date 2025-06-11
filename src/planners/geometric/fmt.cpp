@@ -114,7 +114,7 @@ void FMT::plan() {
         for (const auto& [x, cost_to_neighbor] : z->neighbors()) {
             int xIndex = x->getIndex(); // As I refactor the code I don't need to use xIndex anymore but I still need som refactoring.
             if (x->in_unvisited_==true  ){
-            // if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){ 
+            // if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){
                 if (costUpdated[x]) {
                     std::cout<<"Node " << xIndex 
                         << " is about to be updated a second time! "

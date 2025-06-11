@@ -81,10 +81,9 @@ int main(int argc, char **argv) {
 
     /////////////////////////////////////////////////////////////////////////////////////////////////
         // 1) Parse your flags
-    int num_samples = 1000;
+    int num_samples = 5000;
     double factor = 1.5;
     unsigned int seed = 42;
-    int run_secs = 30;
 
     for(int i = 1; i < argc; ++i) {
         std::string s{argv[i]};

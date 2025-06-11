@@ -178,7 +178,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
     gazebo_params.setParam("inflation", 0.0); // inflation added to obstalce radius virtually for the planner
-    gazebo_params.setParam("persistent_static_obstacles", true);
+    gazebo_params.setParam("persistent_static_obstacles", false);
 
     Params planner_params;
     planner_params.setParam("num_of_samples", num_samples);
@@ -233,6 +233,9 @@ int main(int argc, char **argv) {
     planner->setup(planner_params, visualization);
     // Plan the static one!
     planner->plan();
+    dynamic_cast<RRTX*>(planner.get())->dumpTreeToCSV("tree_run_rrtx.csv");
+
+
 
     // //----------- Waiting for the Sim Clock to start ------------ //
     // bool simulation_is_paused = true;
@@ -347,7 +350,7 @@ int main(int argc, char **argv) {
         ////////// VISUALIZE /////
         // dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
         // dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-        dynamic_cast<RRTX*>(planner.get())->visualizeTree();
+        // dynamic_cast<RRTX*>(planner.get())->visualizeTree();
 
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();

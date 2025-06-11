@@ -26,11 +26,15 @@ ros2 launch nav2_bringup bringup_launch.py
 
 the action client is in ros2_manager.hpp ---> use nav2 if you have a map or else a simple pure pursuit is enough
 
+for only running the gz server without gui:
+gz sim -s dynamic_world.sdf    
 
 for f in sim_rrtx_*.csv; do
   mv -- "$f" "2_0_30_$f"
 done
-
+for f in sim_rrtx_*.csv; do
+  mv -- "$f" "1_0_30_$f"
+done
 
 #include "nav2_msgs/action/follow_path.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"

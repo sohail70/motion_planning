@@ -1093,6 +1093,16 @@ void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
 //     }
 // }
 // //////////////////////////////////////////////////////////////////////////////
+
+/*
+    mind that i compared FMTx and RRTx in env with only dynamic obstalce so persisting static obstalce is not implemented here because right now
+    isObstalceFree considers all obstalces. it can be implemented later so that in addNewObstalce we dont check the old obstalces! but right now assume
+    everything moves, hence its new!
+    Although in FMTx i implmeneted something in findsamplesnearobstacle for static obs to be considered only once and since fmtx in its default form has delayed obstacle check
+    then its fine. even though one might argue in the prune true case (rrtx style proactive obstalce check) in fmtx we need some reconsideration if static obs are present
+*/
+
+
 void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
     for (int idx : added_indices) {
         RRTxNode* node = tree_[idx].get();
@@ -1258,4 +1268,41 @@ void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
         // This will work because if node_location_is_currently_free is false, updateLMC should ideally
         // result in node->LMC being INFINITY if all its edges are INFINITY.
     }
+}
+/////////////////////////////////////////////////////////////////////////////////////////
+
+void RRTX::dumpTreeToCSV(const std::string& filename) const {
+    std::ofstream fout(filename);
+    if (!fout.is_open()) {
+        std::cerr << "Failed to open " << filename << " for writing\n";
+        return;
+    }
+    // 1) figure out dimension of states
+    if (tree_.empty()) {
+        std::cerr << "Tree is empty. Nothing to dump.\n";
+        return;
+    }
+    size_t dim = tree_[0]->getStateValue().size();
+    // 2) write CSV header
+    fout << "node_id";
+    for (size_t d = 0; d < dim; ++d) {
+        fout << ",x" << d;
+    }
+    fout << ",parent_id\n";
+
+    // 3) for each node in tree_, write: node_id, coords..., parent_id
+    for (const auto& node_ptr : tree_) {
+        int nid = node_ptr->getIndex(); 
+        auto coords = node_ptr->getStateValue();
+        RRTxNode* parent = node_ptr->getParent();
+        int pid = (parent ? parent->getIndex() : -1);
+
+        fout << nid;
+        for (size_t d = 0; d < dim; ++d) {
+            fout << "," << std::setprecision(10) << coords[d];
+        }
+        fout << "," << pid << "\n";
+    }
+    fout.close();
+    std::cout << "Tree dumped to " << filename << "\n";
 }

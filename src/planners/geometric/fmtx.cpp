@@ -74,8 +74,8 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     int d = statespace_->getDimension();
     mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
     zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
-    gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
-    // gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+    // gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
+    gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
 
     factor = params.getParam<double>("factor");
     std::cout<<"factor: "<<factor<<"\n";
@@ -412,7 +412,7 @@ void FMTX::plan() {
                                 or a new parent with new cost! --> we need to set the parent and children
                                 or the same parent with the same cost!  ---> we can early return in the setParent
                             
-                                The if condition im talking about is "|| x->getCost() > (z->getCost() + cost_to_neighbor.distance" 
+                                The if condition im talking about is " x->getCost() > (z->getCost() + cost_to_neighbor.distance" 
                         */
 
                         x->setParent(best_neighbor_node,best_edge_length); 
@@ -1523,6 +1523,42 @@ void FMTX::visualizeHeapAndUnvisited() {
     // visualization_->visualizeNodes(vopen_positions);
     visualization_->visualizeNodes(vopen_positions, "map", std::vector<float>{0.0f,1.0f,0.0f}, "vopen");
 
+}
+//////////////////////////////////////////////
+void FMTX::dumpTreeToCSV(const std::string& filename) const {
+    std::ofstream fout(filename);
+    if (!fout.is_open()) {
+        std::cerr << "Failed to open " << filename << " for writing\n";
+        return;
+    }
+    // 1) figure out dimension of states
+    if (tree_.empty()) {
+        std::cerr << "Tree is empty. Nothing to dump.\n";
+        return;
+    }
+    size_t dim = tree_[0]->getStateValue().size();
+    // 2) write CSV header
+    fout << "node_id";
+    for (size_t d = 0; d < dim; ++d) {
+        fout << ",x" << d;
+    }
+    fout << ",parent_id\n";
+
+    // 3) for each node in tree_, write: node_id, coords..., parent_id
+    for (const auto& node_ptr : tree_) {
+        int nid = node_ptr->getIndex(); 
+        auto coords = node_ptr->getStateValue();
+        FMTNode* parent = node_ptr->getParent();
+        int pid = (parent ? parent->getIndex() : -1);
+
+        fout << nid;
+        for (size_t d = 0; d < dim; ++d) {
+            fout << "," << std::setprecision(10) << coords[d];
+        }
+        fout << "," << pid << "\n";
+    }
+    fout.close();
+    std::cout << "Tree dumped to " << filename << "\n";
 }
 
 
