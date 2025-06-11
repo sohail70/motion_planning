@@ -1,4 +1,6 @@
 # motion_planning
 
-![This is the alt text for my GIF](./sim.gif)
+<p align="center">
+  <img src="./sim.gif" alt="sim">
+</p>
 
