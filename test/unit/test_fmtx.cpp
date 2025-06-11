@@ -485,10 +485,10 @@ int main(int argc, char **argv) {
         sim_duration_2.emplace_back(elapsed_s, duration_ms);
 
 
-        std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<FMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
         // ros2_manager->followPath(shortest_path_);
 
-        dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        // dynamic_cast<FMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
         // dynamic_cast<FMTX*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<FMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
