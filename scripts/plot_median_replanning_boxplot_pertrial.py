@@ -1,6 +1,7 @@
 import os
 import glob
 import re
+import itertools
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,7 +12,7 @@ from matplotlib.patches import Patch
 # Please verify these paths are correct
 FMTX_DIR = "../build/new/new_names/full_fmtx"
 RRTX_DIR = "../build/new/new_names/full_rrtx"
-OUTPUT_FIGURES_DIR = "./figures_median_performance" # Directory for the correct plots
+OUTPUT_FIGURES_DIR = "./figures_combined_summary" 
 
 # --- Data Loading and Parsing Functions ---
 def parse_filename_params(filename):
@@ -21,7 +22,8 @@ def parse_filename_params(filename):
         c_major, c_minor, obst_str, planner_str, samples_str = match.groups()
         C = float(f"{c_major}.{c_minor}")
         obstacle_count = int(obst_str)
-        planner = 'FMTx' if planner_str == 'fmtx' else 'RRTx'
+        # CHANGED: Use formatted names from the start
+        planner = r'$FMT^{\mathrm{x}}$' if planner_str == 'fmtx' else r'$RRT^{\mathrm{x}}$'
         samples = int(samples_str)
         return C, obstacle_count, planner, samples
     match_fb = re.search(r"(\d+)obs_C(\d+p\d+)_sim_(fmtx|rrtx)_(\d+)samples", base.lower())
@@ -29,7 +31,8 @@ def parse_filename_params(filename):
         obst_str, c_str, planner_str, samples_str = match_fb.groups()
         C = float(c_str.replace('p', '.'))
         obstacle_count = int(obst_str)
-        planner = 'FMTx' if planner_str == 'fmtx' else 'RRTx'
+        # CHANGED: Use formatted names from the start
+        planner = r'$FMT^{\mathrm{x}}$' if planner_str == 'fmtx' else r'$RRT^{\mathrm{x}}$'
         samples = int(samples_str)
         return C, obstacle_count, planner, samples
     raise ValueError(f"Cannot parse parameters from filename '{base}'.")
@@ -56,8 +59,7 @@ def load_all_data(data_dirs):
 
 def create_per_trial_median_df(data):
     """
-    CHANGED: Creates a DataFrame where each row represents one trial,
-    and the value is the median duration of that trial.
+    Creates a DataFrame where each row is the median of one trial.
     """
     records = []
     for C, cdata in data.items():
@@ -65,59 +67,96 @@ def create_per_trial_median_df(data):
             for samples, sdata in odata.items():
                 for planner, trials in sdata.items():
                     for df_trial in trials:
-                        records.append({
-                            'C': C,
-                            'obstacles': obst,
-                            'samples': samples,
-                            'planner': planner,
-                            'median_duration': df_trial['duration_ms'].median()
-                        })
+                        median_val = df_trial['duration_ms'].median()
+                        if pd.notna(median_val):
+                            records.append({
+                                'C': C,
+                                'obstacles': obst,
+                                'samples': samples,
+                                'planner': planner, # Planner name is now already formatted
+                                'median_duration': median_val
+                            })
     return pd.DataFrame(records)
 
-def plot_median_performance_boxplots(df, c_value, output_dir):
+# --- PLOTTING FUNCTION ---
+def plot_combined_grid_boxplots(df, output_dir):
     """
-    CHANGED: Generates a box plot for a specific C value, showing the 
-    distribution of per-trial median replanning times.
+    Generates a single 3x3 grid of box plots with formatted planner names.
     """
     if df.empty:
-        print(f"DataFrame for C={c_value} plot is empty.")
+        print("DataFrame is empty. Cannot generate combined plot.")
         return
 
-    palette = {'FMTx': '#1f77b4', 'RRTx': '#ff7f0e'}
+    # CHANGED: Define the formatted planner names and the color palette
+    planner_order = [r'$FMT^{\mathrm{x}}$', r'$RRT^{\mathrm{x}}$']
+    palette = {planner_order[0]: '#1f77b4', planner_order[1]: '#ff7f0e'}
 
-    # Create a grid of plots, with each row representing an obstacle count
-    g = sns.catplot(
-        data=df,
-        x='samples',
-        y='median_duration', # CHANGED: Plotting the per-trial median duration
-        hue='planner',
-        row='obstacles',
-        kind='box',
-        height=4,
-        aspect=1.5,
-        legend=False,
-        palette=palette,
-        sharey=False # Allow each obstacle count to have its own y-axis scale
-    )
+    # Create a combined label for the x-axis and set a specific order
+    df['samples_k'] = (df['samples'] / 1000).astype(str).str.replace(r'\.0$', '', regex=True) + 'k'
+    df['x_axis_label'] = df['planner'] + ', ' + df['samples_k']
+    
+    sample_order = sorted(df['samples_k'].unique(), key=lambda s: float(s.replace('k','')))
+    xaxis_order = [f"{p}, {s}" for s in sample_order for p in planner_order]
+    df['x_axis_label'] = pd.Categorical(df['x_axis_label'], categories=xaxis_order, ordered=True)
 
-    g.set_axis_labels("Sample Size (n)", "Median Replanning Time per Trial (ms)")
-    g.set_titles("Obstacles: {row_name}")
-    g.fig.suptitle(f'Median Replanning Performance (C = {c_value})', y=1.03)
+    obstacle_order = sorted(df['obstacles'].unique())
+    c_value_order = sorted(df['C'].unique())
+    
+    fig, axes = plt.subplots(3, 3, figsize=(20, 18), sharex=True)
+    
+    for i, obst in enumerate(obstacle_order):
+        for j, c_val in enumerate(c_value_order):
+            ax = axes[i, j]
+            subset = df[(df['obstacles'] == obst) & (df['C'] == c_val)]
+            
+            if subset.empty:
+                ax.text(0.5, 0.5, 'No Data', ha='center', va='center', fontsize=12, color='grey')
+                ax.set_xticks([])
+            else:
+                sns.boxplot(
+                    data=subset,
+                    x='x_axis_label',
+                    y='median_duration',
+                    hue='planner',
+                    hue_order=planner_order, # Ensure colors match planners
+                    palette=palette,
+                    ax=ax,
+                    showfliers=False,
+                    dodge=False 
+                )
+            
+            if i == 0:
+                ax.set_title(f'C = {c_val}', fontsize=14, pad=10)
+            if j == 0:
+                ax.set_ylabel(f'{obst} Obstacles\nMedian Replanning Time per Trial (ms)', fontsize=12)
+            else:
+                ax.set_ylabel('')
 
-    # Use your corrected legend method
-    handles = [Patch(facecolor=palette[p], label=p) for p in ['FMTx', 'RRTx']]
-    g.fig.legend(
+            ax.grid(True, linestyle='--', alpha=0.6)
+            ax.get_legend().remove() # Remove individual subplot legends
+            
+            ax.tick_params(axis='x', labelrotation=45, labelsize=11)
+
+    for ax in axes[-1, :]:
+         ax.set_xlabel('Planner & Sample Size', fontsize=12)
+    for ax in axes[:-1, :].flatten():
+        ax.set_xlabel('')
+            
+    # Create the legend with the correctly formatted names
+    handles = [Patch(facecolor=palette[p], label=p) for p in planner_order]
+    fig.legend(
         handles=handles,
         title="Planner",
         loc='lower center',
-        ncol=2,
-        bbox_to_anchor=(0.5, -0.05),
-        frameon=False
+        ncol=len(planner_order),
+        bbox_to_anchor=(0.5, 0.01),
+        frameon=False,
+        fontsize=12
     )
+    
+    fig.tight_layout(rect=[0, 0.05, 1, 1]) 
 
-    g.fig.tight_layout(rect=[0, 0.05, 1, 0.97])
-
-    filename = f"median_performance_C_{str(c_value).replace('.', 'p')}.pdf"
+    filename = "combined_median_performance_boxplots_formatted.pdf"
     output_path = os.path.join(output_dir, filename)
     plt.savefig(output_path, bbox_inches='tight')
     plt.close()
@@ -129,20 +168,15 @@ def main():
     if not data_loaded:
         print("No data loaded; exiting.")
     else:
-        # Create the DataFrame of per-trial medians
         median_df = create_per_trial_median_df(data_loaded)
         if median_df.empty:
-            print("No performance data to plot; exiting.")
+            print("No valid performance data to plot; exiting.")
             return
         
         os.makedirs(OUTPUT_FIGURES_DIR, exist_ok=True)
-        print(f"\nOutputting separate PDFs to: {OUTPUT_FIGURES_DIR}")
+        print(f"\nOutputting combined plot to: {OUTPUT_FIGURES_DIR}")
 
-        # Loop through each C value and create a separate plot for it
-        for c_val in sorted(median_df['C'].unique()):
-            print(f"\n--- Generating plot for C = {c_val} ---")
-            df_subset = median_df[median_df['C'] == c_val]
-            plot_median_performance_boxplots(df_subset, c_val, OUTPUT_FIGURES_DIR)
+        plot_combined_grid_boxplots(median_df, OUTPUT_FIGURES_DIR)
 
 if __name__ == "__main__":
     main()

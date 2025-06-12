@@ -290,7 +290,7 @@ int main(int argc, char **argv) {
         When you use ignore_sample == true i don't think would need a inflation specially in low sample case --> math can be proved i guess.
     */
     gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
-    gazebo_params.setParam("persistent_static_obstacles", true);
+    gazebo_params.setParam("persistent_static_obstacles", false);
 
     Params planner_params;
     planner_params.setParam("num_of_samples", num_samples);
