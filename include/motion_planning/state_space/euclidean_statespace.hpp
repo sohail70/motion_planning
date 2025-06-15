@@ -21,5 +21,8 @@ class EuclideanStateSpace : public StateSpace {
     std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const;
     bool isValid(const std::shared_ptr<State>& state) const override;
 
+
+    Trajectory steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const override;
+
  private:
 };

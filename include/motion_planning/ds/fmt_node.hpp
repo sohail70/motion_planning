@@ -82,6 +82,7 @@ public:
     std::unordered_set<int> blocked_best_neighbors;
     std::vector<FMTNode*> children_;
     FMTNode* parent_;
+    bool neighbors_cached_ = false;
 
 private:
     std::shared_ptr<State> state_;
@@ -96,4 +97,7 @@ private:
     // static bool hasChild(FMTNode* node, const std::vector<FMTNode*>& children) {
     //     return std::find(children.begin(), children.end(), node) != children.end();
     // }
+
+
+
 };

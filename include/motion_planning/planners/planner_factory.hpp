@@ -11,7 +11,7 @@
 #include "motion_planning/planners/geometric/fmtx.hpp"
 #include "motion_planning/planners/geometric/rrtx.hpp"
 #include "motion_planning/planners/geometric/bit_star.hpp"
-
+#include "motion_planning/planners/kinodynamic/kinodynamic_fmtx.hpp"
 class PlannerFactory {
  public:
     using Creator = std::function<std::unique_ptr<Planner>(std::shared_ptr<StateSpace>, std::shared_ptr<ProblemDefinition> , std::shared_ptr<ObstacleChecker> )>;
@@ -43,3 +43,5 @@ static AutorRegisterPlanners<InformedANYFMTA> autoRegisterInformedANYFMTA(Planne
 static AutorRegisterPlanners<FMTX> autoRegisterFMTx(PlannerType::FMTX);
 static AutorRegisterPlanners<RRTX> autoRegisterRRTx(PlannerType::RRTX);
 static AutorRegisterPlanners<BITStar> autoRegisterBITStar(PlannerType::BITStar);
+
+static AutorRegisterPlanners<KinodynamicFMTX> autoRegisterKinodynamicFMTx(PlannerType::KinodynamicFMTX);

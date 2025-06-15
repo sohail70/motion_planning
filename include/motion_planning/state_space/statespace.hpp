@@ -3,6 +3,7 @@
 #pragma once
 
 #include "motion_planning/state_space/euclidean_state.hpp"
+#include "motion_planning/ds/edge_info.hpp" // For Trajectory struct
 
 
 class StateSpace {
@@ -21,7 +22,8 @@ class StateSpace {
     virtual bool isValid(const std::shared_ptr<State>& state) const = 0;
 
 
-
+    // Pure virtual steer function for kinodynamic planning
+    virtual Trajectory steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const = 0;
 
 
 

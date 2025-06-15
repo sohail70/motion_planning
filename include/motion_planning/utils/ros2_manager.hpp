@@ -183,7 +183,11 @@ public:
 
 
     }
-
+    // Add getYaw implementation
+    double getYaw(const Eigen::VectorXd& quat) {
+        tf2::Quaternion q(quat[0], quat[1], quat[2], quat[3]);
+        return tf2::getYaw(q);
+    }
 private:
     std::shared_ptr<ObstacleChecker> obstacle_checker_;
     std::shared_ptr<RVizVisualization> visualizer_;
@@ -560,10 +564,6 @@ void visualizeDWA(const DWAVisualization& data) {
     }
 
 
-    // Add getYaw implementation
-    double getYaw(const Eigen::VectorXd& quat) {
-        tf2::Quaternion q(quat[0], quat[1], quat[2], quat[3]);
-        return tf2::getYaw(q);
-    }
+
 
 };

@@ -83,6 +83,8 @@ public:
     // Pure virtual method for obstacle checking
     virtual bool isObstacleFree(const Eigen::VectorXd& start, const Eigen::VectorXd& end) const = 0;
     virtual bool isObstacleFree(const Eigen::VectorXd& point) const = 0;
+    // New virtual function to check a whole path
+    virtual bool isObstacleFree(const std::vector<Eigen::VectorXd>& path) const = 0;
     // virtual void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) = 0;
     virtual std::vector<Obstacle> getObstacles() const = 0;
     virtual bool checkFootprintCollision(const Eigen::Vector2d& position,

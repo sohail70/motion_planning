@@ -1,7 +1,5 @@
 // Copyright 2025 Soheil E.nia
-
-
-#include "motion_planning/state_space/euclidean_statespace.hpp"
+#include "motion_planning/state_space/dubins_time_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
 #include "motion_planning/utils/occupancygrid_obstacle_checker.hpp"
@@ -10,25 +8,27 @@
 #include "motion_planning/utils/parse_sdf.hpp"
 #include <valgrind/callgrind.h>
 
+#include <csignal>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <cstring>
+#include <iostream>
+#include <thread>
+#include <atomic>
 
 
 #include <gz/transport/Node.hh>
 #include <gz/msgs/world_control.pb.h>
-#include <gz/msgs/server_control.pb.h>  // Often contains Boolean definition
-#include <gz/msgs/boolean.pb.h>  // For Boolean response
+#include <gz/msgs/server_control.pb.h>
+#include <gz/msgs/boolean.pb.h>
 
-// 2. Corrected simulation control function
 void resetAndPlaySimulation()
 {
-    // Create Gazebo transport node
     gz::transport::Node node;
-    
-    // Reset the world
     {
         gz::msgs::WorldControl reset_req;
         reset_req.mutable_reset()->set_all(true);
-        
-        // Boolean response type is now properly included
         gz::msgs::Boolean reset_res;
         bool result;
         unsigned int timeout = 3000; // ms
@@ -45,14 +45,10 @@ void resetAndPlaySimulation()
         }
         std::cout << "World reset successfully" << std::endl;
     }
-
-    // Brief pause to ensure reset completes
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-    // Play the simulation
     {
         gz::msgs::WorldControl play_req;
-        play_req.set_pause(false);  // Unpause to play
+        play_req.set_pause(false);
         
         gz::msgs::Boolean play_res;
         bool result;
@@ -71,17 +67,83 @@ void resetAndPlaySimulation()
     }
 }
 
+
+
+
+
+
+
+
+std::atomic<bool> running{true}; // Flag to control the infinite loop
+pid_t child_pid = -1;
+
+void runRosGzBridge() {
+    // // Launch parameter_bridge as a child process with suppressed logs
+    // child_pid = fork();
+    // if (child_pid == 0) {
+    //     // Child process: Execute the ros_gz_bridge command with suppressed logs
+    //     execlp("ros2", "ros2", "run", "ros_gz_bridge", "parameter_bridge", "--ros-args", 
+    //            "-p", "config_file:=/home/sohail/jazzy_ws/src/simple_robot/params/ros_gz_bridge.yaml",
+    //            "--log-level", "error", // Suppress logs below "error" severity
+    //            (char *)NULL);
+    //     // If execlp fails, print an error and exit
+    //     std::cerr << "Failed to launch parameter_bridge: " << strerror(errno) << std::endl;
+    //     exit(EXIT_FAILURE);
+    // } else if (child_pid < 0) {
+    //     // Fork failed
+    //     std::cerr << "Failed to fork process: " << strerror(errno) << std::endl;
+    //     return;
+    // }
+
+    // // Parent process: Wait for the child process to finish
+    // int status;
+    // waitpid(child_pid, &status, 0);
+    // if (WIFEXITED(status)) {
+    //     std::cout << "ros_gz_bridge exited with status: " << WEXITSTATUS(status) << std::endl;
+    // } else {
+    //     std::cerr << "ros_gz_bridge terminated abnormally" << std::endl;
+    // }
+}
+
+void sigint_handler(int sig) {
+    if (child_pid > 0) {
+        // Terminate the child process
+        kill(child_pid, SIGTERM);
+        waitpid(child_pid, nullptr, 0);
+        child_pid = -1;
+    }
+    running = false; // Stop the main loop
+    rclcpp::shutdown();
+}
+
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
+    
     //////////////////////////////////////////////////////////////////////////////////////////////////
+    // Set up SIGINT handler
+    struct sigaction sa;
+    sa.sa_handler = sigint_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    if (sigaction(SIGINT, &sa, nullptr) < 0) {
+        std::cerr << "Failed to set signal handler: " << strerror(errno) << std::endl;
+        rclcpp::shutdown();
+        return EXIT_FAILURE;
+    }
+
+    // Launch ros_gz_bridge in a separate thread
+    std::thread ros_gz_bridge_thread(runRosGzBridge);
+    ros_gz_bridge_thread.detach(); // Detach the thread to run independently
+
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
     // ─────────────────────────────────────────────────────────────────────────────
     // 1) Parse your flags
-    int num_samples = 10000;
+    int num_samples = 5000;
     double factor = 2.0;
     unsigned int seed = 42;
     int run_secs = 30;
+
 
     for(int i = 1; i < argc; ++i) {
         std::string s{argv[i]};
@@ -117,8 +179,6 @@ int main(int argc, char **argv) {
 
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Params for Pure-Pursuit Controller
     Params controller_params;
     controller_params.setParam("kp_angular", 1.2);
@@ -138,11 +198,11 @@ int main(int argc, char **argv) {
     Params DWA;
     // ========== Core motion limits ==========
     DWA.setParam("max_speed",         3.0);   // Robot can go up to 3 m/s
-    DWA.setParam("min_speed",        -2.0);   // Allow reversing if needed
+    DWA.setParam("min_speed",        -1.0);   // Allow reversing if needed
     DWA.setParam("max_yawrate",       0.8);   // Turn rate up to 1.5 rad/s
-    DWA.setParam("max_accel",         2.0);   // Accelerate up to 2 m/s^2
-    DWA.setParam("max_decel",         2.0);   // Decelerate up to 2 m/s^2
-    DWA.setParam("max_dyawrate",      1.0);   // Angular acceleration limit
+    DWA.setParam("max_accel",         3.0);   // Accelerate up to 2 m/s^2
+    DWA.setParam("max_decel",         3.0);   // Decelerate up to 2 m/s^2
+    DWA.setParam("max_dyawrate",      2.0);   // Angular acceleration limit
     DWA.setParam("robot_radius",      0.3);
 
     // ========== Sampling and horizon ==========
@@ -156,9 +216,9 @@ int main(int argc, char **argv) {
     DWA.setParam("yawrate_resolution",0.1);
 
     // ========== Cost weights ==========
-    DWA.setParam("obstacle_cost_gain",  3.0); // Higher => more aggressive obstacle avoidance
-    DWA.setParam("speed_cost_gain",     1.0); // Medium => encourages higher speed, but not crazy
-    DWA.setParam("goal_cost_gain",      1.0); // Balanced
+    DWA.setParam("obstacle_cost_gain",  5.0); // Higher => more aggressive obstacle avoidance
+    DWA.setParam("speed_cost_gain",     0.3); // Medium => encourages higher speed, but not crazy
+    DWA.setParam("goal_cost_gain",      3.0); // Balanced
     DWA.setParam("path_cost_gain",      0.3); // Enough to stay near path, but not too strict
 
     
@@ -177,7 +237,10 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("world_name", "default");
     gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
-    gazebo_params.setParam("inflation", 0.0); // inflation added to obstalce radius virtually for the planner
+    /*
+        When you use ignore_sample == true i don't think would need a inflation specially in low sample case --> math can be proved i guess.
+    */
+    gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
     gazebo_params.setParam("persistent_static_obstacles", false);
 
     Params planner_params;
@@ -185,21 +248,50 @@ int main(int argc, char **argv) {
     planner_params.setParam("factor", factor);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
-    planner_params.setParam("partial_update", false); // update the tree cost of the robot or not
-    planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update
+    planner_params.setParam("partial_update", false); //update till the robot's costToInit
     planner_params.setParam("static_obs_presence", false); // to not process static obstalces twice because obstacle checker keeps sending all the obstalces! i geuss the persisten_static_obstalces needs to be true always
+    /*
+        we can cache and its useful because near obstacle there comes a time that too many z indices came up with the same best neighbor node for specific x index
+        and since there is an obs in between then we end up needing to re check the same obstacle check between nodes
+        I reckon if i use blocked_neighbor variable then we won't need this but that blocked_neighbor variable introduces it own overhead that only worth to use
+        if we are using fmta 
 
+        another thing i notices is this doesnt help much with performance in my 2D case. but im gonna leave it in case i have time to test it in more dimensions
+    
+    */
+    planner_params.setParam("obs_cache", false); // TODO: later i should implement it in the fmt node (edge info) it self but right now im using a hash map in fmtx it self which i dont think is efficient but at the same time since im in replanning mode then restarting the obs status of edges is also maybe a challenge but i think its doable
+    planner_params.setParam("partial_plot", false);
+    planner_params.setParam("use_heuristic", false); // TODO: I need to verify if its legit workingor not.
+    planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update --> when ignore_sample true the prune is not happening anymore so doesnt matter what you put there
+    /*
+        right now ignore samples is being used with specific way of finding the samples and also the collision check also happens in fmt expand
+        later maybe i could combine it with obstale aware distance and no collision checks and see what happens
+    */
+    planner_params.setParam("prune", false); // prune == true means do an obstalce check in handlAdd/Remove and set the neighbor cost to inf and DO NOT  obstalce check in plan , prune==false means do not do an obstalce check in handleAdd/Remove and delay it in plan --> the delayed part makes it more expensive in case of high obstalce but in case of low obstalce its faster! (also for high number of samples the delayed part is slower)--> prune true overall is faster i guess
+    /*
+        IMPORTANT NOTE: prune vs plan? in prune we do obstacle check in local vicinity of obstalce and set cost to neighbor to inf in add obstalce and reset in remove obstalce
+                        and since we invalidated the edges between those nodes on obstalce and their neighbor, we don't need to do an obstacle check in plan function 
+                        but i wonder what if we do not do an obstacle check in add/remove obstalce and postpone the check to plan ? this is in line with fmt philosophy but
+                        the thing is then we have to do lots of obstacle checks for all the orphaned edges! as opposed to do only local obstacle checks so the question boild down
+                        to number of obstacle checks in local vicnity of the obstalce with ALL their neighbors and the number of delayed obstacle checks in plan function where only the query
+                        current edge-> best_neighbor edge. in my tests the prune version where we do not delay checks works faster but maybe at high dimensional space its better to use the delayed version!
+                        thats another topic of research i'll do later!
 
+                        all in all prune is like doing the rrtx approach in setting the distance to inf based on explicit obstacle check between a node in obstalce and its neighbors
+
+        NEW UPDATE: in 30 obstalce case testing with the whole environment visible doing the fmt style was much better!--> maybe i should put two variants!!! --> Need to decide !
+    */
 
     /////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Create ROS node
-    auto node = std::make_shared<rclcpp::Node>("rrtx_visualizer");
+    auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
     auto visualization = std::make_shared<RVizVisualization>(node);
 
     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
-    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world2.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world_box.sdf");
     for (const auto& [name, info] : obstacle_info) {
         std::cout << name << ": " << info << "\n";
     }
@@ -216,25 +308,56 @@ int main(int argc, char **argv) {
     auto ros2_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization, controller, nav2_controller,dwa_controller, ros2_manager_params);
 
 
-    int dim = 2;
+    int dim = 4;
     Eigen::VectorXd start_position = ros2_manager->getStartPosition(); // I put a cv in here so i needed the above thread so it wouldn't stop the ros2 callbacks! --> also if use_rviz_goal==false no worries because the default value for this func is 0,0
 
 
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
-    problem_def->setStart(start_position); //Root of the tree
-    // problem_def->setStart(Eigen::VectorXd::Zero(dim));
-    problem_def->setGoal(Eigen::VectorXd::Ones(dim) * 50); // where the robot starts!
+
+    // The root of the tree (start of the backward search) is the destination.
+    // We want to arrive at time t=0.
+    Eigen::VectorXd tree_root_state(4);
+    tree_root_state << 0.0, 0.0, M_PI / 2.0, 0.0; // x, y, theta, time
+    problem_def->setStart(tree_root_state);
+
+    // The "goal" of the backward search is the robot's current state.
+    // Let's assume a starting state for the robot. The planner will try to find the
+    // fastest path (minimum time) from here back to the root (t=0).
+    Eigen::VectorXd robot_initial_state(4);
+    robot_initial_state << 48.0, 48.0, -M_PI / 2.0, 100.0; // Give it an initial time budget of 100s
+    problem_def->setGoal(robot_initial_state);
+
+    // // Define the 4D bounds for sampling
+    // Eigen::VectorXd lower_bounds(4), upper_bounds(4);
+    // lower_bounds << -50.0, -50.0, -M_PI, 0.0;     // x, y, theta, min_time
+    // upper_bounds << 50.0, 50.0, M_PI, 100.0;   // x, y, theta, max_time
+    // problem_def->setBounds(lower_bounds, upper_bounds);
+
+
+    
+    // problem_def->setStart(start_position); //Root of the tree
+    // problem_def->setGoal(Eigen::VectorXd::Ones(dim) * 50); // where the robot starts!
     problem_def->setBounds(-50, 50);
 
 
+    // CHANGE 4: Instantiate the DubinsTimeStateSpace
+    double min_turning_radius = 2.0;
+    double min_velocity = 1.0;
+    double max_velocity = 5.0;
+    auto statespace = std::make_shared<DubinsTimeStateSpace>(min_turning_radius, min_velocity, max_velocity);
 
-    std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 20000, seed);
-    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::RRTX, statespace,problem_def, obstacle_checker);
+
+    // std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 30000, seed);
+    std::unique_ptr<Planner> planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicFMTX, statespace,problem_def, obstacle_checker);
     planner->setup(planner_params, visualization);
-    // Plan the static one!
-    planner->plan();
-    dynamic_cast<RRTX*>(planner.get())->dumpTreeToCSV("tree_run_rrtx.csv");
 
+    auto start = std::chrono::high_resolution_clock::now();
+    planner->plan(); // Doing static plan first just to because we are trying to compare the performance of replanning with RRTx, otherwise it can be commented out
+    dynamic_cast<KinodynamicFMTX*>(planner.get())->dumpTreeToCSV("tree_run_fmtx.csv");
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "Time taken for the update : " << duration.count() 
+                << " milliseconds\n";
 
 
     // //----------- Waiting for the Sim Clock to start ------------ //
@@ -248,7 +371,7 @@ int main(int argc, char **argv) {
 
     // while (rclcpp::ok() && simulation_is_paused)
     // {
-    //     // 1) Spin to process any incoming clock messages
+    //     // 1) Spin to process any incoming clock message
     //     rclcpp::spin_some(ros2_manager);
 
     //     // 2) Get current sim time
@@ -279,13 +402,14 @@ int main(int argc, char **argv) {
 
     resetAndPlaySimulation();
 
-    
+
+
     // rclcpp::Rate loop_rate(2); // 2 Hz (500ms per loop)
     rclcpp::Rate loop_rate(30); // 10 Hz (100ms per loop)
     auto global_start = std::chrono::steady_clock::now();
-
+    double planning_horizon_seconds = 100.0;
     // Suppose you have a boolean that decides if we want a 20s limit
-    bool limited = true;  // or read from params, or pass as an argument
+    bool limited = true; 
 
     // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
@@ -293,48 +417,64 @@ int main(int argc, char **argv) {
 
     std::vector<double> sim_durations;
     std::vector<std::tuple<double, double>> sim_duration_2;
+    // The main loop
+    while (running && rclcpp::ok()) {
 
-    // Start profiling
-    CALLGRIND_START_INSTRUMENTATION;
-
-
-    while (rclcpp::ok()) {
-
-        // 1) If we are limiting to 20s, check if we've exceeded that
         if (limited) {
             auto now = std::chrono::steady_clock::now();
             if (now - start_time > time_limit) {
-                std::cout << "[INFO] 20 seconds have passed. Exiting loop.\n";
+                std::cout << "[INFO] time_limit seconds have passed. Exiting loop.\n";
                 break;  // exit the loop
             }
         }
 
-
-
         if (ros2_manager->hasNewGoal()) {
             start_position = ros2_manager->getStartPosition(); 
+            auto snapshot = obstacle_checker->getAtomicSnapshot();
             problem_def->setStart(start_position);
-            problem_def->setGoal(obstacle_checker->getRobotPosition());
+            problem_def->setGoal(snapshot.robot_position);
             planner->setup(planner_params, visualization);
-            planner->plan();   // For rrtx is different because we want to have the RRTX to cap to the max num samples and give us a tree first. for fair comparison with FMTX
+            // planner->plan();   // if you wanted to do it right here
         }
 
 
-        // auto obstacles = obstacle_checker->getObstaclePositions();
-        // auto robot = obstacle_checker->getRobotPosition();
-
         auto snapshot = obstacle_checker->getAtomicSnapshot();
         auto& obstacles = snapshot.obstacles;
-        auto& robot = snapshot.robot_position;
-        // // dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot); // UNCOMMENT THIS LATER!
+        // --- FIX: Construct the robot's full 4D state ---
+        Eigen::VectorXd current_robot_state_4d(4);
+        
+        // Get spatial position from Gazebo
+        Eigen::Vector2d robot_pos_2d = snapshot.robot_position;
+        
+        // Get orientation from your ROS2Manager's helper function
+        Eigen::VectorXd robot_orientation = obstacle_checker->getRobotOrientation();
+        double robot_yaw = ros2_manager->getYaw(robot_orientation);
+        
+        // Calculate the current time for the planner
+        auto elapsed_time = std::chrono::steady_clock::now() - global_start;
+        double elapsed_seconds = std::chrono::duration<double>(elapsed_time).count();
+        double current_robot_time = std::max(0.0, planning_horizon_seconds - elapsed_seconds);
 
-        ////////// PLAN //////////
+        // Assemble the full 4D state vector
+        current_robot_state_4d << robot_pos_2d(0), robot_pos_2d(1), robot_yaw, current_robot_time;
+        
+        // --- Plan, then Control ---
+        auto kinodynamic_planner = dynamic_cast<KinodynamicFMTX*>(planner.get());
+        
+        // Update the planner with the robot's current state
+        kinodynamic_planner->setRobotIndex(current_robot_state_4d);
+
         auto start = std::chrono::steady_clock::now();
-        dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
+        dynamic_cast<KinodynamicFMTX*>(planner.get())->updateObstacleSamples(obstacles);
+        planner->plan();
         auto end = std::chrono::steady_clock::now();
+
+        // Original metric (preserved)
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        if (duration.count()>0)
-            std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
+        if (duration.count() > 0) {
+            std::cout << "time taken for the update : " << duration.count() 
+                    << " milliseconds\n";
+        }
         sim_durations.push_back(duration.count());
 
         // New metrics (elapsed_s, duration_ms)
@@ -343,25 +483,20 @@ int main(int argc, char **argv) {
         sim_duration_2.emplace_back(elapsed_s, duration_ms);
 
 
-
-        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<RRTX*>(planner.get())->getSmoothedPathPositions(5, 2);
+        // std::vector<Eigen::VectorXd> shortest_path_ = dynamic_cast<KinodynamicFMTX*>(planner.get())->getSmoothedPathPositions(5, 2);
         // ros2_manager->followPath(shortest_path_);
 
-        ////////// VISUALIZE /////
-        // dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
-        // dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-        dynamic_cast<RRTX*>(planner.get())->visualizeTree();
-
+        // dynamic_cast<KinodynamicFMTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
+        // dynamic_cast<KinodynamicFMTX*>(planner.get())->visualizeHeapAndUnvisited();
+        dynamic_cast<KinodynamicFMTX*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();
-
     }
-    // Stop profiling
-    CALLGRIND_STOP_INSTRUMENTATION;
+
 
     const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations
-    int num_of_samples_ = planner_params.getParam<int>("num_of_samples");
 
+    int num_of_samples_ = planner_params.getParam<int>("num_of_samples");
 
     if (limited) {
         std::time_t now_time = std::time(nullptr); 
@@ -374,8 +509,8 @@ int main(int argc, char **argv) {
         int minute = local_tm->tm_min;
         int second = local_tm->tm_sec;
 
-        // Create base filename with timestamp
-        std::string planner_type = "rrtx";
+        // Create base filename with timestamp and samples
+        std::string planner_type = "fmtx";
         std::string base_filename = "sim_" + planner_type + "_" +
             std::to_string(num_of_samples_) + "samples_" + 
             std::to_string(day) + "_" +
@@ -420,11 +555,19 @@ int main(int argc, char **argv) {
 
         std::cout << "Done writing CSV.\n";
     }
-
-
-
-
-  
+    
+    // Cleanup
+    if (child_pid > 0) {
+        kill(child_pid, SIGTERM);
+        waitpid(child_pid, nullptr, 0);
+    }
     rclcpp::shutdown();
-
+    return 0;
 }
+
+
+
+
+
+
+

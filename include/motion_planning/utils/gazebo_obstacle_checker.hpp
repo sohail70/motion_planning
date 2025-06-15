@@ -17,6 +17,10 @@ public:
     
     bool isObstacleFree(const Eigen::VectorXd& point)const override;
 
+    bool isObstacleFree(const std::vector<Eigen::VectorXd>& path) const override;
+
+
+
     Eigen::Vector2d getRobotPosition() const;
     Eigen::VectorXd getRobotOrientation() const;
 

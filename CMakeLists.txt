@@ -79,16 +79,20 @@ add_library(motion_planning
     src/planners/geometric/informed_any_fmt.cpp
     src/planners/geometric/informed_any_fmta.cpp
     src/planners/geometric/fmtx.cpp
+    src/planners/kinodynamic/kinodynamic_fmtx.cpp
     src/planners/geometric/rrtx.cpp
     src/planners/geometric/bit_star.cpp
     src/planners/planner_factory.cpp
     src/state_space/euclidean_state.cpp
     src/state_space/euclidean_statespace.cpp
+    src/state_space/dubins_statespace.cpp
+    src/state_space/dubins_time_statespace.cpp
     src/ds/fmt_node.cpp
     src/ds/ifmt_node.cpp
     src/ds/bit_node.cpp
     src/ds/rrtx_node.cpp
     src/utils/nano_flann.cpp
+    src/utils/weighted_nano_flann.cpp
 )
 
 target_precompile_headers(motion_planning PRIVATE include/motion_planning/pch.hpp)
@@ -143,6 +147,12 @@ add_test(NAME test_rrtx COMMAND test_rrtx)
 # target_link_libraries(test_kdtree motion_planning)
 # add_test(NAME test_kdtree COMMAND test_kdtree)
 
+add_executable(test_weighted_kdtree test/unit/test_weighted_kdtree.cpp)
+target_link_libraries(test_weighted_kdtree motion_planning)
+add_test(NAME test_weighted_kdtree COMMAND test_weighted_kdtree)
+
+
+
 add_executable(test_gz test/unit/test_gz.cpp)
 target_link_libraries(test_gz gz_obs visualization motion_planning)
 ament_target_dependencies(test_gz rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
@@ -172,3 +182,14 @@ add_test(NAME test_gz COMMAND test_gz)
 # ament_target_dependencies(test_occupancy rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action) 
 # add_test(NAME test_occupancy COMMAND test_occupancy)
 
+#################### KINODYNAMIC TESTS #############################
+add_executable(test_kinodynamic_fmtx test/unit/test_kinodynamic_fmtx.cpp)
+target_link_libraries(test_kinodynamic_fmtx motion_planning gz_obs)
+ament_target_dependencies(test_kinodynamic_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_kinodynamic_fmtx COMMAND test_fmtx)
+
+
+add_executable(test_dubin_time test/unit/test_dubin_time.cpp)
+target_link_libraries(test_dubin_time motion_planning gz_obs)
+ament_target_dependencies(test_dubin_time rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_dubin_time COMMAND test_dubin_time)

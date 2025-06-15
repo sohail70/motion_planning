@@ -45,3 +45,7 @@ bool EuclideanStateSpace::isValid(const std::shared_ptr<State>& state) const {
     return true;
 }
 
+
+Trajectory EuclideanStateSpace::steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const {
+
+}

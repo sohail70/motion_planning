@@ -8,6 +8,19 @@ valgrind --tool=callgrind --instr-atstart=no  ./test_rrtx2          -->  if want
 kcachegrind callgrind.out
 
 
+
+take the plots based on this commit(because i added some part like obs cache to fmtx or static obstacles cache etc or some parts i cant even remember that causes more performance hit on fmtx which is just optimal to use):
+commit 04bcc8b1892c200f571932e7783c8da7296ffb48
+Author: sohail <sohail.e.nia@gmail.com>
+Date:   Tue May 27 00:44:12 2025 +0330
+
+    Default to fmt style delayed obstalce check for replanning (prune==false)
+
+
+another thing is i didnt know about gz sim -s option that would only run the server without the gui. the plots and comparsions are based on running the full gui. i tested without gui in for example
+C=1.5 and 10 obstalce with fmtx and the median result were 10ms faster! but all in all it doesnt matter because both FMTx and RRTx were tested with the same condtions!
+
+
 pkill -f "parameter_bridge"
 pkill -f "gz"
 

@@ -113,6 +113,22 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
 }
 
 
+// Implementation of the new trajectory checking method
+bool GazeboObstacleChecker::isObstacleFree(const std::vector<Eigen::VectorXd>& path) const {
+    if (path.size() < 2) {
+        return true; // A single point or empty path is considered collision-free
+    }
+    for (size_t i = 0; i < path.size() - 1; ++i) {
+        // Use your existing line segment checker for each segment of the path
+        if (!isObstacleFree(path[i], path[i + 1])) {
+            return false; // If any segment is in collision, the whole path is
+        }
+    }
+    return true; // All segments are clear
+}
+
+
+
 Eigen::Vector2d GazeboObstacleChecker::getRobotPosition() const {
     std::lock_guard<std::mutex> lock(data_mutex_);
     return robot_position_;

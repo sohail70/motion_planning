@@ -41,9 +41,12 @@ public:
     }
 
     bool isObstacleFree(const Eigen::VectorXd& point) const override {
-
+        return false;
     }
 
+    bool isObstacleFree(const std::vector<Eigen::VectorXd>& path) const override {
+        return false;
+    }
 
     void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) {
         grid_ = grid;
