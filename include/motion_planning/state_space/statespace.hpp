@@ -17,6 +17,8 @@ class StateSpace {
     virtual std::shared_ptr<State> addState(const Eigen::VectorXd& value) = 0;
     virtual std::shared_ptr<State> sampleUniform(double min, double max) = 0;
     virtual void sampleUniform(double min, double max, int k) = 0;
+    virtual std::shared_ptr<State> sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) = 0;
+
     virtual double distance(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2) const = 0;
     virtual std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const = 0;
     virtual bool isValid(const std::shared_ptr<State>& state) const = 0;

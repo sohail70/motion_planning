@@ -15,7 +15,8 @@ class EuclideanStateSpace : public StateSpace {
     std::shared_ptr<State> addState(const Eigen::VectorXd& value);
     std::shared_ptr<State> sampleUniform(double min, double max);
     void sampleUniform(double min, double max, int k);
-    
+    std::shared_ptr<State> sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) override;
+
 
     double distance(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2) const override;
     std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const;

@@ -291,6 +291,7 @@ int main(int argc, char **argv) {
     */
     gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
     gazebo_params.setParam("persistent_static_obstacles", false);
+    gazebo_params.setParam("estimation", true);
 
     Params planner_params;
     planner_params.setParam("num_of_samples", num_samples);
@@ -334,7 +335,10 @@ int main(int argc, char **argv) {
     /////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Create ROS node
-    auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
+    // auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer");
+    auto node = std::make_shared<rclcpp::Node>("fmtx_visualizer", rclcpp::NodeOptions().parameter_overrides({
+        rclcpp::Parameter("use_sim_time", ros2_manager_params.getParam<bool>("use_sim_time"))
+    }));
     auto visualization = std::make_shared<RVizVisualization>(node);
 
     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
@@ -344,7 +348,10 @@ int main(int argc, char **argv) {
     for (const auto& [name, info] : obstacle_info) {
         std::cout << name << ": " << info << "\n";
     }
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_info);
+    
+    // GET THE CLOCK FROM THE NODE. This will be a sim clock.
+    auto sim_clock = node->get_clock();
+    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Controller and Nav2Controller objects

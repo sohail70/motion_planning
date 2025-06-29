@@ -4,7 +4,15 @@
 
 
 #include "motion_planning/utils/visualization.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "visualization_msgs/msg/marker.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
+#include <Eigen/Dense>
+#include <Eigen/Geometry> // Required for Eigen::Quaterniond and AngleAxisd
 
+#include <vector>
+#include <string>
+#include "motion_planning/utils/obstacle_checker.hpp"
 class RVizVisualization : public Visualization {
 public:
     RVizVisualization(rclcpp::Node::SharedPtr node, const std::string& marker_topic = "fmtx_markers");
@@ -26,6 +34,23 @@ public:
                           const std::string& frame_id,
                           const std::vector<float>& color,
                           const std::string& ns);
+    void visualizeTrajectories(const std::vector<std::vector<Eigen::VectorXd>>& trajectories, 
+                          const std::string& frame_id,
+                          const std::vector<float>& color,
+                          const std::string& ns);
+
+
+    void visualizeFutureGhosts( const std::vector<Obstacle>& obstacles, double prediction_horizon, const std::string& frame_id);
+
+    void visualizeVelocityVectors(
+        const std::vector<Eigen::Vector2d>& positions,
+        const std::vector<Eigen::Vector2d>& velocities,
+        const std::string& frame_id,
+        const std::vector<float>& color,
+        const std::string& ns);
+
+
+
 private:
     rclcpp::Node::SharedPtr node_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;

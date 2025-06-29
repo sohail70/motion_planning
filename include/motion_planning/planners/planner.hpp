@@ -10,6 +10,7 @@
 
 #include "motion_planning/utils/nano_flann.hpp"
 #include "motion_planning/utils/weighted_nano_flann.hpp"
+#include "motion_planning/utils/lie_kd_tree.hpp"
 #include "motion_planning/utils/visualization.hpp"
 
 #include "motion_planning/utils/obstacle_checker.hpp"
@@ -25,7 +26,6 @@ enum class PlannerType{
     RRTStar,
     RRT,
     BITStar,
-
     KinodynamicFMTX,
 };
 

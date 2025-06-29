@@ -14,11 +14,13 @@ double normalizeAngle(double a) {
     return a;
 }
 
-DubinsStateSpace::DubinsStateSpace(double min_turning_radius)
-    : StateSpace(3), // Dimension is 3: (x, y, theta)
+DubinsStateSpace::DubinsStateSpace(double min_turning_radius, int dimension)
+    : StateSpace(dimension), // Pass the dimension through
       min_turning_radius_(min_turning_radius) {
+
+    std::srand(42); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
     weights_.resize(3);
-    weights_ << 1.0, 1.0, 0.4; // Weights for x, y, theta
+    weights_ << 1.0, 1.0, 0.4; // These weights are still for the 3D case
 }
 
 // Approximate distance for the KD-Tree (fast neighbor search)
@@ -37,7 +39,7 @@ double DubinsStateSpace::distance(const std::shared_ptr<State>& state1, const st
 //     const double r = min_turning_radius_;
 //     if (r <= 0) {
 //          std::cerr << "[ERR] Turning radius must be positive." << std::endl;
-//          return Trajectory{false, 0, {}};
+//          return Trajectory{false, 0, 0, {}};
 //     }
 
 //     // 1) Extract states and normalize headings
@@ -233,7 +235,7 @@ double DubinsStateSpace::distance(const std::shared_ptr<State>& state1, const st
 //     // 6) Pick the best maneuver
 //     if (all_maneuvers.empty()) {
 //         std::cout << "[WARN] No valid Dubins maneuvers found.\n";
-//         return Trajectory{false, std::numeric_limits<double>::infinity(), {}};
+//         return Trajectory{false, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
 //     }
 //     auto best = std::min_element(
 //         all_maneuvers.begin(), all_maneuvers.end(),
@@ -241,7 +243,7 @@ double DubinsStateSpace::distance(const std::shared_ptr<State>& state1, const st
 //     );
 //     if (std::isinf(best->cost)) {
 //         std::cout << "[WARN] Best Dubins maneuver has infinite cost.\n";
-//         return Trajectory{false, std::numeric_limits<double>::infinity(), {}};
+//         return Trajectory{false, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
 //     }
 
 //     // 7) Log chosen maneuver and discretize path
@@ -252,6 +254,7 @@ double DubinsStateSpace::distance(const std::shared_ptr<State>& state1, const st
 //     Trajectory out;
 //     out.is_valid = true;
 //     out.cost     = best->cost;
+//     out.geometric_distance = out.cost
     
 //     const double discretization_step = 0.5; // meters
 
@@ -297,14 +300,14 @@ double DubinsStateSpace::distance(const std::shared_ptr<State>& state1, const st
 //     return out;
 // }
 
-// // Steer without debug info
+// // Steer without debug info --> i think this is redundant
 // Trajectory DubinsStateSpace::steer(const Eigen::VectorXd& from,
 //                                      const Eigen::VectorXd& to) const
 // {
 //     const double r = min_turning_radius_;
 //     if (r <= 0) {
 //          std::cerr << "[ERR] Turning radius must be positive." << std::endl;
-//          return Trajectory{false, 0, {}};
+//          return Trajectory{false, 0, 0, {}};
 //     }
 
 //     // 1) Extract states and normalize headings
@@ -440,7 +443,7 @@ double DubinsStateSpace::distance(const std::shared_ptr<State>& state1, const st
 
 //     // 5) Pick the best maneuver
 //     if (all_maneuvers.empty()) {
-//         return Trajectory{false, std::numeric_limits<double>::infinity(), {}};
+//         return Trajectory{false, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
 //     }
 //     auto best = std::min_element(
 //         all_maneuvers.begin(), all_maneuvers.end(),
@@ -504,14 +507,14 @@ Trajectory DubinsStateSpace::steer(const Eigen::VectorXd& from,
     const double r = min_turning_radius_;
     if (r <= 0) {
          std::cerr << "[ERR] Turning radius must be positive." << std::endl;
-         return Trajectory{false, 0, {}};
+         return Trajectory{false, 0, 0, {}};
     }
 
     // 1) Extract states and normalize headings
-    double th0 = normalizeAngle(from[2]);
-    double th1 = normalizeAngle(to[2]);
-    Eigen::Vector2d p0(from[0], from[1]);
-    Eigen::Vector2d p1(to[0],   to[1]);
+    double th0 = normalizeAngle(from[2]); //Initial theta
+    double th1 = normalizeAngle(to[2]); // Goal theta
+    Eigen::Vector2d p0(from[0], from[1]); // Initial loc (for example where the robot is, since we are moving backward in the tree)
+    Eigen::Vector2d p1(to[0],   to[1]); // Goal loc
 
 
 
@@ -669,51 +672,98 @@ Trajectory DubinsStateSpace::steer(const Eigen::VectorXd& from,
 
     // 6) Pick the best maneuver
     if (all_maneuvers.empty()) {
-        return Trajectory{false, std::numeric_limits<double>::infinity(), {}};
+        return Trajectory{false, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
     }
     auto best = std::min_element(
         all_maneuvers.begin(), all_maneuvers.end(),
         [](const auto& a, const auto& b){ return a.cost < b.cost; }
     );
     if (std::isinf(best->cost)) {
-        return Trajectory{false, std::numeric_limits<double>::infinity(), {}};
+        return Trajectory{false, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity() , {}};
     }
 
 
     Trajectory out;
     out.is_valid = true;
     out.cost     = best->cost;
+    out.geometric_distance = out.cost; // in Dubin in 3D case (x,y,theta) without (t) geometric and cost is the same!
     
-    const double discretization_step = 0.5; // meters
+    const double discretization_step = 1.5; // meters
+
+    // auto sample_arc = [&](const Eigen::Vector2d& A, const Eigen::Vector2d& B, const Eigen::Vector2d& C, bool clockwise) {
+    //     double len = arc_len(A, B, C, clockwise);
+    //     int N = std::max(1, static_cast<int>(ceil(len / discretization_step)));
+    //     double alpha = atan2(A.y()-C.y(), A.x()-C.x());
+    //     double d_th_total = normalizeAngle(atan2(B.y()-C.y(), B.x()-C.x()) - alpha);
+    //     if (clockwise && d_th_total > 0)  d_th_total -= 2 * M_PI;
+    //     if (!clockwise && d_th_total < 0) d_th_total += 2 * M_PI;
+
+    //     for(int i = 1; i <= N; i++){
+    //         double phi = alpha + d_th_total * (static_cast<double>(i) / N);
+    //         Eigen::VectorXd pt(3);
+    //         pt << C.x() + r * cos(phi),
+    //               C.y() + r * sin(phi),
+    //               // HEADING: The heading is tangent to the circle, which is
+    //               // offset by +/- 90 degrees from the angle to the center (phi).
+    //               normalizeAngle(phi + (clockwise ? -M_PI/2.0 : +M_PI/2.0));
+    //         out.path_points.push_back(pt);
+    //     }
+    // };
+
+    // Define the angular step in radians.
+    const double delta_phi = 0.1; 
 
     auto sample_arc = [&](const Eigen::Vector2d& A, const Eigen::Vector2d& B, const Eigen::Vector2d& C, bool clockwise) {
-        double len = arc_len(A, B, C, clockwise);
-        int N = std::max(1, static_cast<int>(ceil(len / discretization_step)));
-        double alpha = atan2(A.y()-C.y(), A.x()-C.x());
-        double d_th_total = normalizeAngle(atan2(B.y()-C.y(), B.x()-C.x()) - alpha);
-        if (clockwise && d_th_total > 0)  d_th_total -= 2 * M_PI;
-        if (!clockwise && d_th_total < 0) d_th_total += 2 * M_PI;
+        // Calculate the start and end angles of the arc relative to the circle's center.
+        double start_angle = atan2(A.y() - C.y(), A.x() - C.x());
+        double end_angle = atan2(B.y() - C.y(), B.x() - C.x());
 
-        for(int i = 1; i <= N; i++){
-            double phi = alpha + d_th_total * (static_cast<double>(i) / N);
+        // Calculate the total angle the arc spans, handling direction and wrapping.
+        double total_angle_change = normalizeAngle(end_angle - start_angle);
+        if (clockwise && total_angle_change > 0) {
+            total_angle_change -= 2.0 * M_PI;
+        }
+        if (!clockwise && total_angle_change < 0) {
+            total_angle_change += 2.0 * M_PI;
+        }
+
+        // Determine the number of steps needed based on the desired angular resolution.
+        int num_steps = static_cast<int>(ceil(std::abs(total_angle_change) / delta_phi));
+        
+        // If the arc is too small, just add the endpoint to ensure connection.
+        if (num_steps == 0) {
+            Eigen::VectorXd pt(3);
+            pt << B.x(), B.y(), normalizeAngle(end_angle + (clockwise ? -M_PI/2.0 : +M_PI/2.0));
+            out.path_points.push_back(pt);
+            return;
+        }
+
+        // Calculate the exact angular step to ensure the last point lands perfectly.
+        double angle_step = total_angle_change / num_steps;
+
+        // Generate points along the arc.
+        for (int i = 1; i <= num_steps; ++i) {
+            double phi = start_angle + i * angle_step;
             Eigen::VectorXd pt(3);
             pt << C.x() + r * cos(phi),
                   C.y() + r * sin(phi),
+                  // Calculate the tangent heading for the point on the circle.
                   normalizeAngle(phi + (clockwise ? -M_PI/2.0 : +M_PI/2.0));
             out.path_points.push_back(pt);
         }
     };
 
+
     auto sample_straight = [&](const Eigen::Vector2d& A, const Eigen::Vector2d& B) {
-        double L = (B - A).norm();
-        int N = std::max(1, static_cast<int>(ceil(L / discretization_step)));
-        double heading = atan2(B.y() - A.y(), B.x() - A.x());
-        for(int i = 1; i <= N; i++){
-            Eigen::Vector2d P_interp = A + (B-A) * (static_cast<double>(i) / N);
-            Eigen::VectorXd pt(3);
-            pt << P_interp.x(), P_interp.y(), normalizeAngle(heading);
-            out.path_points.push_back(pt);
-        }
+        // double L = (B - A).norm();
+        // int N = std::max(1, static_cast<int>(ceil(L / discretization_step)));
+        // double heading = atan2(B.y() - A.y(), B.x() - A.x());
+        // for(int i = 1; i <= N; i++){
+        //     Eigen::Vector2d P_interp = A + (B-A) * (static_cast<double>(i) / N);
+        //     Eigen::VectorXd pt(3);
+        //     pt << P_interp.x(), P_interp.y(), normalizeAngle(heading);
+        //     out.path_points.push_back(pt);
+        // }
     };
 
     out.path_points.push_back(from);
@@ -727,8 +777,6 @@ Trajectory DubinsStateSpace::steer(const Eigen::VectorXd& from,
     
     return out;
 }
-
-
 
 // --- Implement other overridden functions as placeholders ---
 std::shared_ptr<State> DubinsStateSpace::addState(const Eigen::VectorXd& value) {
@@ -744,5 +792,31 @@ std::shared_ptr<State> DubinsStateSpace::sampleUniform(double min, double max) {
 }
 
 void DubinsStateSpace::sampleUniform(double min, double max, int k) { /* ... */ }
+
+std::shared_ptr<State> DubinsStateSpace::sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) {
+    // 1. Check that the input bounds are 3-dimensional.
+    // This class specifically handles the 3D Dubins car model.
+    if (min_bounds.size() != 3 || max_bounds.size() != 3) {
+        throw std::invalid_argument("DubinsStateSpace requires 3D bounds for vector-based sampling.");
+    }
+
+    // 2. Create a 3D vector for the new sample.
+    Eigen::VectorXd values(3);
+
+    // 3. Sample x, y, and theta from their respective bounds.
+    for (int i = 0; i < 3; ++i) {
+        // Generate a random double between 0.0 and 1.0
+        double random_coeff = static_cast<double>(rand()) / RAND_MAX;
+        
+        // Scale the random value to the range for the current dimension
+        values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
+    }
+    
+    // 4. Use the class's own addState method to create and return the new state.
+    return this->addState(values);
+}
+
+
+
 std::shared_ptr<State> DubinsStateSpace::interpolate(const std::shared_ptr<State>& s1, const std::shared_ptr<State>& s2, double t) const { return nullptr; }
 bool DubinsStateSpace::isValid(const std::shared_ptr<State>& state) const { return true; }

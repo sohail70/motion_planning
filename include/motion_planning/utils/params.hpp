@@ -17,6 +17,16 @@ public:
         return convert<T>(it->second);
     }
 
+    // Get param with default value!
+    template<class T>
+    T getParam(const std::string& key, const T& default_value) const {
+        if (!hasParam(key)) { // Re-use hasParam for clarity
+            return default_value;
+        }
+        return getParam<T>(key); // Call the single-argument version
+    }
+
+
     // Check if a parameter exists
     bool hasParam(const std::string& key) const {
         return params_.find(key) != params_.end();

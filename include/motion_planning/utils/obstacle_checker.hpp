@@ -6,11 +6,21 @@
 
 #include <memory>
 #include "motion_planning/pch.hpp"
+#include "motion_planning/ds/edge_info.hpp"
+
+
+#include "rclcpp/rclcpp.hpp" 
 
 struct Obstacle {
     enum Type { CIRCLE, BOX };
     Type type;
     Eigen::Vector2d position;
+    Eigen::Vector2d velocity;
+    Eigen::Vector2d acceleration;
+
+    // std::chrono::steady_clock::time_point last_update_time;
+    // TO: Use the ROS 2 Time object
+    rclcpp::Time last_update_time;
     union {
         struct {
             double radius;
@@ -34,6 +44,7 @@ struct Obstacle {
     Obstacle(Eigen::Vector2d pos, double rad, double infl, bool dynamic=false)
         : type(CIRCLE), position(pos), inflation(infl),is_dynamic(dynamic) {
         dimensions.circle.radius = rad;
+        // last_update_time = std::chrono::steady_clock::now();
     }
 
     // Box constructor
@@ -42,6 +53,8 @@ struct Obstacle {
         dimensions.box.width = w;
         dimensions.box.height = h;
         dimensions.box.rotation = rot;
+        // last_update_time = std::chrono::steady_clock::now();
+        // last_update_time is now set externally
     }
 
     bool operator==(const Obstacle& other) const {
@@ -64,7 +77,7 @@ struct ObstacleInfo {
     double radius = 0.0;    // For cylinders (initialize!)
     double width = 0.0;     // For boxes (initialize!)
     double height = 0.0;    // For boxes (initialize!)
-}; // <-- Semicolon here
+};
 
 // Operator<< definition OUTSIDE the struct
 inline std::ostream& operator<<(std::ostream& os, const ObstacleInfo& info) {
@@ -85,6 +98,9 @@ public:
     virtual bool isObstacleFree(const Eigen::VectorXd& point) const = 0;
     // New virtual function to check a whole path
     virtual bool isObstacleFree(const std::vector<Eigen::VectorXd>& path) const = 0;
+    virtual std::optional<Obstacle> getCollidingObstacle( const Trajectory& trajectory, double start_node_cost) const = 0;
+    virtual bool isTrajectorySafe( const Trajectory& trajectory, double start_node_time) const = 0;
+
     // virtual void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) = 0;
     virtual std::vector<Obstacle> getObstacles() const = 0;
     virtual bool checkFootprintCollision(const Eigen::Vector2d& position,

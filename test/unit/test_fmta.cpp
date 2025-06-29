@@ -158,7 +158,10 @@ int main(int argc, char **argv) {
     /////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Create ROS node
-    auto node = std::make_shared<rclcpp::Node>("fmta_visualizer");
+    // auto node = std::make_shared<rclcpp::Node>("fmta_visualizer");
+    auto node = std::make_shared<rclcpp::Node>("fmta_visualizer", rclcpp::NodeOptions().parameter_overrides({
+        rclcpp::Parameter("use_sim_time", ros2_manager_params.getParam<bool>("use_sim_time"))
+    }));
     auto visualization = std::make_shared<RVizVisualization>(node);
 
     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
@@ -167,7 +170,9 @@ int main(int argc, char **argv) {
     for (const auto& [name, info] : obstacle_info) {
         std::cout << name << ": " << info << "\n";
     }
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_info);
+    // GET THE CLOCK FROM THE NODE. This will be a sim clock.
+    auto sim_clock = node->get_clock();
+    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Controller and Nav2Controller objects

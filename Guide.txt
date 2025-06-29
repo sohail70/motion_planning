@@ -7,7 +7,13 @@ valgrind --tool=callgrind --instr-atstart=no  ./test_rrtx2          -->  if want
 
 kcachegrind callgrind.out
 
-
+/*
+debug in WATCH for Eigen lib variables!
+*((z->getStateValue().m_storage.m_data))
+*((z->getStateValue().m_storage.m_data)+1)
+*((x->getStateValue().m_storage.m_data))
+*((x->getStateValue().m_storage.m_data)+1)
+*/
 
 take the plots based on this commit(because i added some part like obs cache to fmtx or static obstacles cache etc or some parts i cant even remember that causes more performance hit on fmtx which is just optimal to use):
 commit 04bcc8b1892c200f571932e7783c8da7296ffb48

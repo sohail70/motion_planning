@@ -414,6 +414,9 @@ void visualizeDWA(const DWAVisualization& data) {
     }
 
     void visualizeObstacles(double robot_x, double robot_y) {
+        // This vector will hold all currently visible obstacles, static and dynamic.
+        std::vector<Obstacle> all_visible_obstacles; 
+
         std::vector<Eigen::VectorXd> cylinder_obstacles;
         std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_obstacles;
         std::vector<double> cylinder_radii;
@@ -428,7 +431,9 @@ void visualizeDWA(const DWAVisualization& data) {
         } 
         else if (auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_)) {
             // Process Gazebo obstacles
-            for (const auto& obstacle : gazebo_checker->getObstaclePositions()) {
+            all_visible_obstacles = gazebo_checker->getObstaclePositions();
+
+            for (const auto& obstacle : all_visible_obstacles) {
                 if (obstacle.type == Obstacle::CIRCLE) {
                     // Handle cylindrical obstacles
                     Eigen::VectorXd vec(2);
@@ -519,15 +524,17 @@ void visualizeDWA(const DWAVisualization& data) {
             circle_edges.emplace_back(p1, p2);
         }
 
-        // Now publish those edges as a LINE_LIST, using gray color "0.5,0.5,0.5":
-        visualizer_->visualizeEdges(circle_edges, "map", "0.5,0.5,0.5","sensor_range");
+        // // Now publish those edges as a LINE_LIST, using gray color "0.5,0.5,0.5":
+        // visualizer_->visualizeEdges(circle_edges, "map", "0.5,0.5,0.5","sensor_range");
+
+
 
 
 
         /////////////////
-        // Visualize elements
-        visualizer_->visualizeRobotArrow(robot_position, robot_quat, "map", 
-                                    {0.5f, 0.5f, 0.5f}, "robot_marker");
+        // // Visualize elements
+        // visualizer_->visualizeRobotArrow(robot_position, robot_quat, "map", 
+        //                             {0.5f, 0.5f, 0.5f}, "robot_marker");
         
         // Visualize cylindrical obstacles
         if (!cylinder_obstacles.empty()) {
@@ -541,16 +548,24 @@ void visualizeDWA(const DWAVisualization& data) {
                                     {0.0f, 0.4f, 1.0f}, "box_obstacles");
         }
 
+        ////////////GHOST
+        // DEFINE a prediction horizon to make the effect obvious
+        const double prediction_time_horizon_sec = 1.0; // <--- The "Exaggeration Knob"
+
+        // CALL the new visualization function
+        // visualizer_->visualizeFutureGhosts( all_visible_obstacles, prediction_time_horizon_sec, "map");
+        //END GHOST
+
         std::vector<std::vector<Eigen::Vector2d>> to_draw;
         to_draw.push_back(robot_trajectory_);
 
-        // Use (1.0, 0.0, 0.0) for red, namespace "robot_trajectory"
-        visualizer_->visualizeTrajectories(
-            to_draw,
-            "map",
-            {1.0f, 1.0f, 0.0f},   // Yellow
-            "robot_trajectory"    // each trajectory uses ns = "robot_trajectory"
-        );
+        // // Use (1.0, 0.0, 0.0) for red, namespace "robot_trajectory"
+        // visualizer_->visualizeTrajectories(
+        //     to_draw,
+        //     "map",
+        //     {1.0f, 1.0f, 0.0f},   // Yellow
+        //     "robot_trajectory"    // each trajectory uses ns = "robot_trajectory"
+        // );
 
 
 

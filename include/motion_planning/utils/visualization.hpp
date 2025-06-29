@@ -3,7 +3,6 @@
 #pragma once
 
 #include "motion_planning/pch.hpp"
-
 // Abstract base class for visualization
 class Visualization {
 public:

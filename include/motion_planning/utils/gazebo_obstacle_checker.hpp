@@ -4,10 +4,15 @@
 #include "motion_planning/utils/obstacle_checker.hpp"
 #include "motion_planning/utils/visualization.hpp"
 #include "motion_planning/utils/params.hpp"
+#include <unsupported/Eigen/Polynomials>  // for PolynomialSolver
+#include "motion_planning/utils/kalman_filter.hpp"
+
+
 class GazeboObstacleChecker : public ObstacleChecker {
 public:
 
-    GazeboObstacleChecker(const Params& params,
+    GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
+                        const Params& params,
                         const std::unordered_map<std::string, ObstacleInfo>& obstacle_info);
 
     ~GazeboObstacleChecker();
@@ -18,6 +23,23 @@ public:
     bool isObstacleFree(const Eigen::VectorXd& point)const override;
 
     bool isObstacleFree(const std::vector<Eigen::VectorXd>& path) const override;
+
+    /**
+     * @brief [THE NEW, CORRECTED FUNCTION] Performs a full time-aware collision check.
+     * @param trajectory The kinodynamically-feasible trajectory to check.
+     * @param start_node_cost The global time at which the robot begins this trajectory.
+     * @return An std::optional containing the colliding obstacle if a collision is
+     * predicted. Returns std::nullopt if the path is clear.
+     */
+    std::optional<Obstacle> getCollidingObstacle(const Trajectory& trajectory, double start_node_cost) const override;
+    
+    /**
+     * @brief [NEW & CORRECTED] Performs a full time-aware collision check for a trajectory.
+     * @param trajectory The kinodynamically-feasible trajectory to check.
+     * @param start_node_time The global time at which the robot begins this trajectory.
+     * @return TRUE if the path is clear, FALSE if a collision is predicted.
+     */
+    bool isTrajectorySafe( const Trajectory& trajectory, double start_node_time) const override;
 
 
 
@@ -112,6 +134,66 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
     }
 
 
+    // --- NEW HELPER FUNCTION (based on the Julia code's logic) ---
+    // Calculates the squared distance from a point 'p' to a line segment defined by 'a' and 'b'.
+double distanceSqrdPointToSegment(const Eigen::Vector2d& p, const Eigen::Vector2d& a, const Eigen::Vector2d& b) const {
+    const Eigen::Vector2d ab = b - a;
+    const Eigen::Vector2d ap = p - a;
+
+    // Get the squared length of the segment.
+    const double ab_len_sq = ab.squaredNorm();
+
+    // --- HARDENING: Handle zero-length segments ---
+    if (ab_len_sq < 1e-9) {
+        // If the segment is just a point, return the squared distance to that point.
+        return ap.squaredNorm();
+    }
+    // ---------------------------------------------
+
+    const double t = ap.dot(ab) / ab_len_sq;
+
+    if (t < 0.0) {
+        return ap.squaredNorm(); // Closest point is 'a'
+    }
+    if (t > 1.0) {
+        return (p - b).squaredNorm(); // Closest point is 'b'
+    }
+
+    const Eigen::Vector2d closest_point = a + t * ab;
+    return (p - closest_point).squaredNorm();
+}
+
+
+    double findNearestObstacleDistance(const Eigen::Vector2d& point) const {
+        std::lock_guard<std::mutex> lock(snapshot_mutex_);
+        double min_distance = std::numeric_limits<double>::infinity();
+
+        if (obstacle_snapshot_.empty()) {
+            return min_distance;
+        }
+
+        for (const auto& obstacle : obstacle_snapshot_) {
+            double current_distance = 0.0;
+            const Eigen::Vector2d& center = obstacle.position;
+            
+            if (obstacle.type == Obstacle::CIRCLE) {
+                // Distance from point to circle's edge
+                double dist_to_center = (point - center).norm();
+                current_distance = std::max(0.0, dist_to_center - (obstacle.dimensions.circle.radius + inflation));
+            } else { // BOX
+                // For a box, we can approximate by checking distance to its bounding circle
+                double half_diagonal = std::hypot(obstacle.dimensions.box.width, obstacle.dimensions.box.height) / 2.0;
+                double dist_to_center = (point - center).norm();
+                current_distance = std::max(0.0, dist_to_center - (half_diagonal + inflation));
+            }
+
+            if (current_distance < min_distance) {
+                min_distance = current_distance;
+            }
+        }
+        return min_distance;
+    }
+
 
 private:
     void poseInfoCallback(const gz::msgs::Pose_V& msg);
@@ -150,10 +232,33 @@ private:
     double sensor_range;
     double inflation;
     bool persistent_static_obstacles;
+    bool estimation;
 
 
     std::unordered_map<std::string, Obstacle> static_obstacle_positions_;
 
+    ///////////////////////////Predicting Future Positions of Obstacles//////////////////////////////////////////////
+    /*
+        Even with perfect current_pos and prev_pos values, this calculation creates two major problems:
+        Velocity is a Step-Function: The calculated velocity is a single value that represents the average speed over the interval dt. 
+        It is not the instantaneous velocity. So your velocity estimate is not a smooth cosine wave, but a series of flat, constant steps.
+        Acceleration is an Impulse Function: When you differentiate this step-function of velocity, you get an acceleration that is zero everywhere except at the exact moment of the update, where it becomes an infinitely large spike (an impulse). 
+        In code, this results in extremely large, erratic, and non-physical acceleration values.
+
+        So its better to use KF:
+        Finite-Difference Method: Is like trying to figure out a car's acceleration by only looking at two photos of it, taken a fraction of a second apart. The result will be wildly inaccurate.
+        Kalman Filter Method: Is like having a physics model of the car (its state, including its current velocity and acceleration). When you get a new photo (a new position measurement), 
+        you don't throw away your old understanding. Instead, you use the new photo to correct and refine your ongoing estimate of the car's state.
+    */
+
+    std::unordered_map<std::string, Obstacle> previous_obstacle_states_; //if you are using finite difference method --> Which introduces noise by the mathematical process of differentiation on discrete time samples
+    //if you are using kalman filter to predict obstalce
+    // This map stores a Kalman Filter instance for each dynamic obstacle.
+    std::unordered_map<std::string, KalmanFilter> obstacle_filters_;
+    
+    // This map stores the last update time for each filter to calculate 'dt'.
+    std::unordered_map<std::string, rclcpp::Time> obstacle_filters_times_;
+    /////////////////////////////////////////////////////////////////////////
 
 
     
@@ -172,5 +277,5 @@ private:
     // std::unordered_map<std::string, double> obstacle_radii_;
     std::unordered_map<std::string, ObstacleInfo> obstacle_info_;
 
-
+    rclcpp::Clock::SharedPtr clock_;
 };

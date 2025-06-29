@@ -8,12 +8,12 @@ set(CMAKE_BUILD_TYPE Release)
 
 
 
-# AddressSanitizer for debugging heap corruption
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  message(STATUS "Debug build: Enabling AddressSanitizer")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
-  set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
-endif()
+# # AddressSanitizer for debugging heap corruption
+# if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+#   message(STATUS "Debug build: Enabling AddressSanitizer")
+#   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
+#   set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+# endif()
 
 
 find_package(Eigen3 REQUIRED)
@@ -61,6 +61,15 @@ target_include_directories(visualization PUBLIC include)
 target_link_libraries(visualization PUBLIC gz-utils2::gz-utils2)
 ament_target_dependencies(visualization PUBLIC rclcpp visualization_msgs nav2_msgs rclcpp_action) 
 
+
+add_library(kf     
+  src/utils/kalman_filter.cpp
+)
+target_include_directories(kf PUBLIC include)
+target_link_libraries(kf PUBLIC Eigen3::Eigen)
+
+
+
 # Gazebo Obstacle Checker Library
 add_library(gz_obs src/utils/gazebo_obstacle_checker.cpp)
 target_precompile_headers(gz_obs PRIVATE include/motion_planning/pch.hpp)
@@ -69,7 +78,10 @@ target_link_libraries(gz_obs
   gz-msgs10
   ${Protobuf_LIBRARIES}
   ${ZeroMQ_LIBRARIES}
+  kf
 )
+
+
 
 # Motion Planning Library
 add_library(motion_planning
@@ -85,14 +97,17 @@ add_library(motion_planning
     src/planners/planner_factory.cpp
     src/state_space/euclidean_state.cpp
     src/state_space/euclidean_statespace.cpp
+    src/state_space/rdt_statespace.cpp
     src/state_space/dubins_statespace.cpp
     src/state_space/dubins_time_statespace.cpp
+    src/state_space/thruster_statespace.cpp
     src/ds/fmt_node.cpp
     src/ds/ifmt_node.cpp
     src/ds/bit_node.cpp
     src/ds/rrtx_node.cpp
     src/utils/nano_flann.cpp
     src/utils/weighted_nano_flann.cpp
+    src/utils/lie_kd_tree.cpp
 )
 
 target_precompile_headers(motion_planning PRIVATE include/motion_planning/pch.hpp)
@@ -151,6 +166,9 @@ add_executable(test_weighted_kdtree test/unit/test_weighted_kdtree.cpp)
 target_link_libraries(test_weighted_kdtree motion_planning)
 add_test(NAME test_weighted_kdtree COMMAND test_weighted_kdtree)
 
+add_executable(test_lie_kdtree test/unit/test_lie_kdtree.cpp)
+target_link_libraries(test_lie_kdtree motion_planning)
+add_test(NAME test_lie_kdtree COMMAND test_lie_kdtree)
 
 
 add_executable(test_gz test/unit/test_gz.cpp)
@@ -186,10 +204,19 @@ add_test(NAME test_gz COMMAND test_gz)
 add_executable(test_kinodynamic_fmtx test/unit/test_kinodynamic_fmtx.cpp)
 target_link_libraries(test_kinodynamic_fmtx motion_planning gz_obs)
 ament_target_dependencies(test_kinodynamic_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_kinodynamic_fmtx COMMAND test_fmtx)
+add_test(NAME test_kinodynamic_fmtx COMMAND test_kinodynamic_fmtx)
 
+add_executable(test_kinodynamic_fmtx_R2T test/unit/test_kinodynamic_fmtx_R2T.cpp)
+target_link_libraries(test_kinodynamic_fmtx_R2T motion_planning gz_obs)
+ament_target_dependencies(test_kinodynamic_fmtx_R2T rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_kinodynamic_fmtx_R2T COMMAND test_kinodynamic_fmtx_R2T)
 
 add_executable(test_dubin_time test/unit/test_dubin_time.cpp)
 target_link_libraries(test_dubin_time motion_planning gz_obs)
 ament_target_dependencies(test_dubin_time rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_dubin_time COMMAND test_dubin_time)
+
+add_executable(test_thruster test/unit/test_thruster.cpp)
+target_link_libraries(test_thruster motion_planning gz_obs)
+ament_target_dependencies(test_thruster rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_thruster COMMAND test_thruster)

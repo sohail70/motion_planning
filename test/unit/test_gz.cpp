@@ -66,6 +66,7 @@ int main(int argc, char** argv) {
     gazebo_params.setParam("world_name", "default");
     gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
+    gazebo_params.setParam("estimation", true);
     /*
         When you use ignore_sample == true i don't think would need a inflation specially in low sample case --> math can be proved i guess.
     */
@@ -74,16 +75,21 @@ int main(int argc, char** argv) {
 
 
     /////////////////////////////////////////////////////////////////////////////////////////////////
-    auto node = std::make_shared<rclcpp::Node>("visualizer");
+    auto node = std::make_shared<rclcpp::Node>("visualizer", rclcpp::NodeOptions().parameter_overrides({
+        rclcpp::Parameter("use_sim_time", ros2_manager_params.getParam<bool>("use_sim_time"))
+    }));
 
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_4_obs.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_world2.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/static_removable_world.sdf");
 
     for (const auto& [name, info] : obstacle_info) {
         std::cout << name << ": " << info << "\n";
     }
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(gazebo_params, obstacle_info); // Robot model name and obstacle radius
+    // GET THE CLOCK FROM THE NODE. This will be a sim clock.
+    auto sim_clock = node->get_clock();
+    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info); // Robot model name and obstacle radius
 
     auto visualizer = std::make_shared<RVizVisualization>(node);
 

@@ -5,6 +5,7 @@ FMTNode::FMTNode(std::shared_ptr<State> state, int index)
     : state_(state),
       index_(index),
       cost_(INFINITY),
+      time_to_goal_(INFINITY),
       heuristic_(0.0),
       in_queue_(false),
       heap_index_(-1),
@@ -103,3 +104,7 @@ void FMTNode::cacheHeuristic(double h) {
     heuristic_cached_ = true;
 }
 bool FMTNode::isHeuristicCached() const { return heuristic_cached_; }
+
+
+double FMTNode::getTimeToGoal() const noexcept { return time_to_goal_; }
+void FMTNode::setTimeToGoal(double time) noexcept { time_to_goal_ = time; }

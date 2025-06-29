@@ -1,12 +1,12 @@
 // Copyright 2025 Soheil E.nia
-#include "motion_planning/planners/geometric/fmtx.hpp"
+#include "motion_planning/planners/kinodynamic/kinodynamic_fmtx.hpp"
 
-FMTX::FMTX(std::shared_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(statespace), problem_(problem_def), obs_checker_(obs_checker) {
-    std::cout<< "FMTX Constructor \n";
+KinodynamicFMTX::KinodynamicFMTX(std::shared_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(statespace), problem_(problem_def), obs_checker_(obs_checker) {
+    std::cout<< "KinodynamicFMTX Constructor \n";
 
 }
 
-void FMTX::clearPlannerState() {
+void KinodynamicFMTX::clearPlannerState() {
 
     v_open_heap_.clear(); //This function also makes the in_queue false so remember to clean it before deleting the node by node.reset()
     // // Step 1: Nullify all raw pointers --> or else if you only use tree_.clear() you have dangling pointers for parent_ and children_ that do not exist now!
@@ -27,7 +27,7 @@ void FMTX::clearPlannerState() {
 }
 
 
-void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
+void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
     auto start = std::chrono::high_resolution_clock::now();
     clearPlannerState();
     visualization_ = visualization;
@@ -39,33 +39,38 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     ignore_sample = params.getParam<bool>("ignore_sample");
     prune = params.getParam<bool>("prune");
     obs_cache = params.getParam<bool>("obs_cache");
-    lower_bound_ = problem_->getLowerBound()[0];
-    upper_bound_ = problem_->getUpperBound()[0];
+    lower_bounds_ = problem_->getLowerBound();
+    upper_bounds_ = problem_->getUpperBound();
     use_kdtree = params.getParam<bool>("use_kdtree");
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
 
 
-    if (use_kdtree == true && kdtree_type == "NanoFlann")
-        kdtree_ = std::make_shared<NanoFlann>(statespace_->getDimension());
-    else
-        throw std::runtime_error("Unknown KD-Tree type");
 
-
-
+    if (use_kdtree == true && kdtree_type == "NanoFlann"){
+        // Assuming DubinsTimeStateSpace which is 4D with weights
+        Eigen::VectorXd weights(4);
+        // weights << 1.0, 1.0, 0.4, 0.8; // Weights for x, y, theta, time
+        weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
+        kdtree_ = std::make_shared<WeightedNanoFlann>(statespace_->getDimension(), weights);
+    } else if (use_kdtree == true && kdtree_type == "LieKDTree"){
+        kdtree_ = std::make_unique<LieSplittingKDTree>(statespace_->getDimension(), statespace_);
+    } else {
+        throw std::runtime_error("FMTX requires a KD-Tree.");
+    }
     std::cout << "num_of_samples=" << num_of_samples_
-                << ", bounds=[" << lower_bound_ << ", " << upper_bound_ << "]\n";
+                << ", bounds=[" << lower_bounds_ << ", " << upper_bounds_ << "]\n";
 
 
     std::cout << "Taking care of the samples: \n \n";
     setStart(problem_->getStart());
     for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
-        auto node = std::make_shared<FMTNode>(statespace_->sampleUniform(lower_bound_ , upper_bound_),tree_.size());
+        auto node = std::make_shared<FMTNode>(statespace_->sampleUniform(lower_bounds_ , upper_bounds_),tree_.size());
         node->in_unvisited_ = true;
         tree_.push_back(node);
     }
     setGoal(problem_->getGoal());
 
-
+    std::cout<<statespace_->getSamplesCopy()<<"\n";
     std::cout << "KDTree: \n\n";
     if (use_kdtree == true) {
         // Put all the points at once because fmtx doesnt need incremental addition
@@ -76,11 +81,16 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
 
     ///////////////////Neighborhood Radius////////////////////////////////
     int d = statespace_->getDimension();
-    mu = std::pow(problem_->getUpperBound()[0] - problem_->getLowerBound()[0] , 2);
+    // mu = std::pow(problem_->getUpperBound()[0] - problem_->getLowerBound()[0] , 2);
+    Eigen::VectorXd range = upper_bounds_ - lower_bounds_;
+    double mu = range.prod(); // .prod() computes the product of all coefficients
+    std::cout<<"mu "<<mu<<"\n";
     zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
     // gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
     gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
 
+
+    
     factor = params.getParam<double>("factor");
     std::cout<<"factor: "<<factor<<"\n";
     neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
@@ -97,364 +107,143 @@ void FMTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
 
 }
 
-void FMTX::plan() {
 
-    // visualizeHeapAndUnvisited();
-
-    std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache;
-    int uncached = 0;
-    int cached = 0;
-    // int checks = 0;
-    // std::unordered_map<FMTNode*, bool> costUpdated;
-    /*
-        We go until the heap is empty and the top expansion node has the g_value thats less than the robot's current node g_value because why would we waste time exploring past that!
-        also we consider if the g_value of the robot is infinity we need to keep poping heap nodes in the hope it reaches the robot
-        or if the robot node is in v_unvistited node which has the same meaning as the cost inf so it maybe redundant
-        also if the robot is in heap (queue) we contine poping ---> can't remeber the reason i did this!
-
-        partial_update flag is a convenient bool to just deactivate those conditions!
-
-        I remember I used to put those conditions in an if with a break and i did clean the heap in that if condition but here i preserve the heap because 
-        it might be useful later in case we need an expansion
-    
-    */
-
-    // std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
+void KinodynamicFMTX::plan() {
+    std::unordered_map<FMTNode*, bool> costUpdated;
+    int checks = 0;
     while (!v_open_heap_.empty() &&
            (partial_update ? (v_open_heap_.top().first < robot_node_->getCost() ||
-            robot_node_->getCost() == INFINITY || //I think the above condtion also covers this because if the cost is inf the heap pops till the end because the above condition would be always true
-            robot_node_->in_queue_==true)  : true  )){
+                               robot_node_->getCost() == INFINITY || robot_node_->in_queue_ == true) : true)) {
 
-
-
-
+        // visualizeHeapAndUnvisited();
+        // Get the node with the lowest cost from the priority queue.
+        // FMTNode* z = v_open_heap_.top(); // .pop() also sets z->in_queue_ = false;
 
         auto top_element = v_open_heap_.top();
         double cost = top_element.first;  // Changed .min_key to .first
         FMTNode* z = top_element.second;  // Changed .index to .second
         int zIndex = z->getIndex();
-        // std::cout<<"current z "<< zIndex<<"\n";
-        // std::cout<<"current z pos "<< z->getStateValue()<<"\n";
 
-        // std::vector<Eigen::VectorXd> nodes;
-        // nodes.push_back(z->getStateValue());
-        // visualization_->visualizeNodes(nodes, "map", 
-        //         std::vector<float>{1.0f, 1.0f, 0.0f},
-        //         "z");
-        // if(in_dynamic) std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        /*
-            We find z node's (which at first is the root node and later it could be anything) neighbor and use kd tree to find and cache them 
-            and after that we are safe to use z->neighbors() 
-        */
-        near(zIndex);
-        for (const auto& [x, cost_to_neighbor] : z->neighbors()) {
-            int xIndex = x->getIndex(); // As I refactor the code I don't need to use xIndex anymore but I still need som refactoring.
+        // Find neighbors for z if they haven't been found yet.
+        near(z->getIndex());
+        
+        // --- STAGE 1: IDENTIFY POTENTIALLY SUBOPTIMAL NEIGHBORS ---
+        // Iterate through all neighbors 'x' of the expanding node 'z'.
+        for (auto& [x, edge_info_from_z] : z->neighbors()) {
+            // if (zIndex==2 && x->getIndex()==3){
+            //     std::cout<<"here \n";
+            //     std::cout<<"z: "<<z->getStateValue()<<"\n";
+            //     std::cout<<"x: "<<x->getStateValue()<<"\n";
+            // } 
+            // The edge we care about is from child 'x' to parent 'z' in our backward search.
+            // The authoritative trajectory is stored in the child's (x's) map for that edge.
+            near(x->getIndex()); // Ensure x's neighbor map is initialized.
+            auto& edge_info_from_x = x->neighbors().at(z);
 
-            /*
-                About the following if:
-                This trick actually enables us to only track changes in the update obstalce otherwise we have to use the 
-                current nodes instead of added in the handle add obstalce or the other way is to check all the edges around 
-                added obstalce for obstalce
-
-                I also added this feature to rrtx so we have a fair comparison between these two if we use ignore_sample==true 
-
-                to give some information when we use ignore_sample we are actually ignoring to update the nodes around obstalce. 
-                the nodes that we ignore is the minimum amount of nodes that is essential based on the worst case formula:
-
-                sqrt(radius of obstalce ^2 + (max_length/2)^2 ) 
-
-                why max_length/2 ?? because the worst case happens when an edge is tangent to the circle obstalce and half of edge is on the upper semicricle and half is down
-                imagine the left is max_edge and the right is a circle
-
-                    |◯
-
-                Now using Pythagorean Theorem you can find the amount of length you need to provide for the kd tree radius search to include at least one of those nodes
-                Other if that line is slightly up the lower node will be catched by the kd tree radius search
-
-
-            */
-            if (ignore_sample==true && samples_in_obstacles_.find(xIndex) != samples_in_obstacles_.end()){
+            // Compute the kinodynamic path only once and cache it.
+            if (!edge_info_from_x.is_trajectory_computed) {
+                edge_info_from_x.cached_trajectory = statespace_->steer(x->getStateValue(), z->getStateValue());
+                edge_info_from_x.is_trajectory_computed = true;
+            }
+            const Trajectory& traj_xz = edge_info_from_x.cached_trajectory;
+            if (!traj_xz.is_valid) {
+                // std::cout<<"INVALID \n";
                 continue;
             }
 
-            /*
-                the first condition below is from fmt 
-                and the second is what i added to enable rewiring
-                the second if is mainly gonna be used when we remove obstalce
-                other wise when we addObstacle we specifically find the nodes that we should put in vUnvisited because before
-                adding obstacle we have a tree and we can find the descendant using depth first search to orphan all the affected nodes
-                but when we remove obstacle we can only put the direct nodes that are now off the obstacle into vunvisited and put their surrounding into vopen
-                and rely on the second condition below to correct the nodes as we go downstream
-                There is an important concept that you need to understand that there is a fundamental difference between adding obstacle and removing obstacle
-                I explained this in the handleAddobstalce function but one thing you need to know is when adding obstacle the leaf nodes might get connected to other side branches 
-                (the plier example) but in remove obstalce its not happening because remove obstalce surely reduces cost for some nodes so the update down stream surely connect to the branch
-                thats being updated through the immediate nodes that are now free of obstacle. but in add obstalce the cost for some nodes is gonna go up so they might decide to attach themselves 
-                to other branches to have a lower cost
-
-                10K nodes static env using dynamic_world.sdf without hitting play and commenting the update function and the static plan before the loop: and making the simulation is pause false
-                    checks: 8989
-                    Time taken for the update : 786 milliseconds
-               
-                and with using the second condtion:
-                    checks: 8989
-                    Time taken for the update : 798 milliseconds
-
-                so it took the same amount! so no burden in the static case. I also tested 1000 and 500 nodes and they both took the same amount
-                I thought maybe it would add a little burden of rewiring the already updated nodes in the static case but it didn't maybe because 
-                Well i guess the reason is that condtion also relies on z node which we are losing as we go. I thought maybe this condtion would
-                help the lack of ability of fmt to completely find optimal solution in low sample case but it doesnt which is good at least i don't
-                have to worry about theretical stuff and that condtion serves its purpose in the remove obstacle case.
-
-                Also on another note mind that we are not assigning the nodes that satisfy the second condtion to anything or obsolete them beforhand so they are either getting updated or keep their last parent/cost/children
-                this might create confusion but if you think about it its okay! to give an exmaple imgaine second if condtion is satisfied for some node that has a parent and children
-                and then it gets to be updated in the cost update procedure after obstalce check. then one should setParent either to a new parent or its old parent (the old parent also happens but obviously the cost of that parent has changed beforehand)
-                setParent takes care of connecting the x node to the newParent and remove that x as the child of old parent but how about x's children?
-                x node obviously might have had some children that we are not removing! but we don't need to because as the update goes the setParent takes care of those mentioned children one by one
-                because they are downstream nodes and they get updated any way on the next z node pop and update procedure, UNTIL you reach the robot and then you might see some inconsistency (visually) that happens after that
-                which is also okay because if you move the robot using MOUSE in gazebo you can see they also CAN get updated but we don't need to update that because we are using early exit!
-
-
-                I TESTED AGAIN AND ONLY THE OBSTALCE CHECKS AND ONLY USING UNVISITED CONDTION ONCE AND COST FUNCTION ONCE SO THE ABOVE COMMENTS ARE OUTDATED AND THE TEST IT SELF MIGHT EVEN BE WRONG BUT THE COMMENTS ARE OKAY TO READ
-                10k nodes:
-
-                checks: 152973 obstacle checks --> using only unvisited condition
-                    Time taken for the update : 786 milliseconds
-               
-                and with using the second condtion:
-                    checks: 152973 obstacle checks --> using only the cost condition
-                    Time taken for the update : 798 milliseconds
-
-            */ 
-            // if(x->getIndex()==15 || x->getIndex()==908 || x->getIndex()==753)
-            //     std::cout<<x->getIndex() <<" "<<x->getStateValue() <<"\n";
-            // if (x->in_unvisited_==true  ){
-            if (x->getCost() > (z->getCost() + cost_to_neighbor.distance ) ){ // THE REASON I DITCHED THE x->in_unvisited_==true CONDTION IS USING COST IS IN PAR WITH MAKING THE EDGE DISTANCE TO INF AND I DON'T HAVE TO TAKE CARE OF UNVISTED ON TOP OF IT WHICH IS TIME CONSUMING AND ALSO NOT CLEAN AND REDUNDANT IN MY CASE!
-                // if(x->getIndex()==15 || x->getIndex()==908 || x->getIndex()==753)
-                //     std::cout<<"here \n";
-                // std::vector<Eigen::VectorXd> nodes;
-                // if (costUpdated[x]) {
-                //     std::cout<<"Node " << xIndex 
-                //         << " is about to be updated a second time! "
-                //         "previous cost = " << x->getCost() << "\n";
-
-                //     // nodes.push_back(x->getStateValue());
-                //     // nodes.push_back(x->getParent()->getStateValue());
-
-                // }
-
-
-                // std::cout<<x->getCost()<<"\n";
-                // checks++;
-                near(xIndex);
-                double min_cost = std::numeric_limits<double>::infinity(); //the above condtion doesnt let it come after x got its optimal cost after being inf/sub-optimal so no need for the next line but lets leave it for safety until i can have solid math proof
-                // double min_cost = x->getCost(); // Because x might have a cost it self and even if it doesnt its INFINITY by default in the FMTNode CLass
-                FMTNode* best_neighbor_node = nullptr;
-                double best_edge_length = 0.0;
-                // EdgeInfo best_edge_info;
-                /* 
-                    out of those nodes that are near to x, which are also in vopen heap, which has the lowest g_value (cost to come in the paper)
-                    this is also the place where you can ignore the blocked best neighbors if you wanna use heuristic otherwise its not necessary
-                
-                */
-                
-                for (const auto& [neighbor, dist] : x->neighbors()) {
-                    // if(use_heuristic==true && x->blocked_best_neighbors.count(neighbor->getIndex()) > 0)
-                        // continue;
-
-                    if (neighbor->in_queue_) {
-                        const double total_cost = neighbor->getCost() + dist.distance;
-                        if (total_cost < min_cost) {
-                            min_cost = total_cost;
-                            best_neighbor_node = neighbor;
-                            best_edge_length = dist.distance;
-                            // best_edge_info = dist;
-                        }
-                    }
-                }
-                // if(best_neighbor_node!=z)
-                //     std::cout<<"best is not z \n";
-                // else
-                //     std::cout<<"best is z \n";
-
-                // if (!best_neighbor_node || best_edge_info.distance ==INFINITY) {
-                //     continue;
-                // }
-                if (!best_neighbor_node ) {
-                    continue;
-                }
-                // if (costUpdated[x]) {
-                //     std::cout<<"Node " << xIndex 
-                //         << "  updated a second time! "
-                //         "new cost = " << min_cost << "\n";
+            // --- THE TRIGGER CONDITION ---
+            // Calculate the potential cost for 'x' if it were to connect through 'z'.
+            double cost_via_z = z->getCost() + traj_xz.cost;
+            // if (!traj_xz.is_valid){
+            //     cost_via_z = z->getCost() + edge_info_from_z.distance;
+            // } 
+            // This condition is the core of FMTX. It serves two purposes:
+            // 1. If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
+            // 2. If x is already connected, this condition acts as a "witness" that a better path *might* exist.
+            //    It proves x's current cost is suboptimal and justifies the more expensive search that follows.
+            if (x->getCost() > cost_via_z) {
+                if (costUpdated[x]) {
+                    // std::cout<<"Node " << x->getIndex() 
+                    //     << " is about to be updated a second time! "
+                    //     "previous cost = " << x->getCost() << "\n";
                     
-                //     // nodes.push_back(best_neighbor_node->getStateValue());
-                //     // std::cout<<"x: "<< x->getIndex()<<"\n";
-                //     // std::cout<<"old parent(x): "<< x->getParent()->getIndex()<<"\n";
-                //     // std::cout<<"newParent: "<< best_neighbor_node->getIndex()<<"\n";
-                //     // std::cout<<"x: "<< x->getStateValue()<<"\n";
-                //     // std::cout<<"old parent(x): "<< x->getParent()->getStateValue()<<"\n";
-                //     // std::cout<<"newParent: "<< best_neighbor_node->getStateValue()<<"\n";
-                //     // // visualization_->visualizeNodes(nodes);
-                //     // visualization_->visualizeNodes(nodes, "map", 
-                //     //         std::vector<float>{1.0f, 0.0f, 1.0f},
-                //     //         "mess");
-                // }
+                    checks++;
 
-                int best_neighbor_index = best_neighbor_node->getIndex();
+                } 
+                // --- STAGE 2: SEARCH FOR THE TRUE BEST PARENT ---
+                // 'x' is suboptimal. We now search for its true best parent among ALL its neighbors
+                // that are currently in the open set.
+                double min_cost_for_x = std::numeric_limits<double>::infinity();
+                FMTNode* best_parent_for_x = nullptr;
+                Trajectory best_traj_for_x;
+                // std::cout<<x->getIndex()<<"\n";
+                // if(x->getIndex()==3)
+                //     std::cout<<"\n";
+                // std::cout<<"----\n";
+                for (auto& [y, edge_info_xy] : x->neighbors()) {
+                    // std::cout<<y->getIndex()<<"\n";
+                    // std::cout<<"----\n";
+                    if (y->in_queue_) { // We only consider parents that are in V_open.
+                        // Steer from child 'x' to potential parent 'y'. Reuse cached trajectory if possible.
+                        if (!edge_info_xy.is_trajectory_computed) {
+                            edge_info_xy.cached_trajectory = statespace_->steer(x->getStateValue(), y->getStateValue());
+                            edge_info_xy.is_trajectory_computed = true;
+                        }
 
-                // checks++;
-
-                bool obstacle_free;
-                // // Create a key for the cache
-                // if (obs_cache == true) {
-                //     // Create a key for the cache
-                //     auto edge_key = (best_neighbor_index < xIndex) ? std::make_pair(best_neighbor_index, xIndex) : std::make_pair(xIndex, best_neighbor_index);
-
-                //     // Check if the obstacle check result is already in the cache
-                //     if (obstacle_check_cache.find(edge_key) != obstacle_check_cache.end()) {
-                //         obstacle_free = obstacle_check_cache[edge_key];
-                //         cached++;
-                //     } else {
-                //         // Perform the obstacle check and store the result in the cache
-                //         obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
-                //         obstacle_check_cache[edge_key] = obstacle_free;
-                //         uncached++;
-                //     }
-                // }
-                // else { //SOMETIMES BEST_NEIGHBOR_INDEX is -1 which means all the Ynear nodes has inf cost --> inf cost means its either samples_in_obstalces or vUnvisted or it was made to inf in the handleAddObstalce! --> THESE nodes shouldn't be in vOpen --> sometimes a node lingers in vOpen because of early exit so you have to erase it in handleAddObstalce or you have to check some ifs in Ynear node push_back!
-                //     obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
-                // }
-
-         
-                bool perform_check = false;
-                if (in_dynamic == false) { // Initial static planning phase
-                    perform_check = true;
-                } else { // Dynamic update phase
-                    /*
-                        Prune false means we are not using the rrtx like explicit obstacle check in the handle add and remove obstacle  
-                        and delay that to plan() function which i don't think its good because obstalce check is only necessary in obstalce
-                        surrounding and we can rely on distance inf and cost propagation or else we have to obstalce check the whole orphaned region which is aligned with 
-                        fmt philosiphy and frankly has a better time compleixity!
-                        for example for one obstalce:
-                            RRTX --> O(nodes with edge on obstlace * log(n)) --> log(n) is for average number of neighbors in sampling based planning! ---> worst would be O(n log(n))
-                            FMTX ---> O(orphan nodes) ---> worse would be O(n) obstacle checks
-                    */
-
-                    if (prune == false) { // If not pruning, we must check dynamically
-                        perform_check = true;
-                    } else {
-                        // If pruning is enabled during dynamic updates,
-                        // assume edges made invalid by obstacles were already handled (e.g., cost set to INF).
-                        // So, any edge considered here that doesn't have an INF cost is presumed free.
-                        obstacle_free = true; // Relies on prior pruning
+                        if (edge_info_xy.cached_trajectory.is_valid) {
+                            double cost_via_y = y->getCost() + edge_info_xy.cached_trajectory.cost;
+                            if (cost_via_y < min_cost_for_x) {
+                                min_cost_for_x = cost_via_y;
+                                best_parent_for_x = y;
+                                best_traj_for_x = edge_info_xy.cached_trajectory;
+                            }
+                        }
                     }
                 }
+                if (costUpdated[x]) {
+                    // std::cout<<"Node " << x->getIndex() 
+                    //     << "  updated a second time! "
+                    //     "new cost = " << min_cost_for_x << "\n";
+                }
 
-                if (perform_check) {
-                    if (obs_cache == true) {
-                        // Ensure indices are valid before creating a key
-                        int current_x_index = x->getIndex(); // Assuming x is always valid
-                        int best_neighbor_node_index = best_neighbor_node->getIndex();
+                // --- STAGE 3: UPDATE (if a better parent was found) ---
+                if (best_parent_for_x != nullptr) {
+                    
+                    // Perform the expensive collision check ONLY for the best candidate path.
+                    bool obstacle_free = obs_checker_->isObstacleFree(best_traj_for_x.path_points);
 
-                        // Standardize key creation
-                        auto edge_key = (best_neighbor_node_index < current_x_index) ? 
-                                        std::make_pair(best_neighbor_node_index, current_x_index) : 
-                                        std::make_pair(current_x_index, best_neighbor_node_index);
+                    if (obstacle_free) {
+                        costUpdated[x] = true;   // mark “done once”
+                        // // The connection is valid and locally optimal. Update the tree and priority queue.
+                        // std::cout<<"-------\n";
+                        // std::cout<<"index: "<<x->getIndex()<<"\n";
+                        // std::cout<<"state: "<<x->getStateValue()<<"\n";
+                        // std::cout<<"cost: "<<min_cost_for_x<<"\n";
+                        // std::cout<<"-------\n";
+                        x->setCost(min_cost_for_x);
+                        x->setParent(best_parent_for_x, best_traj_for_x.cost);
 
-                        auto cache_it = obstacle_check_cache.find(edge_key);
-                        if (cache_it != obstacle_check_cache.end()) {
-                            obstacle_free = cache_it->second;
-                            cached++;
+                        double h_value = use_heuristic ? heuristic(x->getIndex()) : 0.0;
+                        double priorityCost = x->getCost() + h_value;
+
+                        if (x->in_queue_) {
+                            v_open_heap_.update(x, priorityCost);
                         } else {
-                            obstacle_free = obs_checker_->isObstacleFree(x->getStateValue(), best_neighbor_node->getStateValue());
-                            obstacle_check_cache[edge_key] = obstacle_free;
-                            uncached++;
+                            v_open_heap_.add(x, priorityCost); // add() also sets in_queue_ = true
                         }
-                    } else { // No obstacle caching
-                        obstacle_free = obs_checker_->isObstacleFree(x->getStateValue(), best_neighbor_node->getStateValue());
                     }
                 }
-
-
-                /*
-                    Mind that because of the second condtion that I've added we might re-update (re-wire) some already updated nodes and
-                    it happens solely in the remove obstacle case. I thought maybe it would also happen in regular static case but the test diidn't show anything
-
-                    There is also another case where the same parent with the same cost happens and the reason is putting removed obstalce nodes in v unvisted!
-                    you either have to use newCost-0.00001 < x->getCost() or not put nodes in v unvisted in remove obstacle
-
-                    there are so many combinations like i can decide to not set the in_unvisted to true even! like not setting anything but i have
-                    to be carefull to not put the orphan nodes in the heap somehow by using the orphan index it self instead of v unvisted ! but does that cause other issues? this is delicate!
-                    well off the top of my head not using in_unvisted as a condtion in the for loop of heap addition is not good because that loop need to have access to all the unvisted nodes globally!
-                    to not put any of them in the heap!
-
-                    better option maybe is to put that in the unvisted more carefully instead of putting all the removed in the unvisited!
-
-                */
-
-                if (obstacle_free) {
-                    double newCost = min_cost;
-                    // if (newCost < x->getCost()) { // Seems like we don't need this if condtion!(if you think about it its redundant) because newCost is indeed less than x->getCost()
-                        // if (use_heuristic==true) x->blocked_best_neighbors.clear(); // Well if x is connected then i don't care about neighbors that can't be connected so what a better place to clearing them than here. this is for when you use heuristic
-                        x->setCost(newCost);
-                        // costUpdated[x] = true;   // mark “done once”
-                        double h_value = use_heuristic ? heuristic(xIndex) : 0.0;
-                        double priorityCost = newCost + h_value;
-                        // QueueElement2 new_element = {priorityCost, xIndex};
-                        if (x->in_queue_ == true){
-                            v_open_heap_.update(x,priorityCost);
-                        } else{
-                            v_open_heap_.add(x,priorityCost);
-                            // x->in_queue_ = true;
-                        }
-
-                        /*
-                            //IMPORTANT CONCEPT --> sometimes x's parent is the same as best_neighbor_node so why did we end up here? because the parent's cost has changed because of my new condtion that i put there!!!! (it obviouly happens in remove obstalce case)
-                            setParent: 
-                                so its either the same parent with new cost! --> due to the secoond if condtion --> so no need to change the children
-                                or a new parent with new cost! --> we need to set the parent and children
-                                or the same parent with the same cost!  ---> we can early return in the setParent
-                            
-                                The if condition im talking about is " x->getCost() > (z->getCost() + cost_to_neighbor.distance" 
-                        */
-
-                        x->setParent(best_neighbor_node,best_edge_length); 
-                        // x->getChildrenMutable().clear(); // We don't need to do this even though at this current iteration this node has children but they will be removed as we iterate by the setParent function
-                        edge_length_[xIndex] = best_edge_length;
-                        x->in_unvisited_=false; // I use this only when i want to test if my x_cost condtion yeilds the same number of checks as the x_unvisted check --> you can uncomment the line above my cost condtion and also the cout at the end of the function 
-
-                    // }
-                }
-                // else{
-                //     /*
-                //         Tracking the following set doesn put much performance issues as i tested with 20K nodes and the uupdate time was almost identical
-                //         This set enables us to use A* heuristic if we want
-                //     */
-                //     if (use_heuristic==true) {
-                //         x->blocked_best_neighbors.insert(best_neighbor_index);
-                //     }
-                // }
-            }
-        }
-
+            } // End of STAGE 2/3 trigger
+            // visualizeTree();
+            // std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        } // End of STAGE 1 loop
         v_open_heap_.pop();
-        // z->in_queue_=false;
-        z->in_unvisited_ =false;
-        // visualizeTree();
+        visualizeTree();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    }
-
-    /*
-        Don't be tempted to clear the vopen heap after the loop because of the early exit! those frontiers in vopen are important in case the robot needs a detour from that speicifc side where those vopens are!
-    */
-
-    // std::cout<<" checks: "<< checks <<"\n";
-    // std::cout<<" uncached: "<< uncached<<"\n";
-    // std::cout<<" cached: "<< cached <<"\n";
+    } // End of while loop
+    std::cout<<"REVISITS: "<<checks<<"\n";
 }
-
-
 
 
 /*
@@ -462,17 +251,39 @@ void FMTX::plan() {
     WHEN KD TREE PROVIDES DISTANCE WHY DO YOU CALC DISTS AGAIN IN BELOW! --> ALSO DO THIS FOR RRTX  ---->
     Im not gonna use distance of kd tree for now because i don't know about other kd tree implementations
 */
-void FMTX::near(int node_index) {
-    auto node = tree_[node_index].get();
-    if (!node->neighbors().empty()) return;
+// void KinodynamicFMTX::near(int node_index) {
+//     auto node = tree_[node_index].get();
+//     if (!node->neighbors().empty()) return;
 
-    auto indices = kdtree_->radiusSearch(node->getStateValue(), neighborhood_radius_); 
-    for(int idx : indices) {
-        if(idx == node->getIndex()) continue;
+//     auto indices = kdtree_->radiusSearch(node->getStateValue(), neighborhood_radius_); 
+//     for(int idx : indices) {
+//         if(idx == node->getIndex()) continue;
+//         FMTNode* neighbor = tree_[idx].get();
+//         auto dist = (node->getStateValue() - neighbor->getStateValue()).norm();
+//         node->neighbors()[neighbor] = EdgeInfo{dist,dist}; // The first is for distance and the second is for distance_original so that we have a cache incase we want to reset the obsoleted edges to correct distance (used in prune==true case)
+//     }
+// }
+
+
+// Finds potential neighbors but does not calculate final cost.
+void KinodynamicFMTX::near(int node_index) {
+    auto node = tree_[node_index].get();
+    if (node->neighbors_cached_) return;
+
+    auto indices = kdtree_->radiusSearch(node->getStateValue(), neighborhood_radius_);
+    for (int idx : indices) {
+        if (idx == node_index) continue;
         FMTNode* neighbor = tree_[idx].get();
-        auto dist = (node->getStateValue() - neighbor->getStateValue()).norm();
-        node->neighbors()[neighbor] = EdgeInfo{dist,dist}; // The first is for distance and the second is for distance_original so that we have a cache incase we want to reset the obsoleted edges to correct distance (used in prune==true case)
+        // Initialize EdgeInfo without a computed trajectory.
+        // The geometric distance is just a placeholder.
+        double geometric_dist = (node->getStateValue().head<2>() - neighbor->getStateValue().head<2>()).norm();
+        
+        // Symmetrically add neighbor relationship
+        node->neighbors()[neighbor] = EdgeInfo{geometric_dist, geometric_dist, false, Trajectory(), false};
+        neighbor->neighbors()[node] = EdgeInfo{geometric_dist, geometric_dist, false, Trajectory(), false};
+
     }
+    node->neighbors_cached_ = true;
 }
 
 
@@ -483,7 +294,7 @@ void FMTX::near(int node_index) {
     this is minimum amount needed to cover all the potential colliding edges and it lower than rrtx paper and better
 */
 
-std::unordered_set<int> FMTX::findSamplesNearObstacles(
+std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
     const std::vector<Obstacle>& obstacles, 
     double max_length
 ) {
@@ -522,7 +333,7 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
         }
         
         double search_radius = std::sqrt(
-            std::pow(2*obstacle_radius, 2) + 
+            std::pow(obstacle_radius, 2) + 
             std::pow(max_length / 2.0, 2)
         );
         
@@ -539,7 +350,7 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
     the reason to use this is to make some part of the code faster because if you have distinction on what nodes are exactlyon obstalce and what are the nodes that are also on obstalce and surrouning then
     you can use that to your advantage
 */
-std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNearObstaclesDual(
+std::pair<std::unordered_set<int>, std::unordered_set<int>> KinodynamicFMTX::findSamplesNearObstaclesDual(
     const std::vector<Obstacle>& obstacles, 
     double max_length
 ) {
@@ -606,7 +417,7 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNea
 
 */
 
-void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+void KinodynamicFMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
     in_dynamic = true;
 
     /*
@@ -869,7 +680,7 @@ void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
   
 // }
 
-void FMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) { // Renamed 'added' to 'added_indices' for clarity
+void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) { // Renamed 'added' to 'added_indices' for clarity
     std::unordered_set<int> nodes_to_make_orphan_and_process_neighbors; // Nodes whose state changed to trigger neighbor queueing
 
     for (int idx : added_indices) {
@@ -989,7 +800,7 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) { /
 
 
 
-void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
+void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
     for (const auto& node_index : removed) {
         auto node = tree_[node_index].get();
         /*
@@ -1077,7 +888,7 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 
-double FMTX::heuristic(int current_index) {
+double KinodynamicFMTX::heuristic(int current_index) {
     Eigen::VectorXd current_position = tree_.at(current_index)->getStateValue();
     Eigen::VectorXd goal_position = tree_.at(robot_state_index_)->getStateValue();
     return (goal_position-current_position).norm();
@@ -1085,7 +896,7 @@ double FMTX::heuristic(int current_index) {
 
 
 
-std::vector<size_t> FMTX::getPathIndex() const {
+std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
     int idx = robot_state_index_;
     std::vector<size_t> path_index;
     while (idx != -1) {
@@ -1095,7 +906,7 @@ std::vector<size_t> FMTX::getPathIndex() const {
     return path_index;
 }
 
-std::vector<Eigen::VectorXd> FMTX::getPathPositions() const {
+std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const {
     std::vector<Eigen::VectorXd> path_positions;
 
     if (robot_node_ != nullptr) {
@@ -1113,61 +924,145 @@ std::vector<Eigen::VectorXd> FMTX::getPathPositions() const {
     return path_positions;
 }
 
-void FMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
-    robot_position_ = robot_position;
+// void KinodynamicFMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
+//     robot_position_ = robot_position;
 
+//     const double MAX_SEARCH_RADIUS = 5.0; // Meters
+//     std::vector<size_t> nearest_indices = kdtree_->radiusSearch(robot_position, MAX_SEARCH_RADIUS);
+
+//     size_t best_index = std::numeric_limits<size_t>::max(); 
+//     double min_total_cost = std::numeric_limits<double>::max();
+//     FMTNode* best_node = nullptr; 
+
+//     for (size_t index : nearest_indices) {
+//         auto node = tree_.at(index).get();
+//         if (node->getCost() == std::numeric_limits<double>::infinity()) continue;
+
+//         Eigen::VectorXd node_position = node->getStateValue();
+//         double dx = node_position[0] - robot_position[0];
+//         double dy = node_position[1] - robot_position[1];
+//         double distance_to_node = std::hypot(dx, dy);
+
+//         double total_cost = distance_to_node + node->getCost();
+
+//         if (total_cost < min_total_cost) {
+//             min_total_cost = total_cost;
+//             best_index = index;
+//             best_node = node;
+//         }
+//     }
+
+//     if (best_index != std::numeric_limits<size_t>::max()) {
+//         robot_state_index_ = best_node->getIndex();
+//         robot_node_ = best_node;
+//         return;
+//     }
+
+//     bool keep_prev_state_ = false;
+//     if (robot_node_ && keep_prev_state_ == true) {
+//         std::cout << "No valid node found in neighborhood. Keeping previous robot_node_.\n";
+//         return;
+//     }
+//     if (robot_node_) {
+//         std::cout << "No valid node found in neighborhood. Setting to nearest unvisited(cost=inf) node.\n";
+//         // so it must be on the vunvisted zones --> lets get the nearest vunvisted and then rely on plan function to reach there if it can!
+//         std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, 1);
+//         int nearest = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]);  
+//         robot_node_ = tree_.at(nearest).get();
+//         robot_state_index_ = robot_node_->getIndex();
+//         return;
+//     }
+
+//     robot_state_index_ = -1;
+//     robot_node_ = nullptr; 
+//     std::cout << "No valid node found and no previous robot_node_. Setting robot_node_ to nullptr.\n";
+// }
+
+// This function finds the best node in the existing tree to serve as the
+// parent for the robot's current real-time state. It kinodynamically "attaches"
+// the robot to the search graph.
+void KinodynamicFMTX::setRobotIndex(const Eigen::VectorXd& robot_state_4d) {
+    // Store the robot's current full 4D state
+    robot_position_ = robot_state_4d;
+
+    // Define a spatial radius to search for candidate nodes in the tree.
     const double MAX_SEARCH_RADIUS = 5.0; // Meters
-    std::vector<size_t> nearest_indices = kdtree_->radiusSearch(robot_position, MAX_SEARCH_RADIUS);
 
-    size_t best_index = std::numeric_limits<size_t>::max(); 
-    double min_total_cost = std::numeric_limits<double>::max();
-    FMTNode* best_node = nullptr; 
+    // Use the k-d tree to find a list of potential nodes near the robot.
+    // This is an efficient way to avoid checking every node in the tree.
+    std::vector<size_t> nearest_indices = kdtree_->radiusSearch(robot_state_4d, MAX_SEARCH_RADIUS);
 
+    size_t best_index = -1;
+    double min_total_cost = std::numeric_limits<double>::infinity();
+    FMTNode* best_node = nullptr;
+
+    // Iterate through the nearby candidate nodes to find the best connection point.
     for (size_t index : nearest_indices) {
         auto node = tree_.at(index).get();
-        if (node->getCost() == std::numeric_limits<double>::infinity()) continue;
+        
+        // Skip nodes that are not part of a valid path to the goal (e.g., orphaned nodes).
+        if (node->getCost() == std::numeric_limits<double>::infinity()) {
+            continue;
+        }
 
-        Eigen::VectorXd node_position = node->getStateValue();
-        double dx = node_position[0] - robot_position[0];
-        double dy = node_position[1] - robot_position[1];
-        double distance_to_node = std::hypot(dx, dy);
+        // --- KINODYNAMIC COST CALCULATION ---
+        // Calculate the true kinodynamic path and cost from the robot's current state
+        // to the candidate node in the tree.
+        Trajectory traj_to_node = statespace_->steer(robot_state_4d, node->getStateValue());
+        
+        // If a valid trajectory exists...
+        if (traj_to_node.is_valid) {
+            
+            // The total cost to the ultimate goal is the cost (time) to get from the robot to this node,
+            // PLUS the node's existing cost-to-goal (cost-to-root in our backward search).
+            double total_cost = traj_to_node.cost + node->getCost();
 
-        double total_cost = distance_to_node + node->getCost();
-
-        if (total_cost < min_total_cost) {
-            min_total_cost = total_cost;
-            best_index = index;
-            best_node = node;
+            // If this path is better than the best one we've found so far...
+            if (total_cost < min_total_cost) {
+                
+                // ...do a final check to ensure the connecting trajectory is collision-free.
+                if (obs_checker_->isObstacleFree(traj_to_node.path_points)) {
+                    // This is our new best connection.
+                    min_total_cost = total_cost;
+                    best_index = index;
+                    best_node = node;
+                }
+            }
         }
     }
 
-    if (best_index != std::numeric_limits<size_t>::max()) {
+    // After checking all candidates, if we found a valid best node, update the planner's state.
+    if (best_node != nullptr) {
         robot_state_index_ = best_node->getIndex();
         robot_node_ = best_node;
+        
+        // The robot's effective "cost-to-goal" is this newly calculated minimum total cost.
+        robot_node_->setCost(min_total_cost); 
         return;
     }
 
-    bool keep_prev_state_ = false;
-    if (robot_node_ && keep_prev_state_ == true) {
-        std::cout << "No valid node found in neighborhood. Keeping previous robot_node_.\n";
-        return;
-    }
-    if (robot_node_) {
-        std::cout << "No valid node found in neighborhood. Setting to nearest unvisited(cost=inf) node.\n";
-        // so it must be on the vunvisted zones --> lets get the nearest vunvisted and then rely on plan function to reach there if it can!
-        std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, 1);
-        int nearest = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]);  
+    // --- FALLBACK LOGIC ---
+    // This section is executed only if no valid, collision-free connection was found in the search radius.
+    std::cout << "WARN: No valid, reachable node found in the neighborhood. Using fallback." << std::endl;
+    
+    // As a last resort, find the single nearest node in the entire tree, regardless of cost or collisions.
+    // This prevents the planner from completely losing track of the robot.
+    std::vector<size_t> knn_indices = kdtree_->knnSearch(robot_state_4d, 1);
+    if (!knn_indices.empty()) {
+        int nearest = knn_indices[0];
         robot_node_ = tree_.at(nearest).get();
         robot_state_index_ = robot_node_->getIndex();
-        return;
+    } else {
+        // If the tree is empty or k-d tree fails, there's nothing we can do.
+        robot_state_index_ = -1;
+        robot_node_ = nullptr;
     }
-
-    robot_state_index_ = -1;
-    robot_node_ = nullptr; 
-    std::cout << "No valid node found and no previous robot_node_. Setting robot_node_ to nullptr.\n";
 }
 
-void FMTX::setStart(const Eigen::VectorXd& start) {
+
+
+
+void KinodynamicFMTX::setStart(const Eigen::VectorXd& start) {
     root_state_index_ = statespace_->getNumStates();
     auto node = std::make_shared<FMTNode>(statespace_->addState(start),tree_.size());
     node->setCost(0);
@@ -1176,23 +1071,23 @@ void FMTX::setStart(const Eigen::VectorXd& start) {
     // node->in_queue_ = true;
 
     tree_.push_back(node);
-    std::cout << "FMTX: Start node created on Index: " << robot_state_index_ << "\n";
+    std::cout << "KinodynamicFMTX: Start node created on Index: " << robot_state_index_ << "\n";
 }
-void FMTX::setGoal(const Eigen::VectorXd& goal) {
+void KinodynamicFMTX::setGoal(const Eigen::VectorXd& goal) {
     robot_state_index_ = statespace_->getNumStates();
     auto node = std::make_shared<FMTNode>(statespace_->addState(goal),tree_.size());
     node->in_unvisited_ = true;
 
     robot_node_ = node.get(); // Management of the node variable above will be done by the unique_ptr i'll send to tree_ below so robot_node_ is just using it!
     tree_.push_back(node);
-    std::cout << "FMTX: Goal node created on Index: " << root_state_index_ << "\n";
+    std::cout << "KinodynamicFMTX: Goal node created on Index: " << root_state_index_ << "\n";
 }
 
 
 
 
 
-std::unordered_set<int> FMTX::getDescendants(int node_index) {
+std::unordered_set<int> KinodynamicFMTX::getDescendants(int node_index) {
     std::unordered_set<int> descendants;
     std::queue<FMTNode*> queue;
     
@@ -1217,7 +1112,7 @@ std::unordered_set<int> FMTX::getDescendants(int node_index) {
 */
 
 
-// std::unordered_set<int> FMTX::getDescendants(int node_index) {
+// std::unordered_set<int> KinodynamicFMTX::getDescendants(int node_index) {
 //     std::unordered_set<int> descendants;
 //     std::queue<FMTNode*> queue;
 //     std::unordered_set<FMTNode*> processing; // Track nodes being processed
@@ -1292,7 +1187,7 @@ std::unordered_set<int> FMTX::getDescendants(int node_index) {
 
 
 
-std::vector<Eigen::VectorXd> FMTX::getSmoothedPathPositions(int num_intermediates, int smoothing_passes) const {
+std::vector<Eigen::VectorXd> KinodynamicFMTX::getSmoothedPathPositions(int num_intermediates, int smoothing_passes) const {
     // Check for invalid inputs
     if (num_intermediates < 1) {
         throw std::invalid_argument("num_intermediates must be at least 1");
@@ -1320,7 +1215,7 @@ std::vector<Eigen::VectorXd> FMTX::getSmoothedPathPositions(int num_intermediate
 }
 
 
-std::vector<Eigen::VectorXd> FMTX::interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const {
+std::vector<Eigen::VectorXd> KinodynamicFMTX::interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const {
     std::vector<Eigen::VectorXd> new_path;
 
     // Check for invalid inputs
@@ -1359,7 +1254,7 @@ std::vector<Eigen::VectorXd> FMTX::interpolatePath(const std::vector<Eigen::Vect
 }
 
 
-std::vector<Eigen::VectorXd> FMTX::smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const {
+std::vector<Eigen::VectorXd> KinodynamicFMTX::smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const {
     // Check for invalid inputs
     if (path.size() <= 2 || window_size < 1) {
         return path; // Return original path if no smoothing is needed
@@ -1390,72 +1285,112 @@ std::vector<Eigen::VectorXd> FMTX::smoothPath(const std::vector<Eigen::VectorXd>
     return smoothed_path;
 }
 
-void FMTX::visualizeTree() {
-    if (partial_plot==true) {
-        std::vector<Eigen::VectorXd> nodes;
-        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-        double goal_node_cost = tree_.at(robot_state_index_)->getCost();
+// void KinodynamicFMTX::visualizeTree() {
+//     if (partial_plot==true) {
+//         std::vector<Eigen::VectorXd> nodes;
+//         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+//         double goal_node_cost = tree_.at(robot_state_index_)->getCost();
         
-        // Create a set to store valid nodes based on cost
-        std::unordered_set<int> valid_node_indices;
+//         // Create a set to store valid nodes based on cost
+//         std::unordered_set<int> valid_node_indices;
 
-        // Collect valid nodes
-        for (size_t i = 0; i < tree_.size(); ++i) {
-            if (tree_[i]->getCost() <= goal_node_cost) {
-                nodes.push_back(tree_[i]->getStateValue());
-                valid_node_indices.insert(i);
-            }
-        }
+//         // Collect valid nodes
+//         for (size_t i = 0; i < tree_.size(); ++i) {
+//             if (tree_[i]->getCost() <= goal_node_cost) {
+//                 nodes.push_back(tree_[i]->getStateValue());
+//                 valid_node_indices.insert(i);
+//             }
+//         }
 
-        // Generate edges only for valid nodes
-        for (int index : valid_node_indices) {
-            int parent_index = tree_[index]->getParent()->getIndex();
-            if (parent_index != -1) {
-                edges.emplace_back(tree_.at(parent_index)->getStateValue(), tree_.at(index)->getStateValue());
-            }
-        }
-        // Visualize nodes and edges
-        // visualization_->visualizeNodes(nodes);
-        visualization_->visualizeEdges(edges);
-    }
-    else {
-        std::vector<Eigen::VectorXd> tree_nodes;
-        std::vector<Eigen::VectorXd> vopen_positions;
-        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+//         // Generate edges only for valid nodes
+//         for (int index : valid_node_indices) {
+//             int parent_index = tree_[index]->getParent()->getIndex();
+//             if (parent_index != -1) {
+//                 edges.emplace_back(tree_.at(parent_index)->getStateValue(), tree_.at(index)->getStateValue());
+//             }
+//         }
+//         // Visualize nodes and edges
+//         // visualization_->visualizeNodes(nodes);
+//         visualization_->visualizeEdges(edges);
+//     }
+//     else {
+//         std::vector<Eigen::VectorXd> tree_nodes;
+//         std::vector<Eigen::VectorXd> vopen_positions;
+//         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
 
     
-        for (const auto& tree_node : tree_) {
-            // Collect all tree nodes
-            tree_nodes.push_back(tree_node->getStateValue());
+//         for (const auto& tree_node : tree_) {
+//             // Collect all tree nodes
+//             tree_nodes.push_back(tree_node->getStateValue());
 
-            // Check if node is in vopen (in_queue_)
-            if (tree_node->in_queue_) {
-                vopen_positions.push_back(tree_node->getStateValue());
-            }
+//             // Check if node is in vopen (in_queue_)
+//             if (tree_node->in_queue_) {
+//                 vopen_positions.push_back(tree_node->getStateValue());
+//             }
 
-            // Collect edges
-            auto parent = tree_node->getParent();
-            if (parent) {
-                edges.emplace_back(parent->getStateValue(), tree_node->getStateValue());
+//             // Collect edges
+//             auto parent = tree_node->getParent();
+//             if (parent) {
+//                 edges.emplace_back(parent->getStateValue(), tree_node->getStateValue());
+//             }
+//         }
+    
+//         // // Visualize tree components
+//         // visualization_->visualizeNodes(tree_nodes, "map", 
+//         //                             std::vector<float>{1.0f, 0.0f, 0.0f},  // Red for tree
+//         //                             "tree_nodes");
+        
+//         // // Visualize vopen nodes with different color/namespace
+//         // visualization_->visualizeNodes(vopen_positions);
+
+//         // Visualize edges
+//         visualization_->visualizeEdges(edges, "map");
+//     }
+
+
+// }
+
+void KinodynamicFMTX::visualizeTree() {
+    // This function will now draw the true, curved Dubins paths.
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> curved_edges;
+
+    for (const auto& node_ptr : tree_) {
+        // Get the current node and its parent
+        FMTNode* child_node = node_ptr.get();
+        FMTNode* parent_node = child_node->getParent();
+
+        // If there is a parent, there is an edge to visualize
+        if (parent_node) {
+            
+            // --- Access the Cached Trajectory ---
+            // CORRECTED: The connection from child to parent is stored in the CHILD's neighbor map.
+            auto it = child_node->neighbors().find(parent_node);
+
+            // Check if the neighbor relationship and the trajectory exist
+            if (it != child_node->neighbors().end() && it->second.is_trajectory_computed) {
+                const auto& trajectory = it->second.cached_trajectory;
+                
+                // If the trajectory is valid and has points, draw its segments
+                if (trajectory.is_valid && trajectory.path_points.size() > 1) {
+                    
+                    // Add a line segment for each pair of consecutive waypoints in the path
+                    for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+                        curved_edges.emplace_back(trajectory.path_points[i], trajectory.path_points[i+1]);
+                    }
+                }
+            } else {
+                // Fallback for safety: if trajectory not found, draw a straight line
+                // This can help debug issues with caching.
+                curved_edges.emplace_back(parent_node->getStateValue(), child_node->getStateValue());
             }
         }
-    
-        // // Visualize tree components
-        // visualization_->visualizeNodes(tree_nodes, "map", 
-        //                             std::vector<float>{1.0f, 0.0f, 0.0f},  // Red for tree
-        //                             "tree_nodes");
-        
-        // // Visualize vopen nodes with different color/namespace
-        // visualization_->visualizeNodes(vopen_positions);
-
-        // Visualize edges
-        visualization_->visualizeEdges(edges, "map");
     }
 
-
+    // Visualize the rich set of curved edges
+    visualization_->visualizeEdges(curved_edges, "map");
 }
 
-void FMTX::visualizePath(std::vector<size_t> path_indices) {
+void KinodynamicFMTX::visualizePath(std::vector<size_t> path_indices) {
     std::vector<Eigen::VectorXd> nodes;
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
 
@@ -1478,7 +1413,7 @@ void FMTX::visualizePath(std::vector<size_t> path_indices) {
 }
 
 
-void FMTX::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_) {
+void KinodynamicFMTX::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_) {
     // Extract nodes and edges from the smoothed path
     std::vector<Eigen::VectorXd> nodes;
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
@@ -1501,7 +1436,7 @@ void FMTX::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_pa
 }
 
 
-void FMTX::visualizeHeapAndUnvisited() {
+void KinodynamicFMTX::visualizeHeapAndUnvisited() {
     std::vector<Eigen::VectorXd> vopen_positions;
     bool found_conflict = false;
 
@@ -1529,7 +1464,7 @@ void FMTX::visualizeHeapAndUnvisited() {
 
 }
 //////////////////////////////////////////////
-void FMTX::dumpTreeToCSV(const std::string& filename) const {
+void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
     std::ofstream fout(filename);
     if (!fout.is_open()) {
         std::cerr << "Failed to open " << filename << " for writing\n";

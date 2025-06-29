@@ -31,6 +31,31 @@ void EuclideanStateSpace::sampleUniform(double min = 0.0, double max = 1.0, int 
     }
 }
 
+std::shared_ptr<State> EuclideanStateSpace::sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) {
+    // 1. Check if the bounds vectors have the correct number of dimensions.
+    if (min_bounds.size() != dimension_ || max_bounds.size() != dimension_) {
+        throw std::invalid_argument("Bounds vectors must match the state space dimension.");
+    }
+
+    // 2. Create a vector to hold the resulting sample.
+    Eigen::VectorXd values(dimension_);
+
+    // 3. For each dimension, generate a scaled random value.
+    for (int i = 0; i < dimension_; ++i) {
+        // Generate a random double between 0.0 and 1.0
+        double random_coeff = static_cast<double>(rand()) / RAND_MAX;
+        
+        // Scale and shift the random coefficient to the desired range for the current dimension
+        values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
+    }
+    
+    // 4. Create a new state from the sampled values and add it to the state space.
+    return StateSpace::addState(std::make_shared<EuclideanState>(values));
+}
+
+
+
+
 double EuclideanStateSpace::distance(const std::shared_ptr<State>& state1 , const std::shared_ptr<State>& state2) const {
     return (state1->getValue() - state2->getValue()).norm(); // Euclidean distance
 }

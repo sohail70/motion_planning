@@ -249,7 +249,6 @@ int main(int argc, char **argv) {
     planner_params.setParam("factor", factor);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
-    // planner_params.setParam("kdtree_type", "LieKDTree");
     planner_params.setParam("partial_update", false); //update till the robot's costToInit
     planner_params.setParam("static_obs_presence", false); // to not process static obstalces twice because obstacle checker keeps sending all the obstalces! i geuss the persisten_static_obstalces needs to be true always
     /*
@@ -315,7 +314,7 @@ int main(int argc, char **argv) {
     auto ros2_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization, controller, nav2_controller,dwa_controller, ros2_manager_params);
 
 
-    int dim = 4;
+    int dim = 3;
     Eigen::VectorXd start_position = ros2_manager->getStartPosition(); // I put a cv in here so i needed the above thread so it wouldn't stop the ros2 callbacks! --> also if use_rviz_goal==false no worries because the default value for this func is 0,0
 
 
@@ -323,21 +322,21 @@ int main(int argc, char **argv) {
 
     // The root of the tree (start of the backward search) is the destination.
     // We want to arrive at time t=0.
-    Eigen::VectorXd tree_root_state(4);
-    tree_root_state << 0.0, 0.0, M_PI / 3.0, 15.0; // x, y, theta, MinTime must be used or zero??? ?????????????
+    Eigen::VectorXd tree_root_state(3);
+    tree_root_state << 0.0, 0.0,5*M_PI / 4.0; // x, y, theta, time
     problem_def->setStart(tree_root_state);
 
     // The "goal" of the backward search is the robot's current state.
     // Let's assume a starting state for the robot. The planner will try to find the
     // fastest path (minimum time) from here back to the root (t=0).
-    Eigen::VectorXd robot_initial_state(4);
-    robot_initial_state << 48.0, 48.0, M_PI / 3.0, 35.0; // Give it an initial time budget of 100s --> if i use 100seconds then it wont connect to random nodes which are between 3-15 seconds because of min velocity! --> we need to use the maximum time allowed by the random generator!
+    Eigen::VectorXd robot_initial_state(3);
+    robot_initial_state << 48.0, 48.0, -M_PI / 2.0; // Give it an initial time budget of 100s
     problem_def->setGoal(robot_initial_state);
 
     // Define the 4D bounds for sampling
-    Eigen::VectorXd lower_bounds(4), upper_bounds(4);
-    lower_bounds << -50.0, -50.0, -M_PI, 15.0;     // x, y, theta, min_time
-    upper_bounds << 50.0, 50.0, M_PI, 35.0;   // x, y, theta, max_time
+    Eigen::VectorXd lower_bounds(3), upper_bounds(3);
+    lower_bounds << -50.0, -50.0, -M_PI;     // x, y, theta, min_time
+    upper_bounds << 50.0, 50.0, M_PI;   // x, y, theta, max_time
     problem_def->setBounds(lower_bounds, upper_bounds);
 
 
@@ -348,11 +347,11 @@ int main(int argc, char **argv) {
 
 
     // CHANGE 4: Instantiate the DubinsTimeStateSpace
-    // double min_turning_radius = 0.00001;
-    double min_turning_radius = 5.0;
+    double min_turning_radius = 10.0;
     double min_velocity = 5.0;
-    double max_velocity = 30.0;
-    auto statespace = std::make_shared<DubinsTimeStateSpace>(min_turning_radius, min_velocity, max_velocity);
+    double max_velocity = 35.0;
+    // auto statespace = std::make_shared<DubinsTimeStateSpace>(min_turning_radius, min_velocity, max_velocity);
+    auto statespace = std::make_shared<DubinsStateSpace>(min_turning_radius);
 
 
     // std::shared_ptr<StateSpace> statespace = std::make_shared<EuclideanStateSpace>(dim, 30000, seed);

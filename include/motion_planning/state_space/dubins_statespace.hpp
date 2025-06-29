@@ -10,7 +10,7 @@
 class DubinsStateSpace : public StateSpace {
 public:
     // Constructor takes the vehicle's turning radius, a key parameter.
-    explicit DubinsStateSpace(double min_turning_radius);
+    explicit DubinsStateSpace(double min_turning_radius, int dimension = 3);
     
     // The core steering function that calculates the Dubins path between two states.
     virtual Trajectory steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const override;
@@ -24,6 +24,7 @@ public:
     std::shared_ptr<State> addState(const Eigen::VectorXd& value) override;
     std::shared_ptr<State> sampleUniform(double min, double max) override;
     void sampleUniform(double min, double max, int k) override;
+    std::shared_ptr<State> sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) override;
     std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const override;
     bool isValid(const std::shared_ptr<State>& state) const override;
 

@@ -44,6 +44,10 @@ public:
      */
     std::shared_ptr<State> sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds);
 
+
+
+
+
 private:
     double min_velocity_;
     double max_velocity_;

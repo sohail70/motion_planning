@@ -32,8 +32,8 @@ void ANYFMT::setup(const Params& params, std::shared_ptr<Visualization> visualiz
     num_batch_ = params.getParam<int>("num_batch");
     partial_plot = params.getParam<bool>("partial_plot");
     obs_cache = params.getParam<bool>("obs_cache");
-    lower_bound_ = problem_->getLowerBound();
-    upper_bound_ = problem_->getUpperBound();
+    lower_bound_ = problem_->getLowerBound()[0];
+    upper_bound_ = problem_->getUpperBound()[0];
     use_kdtree = params.getParam<bool>("use_kdtree");
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
     if (use_kdtree == true && kdtree_type == "NanoFlann")
@@ -64,7 +64,7 @@ void ANYFMT::setup(const Params& params, std::shared_ptr<Visualization> visualiz
 
     ///////////////////Neighborhood Radius////////////////////////////////
     d = statespace_->getDimension();
-    mu = std::pow(problem_->getUpperBound() - problem_->getLowerBound() , 2);
+    mu = std::pow(problem_->getUpperBound()[0] - problem_->getLowerBound()[0] , 2);
     zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
     gamma = 2 * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
     factor = 1.0;

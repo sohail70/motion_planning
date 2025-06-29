@@ -61,6 +61,8 @@ public:
     bool isHeuristicCached() const;
 
 
+    double getTimeToGoal() const noexcept;
+    void setTimeToGoal(double time) noexcept;
 
 
     bool in_queue_;
@@ -83,11 +85,11 @@ public:
     std::vector<FMTNode*> children_;
     FMTNode* parent_;
     bool neighbors_cached_ = false;
-
 private:
     std::shared_ptr<State> state_;
     NeighborMap neighbors_;
-    double cost_;
+    double cost_; // This is optimization cost
+    double time_to_goal_; // This is the pure accumulated time
     int index_;
     bool on_obstacle; // not using this now! maybe later instead of samples_in_obstalce!
 
