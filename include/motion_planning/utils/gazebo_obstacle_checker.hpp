@@ -6,6 +6,7 @@
 #include "motion_planning/utils/params.hpp"
 #include <unsupported/Eigen/Polynomials>  // for PolynomialSolver
 #include "motion_planning/utils/kalman_filter.hpp"
+#include "motion_planning/utils/kalman_filter_factory.hpp"
 
 
 class GazeboObstacleChecker : public ObstacleChecker {
@@ -24,6 +25,14 @@ public:
 
     bool isObstacleFree(const std::vector<Eigen::VectorXd>& path) const override;
 
+    bool isInVelocityObstacle(
+        const Eigen::Vector2d& robot_velocity,
+        const Eigen::Vector2d& obs_velocity,
+        const Eigen::Vector2d& pos_robot_to_obs,
+        double combined_radius
+    ) const;
+
+
     /**
      * @brief [THE NEW, CORRECTED FUNCTION] Performs a full time-aware collision check.
      * @param trajectory The kinodynamically-feasible trajectory to check.
@@ -41,12 +50,24 @@ public:
      */
     bool isTrajectorySafe( const Trajectory& trajectory, double start_node_time) const override;
 
-
+    bool check_arc_line_collision(
+        // Arc properties
+        const Eigen::Vector2d& p_r0_start,
+        const Eigen::Vector2d& center,
+        double radius,
+        double angular_velocity,
+        // Obstacle properties
+        const Eigen::Vector2d& p_o0_start,
+        const Eigen::Vector2d& v_o,
+        // Time and collision properties
+        double T_segment,
+        double R_sq // Combined radius squared
+    ) const;
 
     Eigen::Vector2d getRobotPosition() const;
     Eigen::VectorXd getRobotOrientation() const;
 
-    const std::vector<Obstacle>& getObstaclePositions() const;
+    const ObstacleVector& getObstaclePositions() const;
     void robotPoseCallback(const gz::msgs::Pose_V& msg);
 
 
@@ -56,7 +77,7 @@ public:
 
     void publishPath(const std::vector<Eigen::VectorXd>& waypoints);
 
-std::vector<Obstacle> getObstacles() const override;
+ObstacleVector getObstacles() const override;
 
 bool checkFootprintCollision(const Eigen::Vector2d& position,
                                double yaw,
@@ -69,15 +90,15 @@ bool checkFootprintCollision(const Eigen::Vector2d& position,
         
         for(const auto& obstacle : obstacle_positions_) {
             if(obstacle.type == Obstacle::CIRCLE) {
-                double total_radius = obstacle.dimensions.circle.radius + obstacle.inflation;
+                double total_radius = obstacle.dimensions.radius + obstacle.inflation;
                 if((world_point - obstacle.position).norm() <= total_radius) {
                     return true;
                 }
             } else {
-                double width = obstacle.dimensions.box.width + 2*obstacle.inflation;
-                double height = obstacle.dimensions.box.height + 2*obstacle.inflation;
+                double width = obstacle.dimensions.width + 2*obstacle.inflation;
+                double height = obstacle.dimensions.height + 2*obstacle.inflation;
                 if(pointIntersectsRectangle(world_point, obstacle.position,
-                                           width, height, obstacle.dimensions.box.rotation)) {
+                                           width, height, obstacle.dimensions.rotation)) {
                     return true;
                 }
             }
@@ -94,13 +115,13 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
         double dist;
         if(obstacle.type == Obstacle::CIRCLE) {
             dist = (position - obstacle.position).norm() - 
-                  (obstacle.dimensions.circle.radius + obstacle.inflation);
+                  (obstacle.dimensions.radius + obstacle.inflation);
         } else {
             // Calculate distance to expanded rectangle
-            Eigen::Rotation2Dd rot(-obstacle.dimensions.box.rotation);
+            Eigen::Rotation2Dd rot(-obstacle.dimensions.rotation);
             Eigen::Vector2d local_pos = rot * (position - obstacle.position);
-            double expanded_width = obstacle.dimensions.box.width + 2*obstacle.inflation;
-            double expanded_height = obstacle.dimensions.box.height + 2*obstacle.inflation;
+            double expanded_width = obstacle.dimensions.width + 2*obstacle.inflation;
+            double expanded_height = obstacle.dimensions.height + 2*obstacle.inflation;
             
             double dx = std::max(std::abs(local_pos.x()) - expanded_width/2, 0.0);
             double dy = std::max(std::abs(local_pos.y()) - expanded_height/2, 0.0);
@@ -124,7 +145,7 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
 
     struct Snapshot {
         Eigen::Vector2d robot_position;
-        std::vector<Obstacle> obstacles;
+        ObstacleVector obstacles;
     };
 
     Snapshot getAtomicSnapshot() const {
@@ -164,6 +185,57 @@ double distanceSqrdPointToSegment(const Eigen::Vector2d& p, const Eigen::Vector2
 }
 
 
+inline double normalizeAngle(double angle) const {
+    // Use fmod to bring the angle into the [-2*PI, 2*PI] range
+    angle = std::fmod(angle + M_PI, 2.0 * M_PI);
+    if (angle < 0.0) {
+        angle += 2.0 * M_PI;
+    }
+    return angle - M_PI;
+}
+// Calculates the squared distance from a point to a circular arc segment.
+double distanceSqrdPointToArc(
+    const Eigen::Vector2d& p,
+    const Eigen::Vector2d& start,
+    const Eigen::Vector2d& end,
+    const Eigen::Vector2d& center,
+    double radius,
+    bool is_clockwise) const
+{
+    // 1. Vector from point to circle center
+    Eigen::Vector2d to_center = p - center;
+    double dist_to_center_sq = to_center.squaredNorm();
+
+    // 2. Find the closest point on the full circle to p
+    Eigen::Vector2d closest_point_on_circle = center + radius * to_center.normalized();
+
+    // 3. Check if this closest point lies within the arc segment
+    double start_angle = atan2(start.y() - center.y(), start.x() - center.x());
+    double end_angle = atan2(end.y() - center.y(), end.x() - center.x());
+    double point_angle = atan2(closest_point_on_circle.y() - center.y(), closest_point_on_circle.x() - center.x());
+
+    // Normalize angles to be relative to the start angle
+    double relative_end_angle = normalizeAngle(end_angle - start_angle);
+    double relative_point_angle = normalizeAngle(point_angle - start_angle);
+
+    if (is_clockwise && relative_end_angle > 0) relative_end_angle -= 2 * M_PI;
+    if (!is_clockwise && relative_end_angle < 0) relative_end_angle += 2 * M_PI;
+
+    bool is_within_arc = is_clockwise
+        ? (relative_point_angle <= 0 && relative_point_angle >= relative_end_angle)
+        : (relative_point_angle >= 0 && relative_point_angle <= relative_end_angle);
+
+    if (is_within_arc) {
+        // The closest point is on the arc itself.
+        return std::pow(std::sqrt(dist_to_center_sq) - radius, 2);
+    } else {
+        // The closest point is one of the endpoints.
+        return std::min((p - start).squaredNorm(), (p - end).squaredNorm());
+    }
+}
+
+
+
     double findNearestObstacleDistance(const Eigen::Vector2d& point) const {
         std::lock_guard<std::mutex> lock(snapshot_mutex_);
         double min_distance = std::numeric_limits<double>::infinity();
@@ -179,10 +251,10 @@ double distanceSqrdPointToSegment(const Eigen::Vector2d& p, const Eigen::Vector2
             if (obstacle.type == Obstacle::CIRCLE) {
                 // Distance from point to circle's edge
                 double dist_to_center = (point - center).norm();
-                current_distance = std::max(0.0, dist_to_center - (obstacle.dimensions.circle.radius + inflation));
+                current_distance = std::max(0.0, dist_to_center - (obstacle.dimensions.radius + inflation));
             } else { // BOX
                 // For a box, we can approximate by checking distance to its bounding circle
-                double half_diagonal = std::hypot(obstacle.dimensions.box.width, obstacle.dimensions.box.height) / 2.0;
+                double half_diagonal = std::hypot(obstacle.dimensions.width, obstacle.dimensions.height) / 2.0;
                 double dist_to_center = (point - center).norm();
                 current_distance = std::max(0.0, dist_to_center - (half_diagonal + inflation));
             }
@@ -258,6 +330,8 @@ private:
     
     // This map stores the last update time for each filter to calculate 'dt'.
     std::unordered_map<std::string, rclcpp::Time> obstacle_filters_times_;
+
+    std::string kf_model_type_;
     /////////////////////////////////////////////////////////////////////////
 
 
@@ -265,13 +339,13 @@ private:
 
     
 
-    mutable std::vector<Obstacle> obstacle_snapshot_;
+    mutable ObstacleVector obstacle_snapshot_;
     mutable std::mutex snapshot_mutex_;
 
 
 
     // Change this member variable
-    std::vector<Obstacle> obstacle_positions_;
+    ObstacleVector obstacle_positions_;
     
     // Add this member to store radii
     // std::unordered_map<std::string, double> obstacle_radii_;

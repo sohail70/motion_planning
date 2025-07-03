@@ -16,6 +16,7 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
     persistent_static_obstacles = params.getParam<bool>("persistent_static_obstacles");
     robot_position_ << params.getParam<double>("default_robot_x"), params.getParam<double>("default_robot_y");
     estimation = params.getParam<bool>("estimation");
+    kf_model_type_ = params.getParam<std::string>("kf_model_type", "cv");
     // Subscribe to the robot pose topic
     std::string robot_pose_topic = "/model/" + robot_model_name_ + "/tf";
     if (!gz_node_.Subscribe(robot_pose_topic, &GazeboObstacleChecker::robotPoseCallback, this)) {
@@ -73,14 +74,14 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const E
         const Eigen::Vector2d& center = obstacle.position;
         
         if (obstacle.type == Obstacle::CIRCLE) {
-            const double radius = obstacle.dimensions.circle.radius + inflated;
+            const double radius = obstacle.dimensions.radius + inflated;
             if (lineIntersectsCircle(start2d, end2d, center, radius)) {
                 return false;
             }
         } else {
-            const double width = obstacle.dimensions.box.width + 2*inflated;
-            const double height = obstacle.dimensions.box.height + 2*inflated;
-            const double rotation = obstacle.dimensions.box.rotation;
+            const double width = obstacle.dimensions.width + 2*inflated;
+            const double height = obstacle.dimensions.height + 2*inflated;
+            const double rotation = obstacle.dimensions.rotation;
             if (lineIntersectsRectangle(start2d, end2d, center, width, height, rotation)) {
                 return false;
             }
@@ -98,14 +99,14 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
         const Eigen::Vector2d& center = obstacle.position;
         
         if (obstacle.type == Obstacle::CIRCLE) {
-            const double radius = obstacle.dimensions.circle.radius + inflated;
+            const double radius = obstacle.dimensions.radius + inflated;
             if (pointIntersectsCircle(point2d, center, radius)) {
                 return false;
             }
         } else {
-            const double width = obstacle.dimensions.box.width + 2*inflated;
-            const double height = obstacle.dimensions.box.height + 2*inflated;
-            const double rotation = obstacle.dimensions.box.rotation;
+            const double width = obstacle.dimensions.width + 2*inflated;
+            const double height = obstacle.dimensions.height + 2*inflated;
+            const double rotation = obstacle.dimensions.rotation;
             if (pointIntersectsRectangle(point2d, center, width, height, rotation)) {
                 return false;
             }
@@ -130,6 +131,157 @@ bool GazeboObstacleChecker::isObstacleFree(const std::vector<Eigen::VectorXd>& p
 }
 
 
+// This is the new private helper function that performs the core VO check.
+bool GazeboObstacleChecker::isInVelocityObstacle(
+    const Eigen::Vector2d& robot_velocity,
+    const Eigen::Vector2d& obs_velocity,
+    const Eigen::Vector2d& pos_robot_to_obs,
+    double combined_radius
+) const {
+    // This function checks if the robot's velocity vector, relative to the obstacle,
+    // falls within the "collision cone" projected from the robot's position.
+
+    // 1. Calculate the velocity of the robot relative to the obstacle.
+    const Eigen::Vector2d relative_velocity = robot_velocity - obs_velocity;
+
+    // 2. If the obstacle is moving away from the robot, no future collision is possible.
+    // A negative dot product means the vectors are pointing in generally opposite directions.
+    if (pos_robot_to_obs.dot(relative_velocity) < 0) {
+        // A more robust check: check if the distance is increasing.
+        // If the squared distance is already increasing, they are moving apart.
+        const double relative_speed_sq = relative_velocity.squaredNorm();
+        if (relative_speed_sq > 1e-9) {
+            // d/dt (dist^2) = 2 * (p_rel . v_rel). If positive, distance is increasing.
+            if (pos_robot_to_obs.dot(relative_velocity) > 0) {
+                return false;
+            }
+        }
+    }
+
+    // 3. Calculate the geometry of the collision cone.
+    const double dist_sq = pos_robot_to_obs.squaredNorm();
+    if (dist_sq < 1e-9) return true; // Already colliding
+
+    const double combined_radius_sq = combined_radius * combined_radius;
+    // If the robot is already inside the obstacle, it's a collision.
+    if (dist_sq <= combined_radius_sq) {
+        return true;
+    }
+
+    // 4. Perform the geometric check.
+    // The angle of the collision cone (lambda in the papers).
+    double apex_angle = std::asin(combined_radius / pos_robot_to_obs.norm());
+
+    // The angle between the relative velocity and the line connecting the two agents.
+    double vel_angle = std::acos(relative_velocity.dot(pos_robot_to_obs) / (relative_velocity.norm() * pos_robot_to_obs.norm()));
+
+    // If the velocity vector's angle is within the cone's apex angle, it's a collision course.
+    return std::abs(vel_angle) < apex_angle;
+}
+
+
+
+// Finds the time of closest approach (t_cpa) and minimum squared distance
+// for an arc-line interaction. Returns true if a collision is found.
+bool GazeboObstacleChecker::check_arc_line_collision(
+    // Arc properties
+    const Eigen::Vector2d& p_r0_start,
+    const Eigen::Vector2d& center,
+    double radius,
+    double angular_velocity,
+    // Obstacle properties
+    const Eigen::Vector2d& p_o0_start,
+    const Eigen::Vector2d& v_o,
+    // Time and collision properties
+    double T_segment,
+    double R_sq // Combined radius squared
+) const // Assuming this is a const member function
+{
+
+    const double start_angle = std::atan2(p_r0_start.y() - center.y(), p_r0_start.x() - center.x());
+
+    auto dist_sq_func = [&](double t) -> double {
+        double angle = start_angle + angular_velocity * t;
+        Eigen::Vector2d p_r_t = center + radius * Eigen::Vector2d(std::cos(angle), std::sin(angle));
+        Eigen::Vector2d p_o_t = p_o0_start + v_o * t;
+        return (p_r_t - p_o_t).squaredNorm();
+    };
+
+    auto derivative_func = [&](double t) -> double {
+        double angle = start_angle + angular_velocity * t;
+        Eigen::Vector2d p_r_t = center + radius * Eigen::Vector2d(std::cos(angle), std::sin(angle));
+        Eigen::Vector2d v_r_t = radius * angular_velocity * Eigen::Vector2d(-std::sin(angle), std::cos(angle));
+        Eigen::Vector2d p_o_t = p_o0_start + v_o * t;
+        return 2.0 * (p_r_t - p_o_t).dot(v_r_t - v_o);
+    };
+    // --- 1. Boundary Checks ---
+    if (dist_sq_func(0.0) <= R_sq) return true;
+    if (dist_sq_func(T_segment) <= R_sq) return true;
+
+    // --- 2. Robust Search for Interior Minima ---
+    const int search_steps = 40;
+    const double derivative_tolerance = 1e-5;
+    const int bisection_iterations = 10;
+    const double t_step = T_segment / search_steps;
+
+    double last_t = 0.0;
+    double last_deriv = derivative_func(last_t);
+
+    for (int i = 1; i <= search_steps; ++i) {
+        double current_t = i * t_step;
+        double current_deriv = derivative_func(current_t);
+
+        // Tweak: Directly check distance at each sample point's boundary
+        if (dist_sq_func(current_t) <= R_sq) return true;
+
+        bool potential_minimum_found = false;
+        double bracket_low = -1.0, bracket_high = -1.0;
+
+        if (std::abs(current_deriv) < derivative_tolerance) {
+            bracket_low = std::max(0.0, current_t - t_step);
+            bracket_high = std::min(T_segment, current_t + t_step);
+            potential_minimum_found = true;
+        }
+        else if (std::copysign(1.0, current_deriv) != std::copysign(1.0, last_deriv)) {
+            bracket_low = last_t;
+            bracket_high = current_t;
+            potential_minimum_found = true;
+        }
+
+        if (potential_minimum_found) {
+            double t_low = bracket_low, t_high = bracket_high;
+            double deriv_low = derivative_func(t_low);
+
+            for (int j = 0; j < bisection_iterations; ++j) {
+                double t_mid = (t_low + t_high) / 2.0;
+                if (t_mid == t_low || t_mid == t_high) break;
+
+                double deriv_mid = derivative_func(t_mid);
+                if (std::copysign(1.0, deriv_mid) == std::copysign(1.0, deriv_low)) {
+                    t_low = t_mid;
+                    deriv_low = deriv_mid;
+                } else {
+                    t_high = t_mid;
+                }
+            }
+            if (dist_sq_func((t_low + t_high) / 2.0) <= R_sq) return true;
+        }
+        
+        last_t = current_t;
+        last_deriv = current_deriv;
+    }
+
+    return false;
+
+}
+
+
+
+
+
+
+
+
 bool GazeboObstacleChecker::isTrajectorySafe(
     const Trajectory& trajectory,
     double global_edge_start_time
@@ -138,219 +290,123 @@ bool GazeboObstacleChecker::isTrajectorySafe(
     return !getCollidingObstacle(trajectory, global_edge_start_time).has_value();
 }
 
+//  With Constant Acc and Constant Vel implmented depending on what the obstalces movement and you KF is!
+/*
+    Using Eigen to calc exact time of collision
+    Broad phase ignore too far away edges based on max velocity of obstalce --> you can comment it if you dont want hardocded stuff
+    Reason for static collision check here for dynamic obstalce is to obsolete edges right on obstalce so that replanner doesnt use them
+    so that robot wouldnt use them because obstalces can go backward suddenly and if robot is behind obstalce and they are gonna go in the same direction
+    it would trick the planner otherwise. also the steer function is noot inteligent in between segment movement
+
+*/
 // std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
 //     const Trajectory& trajectory,
 //     double global_edge_start_time
 // ) const {
+
 //     std::lock_guard<std::mutex> lock(snapshot_mutex_);
 
 //     if (trajectory.path_points.size() < 2) {
 //         return std::nullopt;
 //     }
 
-//     // First, check against all static obstacles.
-//     for (const auto& obstacle : obstacle_snapshot_) {
-//         if (!obstacle.is_dynamic) {
-//             for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
-//                 const Eigen::Vector2d& seg_start = trajectory.path_points[i].head<2>();
-//                 const Eigen::Vector2d& seg_end = trajectory.path_points[i+1].head<2>();
+//     // --- Robot's path and velocity ---
+//     const Eigen::Vector2d p_r0 = trajectory.path_points.front().head<2>();
+//     const Eigen::Vector2d p_rT = trajectory.path_points.back().head<2>();
+//     const double T = trajectory.time_duration;
 
-//                 if (obstacle.type == Obstacle::CIRCLE) {
-//                     if (lineIntersectsCircle(seg_start, seg_end, obstacle.position, obstacle.dimensions.circle.radius + inflation)) {
-//                         return obstacle;
-//                     }
-//                 } else { // BOX
-//                      if (lineIntersectsRectangle(seg_start, seg_end, obstacle.position, obstacle.dimensions.box.width + 2*inflation, obstacle.dimensions.box.height + 2*inflation, obstacle.dimensions.box.rotation)) {
-//                         return obstacle;
-//                     }
-//                 }
-//             }
-//         }
+//     Eigen::Vector2d v_r = Eigen::Vector2d::Zero();
+//     if (T > 1e-9) {
+//         v_r = (p_rT - p_r0) / T;
 //     }
 
-//     // --- Part 2: Check against DYNAMIC obstacles ---
-//     const Eigen::VectorXd& start_state = trajectory.path_points.front();
-//     // const double robot_duration = trajectory.cost; //in case i only use time as a cost in steer methods
-//     const double robot_duration = trajectory.time_duration;
-    
-//     if (robot_duration < 1e-9) return std::nullopt;
+//     for (const auto& obs : obstacle_snapshot_) {
+//         // --- 1. Calculate Collision Radii ---
+//         double obs_radius = (obs.type == Obstacle::CIRCLE)
+//                           ? obs.dimensions.radius
+//                           : std::hypot(obs.dimensions.width/2.0, obs.dimensions.height/2.0);
+//         double R = obs_radius + inflation;
+//         double R_sq = R * R;
 
-//     const Eigen::Vector2d robot_vel = (trajectory.path_points.back().head<2>() - start_state.head<2>()) / robot_duration;
+//         // --- 2. Broad-Phase Check ---
+//         // Quickly discard obstacles that are geometrically too far away.
+//         double min_dist_sq_to_path = distanceSqrdPointToSegment(obs.position, p_r0, p_rT);
 
-//     for (const auto& obstacle : obstacle_snapshot_) {
-//         if (obstacle.is_dynamic) {
-//             double obs_radius = (obstacle.type == Obstacle::CIRCLE)
-//                               ? obstacle.dimensions.circle.radius
-//                               : std::hypot(obstacle.dimensions.box.width, obstacle.dimensions.box.height) / 2.0;
+//         if (obs.is_dynamic) {
+//             // For dynamic obstacles, create a "danger zone" based on its max speed.
+//             const double v_max_obs = 12.0; // Assume a max possible speed for any obstacle.
+//             const double max_travel_dist = v_max_obs * T;
+//             const double danger_radius = R + max_travel_dist;
             
-//             const double combined_radius = obs_radius + inflation;
-
-//             // Define the global time intervals for the check
-//             const double t0 = global_edge_start_time; // Global time robot STARTS the edge.
-//             const double T = robot_duration;   // Duration of the traversal.
-
-//             // Get the time the obstacle snapshot was taken
-//             // double t_snapshot = std::chrono::duration<double>(obstacle.last_update_time.time_since_epoch()).count();
-//             double t_snapshot = obstacle.last_update_time.seconds(); // <-- MUCH SIMPLER
-
-
-//             // Set up and solve the quadratic equation for collision time (τ)
-//             const Eigen::Vector2d rel_vel = robot_vel - obstacle.velocity;
-            
-//             // Extrapolate both positions back to a common global reference time (τ=0)
-//             const Eigen::Vector2d p_robot_at_tau_zero = start_state.head<2>() - robot_vel * t0;
-//             const Eigen::Vector2d p_obs_at_tau_zero = obstacle.position - obstacle.velocity * t_snapshot;
-//             const Eigen::Vector2d rel_pos_at_tau_zero = p_robot_at_tau_zero - p_obs_at_tau_zero;
-
-//             double A = rel_vel.dot(rel_vel);
-//             double B = 2 * rel_pos_at_tau_zero.dot(rel_vel);
-//             double C = rel_pos_at_tau_zero.dot(rel_pos_at_tau_zero) - (combined_radius * combined_radius);
-
-//             if (std::abs(A) < 1e-9) { // Parallel movement
-//                 if (C <= 0) return obstacle; // Already overlapping
-//                 continue;
+//             if (min_dist_sq_to_path > (danger_radius * danger_radius)) {
+//                 continue; // Obstacle is too far to reach the path in time.
 //             }
-
-//             double discriminant = B * B - 4 * A * C;
-//             if (discriminant < 0) continue; // No intersection
-
-//             double sqrt_disc = std::sqrt(discriminant);
-//             double tau1 = (-B - sqrt_disc) / (2 * A);
-//             double tau2 = (-B + sqrt_disc) / (2 * A);
-
-//             // Check if the collision interval [min(τ1,τ2), max(τ1,τ2)]
-//             // overlaps with the robot's traversal interval [t0, t0 + T].
-//             if (std::max(t0, std::min(tau1, tau2)) <= std::min(t0 + T, std::max(tau1, tau2))) {
-//                 return obstacle; // Collision is predicted to occur.
-//             }
-//         }
-//     }
-
-//     return std::nullopt; // No collisions found.
-// }
-
-// // WITH DEBUG 
-// std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
-//     const Trajectory& trajectory,
-//     double global_edge_start_time
-// ) const {
-//     std::lock_guard<std::mutex> lock(snapshot_mutex_);
-
-//     if (trajectory.path_points.size() < 2) {
-//         return std::nullopt;
-//     }
-
-//     // --- Stage 1: Static Obstacle Check (No changes needed here) ---
-//     for (const auto& obstacle : obstacle_snapshot_) {
-//         if (!obstacle.is_dynamic) {
-//             for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
-//                 const Eigen::Vector2d& seg_start = trajectory.path_points[i].head<2>();
-//                 const Eigen::Vector2d& seg_end = trajectory.path_points[i+1].head<2>();
-
-//                 if (obstacle.type == Obstacle::CIRCLE) {
-//                     if (lineIntersectsCircle(seg_start, seg_end, obstacle.position, obstacle.dimensions.circle.radius + inflation)) {
-//                         return obstacle;
-//                     }
-//                 } else { // BOX
-//                      if (lineIntersectsRectangle(seg_start, seg_end, obstacle.position, obstacle.dimensions.box.width + 2*inflation, obstacle.dimensions.box.height + 2*inflation, obstacle.dimensions.box.rotation)) {
-//                         return obstacle;
-//                     }
-//                 }
-//             }
-//         }
-//     }
-
-//     // --- Stage 2: Dynamic Obstacle Prediction ---
-//     const Eigen::VectorXd& start_state = trajectory.path_points.front();
-//     const double robot_duration = trajectory.time_duration;
-    
-//     if (robot_duration < 1e-9) return std::nullopt;
-
-//     const Eigen::Vector2d robot_vel = (trajectory.path_points.back().head<2>() - start_state.head<2>()) / robot_duration;
-
-//     // Check against every dynamic obstacle
-//     for (const auto& obstacle : obstacle_snapshot_) {
-//         if (obstacle.is_dynamic) {
-
-//             // =================================== DEBUG BLOCK ===================================
-//             // This block will print all the data used for the prediction for each dynamic obstacle.
-            
-//             // Set precision for cleaner output
-//             std::cout << std::fixed << std::setprecision(4);
-
-//             std::cout << "\n[Checker] Checking against dynamic obstacle...\n"
-//                       << "  > Robot Traversal Starts (t0):    " << global_edge_start_time << "s\n"
-//                       << "  > Robot Traversal Duration (T):   " << robot_duration << "s\n"
-//                       << "  > Robot Traversal Ends:           " << global_edge_start_time + robot_duration << "s\n"
-//                       << "  > Robot Velocity (vx, vy):        (" << robot_vel.x() << ", " << robot_vel.y() << ")\n"
-//                       << "--------------------------------------------------\n"
-//                       << "  > Obstacle Position (x, y):       (" << obstacle.position.x() << ", " << obstacle.position.y() << ")\n"
-//                       << "  > Obstacle Velocity (vx, vy):     (" << obstacle.velocity.x() << ", " << obstacle.velocity.y() << ")\n"
-//                       << "  > Obstacle Snapshot Time:         " << obstacle.last_update_time.seconds() << "s\n";
-//             // =================================================================================
-
-//             // --- LIKELY POINT OF FAILURE ---
-//             // If you run your code and see that "Obstacle Velocity" is always (0.0000, 0.0000),
-//             // it means your velocity estimation in `poseInfoCallback` is not working correctly.
-//             // The predictive check CANNOT work with zero velocity.
-
-//             double obs_radius = (obstacle.type == Obstacle::CIRCLE)
-//                               ? obstacle.dimensions.circle.radius
-//                               : std::hypot(obstacle.dimensions.box.width, obstacle.dimensions.box.height) / 2.0;
-            
-//             const double combined_radius = obs_radius + inflation;
-
-//             const double t0 = global_edge_start_time;
-//             const double T = robot_duration;
-//             double t_snapshot = obstacle.last_update_time.seconds();
-
-//             const Eigen::Vector2d rel_vel = robot_vel - obstacle.velocity;
-            
-//             const Eigen::Vector2d p_robot_at_tau_zero = start_state.head<2>() - robot_vel * t0;
-//             const Eigen::Vector2d p_obs_at_tau_zero = obstacle.position - obstacle.velocity * t_snapshot;
-//             const Eigen::Vector2d rel_pos_at_tau_zero = p_robot_at_tau_zero - p_obs_at_tau_zero;
-
-//             double A = rel_vel.dot(rel_vel);
-//             double B = 2 * rel_pos_at_tau_zero.dot(rel_vel);
-//             double C = rel_pos_at_tau_zero.dot(rel_pos_at_tau_zero) - (combined_radius * combined_radius);
-
-//             if (std::abs(A) < 1e-9) { 
-//                 if (C <= 0) {
-//                      std::cout << "  > RESULT: Collision (Parallel Overlap)\n";
-//                     return obstacle;
-//                 }
-//                 std::cout << "  > RESULT: No Collision (Moving in parallel, no overlap)\n";
-//                 continue;
-//             }
-
-//             double discriminant = B * B - 4 * A * C;
-
-//             // =================================== DEBUG BLOCK ===================================
-//             std::cout << "  > Quadratic Discriminant:         " << discriminant << "\n";
-//             // =================================================================================
-
-//             if (discriminant < 0) {
-//                  std::cout << "  > RESULT: No Collision (Paths never cross at this radius)\n";
-//                 continue;
-//             }
-
-//             double sqrt_disc = std::sqrt(discriminant);
-//             double tau1 = (-B - sqrt_disc) / (2 * A);
-//             double tau2 = (-B + sqrt_disc) / (2 * A);
-
-//             double collision_start = std::min(tau1, tau2);
-//             double collision_end = std::max(tau1, tau2);
-
-//             // =================================== DEBUG BLOCK ===================================
-//             std::cout << "  > Robot Interval:                 [" << t0 << ", " << t0 + T << "]\n"
-//                       << "  > Collision Interval:             [" << collision_start << ", " << collision_end << "]\n";
-//             // =================================================================================
-
-//             if (std::max(t0, collision_start) <= std::min(t0 + T, collision_end)) {
-//                  std::cout << "  > RESULT: PREDICTED COLLISION! Intervals overlap.\n";
-//                 return obstacle;
+//         } else { // This is the static obstacle check.
+//             if (min_dist_sq_to_path > R_sq) {
+//                 continue; // Static obstacle is not intersecting the path.
 //             } else {
-//                  std::cout << "  > RESULT: No Collision (Intervals do not overlap)\n";
+//                 // If a static obstacle *is* intersecting, it's a definite collision.
+//                 return obs;
+//             }
+//         }
+        
+//         // --- 3. Predictive Check for Dynamic Obstacles ---
+//         // This only runs for dynamic obstacles that passed the broad-phase check.
+//         if (obs.is_dynamic && T > 1e-9) {
+//             // Extrapolate obstacle state to the start of the trajectory edge (τ=0)
+//             double t_snap = obs.last_update_time.seconds();
+//             double delta_t = global_edge_start_time - t_snap;
+            
+//             Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t + 0.5 * obs.acceleration * (delta_t * delta_t);
+//             Eigen::Vector2d v_o0 = obs.velocity + obs.acceleration * delta_t;
+            
+//             Eigen::Vector2d p0 = p_r0 - p_o0; // Relative position at τ=0
+//             Eigen::Vector2d v1 = v_r - v_o0;  // Relative velocity at τ=0
+
+//             // --- Case 1: Constant Velocity Model (Zero Acceleration) ---
+//             if (obs.acceleration.squaredNorm() < 1e-9) {
+//                 double C2 = v1.dot(v1);
+//                 double C1 = 2.0 * p0.dot(v1);
+//                 double C0 = p0.dot(p0) - R_sq;
+
+//                 if (std::abs(C2) < 1e-9) continue; // No relative velocity, no new collision.
+
+//                 double discriminant = C1 * C1 - 4 * C2 * C0;
+//                 if (discriminant < 0) continue; // Paths don't intersect.
+
+//                 double sqrt_disc = std::sqrt(discriminant);
+//                 // Check if the collision interval [t1, t2] overlaps with trajectory duration [0, T]
+//                 double t1 = (-C1 - sqrt_disc) / (2 * C2); // Time of first contact
+//                 double t2 = (-C1 + sqrt_disc) / (2 * C2); // Time of last contact
+
+//                 if (std::max(0.0, t1) <= std::min(T, t2)) {
+//                     return obs; // Collision occurs within the trajectory duration.
+//                 }
+//             } 
+//             // --- Case 2: Constant Acceleration Model ---
+//             else {
+//                 Eigen::Vector2d v2 = -0.5 * obs.acceleration;
+
+//                 double A4 = v2.dot(v2);
+//                 double A3 = 2.0 * v1.dot(v2);
+//                 double A2 = 2.0 * p0.dot(v2) + v1.dot(v1);
+//                 double A1 = 2.0 * p0.dot(v1);
+//                 double A0 = p0.dot(p0) - R_sq;
+
+//                 Eigen::Matrix<double,5,1> coeffs;
+//                 coeffs << A0, A1, A2, A3, A4;
+
+//                 Eigen::PolynomialSolver<double,4> solver;
+//                 solver.compute(coeffs);
+
+//                 for (auto const& root : solver.roots()) {
+//                     if (std::abs(root.imag()) > 1e-6) continue; // Ignore complex roots
+//                     double tau = root.real();
+//                     // Check if a real collision occurs within the trajectory duration
+//                     if (tau >= 0 && tau <= T) {
+//                         return obs;
+//                     }
+//                 }
 //             }
 //         }
 //     }
@@ -360,8 +416,22 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 
 
 
-// // WITH DEBUG AND CORRECTED CURRENT POSITION CHECK
-// // Will the robot and obstacle be in the same place at the same global time?
+
+
+
+
+
+// /*
+//     Uses constant velocity model and no acceleration
+//     Numerical instead of eigen 4th order polynomial
+//     No broad phase for far away edges --> implement this but this needs to be implemented for dynamic obstalces carefully by considering their max velocity
+//     No static Collision
+//     My problem : what if the robot is behind the obstalce and they are moving in the same direction and the obstalce suddenly moves back
+//                  or even worse --> the edge that the robot is traveling right now has constant velocity! it doesnt know about obstalce until
+//                  we hit the back of the obstalce and then the replanner immeidately want to reroute but it might fail because the robot is in the tip end of the obstalce 
+//                  and we get replanner fail!
+//                  so a static immeidate check to obsolete the edge might be good --> This is only because my obstalces change direction backward at their end point!
+// */
 // std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
 //     const Trajectory& trajectory,
 //     double global_edge_start_time
@@ -372,131 +442,160 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //         return std::nullopt;
 //     }
 
-//     // Get the start and end points of the robot's path segment
-//     const Eigen::Vector2d& robot_start_pos = trajectory.path_points.front().head<2>();
-//     const Eigen::Vector2d& robot_end_pos = trajectory.path_points.back().head<2>();
+//     // --- Robot's initial state and velocity ---
+//     const Eigen::Vector2d p_r0 = trajectory.path_points.front().head<2>();
+//     const Eigen::Vector2d p_rT = trajectory.path_points.back().head<2>();
+//     const double T = trajectory.time_duration;
+    
+//     // CORRECTED: Use if/else to avoid the Eigen expression template type error
+//     Eigen::Vector2d v_r;
+//     if (T > 1e-9) {
+//         v_r = (p_rT - p_r0) / T;
+//     } else {
+//         v_r = Eigen::Vector2d::Zero();
+//     }
 
-//     for (const auto& obstacle : obstacle_snapshot_) {
-//         // --- STAGE 1: Check against STATIC obstacles ---
-//         if (!obstacle.is_dynamic) {
-//             if (obstacle.type == Obstacle::CIRCLE) {
-//                 if (lineIntersectsCircle(robot_start_pos, robot_end_pos, obstacle.position, obstacle.dimensions.circle.radius + inflation)) {
-//                     // Static collision, return immediately
-//                     return obstacle;
-//                 }
-//             } else { // BOX
-//                  if (lineIntersectsRectangle(robot_start_pos, robot_end_pos, obstacle.position, obstacle.dimensions.box.width + 2*inflation, obstacle.dimensions.box.height + 2*inflation, obstacle.dimensions.box.rotation)) {
-//                     // Static collision, return immediately
-//                     return obstacle;
-//                 }
-//             }
-//             // If no collision with this static obstacle, continue to the next one
-//             continue;
-//         }
+//     // --- DISCRETE CHECKING PARAMETERS ---
+//     // Check every 25cm of the robot's path, or at least 10 steps.
+//     const int num_steps = std::max(10, static_cast<int>(v_r.norm() * T / 0.25));
+//     const double time_step = T / num_steps;
 
-//         // --- STAGE 2: Check against DYNAMIC obstacles ---
-//         // This now has two parts: an immediate check and a predictive check.
+//     for (const auto& obs_snapshot : obstacle_snapshot_) {
+//         // --- Calculate the combined radius for collision checking ---
+//         double obs_radius = (obs_snapshot.type == Obstacle::CIRCLE)
+//                           ? obs_snapshot.dimensions.radius
+//                           : std::hypot(obs_snapshot.dimensions..width / 2.0,
+//                                        obs_snapshot.dimensions.height / 2.0);
+//         double combined_radius = obs_radius + inflation;
+//         double combined_radius_sq = combined_radius * combined_radius;
 
-//         // --- Part A: IMMEDIATE STATIC CHECK (The Critical Fix) ---
-//         // First, check if the edge collides with the obstacle's CURRENT position.
-//         // This answers the question: "Is this path blocked RIGHT NOW?"
-//         if (obstacle.type == Obstacle::CIRCLE) {
-//             if (lineIntersectsCircle(robot_start_pos, robot_end_pos, obstacle.position, obstacle.dimensions.circle.radius + inflation)) {
-//                 // std::cout << "\n[Checker] RESULT: IMMEDIATE COLLISION with dynamic obstacle's current position.\n";
-//                 return obstacle;
-//             }
-//         } else { // BOX
-//             if (lineIntersectsRectangle(robot_start_pos, robot_end_pos, obstacle.position, obstacle.dimensions.box.width + 2*inflation, obstacle.dimensions.box.height + 2*inflation, obstacle.dimensions.box.rotation)) {
-//                 // std::cout << "\n[Checker] RESULT: IMMEDIATE COLLISION with dynamic obstacle's current position.\n";
-//                 return obstacle;
-//             }
-//         }
-
-//         // --- Part B: PREDICTIVE CHECK (Your existing, correct logic) ---
-//         // If the path is not blocked right now, then check if it will be blocked in the future at the scheduled time.
-//         // This answers the question: "Will this path be blocked ON SCHEDULE?"
-//         const double robot_duration = trajectory.time_duration;
-//         if (robot_duration < 1e-9) continue; // Cannot predict for zero-duration path
-
-//         const Eigen::Vector2d robot_vel = (robot_end_pos - robot_start_pos) / robot_duration;
-//         double obs_radius = (obstacle.type == Obstacle::CIRCLE)
-//                           ? obstacle.dimensions.circle.radius
-//                           : std::hypot(obstacle.dimensions.box.width, obstacle.dimensions.box.height) / 2.0;
-//         double robot_radius = 0.0;
-//         const double combined_radius = obs_radius + robot_radius;
-
-//         // // =================================== DEBUG BLOCK (Preserved) ===================================
-//         // std::cout << std::fixed << std::setprecision(4);
-//         // std::cout << "\n[Checker] Checking against dynamic obstacle...\n"
-//         //           << "  > Robot Traversal Starts (t0):    " << global_edge_start_time << "s\n"
-//         //           << "  > Robot Traversal Duration (T):   " << robot_duration << "s\n"
-//         //           << "  > Robot Traversal Ends:           " << global_edge_start_time + robot_duration << "s\n"
-//         //           << "  > Robot Velocity (vx, vy):        (" << robot_vel.x() << ", " << robot_vel.y() << ")\n"
-//         //           << "--------------------------------------------------\n"
-//         //           << "  > Obstacle Position (x, y):       (" << obstacle.position.x() << ", " << obstacle.position.y() << ")\n"
-//         //           << "  > Obstacle Velocity (vx, vy):     (" << obstacle.velocity.x() << ", " << obstacle.velocity.y() << ")\n"
-//         //           << "  > Obstacle Snapshot Time:         " << obstacle.last_update_time.seconds() << "s\n";
-//         // // ==============================================================================================
-
-//         const double t0 = global_edge_start_time;
-//         const double T = robot_duration;
-//         double t_snapshot = obstacle.last_update_time.seconds();
-
-//         const Eigen::Vector2d rel_vel = robot_vel - obstacle.velocity;
+//         // --- Extrapolate the obstacle's state to the start of the trajectory (t=0) ---
+//         double t_snap = obs_snapshot.last_update_time.seconds();
+//         double delta_t_extrapolation = global_edge_start_time - t_snap;
         
-//         const Eigen::Vector2d p_robot_at_tau_zero = robot_start_pos - robot_vel * t0;
-//         const Eigen::Vector2d p_obs_at_tau_zero = obstacle.position - obstacle.velocity * t_snapshot;
-//         const Eigen::Vector2d rel_pos_at_tau_zero = p_robot_at_tau_zero - p_obs_at_tau_zero;
+//         // Use a simple, robust constant velocity extrapolation
+//         Eigen::Vector2d p_o0 = obs_snapshot.position + obs_snapshot.velocity * delta_t_extrapolation;
+//         Eigen::Vector2d v_o0 = obs_snapshot.velocity; 
 
-//         double A = rel_vel.dot(rel_vel);
-//         double B = 2 * rel_pos_at_tau_zero.dot(rel_vel);
-//         double C = rel_pos_at_tau_zero.dot(rel_pos_at_tau_zero) - (combined_radius * combined_radius);
+//         // --- DISCRETE CHECKING LOOP ---
+//         for (int i = 0; i <= num_steps; ++i) {
+//             double current_tau = i * time_step;
 
-//         if (std::abs(A) < 1e-9) {
-//             if (C <= 0) {
-//                 //  std::cout << "  > RESULT: PREDICTED COLLISION! (Parallel Overlap)\n";
-//                 return obstacle;
+//             // 1. Calculate robot's position at this time step
+//             Eigen::Vector2d p_robot_at_tau = p_r0 + v_r * current_tau;
+
+//             // 2. Calculate obstacle's position at this time step
+//             Eigen::Vector2d p_obs_at_tau = p_o0 + v_o0 * current_tau;
+            
+//             // 3. Check for collision by comparing squared distance
+//             if ((p_robot_at_tau - p_obs_at_tau).squaredNorm() <= combined_radius_sq) {
+//                 // Collision detected! Return the obstacle.
+//                 return obs_snapshot;
 //             }
-//             // std::cout << "  > RESULT: No Collision (Moving in parallel, no overlap)\n";
-//             continue;
-//         }
-
-//         double discriminant = B * B - 4 * A * C;
-//         // std::cout << "  > Quadratic Discriminant:         " << discriminant << "\n";
-        
-//         if (discriminant < 0) {
-//             //  std::cout << "  > RESULT: No Collision (Paths never cross at this radius)\n";
-//             continue;
-//         }
-
-//         double sqrt_disc = std::sqrt(discriminant);
-//         double tau1 = (-B - sqrt_disc) / (2 * A);
-//         double tau2 = (-B + sqrt_disc) / (2 * A);
-
-//         double collision_start = std::min(tau1, tau2);
-//         double collision_end = std::max(tau1, tau2);
-
-//         // std::cout << "  > Robot Interval:                 [" << t0 << ", " << t0 + T << "]\n"
-//                 //   << "  > Collision Interval:             [" << collision_start << ", " << collision_end << "]\n";
-
-//         if (std::max(t0, collision_start) <= std::min(t0 + T, collision_end)) {
-//             //  std::cout << "  > RESULT: PREDICTED COLLISION! Intervals overlap.\n";
-//             return obstacle;
-//         } else {
-//             //  std::cout << "  > RESULT: No Collision (Intervals do not overlap)\n";
 //         }
 //     }
 
-//     return std::nullopt; // No collisions of any kind were found for any obstacle.
+//     // No collision found after checking all obstacles and all time steps
+//     return std::nullopt;
+// }
+
+
+/*
+    No broad phase for far away edges --> implement this
+    Uses constant velocity model and no acceleration
+    Numerical instead of eigen by using number of steps instead of exact time of collision
+    Has static collision check
+*/
+
+// std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
+//     const Trajectory& trajectory,
+//     double global_edge_start_time
+// ) const {
+
+//     std::lock_guard<std::mutex> lock(snapshot_mutex_);
+
+//     if (trajectory.path_points.size() < 2) {
+//         return std::nullopt;
+//     }
+
+//     // --- Robot's initial state and velocity ---
+//     const Eigen::Vector2d p_r0 = trajectory.path_points.front().head<2>();
+//     const Eigen::Vector2d p_rT = trajectory.path_points.back().head<2>();
+//     const double T = trajectory.time_duration;
+    
+//     Eigen::Vector2d v_r;
+//     if (T > 1e-9) {
+//         v_r = (p_rT - p_r0) / T;
+//     } else {
+//         v_r = Eigen::Vector2d::Zero();
+//     }
+
+//     // --- DISCRETE CHECKING PARAMETERS ---
+//     const int num_steps = std::max(10, static_cast<int>(v_r.norm() * T / 0.25));
+//     const double time_step = T / num_steps;
+
+//     for (const auto& obs_snapshot : obstacle_snapshot_) {
+//         // --- Calculate the combined radius for collision checking ---
+//         double obs_radius = (obs_snapshot.type == Obstacle::CIRCLE)
+//                           ? obs_snapshot.dimensions.radius
+//                           : std::hypot(obs_snapshot.dimensions.width / 2.0,
+//                                        obs_snapshot.dimensions.height / 2.0);
+//         double combined_radius = obs_radius + inflation;
+//         double combined_radius_sq = combined_radius * combined_radius;
+        
+//         // ==================================================================
+//         // ✅ --- ADDED: Static Collision Check ---
+//         // This is a fast, geometric check that ignores obstacle velocity.
+//         // It provides an immediate layer of safety.
+//         // ==================================================================
+//         // We assume the helper function `distanceSqrdPointToSegment` exists in your class.
+//         double min_dist_sq_to_path = distanceSqrdPointToSegment(obs_snapshot.position, p_r0, p_rT);
+//         if (min_dist_sq_to_path <= combined_radius_sq) {
+//             // The obstacle's current position is already intersecting the future path.
+//             return obs_snapshot;
+//         }
+
+//         // --- Predictive Check (Only if Static Check Passes) ---
+//         // If the obstacle is dynamic, proceed with the predictive check.
+//         if (obs_snapshot.is_dynamic) {
+//             // Extrapolate the obstacle's state to the start of the trajectory (t=0)
+//             double t_snap = obs_snapshot.last_update_time.seconds();
+//             double delta_t_extrapolation = global_edge_start_time - t_snap;
+            
+//             Eigen::Vector2d p_o0 = obs_snapshot.position + obs_snapshot.velocity * delta_t_extrapolation;
+//             Eigen::Vector2d v_o0 = obs_snapshot.velocity; 
+
+//             // --- DISCRETE CHECKING LOOP ---
+//             for (int i = 0; i <= num_steps; ++i) {
+//                 double current_tau = i * time_step;
+
+//                 // 1. Calculate robot's position at this time step
+//                 Eigen::Vector2d p_robot_at_tau = p_r0 + v_r * current_tau;
+
+//                 // 2. Calculate obstacle's position at this time step
+//                 Eigen::Vector2d p_obs_at_tau = p_o0 + v_o0 * current_tau;
+                
+//                 // 3. Check for collision by comparing squared distance
+//                 if ((p_robot_at_tau - p_obs_at_tau).squaredNorm() <= combined_radius_sq) {
+//                     // Collision detected! Return the obstacle.
+//                     return obs_snapshot;
+//                 }
+//             }
+//         }
+//     }
+
+
+//     // No collision found after checking all obstacles and all time steps
+//     return std::nullopt;
 // }
 
 
 
-
-// // --- REWRITTEN getCollidingObstacle with improved logic ---
+// // works good with R2T
+// // Discretize form and checking all the waypoints inside : RTD has only two but dubin has many waypoints (which we assume they are lines since they are small)
 // std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
 //     const Trajectory& trajectory,
-//     double global_edge_start_time
+//     double global_start_time
 // ) const {
 //     std::lock_guard<std::mutex> lock(snapshot_mutex_);
 
@@ -504,189 +603,360 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //         return std::nullopt;
 //     }
 
-//     const Eigen::Vector2d& robot_start_pos = trajectory.path_points.front().head<2>();
-//     const Eigen::Vector2d& robot_end_pos = trajectory.path_points.back().head<2>();
+//     auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
+    
+//     // This log is still useful to see when a check starts
+//     // RCLCPP_INFO(rclcpp::get_logger("CollisionChecker"), "\n--- Checking Trajectory (Global Start: %.2f, Segments: %zu) ---", 
+//         // global_start_time, trajectory.path_points.size() - 1);
 
-//     for (const auto& obstacle : obstacle_snapshot_) {
+//     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+//         const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
+//         const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i+1];
+
+//         const Eigen::Vector2d p_r0 = segment_start_state.head<2>();
+//         const Eigen::Vector2d p_r1 = segment_end_state.head<2>();
+//         const double T_segment = get_time(segment_start_state) - get_time(segment_end_state);
+
+//         if (T_segment <= 1e-9) continue;
         
-//         // --- Step 1: Define Obstacle Geometry ---
-//         double obs_raw_radius = 0.0;
-//         if (obstacle.type == Obstacle::CIRCLE) {
-//             obs_raw_radius = obstacle.dimensions.circle.radius;
-//         } else { // BOX
-//             obs_raw_radius = std::hypot(obstacle.dimensions.box.width / 2.0, obstacle.dimensions.box.height / 2.0);
-//         }
+//         const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
+//         const int num_steps = std::max(2, static_cast<int>(v_r.norm() * T_segment / 0.1));
+//         const double time_step = T_segment / num_steps;
 
-//         // The 'inflation' parameter IS our robot's effective radius for collision checking.
-//         const double robot_radius = inflation;
-//         const double combined_radius = obs_raw_radius + robot_radius;
+//         double time_into_full_trajectory = trajectory.time_duration - get_time(segment_start_state);
+//         double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
 
-//         // --- Step 2: Broad-Phase Check (from Julia example) ---
-//         // First, do a quick check to see if the path segment could even possibly be in collision.
-//         double dist_sq = distanceSqrdPointToSegment(obstacle.position, robot_start_pos, robot_end_pos);
-//         if (dist_sq > (combined_radius * combined_radius)) {
-//             continue; // Path is too far from the obstacle's center. Safe to skip.
-//         }
-
-//         // --- Step 3: Narrow-Phase Check (Only if broad-phase passes) ---
-
-//         // A) Immediate Static Collision Check (for ALL obstacle types)
-//         bool is_colliding_now = false;
-//         if (obstacle.type == Obstacle::CIRCLE) {
-//             is_colliding_now = lineIntersectsCircle(robot_start_pos, robot_end_pos, obstacle.position, combined_radius);
-//         } else { // BOX - Use full width/height including inflation
-//             double inflated_width = obstacle.dimensions.box.width + 2 * robot_radius;
-//             double inflated_height = obstacle.dimensions.box.height + 2 * robot_radius;
-//             is_colliding_now = lineIntersectsRectangle(robot_start_pos, robot_end_pos, obstacle.position, inflated_width, inflated_height, obstacle.dimensions.box.rotation);
-//         }
-
-//         // If it's colliding with the current position, that's enough to reject the path.
-//         if (is_colliding_now) {
-//             return obstacle;
-//         }
-
-//         // B) Predictive Check (ONLY for DYNAMIC obstacles)
-//         if (obstacle.is_dynamic) {
-//             const double robot_duration = trajectory.time_duration;
-//             if (robot_duration < 1e-9) continue;
-
-//             const Eigen::Vector2d robot_vel = (robot_end_pos - robot_start_pos) / robot_duration;
-//             const double t0 = global_edge_start_time;
-//             const double T = robot_duration;
-//             double t_snapshot = obstacle.last_update_time.seconds();
-//             const Eigen::Vector2d rel_vel = robot_vel - obstacle.velocity;
-//             const Eigen::Vector2d p_robot_at_tau_zero = robot_start_pos - robot_vel * t0;
-//             const Eigen::Vector2d p_obs_at_tau_zero = obstacle.position - obstacle.velocity * t_snapshot;
-//             const Eigen::Vector2d rel_pos_at_tau_zero = p_robot_at_tau_zero - p_obs_at_tau_zero;
-
-//             double A = rel_vel.dot(rel_vel);
-//             double B = 2 * rel_pos_at_tau_zero.dot(rel_vel);
-//             double C = rel_pos_at_tau_zero.dot(rel_pos_at_tau_zero) - (combined_radius * combined_radius);
-
-//             if (std::abs(A) < 1e-9) {
-//                 if (C <= 0) return obstacle;
-//                 continue;
+//         for (const auto& obs_snapshot : obstacle_snapshot_) {
+//             double obs_radius = (obs_snapshot.type == Obstacle::CIRCLE)
+//                               ? obs_snapshot.dimensions.radius
+//                               : std::hypot(obs_snapshot.dimensions.width / 2.0, obs_snapshot.dimensions.height / 2.0);
+//             double combined_radius = obs_radius + inflation;
+//             double combined_radius_sq = combined_radius * combined_radius;
+            
+//             if (distanceSqrdPointToSegment(obs_snapshot.position, p_r0, p_r1) <= combined_radius_sq) {
+//                 // RCLCPP_WARN(rclcpp::get_logger("CollisionChecker"), "      [!!! STATIC COLLISION !!!] Obstacle at (%.2f, %.2f) is intersecting the path segment.", obs_snapshot.position.x(), obs_snapshot.position.y());
+//                 return obs_snapshot;
 //             }
 
-//             double discriminant = B * B - 4 * A * C;
-//             if (discriminant < 0) continue;
+//             if (obs_snapshot.is_dynamic) {
+//                 // [!!! THE CRITICAL DIAGNOSTIC LOG !!!]
+//                 // This prints the raw data the checker is about to use for its prediction.
+//                 // RCLCPP_INFO(rclcpp::get_logger("CollisionChecker"), "  [Checking Obstacle] Pos: (%.2f, %.2f) | Vel: (%.2f, %.2f)",
+//                     // obs_snapshot.position.x(), obs_snapshot.position.y(),
+//                     // obs_snapshot.velocity.x(), obs_snapshot.velocity.y());
 
-//             double sqrt_disc = std::sqrt(discriminant);
-//             double tau1 = (-B - sqrt_disc) / (2 * A);
-//             double tau2 = (-B + sqrt_disc) / (2 * A);
 
-//             if (std::max(t0, std::min(tau1, tau2)) <= std::min(t0 + T, std::max(tau1, tau2))) {
-//                 return obstacle; // Predicted collision
+//                 double delta_t_extrapolation = global_time_at_segment_start - obs_snapshot.last_update_time.seconds();
+//                 delta_t_extrapolation = std::max(0.0, delta_t_extrapolation);
+
+//                 Eigen::Vector2d p_o0 = obs_snapshot.position + obs_snapshot.velocity * delta_t_extrapolation;
+//                 const Eigen::Vector2d& v_o0 = obs_snapshot.velocity; 
+
+//                 for (int j = 0; j <= num_steps; ++j) {
+//                     double current_tau = j * time_step;
+//                     Eigen::Vector2d p_robot_at_tau = p_r0 + v_r * current_tau;
+//                     Eigen::Vector2d p_obs_at_tau = p_o0 + v_o0 * current_tau;
+                    
+//                     double dist_sq = (p_robot_at_tau - p_obs_at_tau).squaredNorm();
+
+//                     if (dist_sq <= combined_radius_sq) {
+//                         // RCLCPP_WARN(rclcpp::get_logger("CollisionChecker"), "      [!!! PREDICTIVE COLLISION !!!] at tau=%.2fs into segment.", current_tau);
+//                         // RCLCPP_WARN(rclcpp::get_logger("CollisionChecker"), "          - Robot Predicted Pos: (%.2f, %.2f)", p_robot_at_tau.x(), p_robot_at_tau.y());
+//                         // RCLCPP_WARN(rclcpp::get_logger("CollisionChecker"), "          - Obstacle Predicted Pos: (%.2f, %.2f)", p_obs_at_tau.x(), p_obs_at_tau.y());
+//                         // RCLCPP_WARN(rclcpp::get_logger("CollisionChecker"), "          - Dist^2: %.2f <= Required R^2: %.2f", dist_sq, combined_radius_sq);
+//                         return obs_snapshot;
+//                     }
+//                 }
 //             }
 //         }
 //     }
 
-//     return std::nullopt; // No collisions of any kind found
+//     return std::nullopt;
 // }
 
 
 
- // withacceleration!
+
+// // ANALYTICAL!
+
+
+// std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
+//     const Trajectory& trajectory,
+//     double global_start_time
+// ) const {
+//     std::lock_guard<std::mutex> lock(snapshot_mutex_);
+
+//     if (trajectory.analytical_segments.empty()) {
+//         return std::nullopt;
+//     }
+
+//     double cumulative_time = 0.0;
+
+//     // Main loop iterates over the pre-computed analytical segments
+//     for (const auto& segment : trajectory.analytical_segments) {
+//         const double T_segment = segment.duration;
+//         if (T_segment <= 1e-9) continue;
+
+//         const double global_time_at_segment_start = global_start_time + cumulative_time;
+
+//         for (const auto& obs : obstacle_snapshot_) {
+//             // --- 1. Define Collision Radii ---
+//             const double obs_radius = (obs.type == Obstacle::CIRCLE)
+//                                     ? obs.dimensions.radius
+//                                     : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
+//             const double R = obs_radius + inflation;
+//             const double R_sq = R * R;
+//             const double v_max_obs = 12.0; // A reasonable upper bound on any obstacle's speed
+
+//             // --- 2. Broad-Phase Check ---
+//             // Quickly discard obstacles that are geometrically too far away to be a threat.
+//             double min_dist_sq_to_path_geom = 0.0;
+//             if (segment.type == SegmentType::LINE) {
+//                 min_dist_sq_to_path_geom = distanceSqrdPointToSegment(obs.position, segment.start_point, segment.end_point);
+//             } else { // ARC
+//                 min_dist_sq_to_path_geom = distanceSqrdPointToArc(obs.position, segment.start_point, segment.end_point, segment.center, segment.radius, segment.is_clockwise);
+//             }
+
+//             // The maximum distance the obstacle could travel during this segment's duration
+//             const double max_obs_travel_dist = v_max_obs * T_segment;
+//             // The "danger zone" is the collision radius plus this travel distance
+//             const double danger_radius = R + max_obs_travel_dist;
+
+//             if (min_dist_sq_to_path_geom > danger_radius * danger_radius) {
+//                 continue; // Obstacle is too far away to reach the path in time.
+//             }
+
+//             // --- 3. Static Collision Check (Narrow-Phase part 1) ---
+//             // If the obstacle is static, the broad-phase check is sufficient.
+//             if (!obs.is_dynamic) {
+//                 if (min_dist_sq_to_path_geom <= R_sq) {
+//                     return obs; // Definite collision with a static obstacle.
+//                 }
+//                 continue; // Static obstacle is safe, move to the next obstacle.
+//             }
+
+//             // --- 4. Dynamic Predictive Check (Narrow-Phase part 2) ---
+//             // This only runs for dynamic obstacles that passed the broad-phase check.
+//             const double delta_t_extrapolation = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+//             const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
+//             const Eigen::Vector2d& v_o = obs.velocity;
+
+//             // --- SWITCH BASED ON SEGMENT TYPE ---
+//             if (segment.type == SegmentType::LINE) {
+//                 const Eigen::Vector2d& p_r0 = segment.start_point;
+//                 const Eigen::Vector2d v_r = (segment.end_point - p_r0) / T_segment;
+//                 const Eigen::Vector2d p0_relative = p_r0 - p_o0;
+//                 const Eigen::Vector2d v_relative = v_r - v_o;
+
+//                 const double a = v_relative.dot(v_relative);
+//                 const double b = 2.0 * p0_relative.dot(v_relative);
+//                 const double c = p0_relative.dot(p0_relative) - R_sq;
+
+//                 if (std::abs(a) < 1e-9) continue;
+
+//                 const double discriminant = b * b - 4 * a * c;
+//                 if (discriminant < 0) continue;
+
+//                 const double sqrt_disc = std::sqrt(discriminant);
+//                 const double t1 = (-b - sqrt_disc) / (2 * a);
+//                 const double t2 = (-b + sqrt_disc) / (2 * a);
+
+//                 if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
+//                     return obs; // Collision occurs within the segment's duration.
+//                 }
+
+//             } else { // SegmentType::ARC
+//                 const double speed = (segment.end_point - segment.start_point).norm() / T_segment;
+//                 const double angular_velocity = (segment.is_clockwise ? -1.0 : 1.0) * speed / segment.radius;
+                
+//                 if (check_arc_line_collision(
+//                     segment.start_point, segment.center, segment.radius, angular_velocity,
+//                     p_o0, v_o, T_segment, R_sq))
+//                 {
+//                     return obs;
+//                 }
+//             }
+//         }
+//         // Update cumulative time for the next segment
+//         cumulative_time += T_segment;
+//     }
+
+//     return std::nullopt; // Trajectory is clear
+// }
+
+
+
+// // combined by all the above best features! --> works good with R2T and DubinTimeStateSpace!
 std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
     const Trajectory& trajectory,
-    double global_edge_start_time
+    double global_start_time
 ) const {
     std::lock_guard<std::mutex> lock(snapshot_mutex_);
 
-    // Need at least a start and end
     if (trajectory.path_points.size() < 2) {
         return std::nullopt;
     }
 
-    // Extract robot start/end in 2D
-    const Eigen::Vector2d  p_r0 = trajectory.path_points.front().head<2>();
-    const Eigen::Vector2d  p_rT = trajectory.path_points.back().head<2>();
-    const double           T    = trajectory.time_duration;
+    auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
+    auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
 
-    // Precompute robot velocity (zero if T≈0)
-    Eigen::Vector2d v_r = Eigen::Vector2d::Zero();
-    if (T > 1e-9) {
-        v_r = (p_rT - p_r0) / T;
-    }
+    double time_into_full_trajectory = 0.0;
 
-    for (auto const& obs : obstacle_snapshot_) {
-        // 1) Combined (inflated) radius
-        double obs_radius = (obs.type == Obstacle::CIRCLE)
-                          ? obs.dimensions.circle.radius
-                          : std::hypot(obs.dimensions.box.width/2.0,
-                                       obs.dimensions.box.height/2.0);
-        double R       = obs_radius + inflation;
-        double R_sq    = R*R;
+    // --- Main Loop: Iterate over each segment of the trajectory ---
+    for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+        const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
+        const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
 
-        // 2) Broad-phase: quick segment-to-point distance
-        if (distanceSqrdPointToSegment(obs.position, p_r0, p_rT) > R_sq) {
-            continue;
-        }
+        const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
+        const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
+        const double T_segment = get_time(segment_start_state) - get_time(segment_end_state);
 
-        // 3) τ=0 static check (catch immediate collision)
-        bool hit0 = false;
-        if (obs.type == Obstacle::CIRCLE) {
-            hit0 = lineIntersectsCircle(p_r0, p_rT, obs.position, R);
-        } else {
-            double w = obs.dimensions.box.width  + 2*inflation;
-            double h = obs.dimensions.box.height + 2*inflation;
-            hit0 = lineIntersectsRectangle(
-                     p_r0, p_rT,
-                     obs.position, w, h,
-                     obs.dimensions.box.rotation);
-        }
-        if (hit0) {
-            return obs;
-        }
+        if (T_segment <= 1e-9) continue;
+        
+        const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
+        const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
 
-        // 4) If dynamic, do predictive quartic solve for τ∈(0,T]
-        if (obs.is_dynamic && T > 1e-9) {
-            // a) Bring obstacle state to τ=0
-            double t_snap = obs.last_update_time.seconds();
-            Eigen::Vector2d p_o_snap = obs.position;
-            Eigen::Vector2d v_o      = obs.velocity;
-            Eigen::Vector2d a_o      = obs.acceleration;
+        // --- Check this segment against every obstacle ---
+        for (const auto& obs : obstacle_snapshot_) {
+            const double obs_radius = (obs.type == Obstacle::CIRCLE)
+                                    ? obs.dimensions.radius
+                                    : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
+            const double R = obs_radius + inflation;
+            const double R_sq = R * R;
 
-            double Δt = global_edge_start_time - t_snap;
-            Eigen::Vector2d p_o0 = p_o_snap
-                                + v_o * Δt
-                                + 0.5 * a_o * (Δt*Δt);
-            Eigen::Vector2d v_o0 = v_o + a_o * Δt;
-
-            // b) Relative motion polynomial: r(τ)=p0+v1 τ+v2 τ²
-            Eigen::Vector2d p0 = p_r0 - p_o0;
-            Eigen::Vector2d v1 = v_r  - v_o0;
-            Eigen::Vector2d v2 = -0.5 * a_o;
-
-            // c) Build quartic ‖r(τ)‖² = R² → A4τ⁴+…+A0=0
-            double A4 = v2.dot(v2);
-            double A3 = 2.0 * v1.dot(v2);
-            double A2 = 2.0 * p0.dot(v2) + v1.dot(v1);
-            double A1 = 2.0 * p0.dot(v1);
-            double A0 = p0.dot(p0) - R_sq;
-
-            Eigen::Matrix<double,5,1> coeffs;
-            // IMPORTANT: ascending order τ⁰…τ⁴
-            coeffs << A0, A1, A2, A3, A4;
-
-            Eigen::PolynomialSolver<double,4> solver;
-            solver.compute(coeffs);
-
-            auto roots = solver.roots();  // std::vector<std::complex<double>>
-            for (auto const& ζ : roots) {
-                if (std::abs(ζ.imag()) > 1e-6) continue; 
-                double τ = ζ.real();
-                if (τ > 1e-9 && τ <= T) {
-                    // collision at time τ>0
-                    return obs;
+            // --- 1. Broad-Phase Check (from Function 1) ---
+            const double min_dist_sq_to_path = distanceSqrdPointToSegment(obs.position, p_r0, p_r1);
+            if (obs.is_dynamic) {
+                const double v_max_obs = 10.0;
+                const double max_obs_travel_dist = v_max_obs * T_segment;
+                const double danger_radius = R + max_obs_travel_dist;
+                if (min_dist_sq_to_path > danger_radius * danger_radius) {
+                    continue;
+                }
+            } else { // Static obstacle
+                if (min_dist_sq_to_path > R_sq) {
+                    continue;
                 }
             }
+
+            // --- 2. Narrow-Phase Check ---
+            if (obs.is_dynamic) {
+                // --- Predictive Check using Discrete Time-Stepping (from Function 2) ---
+                const int num_steps = std::max(2, static_cast<int>(v_r.norm() * T_segment / 0.1));
+                const double time_step = T_segment / num_steps;
+
+                const double delta_t_extrapolation = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+                const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
+                const Eigen::Vector2d& v_o0 = obs.velocity;
+
+                for (int j = 0; j <= num_steps; ++j) {
+                    double current_tau = j * time_step;
+                    Eigen::Vector2d p_robot_at_tau = p_r0 + v_r * current_tau;
+                    Eigen::Vector2d p_obs_at_tau = p_o0 + v_o0 * current_tau;
+                    
+                    if ((p_robot_at_tau - p_obs_at_tau).squaredNorm() <= R_sq) {
+                        return obs; // A predictive collision will occur.
+                    }
+                }
+            } else {
+                // --- Geometric Check for Static Obstacles ---
+                // If a static obstacle passed the broad-phase, it's a definite collision.
+                return obs;
+            }
         }
-        // otherwise static and no hit0 → safe
+        
+        time_into_full_trajectory += T_segment;
     }
 
-    return std::nullopt;
+    return std::nullopt; // The trajectory is safe.
 }
+
+
+// // This is the primary function, now rewritten to use the Velocity Obstacle method.
+// // This is the new, corrected version of your collision checking function.
+// // It implements the segment-by-segment Velocity Obstacle check you proposed.
+// std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
+//     const Trajectory& trajectory,
+//     double global_start_time
+// ) const {
+//     std::lock_guard<std::mutex> lock(snapshot_mutex_);
+
+//     // A trajectory needs at least two points to form a segment.
+//     if (trajectory.path_points.size() < 2) {
+//         return std::nullopt;
+//     }
+
+//     // Lambdas to easily access components of a state vector.
+//     auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
+//     auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
+
+//     // The robot's radius, used for calculating the combined radius for checks.
+//     const double robot_radius = inflation;
+    
+//     // This will track the time elapsed from the start of the whole trajectory.
+//     double cumulative_time = 0.0;
+
+//     // --- Main Loop: Iterate over each segment of the trajectory ---
+//     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+//         const Eigen::VectorXd& qi = trajectory.path_points[i];
+//         const Eigen::VectorXd& qj = trajectory.path_points[i + 1];
+
+//         // The duration of this specific segment.
+//         const double dt_seg = get_time(qi) - get_time(qj); // Assumes backward time (time-to-go)
+//         if (dt_seg <= 1e-9) {
+//             // Skip zero-duration "wait" segments, but account for their time.
+//             cumulative_time += dt_seg;
+//             continue;
+//         }
+
+//         // The absolute world time when this segment is predicted to start.
+//         const double global_time_at_segment_start = global_start_time + cumulative_time;
+
+//         // --- Check this segment against every obstacle ---
+//         for (const auto& obs : obstacle_snapshot_) {
+            
+//             // Calculate the combined collision radius for this robot-obstacle pair.
+//             double obs_radius = (obs.type == Obstacle::CIRCLE)
+//                               ? obs.dimensions.radius
+//                               : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
+//             double combined_radius = obs_radius + robot_radius;
+
+//             // --- 1. Static Obstacle Check ---
+//             // A simple, fast geometric check for non-moving obstacles.
+//             if (!obs.is_dynamic) {
+//                 if (distanceSqrdPointToSegment(obs.position, get_xy(qi), get_xy(qj)) <= combined_radius * combined_radius) {
+//                     return obs; // Collision with a static obstacle found.
+//                 }
+//                 continue; // Safe from this static obstacle, check the next one.
+//             }
+
+//             // --- 2. Dynamic Obstacle (VO) Check ---
+//             // Predict the obstacle's position at the start of THIS segment.
+//             double delta_t_extrapolation = global_time_at_segment_start - obs.last_update_time.seconds();
+//             Eigen::Vector2d p_o_predicted_start = obs.position + obs.velocity * std::max(0.0, delta_t_extrapolation);
+            
+//             // Calculate the robot's constant velocity for this segment.
+//             const Eigen::Vector2d v_r = (get_xy(qj) - get_xy(qi)) / dt_seg;
+
+//             // The relative position vector from the robot's start to the obstacle's predicted start.
+//             const Eigen::Vector2d p_rel = p_o_predicted_start - get_xy(qi);
+            
+//             // Perform the VO check.
+//             if (isInVelocityObstacle(v_r, obs.velocity, p_rel, combined_radius)) {
+//                 return obs; // A predictive collision is found.
+//             }
+//         }
+
+//         // Update the cumulative time for the start of the next segment.
+//         cumulative_time += dt_seg;
+//     }
+
+//     // If all segments were checked against all obstacles and no collisions were found...
+//     return std::nullopt; // ...the trajectory is safe.
+// }
+
+
+
 
 Eigen::Vector2d GazeboObstacleChecker::getRobotPosition() const {
     std::lock_guard<std::mutex> lock(data_mutex_);
@@ -698,7 +968,7 @@ Eigen::VectorXd GazeboObstacleChecker::getRobotOrientation() const {
     return robot_orientation_;
 }
 
-const std::vector<Obstacle>& GazeboObstacleChecker::getObstaclePositions() const {
+const ObstacleVector& GazeboObstacleChecker::getObstaclePositions() const {
     std::lock_guard<std::mutex> lock(data_mutex_);
     return obstacle_positions_;
 }
@@ -752,7 +1022,7 @@ Eigen::VectorXd GazeboObstacleChecker::quaternionToEuler(const Eigen::VectorXd& 
 // void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
 //     std::lock_guard<std::mutex> lock(snapshot_mutex_);
 //     obstacle_positions_.clear();
-//     std::vector<Obstacle> current_dynamic_obstacles;
+//     ObstacleVector current_dynamic_obstacles;
 //     std::unordered_map<std::string, Obstacle> current_obstacles_map;
 
 //     // Get the current simulation time from the stored clock
@@ -923,7 +1193,7 @@ Eigen::VectorXd GazeboObstacleChecker::quaternionToEuler(const Eigen::VectorXd& 
 void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
     std::lock_guard<std::mutex> lock(snapshot_mutex_);
     obstacle_positions_.clear();
-    std::vector<Obstacle> current_dynamic_obstacles;
+    ObstacleVector current_dynamic_obstacles;
 
     // Get the current simulation time from the stored clock
     rclcpp::Time now = clock_->now();
@@ -1005,31 +1275,17 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
                 if (filter_it == obstacle_filters_.end()) {
                     // First time seeing this obstacle, initialize a new filter.
                     
+                    // --- ✅ 1. Use the Factory to create the filter ---
+                    KalmanFilter new_filter = KalmanFilterFactory::createFilter(kf_model_type_);
 
-                    /////////////////Singer model///////////
-                    // Define the Singer parameters for this type of obstacle.
-                    // These are the values you will tune.
-                    double sigma_a = 180.0; // Expected max acceleration (e.g., m/s^2)
-                    double alpha = 0.1;   // Maneuver frequency (e.g., 1/s)
-
-                    // Create the filter with the new constructor
-                    KalmanFilter new_filter(alpha, sigma_a);
-                    
-                    Eigen::VectorXd initial_state(6);
-                    initial_state << obstacle.position.x(), obstacle.position.y(), 0, 0, 0, 0;
+                    // --- ✅ 2. Initialize the state with the correct size ---
+                    int state_size = (kf_model_type_ == "cv") ? 4 : 6;
+                    Eigen::VectorXd initial_state = Eigen::VectorXd::Zero(state_size);
+                    initial_state.head<2>() << obstacle.position.x(), obstacle.position.y();
                     new_filter.init(initial_state);
                     
                     filter_it = obstacle_filters_.emplace(name, new_filter).first;
-                    // ////////////////Constant acc model////////////
-                    // KalmanFilter new_filter;
-                    // Eigen::VectorXd initial_state(6);
-                    // initial_state << obstacle.position.x(), obstacle.position.y(), 0, 0, 0, 0; // px, py, vx, vy, ax, ay
-                    // new_filter.init(initial_state);
-                    // filter_it = obstacle_filters_.emplace(name, new_filter).first;
-                    // //////////////////////////////
-
                     
-                    // On first sight, velocity and acceleration are zero.
                     obstacle.velocity.setZero();
                     obstacle.acceleration.setZero();
 
@@ -1053,7 +1309,13 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
                     // 3. Get the smoothed state from the filter to use in planning.
                     Eigen::VectorXd estimated_state = filter_it->second.getState();
                     obstacle.velocity << estimated_state(2), estimated_state(3);
-                    obstacle.acceleration << estimated_state(4), estimated_state(5);
+
+                    if (kf_model_type_ == "cv") {
+                        obstacle.acceleration.setZero();
+                    } else { // For "ca" and "singer"
+                        obstacle.acceleration << estimated_state(4), estimated_state(5);
+                    }
+
                 }
                  // Store the timestamp of this update for the next iteration's dt calculation
                 obstacle_filters_times_[name] = now;
@@ -1190,9 +1452,9 @@ bool GazeboObstacleChecker::pointIntersectsCircle(const Eigen::Vector2d& point,
 
 
 
-std::vector<Obstacle> GazeboObstacleChecker::getObstacles() const {
+ObstacleVector GazeboObstacleChecker::getObstacles() const {
     std::lock_guard<std::mutex> lock(data_mutex_);
-    std::vector<Obstacle> filtered_obstacles;
+    ObstacleVector filtered_obstacles;
     
     for (const auto& obstacle : obstacle_positions_) {
         if (use_range) {

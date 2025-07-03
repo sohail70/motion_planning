@@ -297,7 +297,7 @@ void KinodynamicFMTX::near(int node_index) {
 */
 
 std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
-    const std::vector<Obstacle>& obstacles, 
+    const ObstacleVector& obstacles, 
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples;
@@ -324,12 +324,12 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
 
         double obstacle_radius;
         if (obstacle.type == Obstacle::CIRCLE) {
-            obstacle_radius = obstacle.dimensions.circle.radius + obstacle.inflation;
+            obstacle_radius = obstacle.dimensions.radius + obstacle.inflation;
         } else { // BOX
             // Calculate half diagonal of the box
             double half_diagonal = std::sqrt(
-                std::pow(obstacle.dimensions.box.width/2, 2) + 
-                std::pow(obstacle.dimensions.box.height/2, 2)
+                std::pow(obstacle.dimensions.width/2, 2) + 
+                std::pow(obstacle.dimensions.height/2, 2)
             );
             obstacle_radius = half_diagonal + obstacle.inflation;
         }
@@ -353,7 +353,7 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
     you can use that to your advantage
 */
 std::pair<std::unordered_set<int>, std::unordered_set<int>> KinodynamicFMTX::findSamplesNearObstaclesDual(
-    const std::vector<Obstacle>& obstacles, 
+    const ObstacleVector& obstacles, 
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples_inflated;
@@ -362,13 +362,13 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> KinodynamicFMTX::fin
     for (const auto& obstacle : obstacles) {
         double obstacle_radius, base_radius;
         if (obstacle.type == Obstacle::CIRCLE) {
-            base_radius = obstacle.dimensions.circle.radius;
+            base_radius = obstacle.dimensions.radius;
             obstacle_radius = base_radius + obstacle.inflation;
         } else { // BOX
             // Calculate half diagonal of the box
             double half_diagonal = std::sqrt(
-                std::pow(obstacle.dimensions.box.width/2, 2) + 
-                std::pow(obstacle.dimensions.box.height/2, 2)
+                std::pow(obstacle.dimensions.width/2, 2) + 
+                std::pow(obstacle.dimensions.height/2, 2)
             );
             base_radius = half_diagonal;
             obstacle_radius = half_diagonal + obstacle.inflation;
@@ -419,7 +419,7 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> KinodynamicFMTX::fin
 
 */
 
-void KinodynamicFMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+void KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     in_dynamic = true;
 
     /*

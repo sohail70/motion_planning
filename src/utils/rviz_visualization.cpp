@@ -89,6 +89,35 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
     marker_pub_->publish(marker);
 }
 
+void RVizVisualization::visualizeSingleEdge(const Eigen::VectorXd& start_point, const Eigen::VectorXd& end_point, int edge_id, const std::string& frame_id) {
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = frame_id;
+    marker.header.stamp = node_->now();
+    marker.ns = "tree_edges_incremental"; // A dedicated namespace
+    marker.id = edge_id; // Use the provided ID, which will be the child node's index
+    marker.type = visualization_msgs::msg::Marker::LINE_LIST;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.scale.x = 0.05;
+    marker.color.r = 1.0;
+    marker.color.g = 0.0;
+    marker.color.b = 0.0;
+    marker.color.a = 1.0;
+
+    geometry_msgs::msg::Point start, end;
+    start.x = start_point.x();
+    start.y = start_point.y();
+    start.z = (start_point.size() > 2) ? start_point.z() : 0.0;
+
+    end.x = end_point.x();
+    end.y = end_point.y();
+    end.z = (end_point.size() > 2) ? end_point.z() : 0.0;
+
+    marker.points.push_back(start);
+    marker.points.push_back(end);
+
+    marker_pub_->publish(marker);
+}
+
 
 void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id) {
        visualization_msgs::msg::Marker marker;
@@ -657,7 +686,7 @@ void RVizVisualization::visualizeTrajectories(const std::vector<std::vector<Eige
 
 
 void RVizVisualization::visualizeFutureGhosts(
-    const std::vector<Obstacle>& obstacles,
+    const ObstacleVector& obstacles,
     double prediction_horizon,
     const std::string& frame_id)
 {
@@ -739,18 +768,18 @@ void RVizVisualization::visualizeFutureGhosts(
 
         if (obstacle.type == Obstacle::CIRCLE) {
             ghost_marker.type = visualization_msgs::msg::Marker::CYLINDER;
-            ghost_marker.scale.x = 2 * (obstacle.dimensions.circle.radius + obstacle.inflation);
-            ghost_marker.scale.y = 2 * (obstacle.dimensions.circle.radius + obstacle.inflation);
+            ghost_marker.scale.x = 2 * (obstacle.dimensions.radius + obstacle.inflation);
+            ghost_marker.scale.y = 2 * (obstacle.dimensions.radius + obstacle.inflation);
             ghost_marker.scale.z = 0.1;
         } else { // BOX
             ghost_marker.type = visualization_msgs::msg::Marker::CUBE;
-            Eigen::Quaterniond q(Eigen::AngleAxisd(obstacle.dimensions.box.rotation, Eigen::Vector3d::UnitZ()));
+            Eigen::Quaterniond q(Eigen::AngleAxisd(obstacle.dimensions.rotation, Eigen::Vector3d::UnitZ()));
             ghost_marker.pose.orientation.x = q.x();
             ghost_marker.pose.orientation.y = q.y();
             ghost_marker.pose.orientation.z = q.z();
             ghost_marker.pose.orientation.w = q.w();
-            ghost_marker.scale.x = obstacle.dimensions.box.width + 2 * obstacle.inflation;
-            ghost_marker.scale.y = obstacle.dimensions.box.height + 2 * obstacle.inflation;
+            ghost_marker.scale.x = obstacle.dimensions.width + 2 * obstacle.inflation;
+            ghost_marker.scale.y = obstacle.dimensions.height + 2 * obstacle.inflation;
             ghost_marker.scale.z = 0.1;
         }
         all_markers.markers.push_back(ghost_marker);

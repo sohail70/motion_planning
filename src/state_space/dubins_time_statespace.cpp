@@ -66,6 +66,33 @@ Trajectory DubinsTimeStateSpace::steer(const Eigen::VectorXd& from, const Eigen:
         return traj_geom;
     }
 
+    ///// FOR ANALYTICAL/////////////
+    auto arc_len = [&](const Eigen::Vector2d& A,
+                       const Eigen::Vector2d& B,
+                       const Eigen::Vector2d& C,
+                       bool clockwise)
+    {
+        double alpha = atan2(A.y() - C.y(), A.x() - C.x());
+        double beta  = atan2(B.y() - C.y(), B.x() - C.x());
+        double d_th  = normalizeAngle(beta - alpha);
+        if (clockwise && d_th > 0)    d_th -= 2*M_PI;
+        if (!clockwise && d_th < 0)   d_th += 2*M_PI;
+        return std::abs(d_th) * min_turning_radius_;
+    };
+
+    for (auto& segment : traj_geom.analytical_segments) {
+        double segment_len = 0.0;
+        if (segment.type == SegmentType::LINE) {
+            segment_len = (segment.end_point - segment.start_point).norm();
+        } else { // SegmentType::ARC
+            segment_len = arc_len(segment.start_point, segment.end_point, segment.center, segment.is_clockwise);
+        }
+        segment.duration = segment_len / required_velocity;
+    }
+    ///////////////////////////////////
+
+
+
     // --- Step 3: Parameterize the Path with Time ---
     // The waypoints from the base class are 3D. We upgrade them to 4D.
     std::vector<Eigen::VectorXd> path_points_4d;
@@ -131,4 +158,58 @@ std::shared_ptr<State> DubinsTimeStateSpace::sampleUniform(const Eigen::VectorXd
         values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
     }
     return this->addState(values);
+}
+
+Trajectory DubinsTimeStateSpace::createHoverPath(const Eigen::VectorXd& hover_state, double duration, HoverDirection direction) const {
+    Trajectory hover_traj;
+    hover_traj.is_valid = true;
+    hover_traj.time_duration = duration;
+
+    const double hover_speed = min_velocity_;
+    const double angular_vel = hover_speed / min_turning_radius_;
+    const int num_steps = 50; 
+
+    // Get initial state
+    const double start_x = hover_state(0);
+    const double start_y = hover_state(1);
+    const double start_theta = hover_state(2);
+    const double start_time = hover_state(3);
+
+    double center_angle;
+    double rotation_direction_multiplier;
+
+    if (direction == HoverDirection::RIGHT) {
+        center_angle = start_theta - M_PI / 2.0;
+        rotation_direction_multiplier = 1.0; 
+    } else { // LEFT
+        center_angle = start_theta + M_PI / 2.0;
+        rotation_direction_multiplier = -1.0; 
+    }
+
+    double center_x = start_x + min_turning_radius_ * cos(center_angle);
+    double center_y = start_y + min_turning_radius_ * sin(center_angle);
+
+    // Generate the waypoints for the circular path
+    hover_traj.path_points.reserve(num_steps + 1);
+    for (int i = 0; i <= num_steps; ++i) {
+        double step_fraction = static_cast<double>(i) / num_steps;
+        double time_elapsed = step_fraction * duration;
+        double angle_rotated = rotation_direction_multiplier * angular_vel * time_elapsed;
+
+        Eigen::VectorXd point(4);
+        // FIX: The angle for position calculation must change in the same direction as the heading.
+        point(0) = center_x + min_turning_radius_ * cos(center_angle + angle_rotated);
+        point(1) = center_y + min_turning_radius_ * sin(center_angle + angle_rotated);
+        // This line remains the same
+        point(2) = normalizeAngle(start_theta + angle_rotated);
+        // This line remains the same
+        point(3) = start_time - time_elapsed;
+        
+        hover_traj.path_points.push_back(point);
+    }
+    
+    hover_traj.cost = duration;
+    hover_traj.geometric_distance = hover_speed * duration;
+
+    return hover_traj;
 }

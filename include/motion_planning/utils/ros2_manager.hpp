@@ -415,7 +415,7 @@ void visualizeDWA(const DWAVisualization& data) {
 
     void visualizeObstacles(double robot_x, double robot_y) {
         // This vector will hold all currently visible obstacles, static and dynamic.
-        std::vector<Obstacle> all_visible_obstacles; 
+        ObstacleVector all_visible_obstacles; 
 
         std::vector<Eigen::VectorXd> cylinder_obstacles;
         std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_obstacles;
@@ -439,23 +439,23 @@ void visualizeDWA(const DWAVisualization& data) {
                     Eigen::VectorXd vec(2);
                     vec << obstacle.position.x(), obstacle.position.y();
                     cylinder_obstacles.push_back(vec);
-                    cylinder_radii.push_back(obstacle.dimensions.circle.radius);// + obstacle.inflation);
+                    cylinder_radii.push_back(obstacle.dimensions.radius);// + obstacle.inflation);
                 } else if (obstacle.type == Obstacle::BOX) {
-                    const double inflated_width = obstacle.dimensions.box.width; // + 2*obstacle.inflation;
-                    const double inflated_height = obstacle.dimensions.box.height; // + 2*obstacle.inflation;
+                    const double inflated_width = obstacle.dimensions.width; // + 2*obstacle.inflation;
+                    const double inflated_height = obstacle.dimensions.height; // + 2*obstacle.inflation;
                     
                     if (inflated_width > 0.0 && inflated_height > 0.0) {
                         box_obstacles.emplace_back(
                             obstacle.position,
                             inflated_width,
                             inflated_height,
-                            obstacle.dimensions.box.rotation
+                            obstacle.dimensions.rotation
                         );
                     } else {
                         std::cout << "WARNING: Invalid box dimensions - width: " 
                                 << std::fixed << std::setprecision(2)
-                                << obstacle.dimensions.box.width << " (+" << obstacle.inflation
-                                << " inflation), height: " << obstacle.dimensions.box.height
+                                << obstacle.dimensions.width << " (+" << obstacle.inflation
+                                << " inflation), height: " << obstacle.dimensions.height
                                 << " (+" << obstacle.inflation << " inflation)"
                                 << std::endl;
                     }

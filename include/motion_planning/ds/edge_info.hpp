@@ -13,6 +13,23 @@ struct ExecutionTrajectory {
     Eigen::MatrixXd A;       // (N-1)xD_spatial matrix of accelerations for intervals
 };
 
+enum class SegmentType { ARC, LINE };
+
+// Holds the complete analytical definition of a single path segment
+struct AnalyticalSegment {
+    SegmentType type;
+    double duration = 0.0; // Initially zero, calculated in DubinsTimeStateSpace
+
+    // Geometric properties
+    Eigen::Vector2d start_point;
+    Eigen::Vector2d end_point;
+
+    // Arc-specific data
+    Eigen::Vector2d center = {0, 0};
+    double radius = 0.0;
+    bool is_clockwise = false;
+};
+
 
 // This struct holds the result of the steering function.
 // It's the primary way the StateSpace communicates path details to the Planner.
@@ -23,6 +40,14 @@ struct Trajectory {
     double time_duration = std::numeric_limits<double>::infinity(); // For getCollidingObstalces function's time input
     std::vector<Eigen::VectorXd> path_points;
     ExecutionTrajectory execution_data; // Detailed profile for simulation and execution
+
+    // --- Data for Analytical Collision Checking ---
+    std::vector<AnalyticalSegment> analytical_segments;
+    
+    // Helper fields to pass info from base to derived steer function
+    std::string maneuver_type;
+    std::vector<Eigen::Vector2d> maneuver_pts;
+    std::vector<Eigen::Vector2d> maneuver_centers;
 
 };
 

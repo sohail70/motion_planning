@@ -57,7 +57,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
         Eigen::VectorXd weights(2);
         // weights << 1.0, 1.0, 1.0; // Weights for x, y, time
         weights << 1.0, 1.0; // Weights for x, y,
-        kdtree_ = std::make_shared<WeightedNanoFlann>(statespace_->getDimension()-1, weights);
+        kdtree_ = std::make_shared<WeightedNanoFlann>(2, weights);
     } else if (use_kdtree == true && kdtree_type == "LieKDTree"){
         kdtree_ = std::make_unique<LieSplittingKDTree>(statespace_->getDimension(), statespace_);
     } else {
@@ -144,9 +144,11 @@ void KinodynamicFMTX::plan() {
 
     // 2. Get the current best time-to-go from the robot's anchor node.
     //    Use a large fallback if the path is not yet found.
-    const double best_known_time_to_goal = (robot_node_ && robot_node_->getTimeToGoal() != INFINITY)
-                                           ? robot_node_->getTimeToGoal()
-                                           : problem_->getGoal()(2); // Use initial time budget as fallback
+    // const double best_known_time_to_goal = (robot_node_ && robot_node_->getTimeToGoal() != INFINITY)
+    //                                        ? robot_node_->getTimeToGoal()
+    //                                        : problem_->getGoal()(2); // Use initial time budget as fallback
+
+    const double best_known_time_to_goal = robot_current_time_to_goal_;
 
     // 3. Calculate the single, predicted global time of arrival for this planning cycle.
     //    This provides a stable anchor for all time calculations within this plan() call.
@@ -257,29 +259,74 @@ void KinodynamicFMTX::plan() {
                     
                     double min_time_for_x = best_parent_for_x->getTimeToGoal() + best_traj_for_x.time_duration;
 
-                    // Calculate the global time this edge is SCHEDULED to start, based on our fixed prediction.
-                    const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
+
+
+                    // ///////////////////------------------
+                    // // Calculate the global time this edge is SCHEDULED to start, based on our fixed prediction.
+                    // const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
 
 
 
-                    // The global start time for the edge x->y is based on the PURE time-to-goal
-                    // double global_edge_start_time = t_arrival - min_time_for_x;
+                    // // The global start time for the edge x->y is based on the PURE time-to-goal
+                    // // double global_edge_start_time = t_arrival - min_time_for_x;
 
-                    // // --- DEBUG BLOCK ---
-                    // // You can uncomment this to see the data going into the check
-                    // std::cout << "\n--- Checking Trajectory ---\n"
-                    //           << "Edge: " << x->getIndex() << " -> " << best_parent_for_x->getIndex() << "\n"
-                    //           << "Current Sim Time (t_now): " << t_now << "s\n"
-                    //           << "Predicted Goal Arrival (t_arrival): " << t_arrival << "s\n"
-                    //           << "Edge Time Duration: " << best_traj_for_x.time_duration << "s\n"
-                    //           << "New Total Time-to-Goal for Node x: " << min_time_for_x << "s\n"
-                    //           << "Calculated Edge Start Time (Global): " << global_edge_start_time << "s\n"
-                    //           << "---------------------------\n";
+                    // // // --- DEBUG BLOCK ---
+                    // // // You can uncomment this to see the data going into the check
+                    // // std::cout << "\n--- Checking Trajectory ---\n"
+                    // //           << "Edge: " << x->getIndex() << " -> " << best_parent_for_x->getIndex() << "\n"
+                    // //           << "Current Sim Time (t_now): " << t_now << "s\n"
+                    // //           << "Predicted Goal Arrival (t_arrival): " << t_arrival << "s\n"
+                    // //           << "Edge Time Duration: " << best_traj_for_x.time_duration << "s\n"
+                    // //           << "New Total Time-to-Goal for Node x: " << min_time_for_x << "s\n"
+                    // //           << "Calculated Edge Start Time (Global): " << global_edge_start_time << "s\n"
+                    // //           << "---------------------------\n";
 
 
-                    // Perform the full predictive check with the CORRECT time context.
-                    bool obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time+0.05);
+                    // // Perform the full predictive check with the CORRECT time context.
+                    // bool obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
+                    // // bool obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, t_now);
 
+                    // // /////////////////////////////////--------------
+
+                    bool obstacle_free = true; // ✅ Default to true
+
+                    // ✅ --- START OF THE OPTIMIZATION ---
+                    // Only perform the expensive predictive check if the node 'x' is on the relevant
+                    // future path of the robot. The robot_node_ stores the robot's current progress.
+                    // ✅ --- CORRECTED OPTIMIZATION ---
+                    // First, check if the robot has a valid, finite time-to-go.
+                    // Then, check if the node 'x' is on the relevant future path.
+                    if (robot_current_time_to_goal_ != std::numeric_limits<double>::infinity()) {
+                        
+                        // Compare the node's potential time with the robot's ACTUAL current time
+                        if (min_time_for_x < robot_current_time_to_goal_) {
+                            // This is a relevant future edge, so we must check it for collisions.
+                            const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
+                            obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
+                        }
+                        // ELSE: The node is "behind" the robot in time.
+                        // We skip the expensive check, and `obstacle_free` remains true.
+                        
+                    } else {
+                        // Fallback: The robot has no valid time (e.g., at the very start).
+                        // We must check all potential paths for safety.
+                        const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
+                        obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
+                    }
+
+                    // ELSE: The node 'x' is "behind" the robot in the time-to-go timeline.
+                    // We can skip the safety check, effectively treating the edge as safe
+                    // for the purpose of maintaining the graph structure, even though
+                    // the robot will never actually traverse it.
+                    // --- END OF THE OPTIMIZATION ---
+
+
+
+
+                    // ////////////////////------------------------
+
+
+                    
 
                     if (obstacle_free) {
                         costUpdated[x] = true;   // mark “done once”
@@ -365,7 +412,7 @@ void KinodynamicFMTX::near(int node_index) {
 */
 
 // std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
-//     const std::vector<Obstacle>& obstacles, 
+//     const ObstacleVector& obstacles, 
 //     double max_length
 // ) {
 //     std::unordered_set<int> conflicting_samples;
@@ -392,12 +439,12 @@ void KinodynamicFMTX::near(int node_index) {
 
 //         double obstacle_radius;
 //         if (obstacle.type == Obstacle::CIRCLE) {
-//             obstacle_radius = obstacle.dimensions.circle.radius + obstacle.inflation;
+//             obstacle_radius = obstacle.dimensions.radius + obstacle.inflation;
 //         } else { // BOX
 //             // Calculate half diagonal of the box
 //             double half_diagonal = std::sqrt(
-//                 std::pow(obstacle.dimensions.box.width/2, 2) + 
-//                 std::pow(obstacle.dimensions.box.height/2, 2)
+//                 std::pow(obstacle.dimensions.width/2, 2) + 
+//                 std::pow(obstacle.dimensions.height/2, 2)
 //             );
 //             obstacle_radius = half_diagonal + obstacle.inflation;
 //         }
@@ -438,11 +485,11 @@ void KinodynamicFMTX::near(int node_index) {
 // TODO: Later implement a box query in weighted nano flann
 
 std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
-    const std::vector<Obstacle>& obstacles,
+    const ObstacleVector& obstacles,
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples;
-    const double PREDICTION_HORIZON_SECONDS = 3.0; // How far into the future to predict
+    const double PREDICTION_HORIZON_SECONDS = 1.0; // How far into the future to predict
     
     // Controls how many steps we check between the start and end of the horizon.
     // 0 = just start and end points. 1 = start, middle, and end points.
@@ -452,11 +499,11 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
         // --- The existing logic for calculating search radius is good. ---
         double obstacle_radius;
         if (obstacle.type == Obstacle::CIRCLE) {
-            obstacle_radius = obstacle.dimensions.circle.radius + obstacle.inflation;
+            obstacle_radius = obstacle.dimensions.radius + obstacle.inflation;
         } else { // BOX
             double half_diagonal = std::sqrt(
-                std::pow(obstacle.dimensions.box.width/2, 2) +
-                std::pow(obstacle.dimensions.box.height/2, 2)
+                std::pow(obstacle.dimensions.width/2, 2) +
+                std::pow(obstacle.dimensions.height/2, 2)
             );
             obstacle_radius = half_diagonal + obstacle.inflation;
         }
@@ -504,7 +551,7 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
     you can use that to your advantage
 */
 std::pair<std::unordered_set<int>, std::unordered_set<int>> KinodynamicFMTX::findSamplesNearObstaclesDual(
-    const std::vector<Obstacle>& obstacles, 
+    const ObstacleVector& obstacles, 
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples_inflated;
@@ -513,13 +560,13 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> KinodynamicFMTX::fin
     for (const auto& obstacle : obstacles) {
         double obstacle_radius, base_radius;
         if (obstacle.type == Obstacle::CIRCLE) {
-            base_radius = obstacle.dimensions.circle.radius;
+            base_radius = obstacle.dimensions.radius;
             obstacle_radius = base_radius + obstacle.inflation;
         } else { // BOX
             // Calculate half diagonal of the box
             double half_diagonal = std::sqrt(
-                std::pow(obstacle.dimensions.box.width/2, 2) + 
-                std::pow(obstacle.dimensions.box.height/2, 2)
+                std::pow(obstacle.dimensions.width/2, 2) + 
+                std::pow(obstacle.dimensions.height/2, 2)
             );
             base_radius = half_diagonal;
             obstacle_radius = half_diagonal + obstacle.inflation;
@@ -570,7 +617,7 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> KinodynamicFMTX::fin
 
 */
 
-bool KinodynamicFMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     in_dynamic = true;
 
     /*
@@ -591,6 +638,61 @@ bool KinodynamicFMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacl
 
     auto current = findSamplesNearObstacles(obstacles, max_length);
     // auto [current, direct] = findSamplesNearObstaclesDual(obstacles, max_length);
+
+
+    // --- START OF NEW FILTERING LOGIC ---
+    // This is the narrow-phase check to refine the 'current' set.
+    // We iterate through the potentially conflicting nodes and remove any whose
+    // connection to their parent is actually still safe.
+    for (auto it = current.begin(); it != current.end(); ) {
+        int node_index = *it;
+        auto node = tree_[node_index].get();
+        auto parent = node->getParent();
+
+        // If the node has no parent, it's an orphan or the root.
+        // It's definitely in a state of conflict or change, so we must keep it.
+        if (!parent) {
+            ++it;
+            continue;
+        }
+
+        // The trajectory from this node to its parent defines its connection to the tree.
+        Trajectory traj_to_parent;
+        auto& neighbors = node->neighbors();
+        auto neighbor_it = neighbors.find(parent);
+
+        // Ensure the trajectory has been computed. If not, compute and cache it.
+        if (neighbor_it != neighbors.end() && neighbor_it->second.is_trajectory_computed) {
+            traj_to_parent = neighbor_it->second.cached_trajectory;
+        } else {
+            traj_to_parent = statespace_->steer(node->getStateValue(), parent->getStateValue());
+            if (neighbor_it != neighbors.end()) {
+                neighbor_it->second.cached_trajectory = traj_to_parent;
+                neighbor_it->second.is_trajectory_computed = true;
+            }
+        }
+
+        // If the trajectory is geometrically invalid, the edge is broken. Keep the node.
+        if (!traj_to_parent.is_valid) {
+            ++it;
+            continue;
+        }
+
+        // Check if this specific trajectory is safe against dynamic obstacles.
+        // We use a heuristic start time of 'now' since we are reacting to a current obstacle update.
+        const double global_start_time_heuristic = clock_->now().seconds();
+        if (obs_checker_->isTrajectorySafe(traj_to_parent, global_start_time_heuristic)) {
+            // The connection to the parent is SAFE. This node is not in immediate conflict
+            // via its tree connection. Therefore, we can filter it out (erase it).
+            it = current.erase(it);
+        } else {
+            // The connection to the parent is NOT safe. Keep this node in the set.
+            ++it;
+        }
+    }
+    // --- END OF NEW FILTERING LOGIC ---
+
+
 
 
     // // ==============================================================================
@@ -1230,74 +1332,383 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 
 
 
+// std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
+// {
+//     std::vector<Eigen::VectorXd> final_executable_path;
+//     FMTNode* best_node_to_connect = nullptr;
+//     Trajectory best_bridge_traj;
+//     best_bridge_traj.is_valid = false;
+
+//     // --- Search Parameters ---
+//     double current_search_radius = neighborhood_radius_;
+//     const int max_attempts = 4; // Number of times to expand the search radius
+//     const double radius_multiplier = 1.8; // How much to increase the radius each time
+
+//     // --- Iterative Broadening Search Loop ---
+//     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+//         auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head<2>(), current_search_radius);
+
+//         double min_total_cost = std::numeric_limits<double>::infinity();
+
+//         // This inner loop is the same as your original function, checking all candidates at the current radius
+//         for (const auto& index : nearby_indices) {
+//             FMTNode* candidate_node = tree_[index].get();
+            
+//             if (candidate_node->getCost() == INFINITY) continue;
+
+//             Trajectory bridge_candidate_traj = statespace_->steer(robot_continuous_state_, candidate_node->getStateValue());
+            
+//             if (bridge_candidate_traj.is_valid) {
+//                 if (obs_checker_->isTrajectorySafe(bridge_candidate_traj, clock_->now().seconds())) {
+//                     double total_cost_via_candidate = bridge_candidate_traj.cost + candidate_node->getCost();
+//                     if (total_cost_via_candidate < min_total_cost) {
+//                         min_total_cost = total_cost_via_candidate;
+//                         best_node_to_connect = candidate_node;
+//                         best_bridge_traj = bridge_candidate_traj;
+//                     }
+//                 }
+//             }
+//         }
+
+//         // --- Check if we found a connection in this attempt ---
+//         if (best_node_to_connect) {
+//             RCLCPP_INFO(rclcpp::get_logger("FMTX_Path"), "Found valid bridge on attempt %d with radius %.2f", attempt, current_search_radius);
+//             break; // Success! Exit the iterative search loop.
+//         }
+
+//         // If no connection was found and we haven't reached the max attempts, expand the search.
+//         if (attempt < max_attempts) {
+//             RCLCPP_WARN(rclcpp::get_logger("FMTX_Path"), "Bridge search failed at radius %.2f. Expanding search.", current_search_radius);
+//             current_search_radius *= radius_multiplier;
+//         }
+//     }
+
+
+//     // // --- After all attempts, build the path or declare critical failure ---
+//     // if (best_node_to_connect) {
+//     //     final_executable_path = best_bridge_traj.path_points;
+
+//     //     FMTNode* current_node = best_node_to_connect->getParent();
+//     //     while (current_node != nullptr) {
+//     //         final_executable_path.push_back(current_node->getStateValue());
+//     //         current_node = current_node->getParent();
+//     //     }
+//     // } else {
+//     //     // This error now only happens after we have exhausted all search attempts.
+//     //     RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path"), "CRITICAL: Could not find any valid bridge to the plan after %d attempts. Robot is stranded.", max_attempts);
+//     // }
+
+//         /*********************************************************************************/
+//     /* --- THE FIX IS HERE: Correct Path Assembly ---                                */
+//     /*********************************************************************************/
+//     if (best_node_to_connect) {
+//         // 1. Start the path with the smooth "bridge" from the robot to the tree.
+//         final_executable_path = best_bridge_traj.path_points;
+
+//         // 2. Iteratively generate and append the path for the rest of the tree segments.
+//         FMTNode* child_node = best_node_to_connect;
+//         FMTNode* parent_node = child_node->getParent();
+
+//         while (parent_node != nullptr) {
+//             // Generate the smooth path for the segment FROM the child TO its parent.
+//             // (Remember, the plan is built backward from the goal).
+//             Trajectory segment_traj = statespace_->steer(child_node->getStateValue(), parent_node->getStateValue());
+            
+//             if (segment_traj.is_valid && segment_traj.path_points.size() > 1) {
+//                 // Append all points from this segment, *except the first one*,
+//                 // to avoid duplicating the state of the child_node.
+//                 final_executable_path.insert(
+//                     final_executable_path.end(), 
+//                     segment_traj.path_points.begin() + 1, 
+//                     segment_traj.path_points.end()
+//                 );
+//             } else {
+//                 // Fallback: If steering fails (shouldn't happen in a valid plan), 
+//                 // just add the parent state to prevent a total failure.
+//                 RCLCPP_WARN(rclcpp::get_logger("FMTX_Path"), "Steering failed during path reconstruction between nodes %d and %d.", child_node->getIndex(), parent_node->getIndex());
+//                 final_executable_path.push_back(parent_node->getStateValue());
+//             }
+
+//             // Move up the tree for the next iteration.
+//             child_node = parent_node;
+//             parent_node = child_node->getParent();
+//         }
+//     } else {
+//         RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path"), "CRITICAL: Could not find any valid bridge to the plan after %d attempts. Robot is stranded.", max_attempts);
+//     }
+//     return final_executable_path;
+// }
+
+
+// std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
+// {
+//     std::vector<Eigen::VectorXd> final_executable_path;
+//     FMTNode* best_node_to_connect = nullptr;
+//     Trajectory best_bridge_traj;
+//     best_bridge_traj.is_valid = false;
+
+//     // 1. Find closest feasible node
+//     double current_search_radius = neighborhood_radius_;
+//     const int max_attempts = 4;
+//     const double radius_multiplier = 1.8;
+
+//     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+//         auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head<2>(), current_search_radius);
+//         double min_total_cost = std::numeric_limits<double>::infinity();
+
+//         for (auto idx : nearby_indices) {
+//             FMTNode* candidate = tree_[idx].get();
+//             if (candidate->getCost() == INFINITY) continue;
+
+//             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+//             if (!bridge.is_valid) continue;
+
+//             double start_time = clock_->now().seconds();
+//             if (!obs_checker_->isTrajectorySafe(bridge, start_time)) continue;
+
+//             double cost = bridge.cost + candidate->getCost();
+//             if (cost < min_total_cost) {
+//                 min_total_cost = cost;
+//                 best_node_to_connect = candidate;
+//                 best_bridge_traj = bridge;
+//             }
+//         }
+
+//         if (best_node_to_connect) break;
+//         current_search_radius *= radius_multiplier;
+//     }
+
+//     // 2. If no connection found, abort
+//     if (!best_node_to_connect || best_bridge_traj.path_points.empty()) {
+//         RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"),
+//                      "No valid connection from robot to tree. Cannot build path.");
+//         return {};
+//     }
+
+//     // 3. Start with bridge trajectory
+//     final_executable_path = best_bridge_traj.path_points;
+
+//     // 4. Traverse the tree using cached trajectories (not re-steering!)
+//     FMTNode* child = best_node_to_connect;
+//     FMTNode* parent = child->getParent();
+
+//     while (parent) {
+//         // Look up the cached trajectory from child to parent
+//         const auto& neighbors = child->neighbors();
+//         auto it = neighbors.find(parent);
+//         if (it == neighbors.end()) {
+//             RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"),
+//                          "Missing cached trajectory from node %d to parent %d.",
+//                          child->getIndex(), parent->getIndex());
+//             break;
+//         }
+
+//         const auto& edge_info = it->second;
+//         const Trajectory& cached_traj = edge_info.cached_trajectory;
+
+//         if (!edge_info.is_trajectory_computed || !cached_traj.is_valid || cached_traj.path_points.size() <= 1) {
+//             RCLCPP_WARN(rclcpp::get_logger("FMTX_Path_Assembly"),
+//                         "Invalid or trivial cached trajectory from node %d to parent %d.",
+//                         child->getIndex(), parent->getIndex());
+//             break;
+//         }
+
+//         // Append trajectory (excluding the first point to avoid duplicates)
+//         for (size_t i = 1; i < cached_traj.path_points.size(); ++i) {
+//             final_executable_path.push_back(cached_traj.path_points[i]);
+//         }
+
+//         // Move up the tree
+//         child = parent;
+//         parent = child->getParent();
+//     }
+
+//     return final_executable_path;
+// }
+
 std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
 {
-    std::vector<Eigen::VectorXd> final_executable_path;
-    FMTNode* best_node_to_connect = nullptr;
-    Trajectory best_bridge_traj;
-    best_bridge_traj.is_valid = false;
-
-    // --- Search Parameters ---
-    double current_search_radius = neighborhood_radius_;
-    const int max_attempts = 4; // Number of times to expand the search radius
-    const double radius_multiplier = 1.8; // How much to increase the radius each time
-
-    // --- Iterative Broadening Search Loop ---
-    for (int attempt = 1; attempt <= max_attempts; ++attempt) {
-        auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head<2>(), current_search_radius);
-
-        double min_total_cost = std::numeric_limits<double>::infinity();
-
-        // This inner loop is the same as your original function, checking all candidates at the current radius
-        for (const auto& index : nearby_indices) {
-            FMTNode* candidate_node = tree_[index].get();
-            
-            if (candidate_node->getCost() == INFINITY) continue;
-
-            Trajectory bridge_candidate_traj = statespace_->steer(robot_continuous_state_, candidate_node->getStateValue());
-            
-            if (bridge_candidate_traj.is_valid) {
-                if (obs_checker_->isTrajectorySafe(bridge_candidate_traj, clock_->now().seconds())) {
-                    double total_cost_via_candidate = bridge_candidate_traj.cost + candidate_node->getCost();
-                    if (total_cost_via_candidate < min_total_cost) {
-                        min_total_cost = total_cost_via_candidate;
-                        best_node_to_connect = candidate_node;
-                        best_bridge_traj = bridge_candidate_traj;
-                    }
-                }
-            }
-        }
-
-        // --- Check if we found a connection in this attempt ---
-        if (best_node_to_connect) {
-            RCLCPP_INFO(rclcpp::get_logger("FMTX_Path"), "Found valid bridge on attempt %d with radius %.2f", attempt, current_search_radius);
-            break; // Success! Exit the iterative search loop.
-        }
-
-        // If no connection was found and we haven't reached the max attempts, expand the search.
-        if (attempt < max_attempts) {
-            RCLCPP_WARN(rclcpp::get_logger("FMTX_Path"), "Bridge search failed at radius %.2f. Expanding search.", current_search_radius);
-            current_search_radius *= radius_multiplier;
-        }
+    // 1. Check if the planner has a valid anchor point for the robot.
+    //    (setRobotState should have found one).
+    if (!robot_node_ || robot_node_->getCost() == INFINITY) {
+        RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"),
+                     "Robot has no valid anchor node in the tree. Cannot build path.");
+        return {}; // Return empty path
     }
 
+    // 2. ✅ Generate the "bridge" trajectory from the robot's continuous state
+    //    to the anchor node on the fly.
+    Trajectory bridge_traj = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
 
-    // --- After all attempts, build the path or declare critical failure ---
-    if (best_node_to_connect) {
-        final_executable_path = best_bridge_traj.path_points;
+    if (!bridge_traj.is_valid) {
+        RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"),
+                     "Failed to steer from robot's continuous state to the anchor node.");
+        return {};
+    }
 
-        FMTNode* current_node = best_node_to_connect->getParent();
-        while (current_node != nullptr) {
-            final_executable_path.push_back(current_node->getStateValue());
-            current_node = current_node->getParent();
+    // 3. Start the final path with this bridge trajectory.
+    std::vector<Eigen::VectorXd> final_executable_path = bridge_traj.path_points;
+
+    // 4. Traverse the rest of the tree from the anchor node using parent pointers.
+    FMTNode* child = robot_node_;
+    FMTNode* parent = child->getParent();
+
+    while (parent) {
+        // Use the pre-computed trajectories cached in the graph during the `plan()` phase.
+        const auto& cached_traj = child->neighbors().at(parent).cached_trajectory;
+        
+        if (cached_traj.is_valid && cached_traj.path_points.size() > 1) {
+            // Append all points from the segment except the first one to avoid duplicates.
+            final_executable_path.insert(final_executable_path.end(),
+                                         cached_traj.path_points.begin() + 1,
+                                         cached_traj.path_points.end());
+        } else {
+            // If a valid cached trajectory doesn't exist, the path is broken.
+            RCLCPP_WARN(rclcpp::get_logger("FMTX_Path_Assembly"), 
+                        "Path reconstruction failed. Invalid cached trajectory between nodes %d and %d.", 
+                        child->getIndex(), parent->getIndex());
+            break;
         }
-    } else {
-        // This error now only happens after we have exhausted all search attempts.
-        RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path"), "CRITICAL: Could not find any valid bridge to the plan after %d attempts. Robot is stranded.", max_attempts);
+        child = parent;
+        parent = child->getParent();
     }
 
     return final_executable_path;
 }
+void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
+    // 1. Store the robot's continuous state
+    robot_continuous_state_ = robot_state;
+
+    // --- STABILIZATION FIX START ---
+
+    // Define a hysteresis factor. A new path must be at least 5% cheaper to be adopted.
+    // This prevents switching for negligible gains.
+    const double hysteresis_factor = 0.75;
+    double cost_of_current_path = std::numeric_limits<double>::infinity();
+
+    // First, calculate the cost of sticking with the current anchor node, if it's valid.
+    // This gives us a baseline to beat.
+    if (robot_node_ && robot_node_->getCost() != INFINITY) {
+        Trajectory bridge_to_current_anchor = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+        if (bridge_to_current_anchor.is_valid && obs_checker_->isTrajectorySafe(bridge_to_current_anchor, clock_->now().seconds())) {
+            cost_of_current_path = bridge_to_current_anchor.cost + robot_node_->getCost();
+        }
+    }
+    // --- STABILIZATION FIX END ---
+
+    // 2. Search for the best *potential* anchor node in the neighborhood.
+    // This part of your logic remains unchanged.
+    FMTNode* best_candidate_node = nullptr;
+    Trajectory best_candidate_bridge;
+    double best_candidate_cost = std::numeric_limits<double>::infinity();
+    double current_search_radius = neighborhood_radius_;
+    const int max_attempts = 4;
+    const double radius_multiplier = 1.8;
+
+    for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+        auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head<2>(), current_search_radius);
+        
+        // Note: The min_total_cost is reset each attempt to find the best in the new, larger radius.
+        double min_cost_in_radius = std::numeric_limits<double>::infinity();
+
+        for (auto idx : nearby_indices) {
+            FMTNode* candidate = tree_[idx].get();
+            if (candidate->getCost() == INFINITY) continue;
+
+            Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+            if (!bridge.is_valid || !obs_checker_->isTrajectorySafe(bridge, clock_->now().seconds())) continue;
+
+            double cost = bridge.cost + candidate->getCost();
+            if (cost < min_cost_in_radius) {
+                min_cost_in_radius = cost;
+                best_candidate_node = candidate;
+                best_candidate_bridge = bridge;
+                best_candidate_cost = cost;
+            }
+        }
+
+        if (best_candidate_node) break; // Exit if a connection was found
+        current_search_radius *= radius_multiplier;
+    }
+
+    // --- STABILIZATION FIX START ---
+
+    // 3. Make a stable decision.
+    // Only switch to the new candidate if it's significantly better than our current path.
+    if (best_candidate_node && best_candidate_cost < cost_of_current_path * hysteresis_factor) {
+        // The new node is significantly better. It's worth switching.
+        robot_node_ = best_candidate_node;
+        robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+    } else if (robot_node_) {
+        // The new candidate is not significantly better, or none was found.
+        // Stick with the old anchor node to maintain stability.
+        // We still need to recalculate the time-to-go in case the tree costs updated.
+        Trajectory bridge_to_kept_anchor = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+        if (bridge_to_kept_anchor.is_valid) {
+             robot_current_time_to_goal_ = bridge_to_kept_anchor.time_duration + robot_node_->getTimeToGoal();
+        }
+    } else {
+        // This case handles when there was no previous anchor OR no valid new anchor.
+        // If we found a candidate but didn't switch, we still need to set it for the first time.
+        robot_node_ = best_candidate_node; // This will be nullptr if none found.
+        if (robot_node_) {
+             robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+        } else {
+             robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        }
+    }
+    // --- STABILIZATION FIX END ---
+}
+
+
+
+bool KinodynamicFMTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path, const Eigen::VectorXd& current_robot_state) const {
+    if (path.size() < 2) {
+        return true;
+    }
+
+    const double t_now = clock_->now().seconds();
+    const double robot_time_to_go = current_robot_state(current_robot_state.size() - 1);
+    const double t_arrival_predicted = t_now + robot_time_to_go;
+
+    // Find the segment the robot is currently on.
+    auto it = std::lower_bound(path.begin(), path.end(), robot_time_to_go,
+        [](const Eigen::VectorXd& point, double time_val) {
+            return point(point.size() - 1) > time_val;
+        });
+
+    size_t start_check_index = 0;
+    if (it != path.begin()) {
+        start_check_index = std::distance(path.begin(), std::prev(it));
+    }
+
+    // Check all future planned segments for safety.
+    for (size_t i = start_check_index; i < path.size() - 1; ++i) {
+        const Eigen::VectorXd& segment_start_state = path[i];
+        const Eigen::VectorXd& segment_end_state = path[i+1];
+
+        // --- FIX: Generate the TRUE kinodynamic trajectory for this segment ---
+        Trajectory segment_traj = statespace_->steer(segment_start_state, segment_end_state);
+
+        // If the segment itself is not valid, the whole path is invalid.
+        if (!segment_traj.is_valid) {
+            RCLCPP_WARN(rclcpp::get_logger("fmtx_validator"), "Path invalidated by invalid segment from state %zu to %zu.", i, i+1);
+            return false;
+        }
+
+        // Calculate the absolute world time when this segment starts.
+        const double segment_global_start_time = t_arrival_predicted - segment_start_state(segment_start_state.size() - 1);
+
+        // --- FIX: Check the safety of the TRUE trajectory ---
+        if (!obs_checker_->isTrajectorySafe(segment_traj, segment_global_start_time)) {
+            RCLCPP_WARN(rclcpp::get_logger("fmtx_validator"), "Path invalidated by predictive check on segment %zu.", i);
+            return false;
+        }
+    }
+
+    return true;
+}
+
 
 
 // void KinodynamicFMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
@@ -1866,3 +2277,171 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 
 
 
+
+/////////////////////////////////////////corrected for the is prune true case to use the isTrajectorySafe:
+
+// void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) {
+//     std::unordered_set<int> nodes_to_make_orphan_and_process_neighbors;
+
+//     for (int idx : added_indices) {
+//         FMTNode* node = tree_[idx].get();
+//         bool node_itself_is_now_in_obstacle = false;
+
+//         if (ignore_sample) {
+//             samples_in_obstacles_.insert(idx);
+//             node_itself_is_now_in_obstacle = true;
+//         } else if (prune) {
+//             if (!obs_checker_->isObstacleFree(node->getStateValue())) {
+//                 node_itself_is_now_in_obstacle = true;
+//             }
+//         }
+
+//         if (!ignore_sample && prune && node_itself_is_now_in_obstacle) {
+//             // Node 'idx' itself is in an obstacle. Invalidate all its edges.
+//             near(idx);
+//             for (auto& [neighbor, edge_info] : node->neighbors()) {
+//                 edge_info.distance = INFINITY;
+//                 near(neighbor->getIndex());
+//                 if (neighbor->neighbors().count(node)) {
+//                     neighbor->neighbors().at(node).distance = INFINITY;
+//                 }
+//                 if (node->getParent() == neighbor) {
+//                     nodes_to_make_orphan_and_process_neighbors.insert(node->getIndex());
+//                 }
+//                 if (neighbor->getParent() == node) {
+//                     nodes_to_make_orphan_and_process_neighbors.insert(neighbor->getIndex());
+//                 }
+//             }
+//             nodes_to_make_orphan_and_process_neighbors.insert(idx);
+
+//         } else if (!ignore_sample && prune && !node_itself_is_now_in_obstacle) {
+//             // Node is fine, but check its edges individually using the new method.
+//             near(idx);
+//             for (auto& [neighbor, edge_info] : node->neighbors()) {
+//                 if (edge_info.distance == INFINITY) continue;
+
+//                 // --- START OF MODIFIED LOGIC ---
+//                 // 1. Ensure the trajectory for this edge is computed and cached.
+//                 //    We check the trajectory from the potential child (node) to the potential parent (neighbor).
+//                 if (!edge_info.is_trajectory_computed) {
+//                     edge_info.cached_trajectory = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+//                     edge_info.is_trajectory_computed = true;
+//                 }
+                
+//                 // 2. Perform the predictive safety check using the cached trajectory.
+//                 bool is_safe = true;
+//                 if (edge_info.cached_trajectory.is_valid) {
+//                     // Since we are reacting to a change now, we check the trajectory's safety
+//                     // as if it were to start at the current time. This is a necessary heuristic.
+//                     const double global_start_time_heuristic = clock_->now().seconds();
+//                     is_safe = obs_checker_->isTrajectorySafe(edge_info.cached_trajectory, global_start_time_heuristic);
+//                 } else {
+//                     is_safe = false; // An invalid trajectory is never safe.
+//                 }
+
+//                 if (!is_safe) {
+//                     // --- END OF MODIFIED LOGIC ---
+//                     // Edge is blocked
+//                     edge_info.distance = INFINITY;
+//                     near(neighbor->getIndex());
+//                     if (neighbor->neighbors().count(node)) {
+//                         neighbor->neighbors().at(node).distance = INFINITY;
+//                     }
+
+//                     // Handle parent relationships leading to orphans
+//                     if (node->getParent() == neighbor) {
+//                         nodes_to_make_orphan_and_process_neighbors.insert(node->getIndex());
+//                     }
+//                     if (neighbor->getParent() == node) {
+//                         nodes_to_make_orphan_and_process_neighbors.insert(neighbor->getIndex());
+//                     }
+//                 }
+//             }
+//         } else {
+//             // Original logic for ignore_sample or non-pruning modes.
+//             nodes_to_make_orphan_and_process_neighbors.insert(idx);
+//         }
+//     }
+
+//     // --- (The rest of the function for processing orphans remains the same) ---
+//     std::unordered_set<int> final_orphan_nodes;
+//     for (int orphan_idx : nodes_to_make_orphan_and_process_neighbors) {
+//         final_orphan_nodes.insert(orphan_idx);
+//         auto descendants = getDescendants(orphan_idx);
+//         final_orphan_nodes.insert(descendants.begin(), descendants.end());
+//     }
+
+//     for (int node_index : final_orphan_nodes) {
+//         auto node = tree_.at(node_index).get();
+//         if (node->in_queue_) {
+//             v_open_heap_.remove(node);
+//         }
+//         if (node->getIndex() != 0) {
+//             node->setCost(INFINITY); 
+//             node->setTimeToGoal(std::numeric_limits<double>::infinity());
+//         }
+//         node->setParent(nullptr, INFINITY);
+//         edge_length_[node_index] = -std::numeric_limits<double>::infinity();
+//     }
+  
+//     for (int node_index : final_orphan_nodes) {
+//         auto node = tree_.at(node_index).get();
+//         near(node_index);
+//         for (const auto& [neighbor_ptr, edge_data] : node->neighbors()){
+//             if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == INFINITY) continue;
+//             double h_value = use_heuristic ? heuristic(neighbor_ptr->getIndex()) : 0.0;
+//             v_open_heap_.add(neighbor_ptr, neighbor_ptr->getCost() + h_value);
+//         }
+//     }
+// }
+
+// void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
+//     for (const auto& node_index : removed) {
+//         auto node = tree_[node_index].get();
+//         if (node->in_queue_ && node->getCost() == INFINITY) {
+//             v_open_heap_.remove(node);
+//         }
+
+//         if (!ignore_sample && prune) {
+//             near(node_index);
+//             for (auto& [neighbor, edge_info] : node->neighbors()) {
+//                 if (edge_info.distance != INFINITY) continue;
+
+//                 // --- START OF MODIFIED LOGIC ---
+//                 // 1. Ensure the trajectory is computed for this previously blocked edge.
+//                 if (!edge_info.is_trajectory_computed) {
+//                     edge_info.cached_trajectory = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+//                     edge_info.is_trajectory_computed = true;
+//                 }
+
+//                 // 2. Check if the trajectory is now safe.
+//                 bool is_now_safe = false;
+//                 if (edge_info.cached_trajectory.is_valid) {
+//                     const double global_start_time_heuristic = clock_->now().seconds();
+//                     is_now_safe = obs_checker_->isTrajectorySafe(edge_info.cached_trajectory, global_start_time_heuristic);
+//                 }
+
+//                 if (is_now_safe) {
+//                 // --- END OF MODIFIED LOGIC ---
+//                     edge_info.distance = edge_info.distance_original;
+//                     near(neighbor->getIndex());
+//                     if (neighbor->neighbors().count(node)) {
+//                         neighbor->neighbors().at(node).distance = edge_info.distance_original;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+
+//     // --- (The rest of the function for queueing neighbors remains the same) ---
+//     for (int node_index : removed) {
+//         auto node = tree_.at(node_index).get();
+//         near(node_index);
+//         for (const auto& [neighbor, dist] : node->neighbors()) {
+//             const int n_idx = neighbor->getIndex();
+//             if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) continue;
+//             double h_value = use_heuristic ? heuristic(n_idx) : 0.0;
+//             v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
+//         }
+//     }
+// }

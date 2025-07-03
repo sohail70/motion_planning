@@ -431,7 +431,7 @@ double RRTX::shrinkingBallRadius() const {
 
 
 std::unordered_set<int> RRTX::findSamplesNearObstacles(
-    const std::vector<Obstacle>& obstacles, 
+    const ObstacleVector& obstacles, 
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples;
@@ -451,7 +451,7 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
 
 
 // To handle changes in the environment
-void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
     if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
     {

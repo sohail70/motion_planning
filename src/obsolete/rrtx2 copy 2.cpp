@@ -471,7 +471,7 @@ double RRTX::shrinkingBallRadius() const {
 
 
 std::unordered_set<int> RRTX::findSamplesNearObstacles(
-    const std::vector<Obstacle>& obstacles, double max_length) {
+    const ObstacleVector& obstacles, double max_length) {
     std::unordered_set<int> conflicting_samples;
         
     for (const auto& obstacle : obstacles) {
@@ -490,7 +490,7 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
 
 
 // // To handle changes in the environment ---> THIS ONE IS FOR IGNORING SAMPLES ON OBSTALCES AND NOT EPLICIT OBSTACLE CHECK
-// void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+// void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //     update_obstacle = true;
 
 //     if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
@@ -570,7 +570,7 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
 
 
 // // To handle changes in the environment --> THIS ONE IS USED FOR EPLICIT OBSTCLE CHECK
-// void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+// void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //     update_obstacle = true;
 
 //     if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
@@ -1311,7 +1311,7 @@ std::vector<Eigen::VectorXd> RRTX::smoothPath(const std::vector<Eigen::VectorXd>
 }
 
 
-void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     update_obstacle = true;
 
     // Common initialization

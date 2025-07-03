@@ -505,7 +505,7 @@ void FMTX::visualizePath(std::vector<int> path_indices) {
 
 // TODO: This should only be on dynamic obstacles! --> But how do we know maybe some static obstalce become dynamic! --> not motion planning concern maybe some method to classify static and dynamic obstalces!
 std::unordered_set<int> FMTX::findSamplesNearObstacles(
-    const std::vector<Obstacle>& obstacles, 
+    const ObstacleVector& obstacles, 
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples;
@@ -533,7 +533,7 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
 }
 
 std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNearObstaclesDual(
-    const std::vector<Obstacle>& obstacles, 
+    const ObstacleVector& obstacles, 
     double scale_factor
 ) {
     std::unordered_set<int> conflicting_samples_inflated;
@@ -550,7 +550,7 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNea
 
     return {conflicting_samples_inflated, conflicting_samples};
 }
-void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+void FMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
     // Calculating the max length when the max_length edge is updated or the obstalce is on the previous max_length edge!
     if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay

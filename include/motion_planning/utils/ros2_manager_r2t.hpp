@@ -20,12 +20,14 @@ public:
         std::shared_ptr<ObstacleChecker> obstacle_checker,
         std::shared_ptr<RVizVisualization> visualizer,
         const Params& params,
+        double robot_velocity,
         const Eigen::VectorXd& initial_sim_state) // NEW: Pass in the initial state
         : Node("r2t_ros_manager", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)})),
           obstacle_checker_(obstacle_checker),
           visualizer_(visualizer),
           is_path_set_(false),
-          last_known_theta_(0.0)
+          last_known_theta_(0.0),
+           robot_velocity_(robot_velocity) 
     {
         // --- FIX: Initialize the simulation state immediately in the constructor ---
         if (initial_sim_state.size() != 3) {
@@ -125,13 +127,14 @@ private:
     double last_known_theta_;
     // NEW MEMBER VARIABLE: to store the latest interpolated state
     Eigen::VectorXd current_interpolated_state_;
+    double robot_velocity_; 
 
     void visualizationLoop() {
         // ... (this function remains unchanged)
         if (!obstacle_checker_ || !visualizer_) return;
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
         if (!gazebo_checker) return;
-        std::vector<Obstacle> all_obstacles = gazebo_checker->getObstaclePositions();
+        const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
         std::vector<Eigen::VectorXd> cylinder_obstacles;
         std::vector<double> cylinder_radii;
 
@@ -144,8 +147,8 @@ private:
                 Eigen::VectorXd vec(2);
                 vec << obstacle.position.x(), obstacle.position.y();
                 cylinder_obstacles.push_back(vec);
-                // cylinder_radii.push_back(obstacle.dimensions.circle.radius + obstacle.inflation);
-                cylinder_radii.push_back(obstacle.dimensions.circle.radius );
+                // cylinder_radii.push_back(obstacle.dimensions.radius + obstacle.inflation);
+                cylinder_radii.push_back(obstacle.dimensions.radius );
             }
             // ---  Collect velocity data for dynamic obstacles ---
             if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
@@ -170,72 +173,152 @@ private:
 
 
 
-        void simulationLoop() {
+    //     void simulationLoop() {
+    //     std::lock_guard<std::mutex> lock(path_mutex_);
+    //     if (!is_path_set_ || current_path_.size() < 2) {
+    //         return; // Nothing to do if no valid path is set.
+    //     }
+
+    //     // --- Time Progression ---
+    //     // Time counts down from a high "time-to-go" value towards zero.
+    //     current_sim_time_ += simulation_time_step_; // simulation_time_step_ is negative.
+
+    //     // --- FIX #1: Correct Clamping at the End of the Path ---
+    //     // The simulation should stop when it reaches or passes the time of the LAST point
+    //     // in the path (the root node), which has the lowest time-to-go.
+    //     if (current_sim_time_ < current_path_.back()(2)) {
+    //         current_sim_time_ = current_path_.back()(2);
+    //     }
+        
+    //     // --- FIX #2: Correctly Find the Current Path Segment ---
+    //     // The path is sorted by descending time: [T_start, T_mid, ..., T_end] where T_start > T_end.
+    //     // We need to find the first waypoint in the path whose time is less than or equal to
+    //     // our current simulation time.
+    //     auto it_after = std::lower_bound(current_path_.begin(), current_path_.end(), current_sim_time_,
+    //         [](const Eigen::VectorXd& point, double time) {
+    //             // This custom comparator tells lower_bound to find the first element
+    //             // that is NOT greater than 'time'.
+    //             return point(2) > time;
+    //         });
+
+    //     // Handle the edge case where we are exactly at or before the first waypoint.
+    //     if (it_after == current_path_.begin()) {
+    //         it_after++;
+    //     }
+    //     // If the search fails or goes past the end, we can't form a segment.
+    //     if (it_after == current_path_.end()) {
+    //         return;
+    //     }
+
+    //     // The segment for interpolation is between the waypoint we found and the one just before it.
+    //     auto it_before = std::prev(it_after);
+
+    //     const Eigen::VectorXd& state_before = *it_before;
+    //     const Eigen::VectorXd& state_after = *it_after;
+        
+    //     double time_before = state_before(2);
+    //     double time_after = state_after(2);
+    //     double segment_duration = time_before - time_after; // Note: duration is positive
+
+    //     // --- Interpolation (Unchanged, but now using the correct segment) ---
+    //     Eigen::VectorXd current_robot_state(3);
+    //     if (segment_duration <= 1e-9) {
+    //         current_robot_state = state_after; // Snap to the end of the segment
+    //     } else {
+    //         // Calculate how far along we are in this specific segment.
+    //         double time_into_segment = time_before - current_sim_time_;
+    //         double interp_factor = time_into_segment / segment_duration;
+    //         current_robot_state.head<2>() = state_before.head<2>() + interp_factor * (state_after.head<2>() - state_before.head<2>());
+    //         current_robot_state(2) = current_sim_time_;
+    //     }
+        
+    //     // Update the state for the main thread's feedback loop
+    //     current_interpolated_state_ = current_robot_state;
+
+    //     // --- Visualization (Unchanged) ---
+    //     Eigen::Vector3d robot_pos_3d(current_robot_state(0), current_robot_state(1), 0.0);
+        
+    //     // The direction of travel is from the "before" state to the "after" state.
+    //     Eigen::Vector2d direction_vector = state_after.head<2>() - state_before.head<2>();
+    //     if (direction_vector.norm() > 1e-6) {
+    //         last_known_theta_ = atan2(direction_vector.y(), direction_vector.x());
+    //     }
+        
+    //     Eigen::Quaterniond q(Eigen::AngleAxisd(last_known_theta_, Eigen::Vector3d::UnitZ()));
+    //     Eigen::VectorXd orientation_quat(4);
+    //     orientation_quat << q.x(), q.y(), q.z(), q.w();
+        
+    //     visualizer_->visualizeRobotArrow(robot_pos_3d, orientation_quat, "map", {0.8f, 0.1f, 0.8f}, "simulated_robot");
+
+    //     if(robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - robot_pos_3d.head<2>()).norm() > 0.1) {
+    //          robot_spatial_trace_.push_back(robot_pos_3d.head<2>());
+    //     }
+    //     // visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 0.5f, 0.0f}, "robot_trace");
+    // }
+
+
+    // With speed logs!
+    void simulationLoop() {
         std::lock_guard<std::mutex> lock(path_mutex_);
         if (!is_path_set_ || current_path_.size() < 2) {
-            return; // Nothing to do if no valid path is set.
+            return;
         }
 
-        // --- Time Progression ---
-        // Time counts down from a high "time-to-go" value towards zero.
-        current_sim_time_ += simulation_time_step_; // simulation_time_step_ is negative.
+        current_sim_time_ += simulation_time_step_;
 
-        // --- FIX #1: Correct Clamping at the End of the Path ---
-        // The simulation should stop when it reaches or passes the time of the LAST point
-        // in the path (the root node), which has the lowest time-to-go.
         if (current_sim_time_ < current_path_.back()(2)) {
             current_sim_time_ = current_path_.back()(2);
         }
         
-        // --- FIX #2: Correctly Find the Current Path Segment ---
-        // The path is sorted by descending time: [T_start, T_mid, ..., T_end] where T_start > T_end.
-        // We need to find the first waypoint in the path whose time is less than or equal to
-        // our current simulation time.
         auto it_after = std::lower_bound(current_path_.begin(), current_path_.end(), current_sim_time_,
             [](const Eigen::VectorXd& point, double time) {
-                // This custom comparator tells lower_bound to find the first element
-                // that is NOT greater than 'time'.
                 return point(2) > time;
             });
 
-        // Handle the edge case where we are exactly at or before the first waypoint.
         if (it_after == current_path_.begin()) {
             it_after++;
         }
-        // If the search fails or goes past the end, we can't form a segment.
         if (it_after == current_path_.end()) {
             return;
         }
 
-        // The segment for interpolation is between the waypoint we found and the one just before it.
         auto it_before = std::prev(it_after);
-
         const Eigen::VectorXd& state_before = *it_before;
         const Eigen::VectorXd& state_after = *it_after;
         
         double time_before = state_before(2);
         double time_after = state_after(2);
-        double segment_duration = time_before - time_after; // Note: duration is positive
+        double segment_duration = time_before - time_after;
 
-        // --- Interpolation (Unchanged, but now using the correct segment) ---
+        // // =================================================================
+        // // =========== ADD THIS BLOCK TO CHECK THE SPEED ===================
+        // // =================================================================
+        // { // Use a block to keep variables local
+        //     double spatial_distance = (state_after.head<2>() - state_before.head<2>()).norm();
+        //     double segment_speed = 0.0;
+        //     if (segment_duration > 1e-9) {
+        //         segment_speed = spatial_distance / segment_duration;
+        //     }
+        //     // Use an RCLCPP_INFO logger to print, which is better than std::cout in ROS 2
+        //     // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Current Segment Speed: %.2f m/s", segment_speed);
+        //     std::cout<<"Current segment speed: "<<segment_speed<<"\n";
+        // }
+        // // =================================================================
+
         Eigen::VectorXd current_robot_state(3);
         if (segment_duration <= 1e-9) {
-            current_robot_state = state_after; // Snap to the end of the segment
+            current_robot_state = state_after;
         } else {
-            // Calculate how far along we are in this specific segment.
             double time_into_segment = time_before - current_sim_time_;
             double interp_factor = time_into_segment / segment_duration;
             current_robot_state.head<2>() = state_before.head<2>() + interp_factor * (state_after.head<2>() - state_before.head<2>());
             current_robot_state(2) = current_sim_time_;
         }
         
-        // Update the state for the main thread's feedback loop
         current_interpolated_state_ = current_robot_state;
 
-        // --- Visualization (Unchanged) ---
         Eigen::Vector3d robot_pos_3d(current_robot_state(0), current_robot_state(1), 0.0);
         
-        // The direction of travel is from the "before" state to the "after" state.
         Eigen::Vector2d direction_vector = state_after.head<2>() - state_before.head<2>();
         if (direction_vector.norm() > 1e-6) {
             last_known_theta_ = atan2(direction_vector.y(), direction_vector.x());
@@ -250,10 +333,106 @@ private:
         if(robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - robot_pos_3d.head<2>()).norm() > 0.1) {
              robot_spatial_trace_.push_back(robot_pos_3d.head<2>());
         }
-        // visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 0.5f, 0.0f}, "robot_trace");
     }
 
 
+//     /////////////////////////////////////////////////////////
+//     // for constant speed!
+//     void simulationLoop() {
+//     std::lock_guard<std::mutex> lock(path_mutex_);
+//     if (!is_path_set_ || current_path_.size() < 2) {
+//         return;
+//     }
+
+//     // Time progression (counts down)
+//     current_sim_time_ += simulation_time_step_;
+
+//     if (current_sim_time_ < current_path_.back()(2)) {
+//         current_sim_time_ = current_path_.back()(2);
+//     }
+    
+//     // Find the current path segment (this logic is correct)
+//     auto it_after = std::lower_bound(current_path_.begin(), current_path_.end(), current_sim_time_,
+//         [](const Eigen::VectorXd& point, double time) {
+//             return point(2) > time;
+//         });
+
+//     if (it_after == current_path_.begin()) {
+//         it_after++;
+//     }
+//     if (it_after == current_path_.end()) {
+//         // We've reached the end of the path. Hold the final position.
+//         current_interpolated_state_ = current_path_.back();
+//         return;
+//     }
+
+//     auto it_before = std::prev(it_after);
+//     const Eigen::VectorXd& state_before = *it_before;
+//     const Eigen::VectorXd& state_after = *it_after;
+    
+//     //
+//     // ---> START OF CRITICAL FIX <---
+//     //
+    
+//     // The time-to-go values from the waypoints define the *total time allotted* for this segment.
+//     double time_before = state_before(2);
+//     double time_after = state_after(2);
+//     double time_allotted_for_segment = time_before - time_after;
+
+//     // Calculate the *actual travel time* for this segment based on the constant velocity model.
+//     double spatial_distance = (state_after.head<2>() - state_before.head<2>()).norm();
+//     double actual_travel_time = (robot_velocity_ > 1e-6)
+//                               ? (spatial_distance / robot_velocity_)
+//                               : std::numeric_limits<double>::infinity();
+    
+//     // The travel phase for this segment ends at this time-to-go value.
+//     // The robot then "waits" at state_after until the time-to-go reaches time_after.
+//     double travel_end_time = time_before - actual_travel_time;
+    
+//     Eigen::VectorXd current_robot_state(3);
+    
+//     // Determine if the simulation is currently in the "travel" or "wait" phase of the segment.
+//     if (current_sim_time_ >= travel_end_time) {
+//         // We are currently moving. Interpolate based on the *actual_travel_time*.
+//         if (actual_travel_time <= 1e-9) {
+//             // Zero duration, snap to start
+//             current_robot_state.head<2>() = state_before.head<2>();
+//         } else {
+//             // Calculate interpolation factor based on progress through the travel phase
+//             double time_into_travel = time_before - current_sim_time_;
+//             double interp_factor = time_into_travel / actual_travel_time;
+//             interp_factor = std::max(0.0, std::min(1.0, interp_factor)); // Clamp for safety
+            
+//             current_robot_state.head<2>() = state_before.head<2>() + interp_factor * (state_after.head<2>() - state_before.head<2>());
+//         }
+//     } else {
+//         // The travel phase is over. The robot is now waiting at the segment's end point.
+//         current_robot_state.head<2>() = state_after.head<2>();
+//     }
+    
+//     // The time component of the state is always the current simulation time
+//     current_robot_state(2) = current_sim_time_;
+    
+//     //
+//     // ---> END OF CRITICAL FIX <---
+//     //
+    
+//     current_interpolated_state_ = current_robot_state;
+
+//     // Visualization logic (remains the same)...
+//     Eigen::Vector3d robot_pos_3d(current_robot_state(0), current_robot_state(1), 0.0);
+//     Eigen::Vector2d direction_vector = state_after.head<2>() - state_before.head<2>();
+//     if (direction_vector.norm() > 1e-6) {
+//         last_known_theta_ = atan2(direction_vector.y(), direction_vector.x());
+//     }
+//     Eigen::Quaterniond q(Eigen::AngleAxisd(last_known_theta_, Eigen::Vector3d::UnitZ()));
+//     Eigen::VectorXd orientation_quat(4);
+//     orientation_quat << q.x(), q.y(), q.z(), q.w();
+//     visualizer_->visualizeRobotArrow(robot_pos_3d, orientation_quat, "map", {0.8f, 0.1f, 0.8f}, "simulated_robot");
+//     if(robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - robot_pos_3d.head<2>()).norm() > 0.1) {
+//          robot_spatial_trace_.push_back(robot_pos_3d.head<2>());
+//     }
+// }
 
     
 };

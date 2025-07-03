@@ -8,12 +8,12 @@ set(CMAKE_BUILD_TYPE Release)
 
 
 
-# # AddressSanitizer for debugging heap corruption
-# if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-#   message(STATUS "Debug build: Enabling AddressSanitizer")
-#   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
-#   set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
-# endif()
+# AddressSanitizer for debugging heap corruption
+if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+  message(STATUS "Debug build: Enabling AddressSanitizer")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
+  set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+endif()
 
 
 find_package(Eigen3 REQUIRED)
@@ -34,6 +34,9 @@ find_package(gz-msgs10 REQUIRED)        # Gazebo messages
 find_package(Protobuf REQUIRED)         # Protocol Buffers
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZeroMQ REQUIRED libzmq)
+
+
+
 
 include_directories(
   include
@@ -64,6 +67,7 @@ ament_target_dependencies(visualization PUBLIC rclcpp visualization_msgs nav2_ms
 
 add_library(kf     
   src/utils/kalman_filter.cpp
+  src/utils/kalman_filter_factory.cpp
 )
 target_include_directories(kf PUBLIC include)
 target_link_libraries(kf PUBLIC Eigen3::Eigen)
@@ -201,15 +205,20 @@ add_test(NAME test_gz COMMAND test_gz)
 # add_test(NAME test_occupancy COMMAND test_occupancy)
 
 #################### KINODYNAMIC TESTS #############################
-add_executable(test_kinodynamic_fmtx test/unit/test_kinodynamic_fmtx.cpp)
-target_link_libraries(test_kinodynamic_fmtx motion_planning gz_obs)
-ament_target_dependencies(test_kinodynamic_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_kinodynamic_fmtx COMMAND test_kinodynamic_fmtx)
+# add_executable(test_kinodynamic_fmtx test/unit/test_kinodynamic_fmtx.cpp)
+# target_link_libraries(test_kinodynamic_fmtx motion_planning gz_obs)
+# ament_target_dependencies(test_kinodynamic_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_kinodynamic_fmtx COMMAND test_kinodynamic_fmtx)
 
 add_executable(test_kinodynamic_fmtx_R2T test/unit/test_kinodynamic_fmtx_R2T.cpp)
 target_link_libraries(test_kinodynamic_fmtx_R2T motion_planning gz_obs)
 ament_target_dependencies(test_kinodynamic_fmtx_R2T rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_kinodynamic_fmtx_R2T COMMAND test_kinodynamic_fmtx_R2T)
+
+add_executable(test_kinodynamic_fmtx_dubin_4D test/unit/test_kinodynamic_fmtx_dubin_4D.cpp)
+target_link_libraries(test_kinodynamic_fmtx_dubin_4D motion_planning gz_obs)
+ament_target_dependencies(test_kinodynamic_fmtx_dubin_4D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_kinodynamic_fmtx_dubin_4D COMMAND test_kinodynamic_fmtx_dubin_4D)
 
 add_executable(test_dubin_time test/unit/test_dubin_time.cpp)
 target_link_libraries(test_dubin_time motion_planning gz_obs)
@@ -220,3 +229,11 @@ add_executable(test_thruster test/unit/test_thruster.cpp)
 target_link_libraries(test_thruster motion_planning gz_obs)
 ament_target_dependencies(test_thruster rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_thruster COMMAND test_thruster)
+
+
+
+add_executable(test_collision test/unit/test_collision.cpp)
+target_link_libraries(test_collision gz_obs visualization motion_planning)
+ament_target_dependencies(test_collision rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_collision COMMAND test_collision)
+

@@ -2,6 +2,11 @@
 
 #include "motion_planning/state_space/dubins_statespace.hpp" // Inherit from the 3D Dubins class
 
+enum class HoverDirection {
+    RIGHT,
+    LEFT
+};
+
 /**
  * @class DubinsTimeStateSpace
  * @brief Extends DubinsStateSpace to include a time dimension and velocity constraints.
@@ -43,6 +48,16 @@ public:
      * @brief Generates a random 4D sample within the specified bounds.
      */
     std::shared_ptr<State> sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds);
+
+    /**
+     * @brief Creates a circular hover path at a given state.
+     * @param hover_state The 4D state (x, y, theta, time) where the hover should begin.
+     * @param duration The desired duration of the hover maneuver.
+     * @param direction The turning direction for the hover circle (RIGHT or LEFT).
+     * @return A valid, executable Trajectory for the hover path.
+     */
+    Trajectory createHoverPath(const Eigen::VectorXd& hover_state, double duration, HoverDirection direction) const;
+
 
 
 

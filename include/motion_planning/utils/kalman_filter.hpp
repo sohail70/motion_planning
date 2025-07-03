@@ -2,65 +2,36 @@
 
 #include <Eigen/Dense>
 
-// class KalmanFilter {
-// public:
-//     // Constructor initializes the filter matrices.
-//     // n: number of state variables (6 for [px, py, vx, vy, ax, ay])
-//     // m: number of measurement variables (2 for [px, py])
-//     KalmanFilter(int n = 6, int m = 2);
-
-//     // Initializes the state vector and covariance
-//     void init(const Eigen::VectorXd& x0);
-
-//     // Predicts the next state based on the model
-//     void predict(double dt);
-
-//     // Updates the state estimate with a new measurement
-//     void update(const Eigen::VectorXd& z);
-
-//     // Get the current estimated state
-//     Eigen::VectorXd getState() const { return x_hat_; }
-
-// private:
-//     // State-space matrices
-//     Eigen::MatrixXd F_; // State transition model
-//     Eigen::MatrixXd H_; // Measurement model
-//     Eigen::MatrixXd Q_; // Process noise covariance
-//     Eigen::MatrixXd R_; // Measurement noise covariance
-//     Eigen::MatrixXd P_; // Estimate error covariance
-//     Eigen::MatrixXd I_; // Identity matrix
-
-//     // State vector
-//     Eigen::VectorXd x_hat_; // Estimated state
-// };
-// ///////////////////////////////////////////////////////////////////////
-
-
-
-
+// Defines the available Kalman Filter models.
+enum class KalmanModelType {
+    CONSTANT_VELOCITY,
+    CONSTANT_ACCELERATION,
+    SINGER
+};
 
 class KalmanFilter {
 public:
-    // MODIFIED: Constructor now takes Singer model parameters.
-    // The state dimension 'n' and measurement dimension 'm' are fixed to 6 and 2.
-    KalmanFilter(double alpha = 0.1, double sigma_a = 1.0);
+    // Constructor that accepts the model type and optional parameters for the Singer model.
+    KalmanFilter(KalmanModelType model_type, double singer_alpha = 0.1, double singer_sigma_a = 5.0);
 
-    // No changes to other public methods
+    // Public interface for the filter.
     void init(const Eigen::VectorXd& x0);
     void predict(double dt);
     void update(const Eigen::VectorXd& z);
     Eigen::VectorXd getState() const { return x_hat_; }
 
 private:
-    Eigen::VectorXd x_hat_; // State estimate [px, py, vx, vy, ax, ay]
-    Eigen::MatrixXd P_;     // State covariance
-    Eigen::MatrixXd F_;     // State transition matrix
-    Eigen::MatrixXd Q_;     // Process noise covariance
-    Eigen::MatrixXd R_;     // Measurement noise covariance
-    Eigen::MatrixXd H_;     // Measurement matrix
-    Eigen::MatrixXd I_;     // Identity matrix
+    // Member variables to store the filter's state and model type.
+    KalmanModelType model_type_;
+    Eigen::VectorXd x_hat_; 
+    Eigen::MatrixXd F_, H_, P_, Q_, R_, I_;
+    
+    // Parameters specific to the Singer model.
+    double alpha_;
+    double sigma_a_sq_;
 
-    // NEW: Member variables for Singer model parameters
-    double alpha_;          // The maneuver frequency (1 / maneuver time constant)
-    double sigma_a_sq_;     // The variance of the maximum expected acceleration
+    // Private helper functions to initialize matrices for each model.
+    void init_cv();
+    void init_ca();
+    void init_singer(double alpha, double sigma_a);
 };

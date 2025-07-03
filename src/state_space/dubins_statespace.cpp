@@ -687,7 +687,51 @@ Trajectory DubinsStateSpace::steer(const Eigen::VectorXd& from,
     out.is_valid = true;
     out.cost     = best->cost;
     out.geometric_distance = out.cost; // in Dubin in 3D case (x,y,theta) without (t) geometric and cost is the same!
-    
+    // --- NEW: Store maneuver info for the time-aware class to use ---
+    out.maneuver_type = best->type;
+    out.maneuver_pts = best->pts;
+
+    // --- NEW: Populate GEOMETRIC part of Analytical Segments ---
+    out.analytical_segments.clear();
+    const auto& P = best->pts;
+    //////////////////////
+    if (best->type == "RSR") {
+        out.maneuver_centers = {C0R, C1R}; // Store centers for later use
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, p0, P[0], C0R, r, true});
+        out.analytical_segments.push_back({SegmentType::LINE, 0.0, P[0], P[1]});
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, P[1], p1, C1R, r, true});
+    } else if (best->type == "LSL") {
+        out.maneuver_centers = {C0L, C1L};
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, p0, P[0], C0L, r, false});
+        out.analytical_segments.push_back({SegmentType::LINE, 0.0, P[0], P[1]});
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, P[1], p1, C1L, r, false});
+    } else if (best->type == "RSL") {
+        out.maneuver_centers = {C0R, C1L};
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, p0, P[0], C0R, r, true});
+        out.analytical_segments.push_back({SegmentType::LINE, 0.0, P[0], P[1]});
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, P[1], p1, C1L, r, false});
+    } else if (best->type == "LSR") {
+        out.maneuver_centers = {C0L, C1R};
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, p0, P[0], C0L, r, false});
+        out.analytical_segments.push_back({SegmentType::LINE, 0.0, P[0], P[1]});
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, P[1], p1, C1R, r, true});
+    } else if (best->type == "RLR") {
+        out.maneuver_centers = {C0R, P[2], C1R}; // P[2] is C_aux
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, p0, P[0], C0R, r, true});
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, P[0], P[1], P[2], r, false});
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, P[1], p1, C1R, r, true});
+    } else if (best->type == "LRL") {
+        out.maneuver_centers = {C0L, P[2], C1L}; // P[2] is C_aux
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, p0, P[0], C0L, r, false});
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, P[0], P[1], P[2], r, true});
+        out.analytical_segments.push_back({SegmentType::ARC, 0.0, P[1], p1, C1L, r, false});
+    }
+
+
+
+    ///////////////////////
+
+
     const double discretization_step = 1.5; // meters
 
     // auto sample_arc = [&](const Eigen::Vector2d& A, const Eigen::Vector2d& B, const Eigen::Vector2d& C, bool clockwise) {
@@ -744,30 +788,44 @@ Trajectory DubinsStateSpace::steer(const Eigen::VectorXd& from,
         // Generate points along the arc.
         for (int i = 1; i <= num_steps; ++i) {
             double phi = start_angle + i * angle_step;
-            Eigen::VectorXd pt(3);
-            pt << C.x() + r * cos(phi),
-                  C.y() + r * sin(phi),
-                  // Calculate the tangent heading for the point on the circle.
-                  normalizeAngle(phi + (clockwise ? -M_PI/2.0 : +M_PI/2.0));
+            // FIX: Create a vector of the same size as the input 'from' state
+            Eigen::VectorXd pt(from.size()); 
+            pt.setZero(); // Initialize to zero
+
+            // Fill the geometric part (x, y, theta)
+            pt.head<3>() << C.x() + r * cos(phi),
+                            C.y() + r * sin(phi),
+                            normalizeAngle(phi + (clockwise ? -M_PI/2.0 : +M_PI/2.0));
+            
+            // The time component (pt[3]) remains 0, as it will be correctly calculated
+            // by the derived DubinsTimeStateSpace class.
             out.path_points.push_back(pt);
         }
     };
 
 
     auto sample_straight = [&](const Eigen::Vector2d& A, const Eigen::Vector2d& B) {
-        // double L = (B - A).norm();
+        double L = (B - A).norm();
         // int N = std::max(1, static_cast<int>(ceil(L / discretization_step)));
-        // double heading = atan2(B.y() - A.y(), B.x() - A.x());
-        // for(int i = 1; i <= N; i++){
-        //     Eigen::Vector2d P_interp = A + (B-A) * (static_cast<double>(i) / N);
-        //     Eigen::VectorXd pt(3);
-        //     pt << P_interp.x(), P_interp.y(), normalizeAngle(heading);
-        //     out.path_points.push_back(pt);
-        // }
+        int N = 1; // Treating Line as Only one Segment
+        double heading = atan2(B.y() - A.y(), B.x() - A.x());
+
+        for(int i = 1; i <= N; i++){
+            Eigen::Vector2d P_interp = A + (B-A) * (static_cast<double>(i) / N);
+            // FIX: Create a vector of the same size as the input 'from' state
+            Eigen::VectorXd pt(from.size());
+            pt.setZero();
+
+            // Fill the geometric part
+            pt.head<3>() << P_interp.x(), P_interp.y(), normalizeAngle(heading);
+
+            out.path_points.push_back(pt);
+        }
+
     };
 
     out.path_points.push_back(from);
-    const auto& P = best->pts;
+
     if      (best->type == "RSR") { sample_arc(p0,P[0],C0R,true);  sample_straight(P[0],P[1]); sample_arc(P[1],p1,C1R,true);  }
     else if (best->type == "LSL") { sample_arc(p0,P[0],C0L,false); sample_straight(P[0],P[1]); sample_arc(P[1],p1,C1L,false); }
     else if (best->type == "RSL") { sample_arc(p0,P[0],C0R,true);  sample_straight(P[0],P[1]); sample_arc(P[1],p1,C1L,false); }

@@ -372,7 +372,7 @@ void FMTX::near(int node_index) {
 */
 
 std::unordered_set<int> FMTX::findSamplesNearObstacles(
-    const std::vector<Obstacle>& obstacles, 
+    const ObstacleVector& obstacles, 
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples;
@@ -393,7 +393,7 @@ std::unordered_set<int> FMTX::findSamplesNearObstacles(
 */
 
 std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNearObstaclesDual(
-    const std::vector<Obstacle>& obstacles, 
+    const ObstacleVector& obstacles, 
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples_inflated;
@@ -436,7 +436,7 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNea
 
 */
 
-void FMTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+void FMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     in_dynamic = true;
 
     /*

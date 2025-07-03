@@ -525,7 +525,7 @@ double RRTX::shrinkingBallRadius() const {
 
 
 std::unordered_set<int> RRTX::findSamplesNearObstacles(
-    const std::vector<Obstacle>& obstacles, double max_length) {
+    const ObstacleVector& obstacles, double max_length) {
     std::unordered_set<int> conflicting_samples;
         
     for (const auto& obstacle : obstacles) {
@@ -547,12 +547,12 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
         double obstacle_radius;
         if (obstacle.type == Obstacle::CIRCLE) {
             // For circles: radius + inflation
-            obstacle_radius = obstacle.dimensions.circle.radius + obstacle.inflation;
+            obstacle_radius = obstacle.dimensions.radius + obstacle.inflation;
         } else { // BOX
             // For boxes: half diagonal + inflation
             double half_diagonal = std::sqrt(
-                std::pow(obstacle.dimensions.box.width/2, 2) + 
-                std::pow(obstacle.dimensions.box.height/2, 2)
+                std::pow(obstacle.dimensions.width/2, 2) + 
+                std::pow(obstacle.dimensions.height/2, 2)
             );
             obstacle_radius = half_diagonal + obstacle.inflation;
         }
@@ -928,7 +928,7 @@ std::vector<Eigen::VectorXd> RRTX::smoothPath(const std::vector<Eigen::VectorXd>
 }
 
 
-void RRTX::updateObstacleSamples(const std::vector<Obstacle>& obstacles) {
+void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     update_obstacle = true;
 
     // Common initialization

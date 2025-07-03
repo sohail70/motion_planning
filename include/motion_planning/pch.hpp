@@ -3,6 +3,8 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <Eigen/Core>   // pulls in the EIGEN_MAKE_ALIGNED_OPERATOR_NEW macro
+#include <Eigen/StdVector>   
 
 #include <fstream>
 #include <iostream>

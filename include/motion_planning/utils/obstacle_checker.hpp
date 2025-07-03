@@ -1,7 +1,5 @@
 // Copyright 2025 Soheil E.nia
 
-
-
 #pragma once
 
 #include <memory>
@@ -11,65 +9,75 @@
 
 #include "rclcpp/rclcpp.hpp" 
 
+// This struct replaces the union, making the object safe to copy.
+struct ObstacleDimensions {
+    double radius = 0.0;
+    double width = 0.0;
+    double height = 0.0;
+    double rotation = 0.0;
+};
+
 struct Obstacle {
+    // THIS IS THE CRITICAL FIX for Eigen memory alignment issues when
+    // this struct is used in STL containers like std::vector.
+    /*
+        When you store Obstacle in an STL container (like ObstacleVector) and then copy it, 
+        Eigen’s fixed‑size vectorizable types (Eigen::Vector2d, etc.) need 16‑byte alignment — but by 
+        default std::vector will only honor the alignment requirements of the element type itself, 
+        which for a plain new’d Obstacle isn’t enough once Eigen can choose vectorized code paths. 
+        The result: your element copies into unaligned storage, stomping past the end of the allocation.
+    */
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+
     enum Type { CIRCLE, BOX };
     Type type;
     Eigen::Vector2d position;
     Eigen::Vector2d velocity;
     Eigen::Vector2d acceleration;
-
-    // std::chrono::steady_clock::time_point last_update_time;
-    // TO: Use the ROS 2 Time object
     rclcpp::Time last_update_time;
-    union {
-        struct {
-            double radius;
-        } circle;
-        struct {
-            double width;
-            double height;
-            double rotation;
-        } box;
-    } dimensions;
-    double inflation;
-    bool is_dynamic = false;  // true if this obstacle moves
-    // bool is_seen = false;  // true once samples-near have been processed
+    
+    // The union has been replaced with this struct.
+    ObstacleDimensions dimensions;
 
-    // Add default constructor
-    Obstacle() : type(CIRCLE), position(Eigen::Vector2d::Zero()), inflation(0.0) {
-        dimensions.circle.radius = 0.0;
-    }
+    double inflation;
+    bool is_dynamic = false;
+
+    // Default constructor
+    Obstacle() : type(CIRCLE), position(Eigen::Vector2d::Zero()), inflation(0.0) {}
 
     // Circle constructor
-    Obstacle(Eigen::Vector2d pos, double rad, double infl, bool dynamic=false)
-        : type(CIRCLE), position(pos), inflation(infl),is_dynamic(dynamic) {
-        dimensions.circle.radius = rad;
-        // last_update_time = std::chrono::steady_clock::now();
+    Obstacle(Eigen::Vector2d pos, double rad, double infl, bool dynamic = false)
+        : type(CIRCLE), position(pos), inflation(infl), is_dynamic(dynamic) {
+        dimensions.radius = rad;
     }
 
     // Box constructor
-    Obstacle(Eigen::Vector2d pos, double w, double h, double rot, double infl, bool dynamic=false)
+    Obstacle(Eigen::Vector2d pos, double w, double h, double rot, double infl, bool dynamic = false)
         : type(BOX), position(pos), inflation(infl), is_dynamic(dynamic) {
-        dimensions.box.width = w;
-        dimensions.box.height = h;
-        dimensions.box.rotation = rot;
-        // last_update_time = std::chrono::steady_clock::now();
-        // last_update_time is now set externally
+        dimensions.width = w;
+        dimensions.height = h;
+        dimensions.rotation = rot;
     }
 
+    // With the union removed, the default compiler-generated copy constructor
+    // and copy assignment operator are now safe and correct. We no longer
+    // need to write our own, which removes the source of the memory error.
+    
     bool operator==(const Obstacle& other) const {
-        // Update equality check for new structure
         if (type != other.type || position != other.position || inflation != other.inflation)
             return false;
         
         if (type == CIRCLE) {
-            return dimensions.circle.radius == other.dimensions.circle.radius;
+            return dimensions.radius == other.dimensions.radius;
         }
-        return dimensions.box.width == other.dimensions.box.width &&
-               dimensions.box.height == other.dimensions.box.height &&
-               dimensions.box.rotation == other.dimensions.box.rotation;
+        // BOX
+        return dimensions.width == other.dimensions.width &&
+               dimensions.height == other.dimensions.height &&
+               dimensions.rotation == other.dimensions.rotation;
     }
 };
+using ObstacleVector = std::vector<Obstacle, Eigen::aligned_allocator<Obstacle>>;
 
 struct ObstacleInfo {
     enum Type { CYLINDER, BOX };
@@ -102,7 +110,7 @@ public:
     virtual bool isTrajectorySafe( const Trajectory& trajectory, double start_node_time) const = 0;
 
     // virtual void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) = 0;
-    virtual std::vector<Obstacle> getObstacles() const = 0;
+    virtual ObstacleVector getObstacles() const = 0;
     virtual bool checkFootprintCollision(const Eigen::Vector2d& position,
                                        double yaw,
                                        const std::vector<Eigen::Vector2d>& footprint) const = 0;

@@ -16,7 +16,7 @@ void PlannerFactory::registerPlanner(PlannerType type, Creator creator ) {
     planners_.insert(std::make_pair(type,creator));
 }
 
-std::unique_ptr<Planner> PlannerFactory::createPlanner(PlannerType type, std::shared_ptr<StateSpace> statespace, std::shared_ptr<ProblemDefinition> problem, std::shared_ptr<ObstacleChecker> obs_checker ) {  
+std::shared_ptr<Planner> PlannerFactory::createPlanner(PlannerType type, std::shared_ptr<StateSpace> statespace, std::shared_ptr<ProblemDefinition> problem, std::shared_ptr<ObstacleChecker> obs_checker ) {  
     auto object = planners_.find(type);
     if (object != planners_.end())
     {

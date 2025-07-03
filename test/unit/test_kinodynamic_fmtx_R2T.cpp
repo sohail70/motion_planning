@@ -125,11 +125,13 @@ int main(int argc, char** argv)
     gazebo_params.setParam("use_range", false); // use_range and partial_update and use_heuristic are related! --> take care of this later!
     gazebo_params.setParam("sensor_range", 20.0);
     gazebo_params.setParam("estimation", true);
+    gazebo_params.setParam("kf_model_type", "cv");
+
     // gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
     // This value is CRITICAL. If it's 0.0, your robot has no size.
     // Set it to a value representing your robot's radius + a safety margin.
     // For example, if your robot is 1 meter wide, a radius of 0.5m + a buffer of 1m = 1.5.
-    gazebo_params.setParam("inflation", 0.2); // <-- VERIFY THIS IS A REASONABLE, NON-ZERO VALUE
+    gazebo_params.setParam("inflation", 0.5); // <-- VERIFY THIS IS A REASONABLE, NON-ZERO VALUE
     gazebo_params.setParam("persistent_static_obstacles", false);
 
 
@@ -139,7 +141,7 @@ int main(int argc, char** argv)
     planner_params.setParam("factor", factor);
     planner_params.setParam("use_kdtree", true);
     planner_params.setParam("kdtree_type", "NanoFlann");
-    planner_params.setParam("partial_update", true);
+    planner_params.setParam("partial_update", false);
     planner_params.setParam("static_obs_presence", false);
     planner_params.setParam("obs_cache", false);
     planner_params.setParam("partial_plot", false);
@@ -155,7 +157,9 @@ int main(int argc, char** argv)
     auto sim_clock = vis_node->get_clock();
 
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_4_obs.sdf");
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
 
@@ -174,15 +178,15 @@ int main(int argc, char** argv)
 
     Eigen::VectorXd lower_bounds(3), upper_bounds(3);
     lower_bounds << -50.0, -50.0, 0.0;
-    upper_bounds << 50.0, 50.0, 30.0; // Max time-to-go for any sample
+    upper_bounds << 50.0, 50.0, 40.0; // Max time-to-go for any sample
     problem_def->setBounds(lower_bounds, upper_bounds);
 
-    // Create the single, consolidated R2TROSManager
-    auto ros_manager = std::make_shared<R2TROS2Manager>(obstacle_checker, visualization, manager_params, robot_initial_state);
 
     double min_velocity = 0.0;
-    double max_velocity = 10.0;
-    double robot_velocity = 5.0;
+    double max_velocity = 15.0;
+    double robot_velocity = 10.0;
+    // Create the single, consolidated R2TROSManager
+    auto ros_manager = std::make_shared<R2TROS2Manager>(obstacle_checker, visualization, manager_params,robot_velocity, robot_initial_state);
     auto statespace = std::make_shared<RDTStateSpace>(spatial_dim, min_velocity , max_velocity , robot_velocity, 30000);
     auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicFMTX, statespace, problem_def, obstacle_checker);
     
@@ -197,7 +201,7 @@ int main(int argc, char** argv)
 
     // --- 5. Perform the INITIAL Plan ---
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
-    obstacle_checker->getAtomicSnapshot();
+    // obstacle_checker->getAtomicSnapshot();
 
     planner->plan();
     // Anchor the robot to the initial plan
@@ -213,7 +217,7 @@ int main(int argc, char** argv)
 
 
     // ================== NEW CODE: CREATE A DEDICATED VISUALIZATION TIMER ==================
-    const int tree_visualization_hz = 30; // Visualize the tree only 2 times per second.
+    const int tree_visualization_hz = 10; // Visualize the tree only 2 times per second.
     auto tree_vis_timer = vis_node->create_wall_timer(
         std::chrono::milliseconds(1000 / tree_visualization_hz),
         [&kinodynamic_planner]() { // Use a lambda to call the visualizeTree function
@@ -227,7 +231,7 @@ int main(int argc, char** argv)
     // --- 6. Set Up Executor (Unchanged) ---
     rclcpp::executors::MultiThreadedExecutor executor;
     executor.add_node(ros_manager);
-    // executor.add_node(vis_node); // **IMPORTANT**: Add the vis_node to the executor so its timer runs!
+    executor.add_node(vis_node); // **IMPORTANT**: Add the vis_node to the executor so its timer runs!
 
     std::thread executor_thread([&executor]() {
         executor.spin();
@@ -238,13 +242,14 @@ int main(int argc, char** argv)
     RCLCPP_INFO(vis_node->get_logger(), "Starting execution and monitoring loop. Press Ctrl+C to exit.");
     const double goal_tolerance = 0.5; // How close to (0,0) counts as "reached", in meters.
 
-    rclcpp::Rate loop_rate(30); // Frequency to check for replan triggers
+    rclcpp::Rate loop_rate(20); // Frequency to check for replan triggers
     while (g_running && rclcpp::ok())
     {
         bool needs_replan = false;
         
         // Get the robot's current state ONCE per cycle.
         Eigen::VectorXd current_sim_state = ros_manager->getCurrentSimulatedState();
+        kinodynamic_planner->setRobotState(current_sim_state);
         if (current_sim_state.size() == 0) { // Wait for the simulation to initialize
              loop_rate.sleep();
              continue;
@@ -259,31 +264,34 @@ int main(int argc, char** argv)
         }
 
 
-        auto snapshot = obstacle_checker->getAtomicSnapshot();
+        const auto& snapshot = obstacle_checker->getAtomicSnapshot();
 
         // --- TRIGGER 1 (Reactive): Is my current path predictively safe? ---
         // Pass both the path and the robot's current state to the validator.
-        if (!kinodynamic_planner->isPathStillValid(current_executable_path, current_sim_state)) {
-            RCLCPP_INFO(vis_node->get_logger(), "Current path is no longer predictively valid! Triggering replan.");
-            needs_replan = true;
-        }
+        // if (!kinodynamic_planner->isPathStillValid(current_executable_path, current_sim_state)) {
+        //     RCLCPP_INFO(vis_node->get_logger(), "Current path is no longer predictively valid! Triggering replan.");
+        //     needs_replan = true;
+        // }
 
         // --- TRIGGER 2 (Proactive): Have obstacles changed in a significant way? ---
-        if (!needs_replan && kinodynamic_planner->updateObstacleSamples(snapshot.obstacles)) {
-            RCLCPP_INFO(vis_node->get_logger(), "Obstacle change detected! Proactively replanning...");
-            needs_replan = true;
-        }
-        
-        if (needs_replan) {
+        // if (!needs_replan && kinodynamic_planner->updateObstacleSamples(snapshot.obstacles)) {
+        //     RCLCPP_INFO(vis_node->get_logger(), "Obstacle change detected! Proactively replanning...");
+        //     needs_replan = true;
+        // }
+        kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
+        // if (needs_replan) {
             // Get the robot's current state to plan FROM.
             Eigen::VectorXd current_sim_state_replan = ros_manager->getCurrentSimulatedState();
             if (current_sim_state_replan.size() == 0) continue; // Skip if state not ready
 
             RCLCPP_INFO(vis_node->get_logger(), "Replanning triggered. Finding new optimal path...");
             
-            // Re-run the full planning pipeline
+            current_sim_state = ros_manager->getCurrentSimulatedState();
+            kinodynamic_planner->setRobotState(current_sim_state);
             planner->plan();
-            kinodynamic_planner->setRobotState(current_sim_state_replan);
+            // Re-run the full planning pipeline
+            Eigen::VectorXd fresh_robot_state = ros_manager->getCurrentSimulatedState();
+            kinodynamic_planner->setRobotState(fresh_robot_state);
             auto new_executable_path = kinodynamic_planner->getPathPositions();
             
             // *** CORRECTED LOGIC TO HANDLE FAILURE ***
@@ -311,7 +319,7 @@ int main(int argc, char** argv)
                     ros_manager->setPath(current_executable_path);
                 }
             }
-        }
+        // }
 
         kinodynamic_planner->visualizePath(current_executable_path);
         // We visualize the tree in every frame, regardless of replanning.

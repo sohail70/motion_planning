@@ -24,7 +24,7 @@ class RRTX : public Planner {
     void setGoal(const Eigen::VectorXd& goal) override;
 
     void updateRobotPosition(const Eigen::VectorXd& new_position);
-    void updateObstacleSamples(const std::vector<Obstacle>& obstacles);
+    void updateObstacleSamples(const ObstacleVector& obstacles);
 
     void visualizeTree();
     void visualizePath(std::vector<int> path_indices);
@@ -112,7 +112,7 @@ class RRTX : public Planner {
 
 
     std::unordered_set<int> findSamplesNearObstacles(
-        const std::vector<Obstacle>& obstacles, 
+        const ObstacleVector& obstacles, 
         double obstacle_radius
     );
     // Obstacle management

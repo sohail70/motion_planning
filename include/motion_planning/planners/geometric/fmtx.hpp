@@ -31,10 +31,10 @@ class FMTX : public Planner {
 
 
 
-            std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& obstacles, double scale_factor);
-            std::pair<std::unordered_set<int>,std::unordered_set<int>> findSamplesNearObstaclesDual(const std::vector<Obstacle>& obstacles, double scale_factor);
+            std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles, double scale_factor);
+            std::pair<std::unordered_set<int>,std::unordered_set<int>> findSamplesNearObstaclesDual(const ObstacleVector& obstacles, double scale_factor);
 
-            void updateObstacleSamples(const std::vector<Obstacle>& obstacles);
+            void updateObstacleSamples(const ObstacleVector& obstacles);
             std::unordered_set<int> getDescendants(int node_index);
 
 
@@ -107,7 +107,7 @@ class FMTX : public Planner {
 
 
             bool static_obs_presence;
-            std::vector<Obstacle> seen_statics_;
+            ObstacleVector seen_statics_;
 
 
             

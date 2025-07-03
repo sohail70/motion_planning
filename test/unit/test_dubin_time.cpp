@@ -263,35 +263,22 @@
 //     return 0;
 // }
 
-///////////////////////////
+/////////////////////////////////////////////////
+
+
 #include <iostream>
 #include <memory>
 #include <vector>
 #include <chrono>
 #include <Eigen/Dense>
-#include <cmath> // For M_PI
-#include <iomanip> // For std::setprecision
-#include <algorithm> // Required for std::reverse
+#include <cmath>
+#include <iomanip>
+#include <algorithm>
 
 #include "rclcpp/rclcpp.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
 #include "motion_planning/state_space/dubins_time_statespace.hpp"
-
-// Include the header for our new Dubins ROS2 Manager
 #include "motion_planning/utils/ros2_manager_dubin.hpp"
-
-/**
- * @brief This program demonstrates and tests the DubinsTimeStateSpace and simulates
- * the resulting path using the DubinsROS2Manager.
- *
- * It performs the following steps:
- * 1. Initializes ROS2 nodes for planning and simulation.
- * 2. Creates an instance of the DubinsTimeStateSpace.
- * 3. Defines a sequence of 4D waypoints (x, y, theta, time).
- * 4. Plans a path between waypoints backward in time (e.g., from B to A).
- * 5. **FIXED**: Reverses each path segment to create a chronologically forward path (A to B).
- * 6. Visualizes the final static path and starts the simulation.
- */
 
 // Helper function to print vectors for debugging
 static void printVec(const Eigen::VectorXd& v) {
@@ -316,95 +303,110 @@ int main(int argc, char** argv) {
     auto dubins_manager = std::make_shared<DubinsROS2Manager>(visualizer);
     executor.add_node(dubins_manager);
 
-    std::cout << "--- DubinsTimeStateSpace Multi-Point Test ---\n";
+    std::cout << "--- DubinsTimeStateSpace Multi-Point Backward Simulation Test ---\n";
 
     // --- 2. Create the Dubins State Space ---
-    const double min_turning_radius = 5.0; // meters
-    const double min_velocity = 2.0;       // m/s
-    const double max_velocity = 20.0;      // m/s
-    std::shared_ptr<StateSpace> dubins_time_ss = std::make_shared<DubinsTimeStateSpace>(min_turning_radius, min_velocity, max_velocity);
+    const double min_turning_radius = 5.0;
+    const double min_velocity = 2.0;
+    const double max_velocity = 20.0;
+    auto dubins_time_ss = std::make_shared<DubinsTimeStateSpace>(min_turning_radius, min_velocity, max_velocity);
 
-    // --- 3. Define a sequence of waypoints (A, B, C, D, E) ---
+    // --- 3. Define Waypoints (A, B, C, D, E) ---
     std::vector<Eigen::VectorXd> waypoints;
-    waypoints.push_back((Eigen::VectorXd(4) << 0.0, 0.0, 0.0, 10.0).finished());           // A @ t=0s
-    waypoints.push_back((Eigen::VectorXd(4) << 30.0, 25.0, M_PI / 3.0, 15.0).finished()); // B @ t=15s
-    waypoints.push_back((Eigen::VectorXd(4) << 45.0, -10.0, -M_PI / 2.0, 19.0).finished());// C @ t=30s
-    waypoints.push_back((Eigen::VectorXd(4) << 20.0, -35.0, M_PI, 24.0).finished());      // D @ t=45s
-    waypoints.push_back((Eigen::VectorXd(4) << 0.0, -15.0, M_PI / 2.0, 40.0).finished()); // E @ t=60s
+    waypoints.push_back((Eigen::VectorXd(4) << 0.0,    0.0,   0.0,           10.0).finished()); // A
+    waypoints.push_back((Eigen::VectorXd(4) << 30.0,   25.0,  M_PI / 3.0,    25.0).finished()); // B
+    waypoints.push_back((Eigen::VectorXd(4) << 45.0,  -10.0, -M_PI / 2.0,    40.0).finished()); // C
+    waypoints.push_back((Eigen::VectorXd(4) << 20.0,  -35.0,  M_PI,          55.0).finished()); // D
+    waypoints.push_back((Eigen::VectorXd(4) << 0.0,   -15.0,  M_PI / 2.0,    70.0).finished()); // E
 
-    std::vector<Eigen::VectorXd> full_path_points;
-    double total_cost = 0;
+    std::vector<Eigen::VectorXd> forward_path_for_viz;
     bool path_is_valid = true;
 
-    // --- 4. Call steer for each segment ---
-    auto planning_start_time = std::chrono::high_resolution_clock::now();
-
+    // --- 4. Plan each segment backward and ANALYZE the output ---
     for (size_t i = 0; i < waypoints.size() - 1; ++i) {
-        const auto& segment_start_state = waypoints[i];
-        const auto& segment_end_state = waypoints[i+1];
-
+        const auto& segment_start_state = waypoints[i];   // e.g., A
+        const auto& segment_end_state = waypoints[i+1]; // e.g., B
+        
         std::cout << "\n--- Planning Segment " << i << " (from " << (char)('A'+i+1) << " to " << (char)('A'+i) << ") ---\n";
         
+        // steer(from, to) plans from a state with higher time to one with lower time
         Trajectory traj = dubins_time_ss->steer(segment_end_state, segment_start_state);
 
         if (traj.is_valid) {
             std::cout << "SUCCESS: Found valid trajectory for segment " << i << ". Cost: " << traj.cost << "\n";
-            total_cost += traj.cost;
+            
+            /*********************************************************************************/
+            /* --- DEBUG AND ANALYSIS BLOCK ---                                              */
+            /*********************************************************************************/
+            std::cout << "  --- Analyzing Raw Backward Trajectory (from steer) ---\n";
+            if (traj.path_points.size() < 2) {
+                std::cout << "  [WARNING] Trajectory has less than 2 points. Cannot analyze duration.\n";
+            } else {
+                bool segment_is_valid = true;
+                for (size_t k = 0; k < traj.path_points.size() - 1; ++k) {
+                    const auto& p1 = traj.path_points[k];
+                    const auto& p2 = traj.path_points[k+1];
+                    double time_dur = p1(3) - p2(3);
 
-            // Log the raw, backward trajectory from the planner for debugging
-            std::cout << "  --- Raw Backward Trajectory (from planner) ---\n";
-            for (const auto& point : traj.path_points) {
-                std::cout << "    ";
-                printVec(point);
-                std::cout << "\n";
+                    // Print every sub-segment for detailed analysis
+                    std::cout << "    Sub-Seg " << k << ": ";
+                    printVec(p1);
+                    std::cout << " -> ";
+                    printVec(p2);
+                    std::cout << " | Time Duration: " << std::fixed << std::setprecision(6) << time_dur;
+
+                    if (time_dur <= 1e-9) { // Check for non-positive duration
+                        std::cout << " <-- [WARNING] NON-POSITIVE TIME DURATION!";
+                        segment_is_valid = false;
+                    }
+                    std::cout << "\n";
+                }
+                if (!segment_is_valid) {
+                     RCLCPP_ERROR(node->get_logger(), "CRITICAL BUG DETECTED in steer() output for segment %zu.", i);
+                } else {
+                     RCLCPP_INFO(node->get_logger(), "Steer output for segment %zu is temporally valid.", i);
+                }
             }
             std::cout << "  -----------------------------------------------------\n";
+            /*********************************************************************************/
 
-            // CORRECTED LOGIC: Reverse the segment to get a forward path.
-            // The planner returns a path from B->A, but we need A->B to build the full path.
+            // For visualization, we need a forward path (A->B).
             std::reverse(traj.path_points.begin(), traj.path_points.end());
-            
-            // Add the now-reversed (chronologically forward) path segment to our master list.
-            full_path_points.insert(full_path_points.end(), traj.path_points.begin(), traj.path_points.end());
-            
+            forward_path_for_viz.insert(forward_path_for_viz.end(), traj.path_points.begin(), traj.path_points.end());
+        
         } else {
             std::cout << "FAILURE: Could not find a valid trajectory for segment " << i << ".\n";
             path_is_valid = false;
             break;
         }
     }
-
-    auto planning_end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(planning_end_time - planning_start_time);
      
     // --- 5. Visualize and Simulate ---
     if (path_is_valid) {
-        std::cout << "\n----------------------------------------\n";
-        std::cout << "SUCCESS: Full path found!\n";
-        std::cout << "Total Planning Time: " << duration.count() << " ms\n";
-        std::cout << "Starting simulation...\n";
-        std::cout << "----------------------------------------\n";
+        std::cout << "\nSUCCESS: Full path found! Starting simulation...\n";
          
-        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> full_path_segments;
-        if(full_path_points.size() > 1) {
-            // No longer need to sort here, as the path is now constructed in the correct order.
-            for(size_t j=0; j < full_path_points.size() - 1; ++j) {
-                full_path_segments.emplace_back(full_path_points[j], full_path_points[j+1]);
+        // Visualize the static path from A to E
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> viz_segments;
+        if(forward_path_for_viz.size() > 1) {
+            for(size_t j=0; j < forward_path_for_viz.size() - 1; ++j) {
+                viz_segments.emplace_back(forward_path_for_viz[j], forward_path_for_viz[j+1]);
             }
         }
         visualizer->visualizeNodes(waypoints, "map", {1.0f, 0.0f, 0.0f}, "waypoints");
-        visualizer->visualizeEdges(full_path_segments, "map", "0.0,1.0,0.0", "dubins_path");
+        visualizer->visualizeEdges(viz_segments, "map", "0.0,1.0,0.0", "dubins_path");
 
-        dubins_manager->setPlannedDubinsPath(full_path_points);
-        dubins_manager->setInitialState(waypoints.back());
+        // Prepare the path for BACKWARD simulation (E -> A)
+        std::vector<Eigen::VectorXd> backward_path_for_sim = forward_path_for_viz;
+        std::reverse(backward_path_for_sim.begin(), backward_path_for_sim.end());
+
+        dubins_manager->setPlannedDubinsPath(backward_path_for_sim);
+        dubins_manager->setInitialState(waypoints.back()); // Start at E
 
         RCLCPP_INFO(node->get_logger(), "Spinning executor to run simulation. Press Ctrl-C to exit.");
         executor.spin();
 
     } else {
-        std::cout << "\n----------------------------------------\n";
-        std::cout << "FAILURE: Could not connect all waypoints.\n";
-        std::cout << "----------------------------------------\n";
+        std::cout << "\nFAILURE: Could not connect all waypoints.\n";
     }
 
     rclcpp::shutdown();

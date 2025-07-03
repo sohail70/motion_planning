@@ -24,7 +24,7 @@ class RRTX : public Planner {
     void clearPlannerState() ;
 
     // Obstacle management
-    void updateObstacleSamples(const std::vector<Obstacle>& obstacles);
+    void updateObstacleSamples(const ObstacleVector& obstacles);
     void updateRobotPosition(const Eigen::VectorXd& new_position);
 
     // Visualization
@@ -36,7 +36,7 @@ class RRTX : public Planner {
     std::vector<Eigen::VectorXd> getSmoothedPathPositions(int num_intermediates, 
                                                         int smoothing_window) const;
 
-std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& obstacles, double max_length);
+std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles, double max_length);
 
     bool isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& edge) const;
 
@@ -92,7 +92,7 @@ std::unordered_set<int> findSamplesNearObstacles(const std::vector<Obstacle>& ob
 
 
     bool static_obs_presence;
-    std::vector<Obstacle> seen_statics_;
+    ObstacleVector seen_statics_;
 
 
     int findNodeIndex(RRTxNode* node) const;

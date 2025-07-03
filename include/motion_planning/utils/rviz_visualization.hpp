@@ -38,9 +38,10 @@ public:
                           const std::string& frame_id,
                           const std::vector<float>& color,
                           const std::string& ns);
+    void visualizeSingleEdge(const Eigen::VectorXd& start_point, const Eigen::VectorXd& end_point, int edge_id, const std::string& frame_id) override;
 
 
-    void visualizeFutureGhosts( const std::vector<Obstacle>& obstacles, double prediction_horizon, const std::string& frame_id);
+    void visualizeFutureGhosts( const ObstacleVector& obstacles, double prediction_horizon, const std::string& frame_id);
 
     void visualizeVelocityVectors(
         const std::vector<Eigen::Vector2d>& positions,
