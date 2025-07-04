@@ -220,6 +220,14 @@ target_link_libraries(test_kinodynamic_fmtx_dubin_4D motion_planning gz_obs)
 ament_target_dependencies(test_kinodynamic_fmtx_dubin_4D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_kinodynamic_fmtx_dubin_4D COMMAND test_kinodynamic_fmtx_dubin_4D)
 
+
+add_executable(test_kinodynamic_fmtx_thruster_5D test/unit/test_kinodynamic_fmtx_thruster_5D.cpp)
+target_link_libraries(test_kinodynamic_fmtx_thruster_5D motion_planning gz_obs)
+ament_target_dependencies(test_kinodynamic_fmtx_thruster_5D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_kinodynamic_fmtx_thruster_5D COMMAND test_kinodynamic_fmtx_thruster_5D)
+
+
+
 add_executable(test_dubin_time test/unit/test_dubin_time.cpp)
 target_link_libraries(test_dubin_time motion_planning gz_obs)
 ament_target_dependencies(test_dubin_time rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)

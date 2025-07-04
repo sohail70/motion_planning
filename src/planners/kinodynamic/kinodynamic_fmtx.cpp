@@ -1663,6 +1663,78 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     // --- STABILIZATION FIX END ---
 }
 
+ExecutionTrajectory KinodynamicFMTX::getFinalExecutionTrajectory() const {
+    ExecutionTrajectory final_traj;
+    final_traj.is_valid = false; // Default to invalid
+
+    // 1. Ensure a valid plan exists from the robot's anchor node.
+    if (!robot_node_ || robot_node_->getCost() == INFINITY) {
+        RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"), "Robot has no valid anchor. Cannot build execution path.");
+        return final_traj;
+    }
+
+    // 2. Generate the "bridge" trajectory from the robot's continuous state to the anchor.
+    Trajectory bridge_traj = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+    if (!bridge_traj.is_valid) {
+        RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"), "Failed to steer from robot to anchor node.");
+        return final_traj;
+    }
+
+    // The bridge trajectory is the first piece of our final path.
+    final_traj = bridge_traj.execution_data;
+    final_traj.is_valid = true;
+
+    // 3. Traverse the tree from the anchor node up to the root, appending each segment.
+    FMTNode* child_node = robot_node_;
+    FMTNode* parent_node = child_node->getParent();
+
+    while (parent_node) {
+        // Retrieve the pre-computed, cached trajectory for this tree edge.
+        const auto& cached_traj = child_node->neighbors().at(parent_node).cached_trajectory;
+        const auto& exec_data = cached_traj.execution_data;
+
+        if (!cached_traj.is_valid || exec_data.Time.size() <= 1) {
+            RCLCPP_WARN(rclcpp::get_logger("FMTX_Path_Assembly"), "Path reconstruction failed due to invalid cached segment.");
+            final_traj.is_valid = false;
+            return final_traj;
+        }
+
+        // --- Append matrices, avoiding duplicating the connection point ---
+        // We take all but the first row of the new segment's data.
+        long existing_rows = final_traj.Time.size();
+        long new_rows = exec_data.Time.size() - 1;
+        
+        if (new_rows > 0) {
+            final_traj.Time.conservativeResize(existing_rows + new_rows);
+            final_traj.Time.tail(new_rows) = exec_data.Time.tail(new_rows);
+            
+            final_traj.X.conservativeResize(existing_rows + new_rows, Eigen::NoChange);
+            final_traj.X.bottomRows(new_rows) = exec_data.X.bottomRows(new_rows);
+
+            final_traj.V.conservativeResize(existing_rows + new_rows, Eigen::NoChange);
+            final_traj.V.bottomRows(new_rows) = exec_data.V.bottomRows(new_rows);
+            
+            // Acceleration has one less row than states.
+            long existing_a_rows = final_traj.A.rows();
+            long new_a_rows = exec_data.A.rows(); // Append all accel rows for the new segment
+            final_traj.A.conservativeResize(existing_a_rows + new_a_rows, Eigen::NoChange);
+            final_traj.A.bottomRows(new_a_rows) = exec_data.A;
+        }
+
+        // Move up the tree for the next iteration.
+        child_node = parent_node;
+        parent_node = child_node->getParent();
+    }
+    
+    // Update the total cost of the stitched trajectory
+    if (final_traj.Time.size() > 0) {
+        final_traj.total_cost = final_traj.Time.maxCoeff() - final_traj.Time.minCoeff();
+    }
+
+    return final_traj;
+}
+
+
 
 
 bool KinodynamicFMTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path, const Eigen::VectorXd& current_robot_state) const {

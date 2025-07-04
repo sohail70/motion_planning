@@ -167,17 +167,17 @@ int main(int argc, char** argv) {
     problem_def->setStart(tree_root_state);
 
     Eigen::VectorXd robot_initial_state(4);
-    robot_initial_state << 48.0, 48.0, M_PI / 4.0, 30.0; // Start: x, y, theta, time budget
+    robot_initial_state << 48.0, 48.0, M_PI / 4.0, 40.0; // Start: x, y, theta, time budget
     problem_def->setGoal(robot_initial_state);
 
     Eigen::VectorXd lower_bounds(4), upper_bounds(4);
     lower_bounds << -50.0, -50.0, -M_PI, 0.0;
-    upper_bounds << 50.0, 50.0, M_PI, 30.0;
+    upper_bounds << 50.0, 50.0, M_PI, 40.0;
     problem_def->setBounds(lower_bounds, upper_bounds);
 
     double min_turning_radius = 2.0;
     double min_velocity = 1.0;
-    double max_velocity = 15.0;
+    double max_velocity = 10.0;
     auto statespace = std::make_shared<DubinsTimeStateSpace>(min_turning_radius, min_velocity, max_velocity);
 
     auto ros_manager = std::make_shared<DubinsROS2Manager>(obstacle_checker, visualization, manager_params, robot_initial_state);

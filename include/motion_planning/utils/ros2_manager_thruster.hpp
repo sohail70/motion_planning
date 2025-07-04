@@ -1,162 +1,250 @@
 #pragma once
 
 #include "rclcpp/rclcpp.hpp"
-#include "motion_planning/utils/rviz_visualization.hpp" // For visualization
+#include "motion_planning/utils/rviz_visualization.hpp"
+#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
 #include "motion_planning/ds/edge_info.hpp"
-#include "motion_planning/utils/params.hpp" // Assuming this defines your Params class
-
+#include "motion_planning/utils/params.hpp"
 #include <Eigen/Dense>
-#include <Eigen/Geometry> // For Eigen::Quaternion, Eigen::AngleAxisd
-#include <mutex>          // For std::mutex, std::lock_guard
-#include <chrono>         // For std::chrono::milliseconds
-#include <functional>     // For std::bind
-#include <algorithm>      // For std::clamp
-#include <sstream>        // For printing vectors
+#include <Eigen/Geometry>
+#include <mutex>
+#include <chrono>
+#include <functional>
+#include <algorithm>
+#include <sstream>
+#include <iomanip> // For std::fixed, std::setprecision
 
-
-
-// Helper function definitions
+// Helper functions to extract spatial parts of a state vector
 inline Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state) {
+    // Spatial dimensions are the first D elements, where total dim = 2*D + 1
     int D_spatial_dim = (full_state.size() - 1) / 2;
     return full_state.head(D_spatial_dim);
 }
-
 inline Eigen::VectorXd getSpatialVelocity(const Eigen::VectorXd& full_state) {
+    // Velocity dimensions follow the spatial dimensions
     int D_spatial_dim = (full_state.size() - 1) / 2;
     return full_state.segment(D_spatial_dim, D_spatial_dim);
 }
 
-
 class ROS2Manager : public rclcpp::Node {
 public:
-    // Constructor
+    // Full constructor with obstacle checking
+    ROS2Manager(
+        std::shared_ptr<ObstacleChecker> obstacle_checker,
+        std::shared_ptr<RVizVisualization> visualizer,
+        const Params& params)
+        : Node("ros2_manager_thruster",
+               rclcpp::NodeOptions().parameter_overrides(
+                   {rclcpp::Parameter("use_sim_time", params.getParam<bool>("use_sim_time", false))}
+               )),
+          obstacle_checker_(obstacle_checker),
+          visualizer_(visualizer),
+          is_path_set_(false) {
+        
+        int dim = params.getParam<int>("thruster_state_dimension", 5);
+        current_interpolated_state_ = Eigen::VectorXd::Zero(dim);
+
+        simulation_time_step_ = params.getParam<double>("simulation_time_step", -0.02);
+        int sim_frequency_hz = params.getParam<int>("sim_frequency_hz", 50);
+        int vis_frequency_hz = params.getParam<int>("vis_frequency_hz", 30);
+
+        RCLCPP_INFO(this->get_logger(), "Initialized Thruster ROS2Manager (Full Constructor).");
+
+        vis_timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(1000 / vis_frequency_hz),
+            std::bind(&ROS2Manager::visualizationLoop, this));
+
+        sim_timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(1000 / sim_frequency_hz),
+            std::bind(&ROS2Manager::simulationLoop, this));
+    }
+
+    // Simplified constructor (used in the test)
     ROS2Manager(
         std::shared_ptr<RVizVisualization> visualizer,
         const Params& params)
-        : Node("ros2_manager",
+        : Node("ros2_manager_thruster_simple",
                rclcpp::NodeOptions().parameter_overrides(
-                   std::vector<rclcpp::Parameter>{
-                       rclcpp::Parameter("use_sim_time", params.getParam<bool>("use_sim_time", false))
-                   }
+                   {rclcpp::Parameter("use_sim_time", params.getParam<bool>("use_sim_time", false))}
                )),
+          obstacle_checker_(nullptr), // No obstacle checker in this version
           visualizer_(visualizer),
-          current_kinodynamic_state_(Eigen::VectorXd::Zero(params.getParam<int>("thruster_state_dimension", 7))),
-          current_exec_traj_idx_(0),
-          simulation_time_step_(params.getParam<double>("simulation_time_step", 0.01))
+          is_path_set_(false)
     {
-        RCLCPP_INFO(this->get_logger(), "Initialized ROS2Manager for Thruster Control (Header-Only).");
+        // This implementation was missing, causing the segfault.
+        int dim = params.getParam<int>("thruster_state_dimension", 5);
+        current_interpolated_state_ = Eigen::VectorXd::Zero(dim);
+        simulation_time_step_ = params.getParam<double>("simulation_time_step", -0.02);
+        int sim_frequency_hz = params.getParam<int>("sim_frequency_hz", 50);
 
-        control_timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(static_cast<long int>(simulation_time_step_ * 1000)),
-            std::bind(&ROS2Manager::thrusterControlLoop, this));
+        RCLCPP_INFO(this->get_logger(), "Initialized Thruster ROS2Manager (Simple Constructor).");
 
-        update_timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(50),
-            std::bind(&ROS2Manager::updateCallback, this));
+        // The simulation timer must be created.
+        sim_timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(1000 / sim_frequency_hz),
+            std::bind(&ROS2Manager::simulationLoop, this));
     }
 
-    // Public API
+
     void setInitialState(const Eigen::VectorXd& state) {
-        std::lock_guard<std::mutex> lock(planned_traj_mutex_);
-        RCLCPP_INFO(this->get_logger(), "Setting initial state to: %s", printEigenVec(state).c_str());
-        if (state.size() != current_kinodynamic_state_.size()) {
-            RCLCPP_ERROR(this->get_logger(), "Cannot set initial state, dimension mismatch! Manager state size=%ld, provided state size=%ld",
-                current_kinodynamic_state_.size(), state.size());
+        std::lock_guard<std::mutex> lock(path_mutex_);
+        current_interpolated_state_ = state;
+        // The last element of the state vector is the timestamp
+        current_sim_time_ = state(state.size() - 1);
+        robot_spatial_trace_.clear();
+        RCLCPP_INFO(this->get_logger(), "Initial state set. Sim time starting at: %.2f", current_sim_time_);
+    }
+
+    // Accepts the planned trajectory.
+    void setPlannedThrusterTrajectory(const std::vector<Eigen::VectorXd>& path) {
+        std::lock_guard<std::mutex> lock(path_mutex_);
+
+        if (path.size() < 2) {
+            RCLCPP_WARN(this->get_logger(), "[SET_PATH] Received invalid or empty trajectory. Path not set.");
+            is_path_set_ = false;
+            current_path_.clear();
             return;
         }
-        current_kinodynamic_state_ = state;
+
+        current_path_ = path;
+
+        if (!current_path_.empty()) {
+            const int dim = current_path_.front().size();
+            RCLCPP_INFO(this->get_logger(), "[SET_PATH] New path received. Points: %zu, Time Range: [%.4f -> %.4f]",
+                current_path_.size(), current_path_.front()(dim-1), current_path_.back()(dim-1));
+        }
+        is_path_set_ = true;
     }
 
-    void setPlannedThrusterTrajectory(const ExecutionTrajectory& traj) {
-        std::lock_guard<std::mutex> lock(planned_traj_mutex_);
-        current_planned_execution_trajectory_ = traj;
-        current_exec_traj_idx_ = 0;
-        RCLCPP_INFO(this->get_logger(), "New execution trajectory set with %zu time steps. Total time: %.2f s", traj.Time.size(), traj.total_cost);
+    Eigen::VectorXd getCurrentKinodynamicState() const {
+        std::lock_guard<std::mutex> lock(path_mutex_);
+        return current_interpolated_state_;
     }
 
 private:
-    rclcpp::TimerBase::SharedPtr control_timer_;
-    rclcpp::TimerBase::SharedPtr update_timer_;
+    std::shared_ptr<ObstacleChecker> obstacle_checker_;
     std::shared_ptr<RVizVisualization> visualizer_;
-    Eigen::VectorXd current_kinodynamic_state_;
-    std::vector<Eigen::VectorXd> robot_spatial_trace_;
-    ExecutionTrajectory current_planned_execution_trajectory_;
-    std::mutex planned_traj_mutex_;
-    size_t current_exec_traj_idx_;
-    double simulation_time_step_;
+    rclcpp::TimerBase::SharedPtr vis_timer_;
+    rclcpp::TimerBase::SharedPtr sim_timer_;
+    mutable std::mutex path_mutex_;
 
-    std::string printEigenVec(const Eigen::VectorXd& vec) {
-        std::stringstream ss;
-        ss << "[" << vec.transpose() << "]";
-        return ss.str();
+    std::vector<Eigen::VectorXd> current_path_;
+    std::vector<Eigen::VectorXd> robot_spatial_trace_;
+    double current_sim_time_;
+    double simulation_time_step_; // Negative for backward-in-time simulation
+    bool is_path_set_;
+    Eigen::VectorXd current_interpolated_state_;
+
+    void visualizationLoop() {
+        if (!obstacle_checker_ || !visualizer_) return;
+        
+        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+        if (!gazebo_checker) return;
+
+        const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
+        
+        std::vector<Eigen::VectorXd> cylinder_obstacles;
+        std::vector<double> cylinder_radii;
+
+        for (const auto& obstacle : all_obstacles) {
+            if (obstacle.type == Obstacle::CIRCLE) {
+                Eigen::VectorXd vec(2);
+                vec << obstacle.position.x(), obstacle.position.y();
+                cylinder_obstacles.push_back(vec);
+                cylinder_radii.push_back(obstacle.dimensions.radius);
+            }
+        }
+
+        if (!cylinder_obstacles.empty()) {
+            visualizer_->visualizeCylinder(cylinder_obstacles, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "obstacles");
+        }
     }
 
-    void thrusterControlLoop() {
-        std::lock_guard<std::mutex> traj_lock(planned_traj_mutex_);
-
-        const size_t traj_len = current_planned_execution_trajectory_.Time.size();
-
-        if (!current_planned_execution_trajectory_.is_valid || traj_len < 2) {
-            return; 
-        }
-
-        RCLCPP_INFO(this->get_logger(), "[CTL_LOOP] Current state: %s", printEigenVec(current_kinodynamic_state_).c_str());
-
-        int D_spatial_dim = (current_kinodynamic_state_.size() - 1) / 2;
-        double current_sim_time = current_kinodynamic_state_[current_kinodynamic_state_.size() - 1];
-
-        while (current_exec_traj_idx_ < traj_len - 1 &&
-               current_sim_time >= current_planned_execution_trajectory_.Time[current_exec_traj_idx_ + 1] - 1e-9) {
-            current_exec_traj_idx_++;
-        }
-
-        if (current_exec_traj_idx_ >= traj_len - 1) {
-            RCLCPP_INFO(this->get_logger(), "[CTL_LOOP] Execution trajectory finished. Robot stopping.");
-            current_planned_execution_trajectory_.is_valid = false;
-            current_kinodynamic_state_.segment(D_spatial_dim, D_spatial_dim).setZero();
+    void simulationLoop() {
+        std::lock_guard<std::mutex> lock(path_mutex_);
+        if (!is_path_set_ || current_path_.size() < 2) {
             return;
         }
 
-        Eigen::VectorXd a_k = current_planned_execution_trajectory_.A.row(current_exec_traj_idx_).transpose();
-        double t_k_plus_1_planned_end = current_planned_execution_trajectory_.Time[current_exec_traj_idx_ + 1];
-        
-        double dt_integrate = simulation_time_step_;
-        if (current_sim_time + dt_integrate > t_k_plus_1_planned_end + 1e-9) {
-            dt_integrate = t_k_plus_1_planned_end - current_sim_time;
-            if (dt_integrate < 0) dt_integrate = 0;
+        current_sim_time_ += simulation_time_step_;
+
+        const int dim = current_path_.front().size();
+        const double path_end_time = current_path_.back()(dim - 1);
+
+        // --- Finish Condition ---
+        // Stop simulation if we have passed the final time point.
+        if (current_sim_time_ < path_end_time) {
+            RCLCPP_INFO_ONCE(this->get_logger(), "Simulation finished. Final time reached.");
+            is_path_set_ = false;
+            return;
+        }
+
+        // --- Find Current Segment ---
+        // Find the first point in the path that is "in the past" relative to current_sim_time_.
+        // Because time is decreasing, we search for the first element LESS than current_sim_time_.
+        size_t after_idx = -1;
+        for (size_t i = 0; i < current_path_.size(); ++i) {
+            if (current_path_[i](dim - 1) < current_sim_time_) {
+                after_idx = i;
+                break;
+            }
+        }
+
+        // --- Interpolation ---
+        if (after_idx != (size_t)-1 && after_idx > 0) {
+            const auto& state_after = current_path_[after_idx];
+            const auto& state_before = current_path_[after_idx - 1];
+
+            double time_before = state_before(dim - 1);
+            double time_after = state_after(dim - 1);
+            double segment_duration = time_before - time_after;
+            
+            if (segment_duration <= 1e-9) {
+                current_interpolated_state_ = state_after;
+            } else {
+                double time_into_segment = time_before - current_sim_time_;
+                double interp_factor = std::clamp(time_into_segment / segment_duration, 0.0, 1.0);
+                
+                // Interpolate position and velocity
+                Eigen::VectorXd new_state(dim);
+                const int D_spatial_dim = (dim - 1) / 2;
+                new_state.head(D_spatial_dim) = getSpatialPosition(state_before) + interp_factor * (getSpatialPosition(state_after) - getSpatialPosition(state_before));
+                new_state.segment(D_spatial_dim, D_spatial_dim) = getSpatialVelocity(state_before) + interp_factor * (getSpatialVelocity(state_after) - getSpatialVelocity(state_before));
+                new_state(dim - 1) = current_sim_time_;
+                current_interpolated_state_ = new_state;
+            }
+        } else {
+            // If sim time is outside path bounds, hold the start/end state.
+            if (current_sim_time_ >= current_path_.front()(dim-1)) {
+                current_interpolated_state_ = current_path_.front();
+            } else {
+                current_interpolated_state_ = current_path_.back();
+            }
         }
         
-        Eigen::VectorXd current_spatial_pos = getSpatialPosition(current_kinodynamic_state_);
-        Eigen::VectorXd current_spatial_vel = getSpatialVelocity(current_kinodynamic_state_);
-        Eigen::VectorXd new_spatial_pos = current_spatial_pos + current_spatial_vel * dt_integrate + (0.5 * a_k.array() * dt_integrate * dt_integrate).matrix();
-        Eigen::VectorXd new_spatial_vel = current_spatial_vel + a_k * dt_integrate;
-        double new_sim_time = current_sim_time + dt_integrate;
-
-        current_kinodynamic_state_.head(D_spatial_dim) = new_spatial_pos;
-        current_kinodynamic_state_.segment(D_spatial_dim, D_spatial_dim) = new_spatial_vel;
-        current_kinodynamic_state_[current_kinodynamic_state_.size() - 1] = new_sim_time;
-
-        Eigen::VectorXd robot_orientation_quat = Eigen::VectorXd::Zero(4); 
-        if (D_spatial_dim >= 2 && new_spatial_vel.norm() > 1e-6) {
-            double yaw = std::atan2(new_spatial_vel[1], new_spatial_vel[0]);
+        // --- Visualization ---
+        Eigen::VectorXd new_pos = getSpatialPosition(current_interpolated_state_);
+        Eigen::VectorXd new_vel = getSpatialVelocity(current_interpolated_state_);
+        
+        // Determine robot orientation from velocity vector
+        Eigen::VectorXd robot_orientation_quat(4);
+        if (new_vel.norm() > 1e-3) {
+            // The velocity vector in the path points opposite to the direction of travel
+            // because we are simulating backward in time. Add PI to the yaw to flip it.
+            double yaw = std::atan2(new_vel[1], new_vel[0]);
+            yaw += M_PI; // Add 180 degrees to point the arrow in the direction of motion.
             Eigen::Quaterniond q(Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()));
             robot_orientation_quat << q.x(), q.y(), q.z(), q.w();
         } else {
-            Eigen::Quaterniond q_id(1,0,0,0); 
-            robot_orientation_quat << q_id.x(), q_id.y(), q_id.z(), q_id.w();
+            robot_orientation_quat << 0, 0, 0, 1; // Default orientation
         }
-        visualizer_->visualizeRobotArrow(new_spatial_pos, robot_orientation_quat, "map", {0.5f, 0.5f, 0.5f}, "thruster_robot_marker");
         
-        robot_spatial_trace_.push_back(new_spatial_pos); 
-        visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 0.0f, 1.0f}, "robot_trace"); 
-
-        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> current_segment_edges;
-        current_segment_edges.emplace_back(
-            current_planned_execution_trajectory_.X.row(current_exec_traj_idx_).transpose(),
-            current_planned_execution_trajectory_.X.row(current_exec_traj_idx_ + 1).transpose()
-        );
-        visualizer_->visualizeEdges(current_segment_edges, "map", "1.0,1.0,0.0", "active_planned_segment");
+        visualizer_->visualizeRobotArrow(new_pos, robot_orientation_quat, "map", {0.8f, 0.1f, 0.8f}, "simulated_robot");
+        
+        // Add to the robot's trace for visualization
+        if (robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - new_pos).norm() > 0.1) {
+             robot_spatial_trace_.push_back(new_pos);
+        }
+        visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 0.5f, 0.0f}, "robot_trace");
     }
-
-    void updateCallback() {}
 };

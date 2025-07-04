@@ -495,98 +495,187 @@ ThrusterSteerStateSpace::fineGrain(const Eigen::VectorXd& Time_raw, const Eigen:
 }
 
 // Main steer function to find optimal trajectory between two full states
+// Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const {
+//     Trajectory traj_out;
+//     traj_out.is_valid = false;
+//     traj_out.cost = std::numeric_limits<double>::infinity();
+//     const double EPS = 1e-9;
+
+//     // from: [x, y, z, vx, vy, vz, t_start]
+//     // to:   [x, y, z, vx, vy, vz, t_end]
+    
+//     // Ensure states have correct dimension
+//     if (from.size() != dimension_ || to.size() != dimension_) {
+//         std::cerr << "Error: 'from' or 'to' state has incorrect dimension." << std::endl;
+//         return traj_out;
+//     }
+
+//     int D_spatial = (dimension_ - 1) / 2; // e.g., 3 for 3D position/velocity
+
+//     // Extract spatial positions and velocities
+//     Eigen::VectorXd from_pos = from.head(D_spatial);
+//     Eigen::VectorXd from_vel = from.segment(D_spatial, D_spatial);
+//     double from_time = from[dimension_ - 1];
+
+//     Eigen::VectorXd to_pos = to.head(D_spatial);
+//     Eigen::VectorXd to_vel = to.segment(D_spatial, D_spatial);
+//     double to_time = to[dimension_ - 1];
+
+//     // IGNORE THE COMMENT BELOW FOR NOW!
+//     // Planning happens in "reverse time" for FMTX/RRTX.
+//     // The 'from' state has a "later" time (closer to robot) than 'to' (closer to goal).
+//     // So, target_delta_t = from_time - to_time.
+//     // Julia code for DFMT uses t_start for the earlier time, t_end for later.
+//     // Here, to use steeringND, we need t_start < t_end.
+//     // So, we effectively "reverse" the problem for steeringND, then reverse solution.
+//     double actual_duration = to_time - from_time; // This is the total time cost if path is valid
+
+//     // if (actual_duration < EPS) { // Duration must be positive
+//     //     std::cout << "Error: Actual duration is non-positive: " << actual_duration << std::endl;
+//     //     return traj_out;
+//     // }
+
+//     // Call N-D steering
+//     // Max acceleration vector (assuming same for all spatial dimensions)
+//     Eigen::VectorXd a_max_vec = Eigen::VectorXd::Constant(D_spatial, max_acceleration_);
+
+//     // The Julia steering_ND takes (x_start, x_end, v_start, v_end, t_start, t_end, a).
+//     // It assumes t_start is the earlier time, t_end is the later time.
+//     // So for our problem (from_time (later) to to_time (earlier)):
+//     // - steeringND_t_start = to_time
+//     // - steeringND_t_end = from_time
+//     // - The X and V are also reversed for steeringND input.
+
+//     // NDSteeringResult nd_result = steeringND(to_pos, from_pos, to_vel, from_vel, to_time, from_time, a_max_vec);
+//     NDSteeringResult nd_result = steeringND(from_pos, to_pos, from_vel, to_vel, from_time, to_time, a_max_vec);
+    
+//     if (!nd_result.success) {
+//         std::cout << "ND steering failed." << std::endl;
+//         return traj_out;
+//     }
+
+//     // Fine-grain the trajectory for output
+//     double discretization_step = 0.5; // meters (or unit of position distance for spatial dimensions)
+//                                      // This could be made dynamic or a parameter.
+
+//     // Calculate fine-grained trajectory
+//     auto [fine_Time, fine_A, fine_V, fine_X] = 
+//         fineGrain(nd_result.Time, nd_result.A, nd_result.V, nd_result.X, discretization_step);
+
+//     // Populate Trajectory object
+//     traj_out.cost = actual_duration; // Total time is the cost for time-optimal thruster
+//     traj_out.is_valid = true;
+
+//     // --- MODIFIED: Populate execution_data with the forward-time trajectory (from 'to' to 'from') ---
+//     traj_out.execution_data.is_valid = true;
+//     traj_out.execution_data.total_cost = actual_duration;
+//     traj_out.execution_data.Time = fine_Time;
+//     traj_out.execution_data.X = fine_X;
+//     traj_out.execution_data.V = fine_V;
+//     traj_out.execution_data.A = fine_A;
+
+
+
+//     traj_out.path_points.reserve(fine_Time.size());
+//     for (int i = 0; i < fine_Time.size(); ++i) {
+//         Eigen::VectorXd state_at_t(dimension_);
+//         state_at_t.head(D_spatial) = fine_X.row(i).transpose();
+//         state_at_t.segment(D_spatial, D_spatial) = fine_V.row(i).transpose();
+//         state_at_t[dimension_ - 1] = fine_Time[i];
+//         traj_out.path_points.push_back(state_at_t);
+//     }
+    
+//     // Reverse the path_points since steer is from `from` to `to`, but solution was computed `to` to `from`.
+//     std::reverse(traj_out.path_points.begin(), traj_out.path_points.end());
+
+//     return traj_out;
+// }
+
 Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const {
     Trajectory traj_out;
     traj_out.is_valid = false;
     traj_out.cost = std::numeric_limits<double>::infinity();
     const double EPS = 1e-9;
 
-    // from: [x, y, z, vx, vy, vz, t_start]
-    // to:   [x, y, z, vx, vy, vz, t_end]
-    
-    // Ensure states have correct dimension
     if (from.size() != dimension_ || to.size() != dimension_) {
         std::cerr << "Error: 'from' or 'to' state has incorrect dimension." << std::endl;
         return traj_out;
     }
 
-    int D_spatial = (dimension_ - 1) / 2; // e.g., 3 for 3D position/velocity
+    int D_spatial = (dimension_ - 1) / 2;
 
-    // Extract spatial positions and velocities
-    Eigen::VectorXd from_pos = from.head(D_spatial);
-    Eigen::VectorXd from_vel = from.segment(D_spatial, D_spatial);
+    Eigen::VectorXd from_pos = getSpatialPosition(from);
+    Eigen::VectorXd from_vel = getSpatialVelocity(from);
     double from_time = from[dimension_ - 1];
 
-    Eigen::VectorXd to_pos = to.head(D_spatial);
-    Eigen::VectorXd to_vel = to.segment(D_spatial, D_spatial);
+    Eigen::VectorXd to_pos = getSpatialPosition(to);
+    Eigen::VectorXd to_vel = getSpatialVelocity(to);
     double to_time = to[dimension_ - 1];
 
-    // IGNORE THE COMMENT BELOW FOR NOW!
-    // Planning happens in "reverse time" for FMTX/RRTX.
-    // The 'from' state has a "later" time (closer to robot) than 'to' (closer to goal).
-    // So, target_delta_t = from_time - to_time.
-    // Julia code for DFMT uses t_start for the earlier time, t_end for later.
-    // Here, to use steeringND, we need t_start < t_end.
-    // So, we effectively "reverse" the problem for steeringND, then reverse solution.
-    double actual_duration = to_time - from_time; // This is the total time cost if path is valid
+    double duration = from_time - to_time;
 
-    // if (actual_duration < EPS) { // Duration must be positive
-    //     std::cout << "Error: Actual duration is non-positive: " << actual_duration << std::endl;
-    //     return traj_out;
-    // }
-
-    // Call N-D steering
-    // Max acceleration vector (assuming same for all spatial dimensions)
-    Eigen::VectorXd a_max_vec = Eigen::VectorXd::Constant(D_spatial, max_acceleration_);
-
-    // The Julia steering_ND takes (x_start, x_end, v_start, v_end, t_start, t_end, a).
-    // It assumes t_start is the earlier time, t_end is the later time.
-    // So for our problem (from_time (later) to to_time (earlier)):
-    // - steeringND_t_start = to_time
-    // - steeringND_t_end = from_time
-    // - The X and V are also reversed for steeringND input.
-
-    // NDSteeringResult nd_result = steeringND(to_pos, from_pos, to_vel, from_vel, to_time, from_time, a_max_vec);
-    NDSteeringResult nd_result = steeringND(from_pos, to_pos, from_vel, to_vel, from_time, to_time, a_max_vec);
-    
-    if (!nd_result.success) {
-        std::cout << "ND steering failed." << std::endl;
+    if (duration < EPS) {
         return traj_out;
     }
 
-    // Fine-grain the trajectory for output
-    double discretization_step = 0.5; // meters (or unit of position distance for spatial dimensions)
-                                     // This could be made dynamic or a parameter.
+    // Plan in forward time (from earlier 'to' state to later 'from' state)
+    Eigen::VectorXd a_max_vec = Eigen::VectorXd::Constant(D_spatial, max_acceleration_);
+    NDSteeringResult nd_result = steeringND(to_pos, from_pos, to_vel, from_vel, to_time, from_time, a_max_vec);
+    
+    if (!nd_result.success) {
+        return traj_out;
+    }
 
-    // Calculate fine-grained trajectory
+    // Discretize the trajectory
+    double discretization_step = 0.5; // You can adjust this resolution
     auto [fine_Time, fine_A, fine_V, fine_X] = 
         fineGrain(nd_result.Time, nd_result.A, nd_result.V, nd_result.X, discretization_step);
 
-    // Populate Trajectory object
-    traj_out.cost = actual_duration; // Total time is the cost for time-optimal thruster
+    // ✅ ROBUST MANUAL REVERSAL
+    // Manually reverse the trajectory to create the correct countdown path.
+    long num_points = fine_Time.size();
+    if (num_points == 0) {
+        return traj_out; // Should not happen if fineGrain is successful
+    }
+
     traj_out.is_valid = true;
-
-    // --- MODIFIED: Populate execution_data with the forward-time trajectory (from 'to' to 'from') ---
+    traj_out.cost = duration;
     traj_out.execution_data.is_valid = true;
-    traj_out.execution_data.total_cost = actual_duration;
-    traj_out.execution_data.Time = fine_Time;
-    traj_out.execution_data.X = fine_X;
-    traj_out.execution_data.V = fine_V;
-    traj_out.execution_data.A = fine_A;
+    traj_out.execution_data.total_cost = duration;
 
+    // Resize the execution data matrices
+    traj_out.execution_data.Time.resize(num_points);
+    traj_out.execution_data.X.resize(num_points, D_spatial);
+    traj_out.execution_data.V.resize(num_points, D_spatial);
+    // Note: The fine-grained acceleration matrix has one less row than the number of points
+    traj_out.execution_data.A.resize(num_points > 1 ? num_points - 1 : 0, D_spatial);
 
+    // Populate the matrices by looping through the fine-grained data in reverse
+    for (long i = 0; i < num_points; ++i) {
+        long reverse_i = num_points - 1 - i;
+        traj_out.execution_data.Time(i) = fine_Time(reverse_i);
+        traj_out.execution_data.X.row(i) = fine_X.row(reverse_i);
+        traj_out.execution_data.V.row(i) = fine_V.row(reverse_i);
+    }
+    
+    // Reverse the acceleration data, which applies to intervals
+    for (long i = 0; i < traj_out.execution_data.A.rows(); ++i) {
+        // A[i] corresponds to the interval from T[i] to T[i+1]
+        // In reverse, this is the interval from fine_Time[N-1-i] to fine_Time[N-2-i]
+        // The acceleration for that interval is fine_A[N-2-i]
+        long reverse_a_idx = fine_A.rows() - 1 - i;
+        traj_out.execution_data.A.row(i) = fine_A.row(reverse_a_idx);
+    }
 
-    traj_out.path_points.reserve(fine_Time.size());
-    for (int i = 0; i < fine_Time.size(); ++i) {
+    // Populate the coarse path_points vector for other uses
+    traj_out.path_points.reserve(num_points);
+    for (long i = 0; i < num_points; ++i) {
         Eigen::VectorXd state_at_t(dimension_);
-        state_at_t.head(D_spatial) = fine_X.row(i).transpose();
-        state_at_t.segment(D_spatial, D_spatial) = fine_V.row(i).transpose();
-        state_at_t[dimension_ - 1] = fine_Time[i];
+        state_at_t.head(D_spatial) = traj_out.execution_data.X.row(i).transpose();
+        state_at_t.segment(D_spatial, D_spatial) = traj_out.execution_data.V.row(i).transpose();
+        state_at_t[dimension_ - 1] = traj_out.execution_data.Time(i);
         traj_out.path_points.push_back(state_at_t);
     }
     
-    // Reverse the path_points since steer is from `from` to `to`, but solution was computed `to` to `from`.
-    std::reverse(traj_out.path_points.begin(), traj_out.path_points.end());
-
     return traj_out;
 }

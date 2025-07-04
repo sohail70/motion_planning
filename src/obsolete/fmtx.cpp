@@ -838,11 +838,11 @@ void FMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
 
     /*
-        Now that im thinking about this the max_length's upper bound is neighborhood_radius_ in fmtx! this is not a rrt star based algorithm!
+        Now that im thinking about this the max_length's upper bound is 2 * neighborhood_radius_ in fmtx! this is not a rrt star based algorithm!
         I guess we don't need to track the max_edge! and we can easily use rn for this but for now i'll leave this as is!
     
     */
-    max_length = neighborhood_radius_; // At first Static plan we don't have max_length --> either do this or do a static plan
+    max_length = 2 * neighborhood_radius_; // At first Static plan we don't have max_length --> either do this or do a static plan
 
     // if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
     // {

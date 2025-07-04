@@ -93,6 +93,15 @@ class KinodynamicFMTX : public Planner {
 
 
 
+
+            
+            /**
+             * @brief Reconstructs the full, fine-grained execution trajectory from the robot to the goal.
+             * @return A complete ExecutionTrajectory object containing Time, X, V, and A matrices.
+             */
+            ExecutionTrajectory getFinalExecutionTrajectory() const;
+
+
             /**
              * @brief Re-anchors the planner's search to the robot's current continuous state.
              * Finds the best node in the tree to serve as the new starting point (leaf node)
@@ -100,17 +109,6 @@ class KinodynamicFMTX : public Planner {
              * the crucial link between the continuous simulation and the discrete graph.
              * @param robot_state The current 3D state (x,y,Time) of the robot.
              */
-            // void setRobotState(const Eigen::VectorXd& robot_state) {
-
-            //     robot_continuous_state_ = robot_state;
-            //     // robot_node_->setTimeToGoal(robot_state(robot_state.size()-1));
-            //     // std::cout<<"samsam: "<<robot_node_->getTimeToGoal()<<"\n";
-
-            //     robot_current_time_to_goal_ = robot_state(robot_state.size()-1);
-
-            // }
-
-            
             void setRobotState(const Eigen::VectorXd& robot_state);
 
 

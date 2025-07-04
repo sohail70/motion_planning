@@ -786,90 +786,249 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 
 
 
-// // combined by all the above best features! --> works good with R2T and DubinTimeStateSpace!--> fully discrete and no analytical root finding --> this is more robust than root finding in my sim
+// // // combined by all the above best features! --> works good with R2T and DubinTimeStateSpace!--> fully discrete and no analytical root finding --> this is more robust than root finding in my sim
+// std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
+//     const Trajectory& trajectory,
+//     double global_start_time
+// ) const {
+//     std::lock_guard<std::mutex> lock(snapshot_mutex_);
+
+//     if (trajectory.path_points.size() < 2) {
+//         return std::nullopt;
+//     }
+
+//     auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
+//     auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
+
+//     double time_into_full_trajectory = 0.0;
+
+//     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+//         const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
+//         const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
+
+//         const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
+//         const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
+//         const double T_segment = get_time(segment_start_state) - get_time(segment_end_state);
+
+//         if (T_segment <= 1e-9) continue;
+        
+//         const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
+//         const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
+
+//         for (const auto& obs : obstacle_snapshot_) {
+//             const double obs_radius = (obs.type == Obstacle::CIRCLE)
+//                                     ? obs.dimensions.radius
+//                                     : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
+//             const double R = obs_radius + inflation;
+//             const double R_sq = R * R;
+
+//             if (obs.is_dynamic) {
+//                 // --- Narrow-Phase Check for DYNAMIC Obstacles ---
+//                 const double delta_t_extrapolation = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+//                 const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
+                
+//                 const Eigen::Vector2d p_relative_start = p_r0 - p_o0;
+//                 const Eigen::Vector2d v_relative = v_r - obs.velocity;
+                
+//                 const double a = v_relative.dot(v_relative);
+//                 const double b = 2.0 * p_relative_start.dot(v_relative);
+                
+//                 // ✅ CORRECTED LINE:
+//                 const double c = p_relative_start.dot(p_relative_start) - R_sq;
+
+//                 if (std::abs(a) < 1e-9) { // Zero relative velocity
+//                     if (c <= 0) return obs; // Collision if initially overlapping
+//                     else continue;
+//                 }
+
+//                 const double discriminant = b * b - 4 * a * c;
+//                 if (discriminant >= 0) {
+//                     const double sqrt_disc = std::sqrt(discriminant);
+//                     const double t1 = (-b - sqrt_disc) / (2.0 * a);
+//                     const double t2 = (-b + sqrt_disc) / (2.0 * a);
+//                     // Check if collision interval overlaps with the segment's duration
+//                     if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
+//                         return obs; // Collision found
+//                     }
+//                 }
+//             } else {
+//                 // --- Geometric Check for STATIC Obstacles ---
+//                 if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
+//                     return obs; // Static collision found
+//                 }
+//                 // if(lineIntersectsCircle(p_r0, p_r1, obs.position, R))
+//                 // {
+//                 //     return obs;
+//                 // }
+//             }
+//         }
+        
+//         time_into_full_trajectory += T_segment;
+//     }
+
+//     return std::nullopt; // The trajectory is safe.
+// }
+
+
+
+
+
 std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
     const Trajectory& trajectory,
     double global_start_time
 ) const {
     std::lock_guard<std::mutex> lock(snapshot_mutex_);
 
+    // 1. Initial validation of the trajectory
     if (trajectory.path_points.size() < 2) {
         return std::nullopt;
     }
 
+    // 2. Define helper lambdas to easily access parts of the state vector
     auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
     auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
+    auto get_vxy = [](const Eigen::VectorXd& state) { return state.segment<2>(2); }; // For 5D states
 
     double time_into_full_trajectory = 0.0;
+    const int state_dim = trajectory.path_points[0].size();
 
+    // 3. Iterate over each segment of the trajectory
     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
         const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
         const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
 
-        const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
-        const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
         const double T_segment = get_time(segment_start_state) - get_time(segment_end_state);
-
         if (T_segment <= 1e-9) continue;
         
         const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
-        const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
 
-        for (const auto& obs : obstacle_snapshot_) {
-            const double obs_radius = (obs.type == Obstacle::CIRCLE)
-                                    ? obs.dimensions.radius
-                                    : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
-            const double R = obs_radius + inflation;
-            const double R_sq = R * R;
+        // 4. Conditionally apply the correct physics model based on state dimension
+        if (state_dim == 5) {
+            // =======================================================
+            // == ACCELERATION MODEL (5D): Subdivide the curved path ==
+            // =======================================================
+            const int num_subdivisions = 4; // A tunable parameter for accuracy vs. performance
+            
+            // Calculate the constant acceleration for the entire segment
+            const Eigen::Vector2d p_r0_seg = get_xy(segment_start_state);
+            const Eigen::Vector2d v_r0_seg = get_vxy(segment_start_state);
+            const Eigen::Vector2d v_r1_seg = get_vxy(segment_end_state);
+            const Eigen::Vector2d a_r_seg = (v_r1_seg - v_r0_seg) / T_segment;
+            
+            Eigen::Vector2d p_sub_start = p_r0_seg;
+            double t_sub_start = 0.0;
 
-            if (obs.is_dynamic) {
-                // --- Narrow-Phase Check for DYNAMIC Obstacles ---
-                const double delta_t_extrapolation = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
-                const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
+            for (int j = 1; j <= num_subdivisions; ++j) {
+                // Calculate the state at the end of the current sub-segment using constant acceleration physics
+                double t_sub_end = (static_cast<double>(j) / num_subdivisions) * T_segment;
+                Eigen::Vector2d p_sub_end = p_r0_seg + v_r0_seg * t_sub_end + 0.5 * a_r_seg * t_sub_end * t_sub_end;
                 
-                const Eigen::Vector2d p_relative_start = p_r0 - p_o0;
-                const Eigen::Vector2d v_relative = v_r - obs.velocity;
-                
-                const double a = v_relative.dot(v_relative);
-                const double b = 2.0 * p_relative_start.dot(v_relative);
-                
-                // ✅ CORRECTED LINE:
-                const double c = p_relative_start.dot(p_relative_start) - R_sq;
+                // Now, perform the linear collision check on this small, accurate sub-segment
+                const double T_sub_segment = t_sub_end - t_sub_start;
+                const Eigen::Vector2d v_r_sub = (p_sub_end - p_sub_start) / T_sub_segment;
 
-                if (std::abs(a) < 1e-9) { // Zero relative velocity
-                    if (c <= 0) return obs; // Collision if initially overlapping
-                    else continue;
-                }
+                for (const auto& obs : obstacle_snapshot_) {
+                    const double obs_radius = (obs.type == Obstacle::CIRCLE)
+                                            ? obs.dimensions.radius
+                                            : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
+                    const double R = obs_radius + inflation;
+                    const double R_sq = R * R;
 
-                const double discriminant = b * b - 4 * a * c;
-                if (discriminant >= 0) {
-                    const double sqrt_disc = std::sqrt(discriminant);
-                    const double t1 = (-b - sqrt_disc) / (2.0 * a);
-                    const double t2 = (-b + sqrt_disc) / (2.0 * a);
-                    // Check if collision interval overlaps with the segment's duration
-                    if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
-                        return obs; // Collision found
+                    if (obs.is_dynamic) {
+                        // Dynamic obstacle check for the sub-segment
+                        const double global_time_at_sub_segment_start = global_time_at_segment_start + t_sub_start;
+                        const double delta_t_extrapolation = std::max(0.0, global_time_at_sub_segment_start - obs.last_update_time.seconds());
+                        const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
+                        
+                        const Eigen::Vector2d p_relative_start = p_sub_start - p_o0;
+                        const Eigen::Vector2d v_relative = v_r_sub - obs.velocity;
+                        
+                        const double a = v_relative.dot(v_relative);
+                        const double b = 2.0 * p_relative_start.dot(v_relative);
+                        const double c = p_relative_start.dot(p_relative_start) - R_sq;
+
+                        if (std::abs(a) < 1e-9) { 
+                            if (c <= 0) return obs; // Initially overlapping
+                            continue;
+                        }
+
+                        const double discriminant = b * b - 4 * a * c;
+                        if (discriminant >= 0) {
+                            const double sqrt_disc = std::sqrt(discriminant);
+                            const double t1 = (-b - sqrt_disc) / (2.0 * a);
+                            const double t2 = (-b + sqrt_disc) / (2.0 * a);
+                            if (std::max(0.0, t1) <= std::min(T_sub_segment, t2)) {
+                                return obs; // Collision found
+                            }
+                        }
+                    } else { 
+                        // Static obstacle check for the sub-segment
+                        if (distanceSqrdPointToSegment(obs.position, p_sub_start, p_sub_end) <= R_sq) {
+                            return obs;
+                        }
                     }
                 }
-            } else {
-                // --- Geometric Check for STATIC Obstacles ---
-                if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
-                    return obs; // Static collision found
+                // Prepare for the next sub-segment
+                p_sub_start = p_sub_end;
+                t_sub_start = t_sub_end;
+            }
+        } else {
+            // =========================================================
+            // == CONSTANT VELOCITY MODEL (First-Order / Other Systems) ==
+            // =========================================================
+            const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
+            const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
+            const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
+
+            for (const auto& obs : obstacle_snapshot_) {
+                const double obs_radius = (obs.type == Obstacle::CIRCLE)
+                                        ? obs.dimensions.radius
+                                        : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
+                const double R = obs_radius + inflation;
+                const double R_sq = R * R;
+
+                if (obs.is_dynamic) {
+                    // Dynamic obstacle check for the whole linear segment
+                    const double delta_t_extrapolation = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+                    const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
+                    
+                    const Eigen::Vector2d p_relative_start = p_r0 - p_o0;
+                    const Eigen::Vector2d v_relative = v_r - obs.velocity;
+                    
+                    const double a = v_relative.dot(v_relative);
+                    const double b = 2.0 * p_relative_start.dot(v_relative);
+                    const double c = p_relative_start.dot(p_relative_start) - R_sq;
+
+                    if (std::abs(a) < 1e-9) { 
+                        if (c <= 0) return obs;
+                        continue;
+                    }
+
+                    const double discriminant = b * b - 4 * a * c;
+                    if (discriminant >= 0) {
+                        const double sqrt_disc = std::sqrt(discriminant);
+                        const double t1 = (-b - sqrt_disc) / (2.0 * a);
+                        const double t2 = (-b + sqrt_disc) / (2.0 * a);
+                        if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
+                            return obs;
+                        }
+                    }
+                } else {
+                    // Static obstacle check for the whole linear segment
+                    if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
+                        return obs;
+                    }
                 }
-                // if(lineIntersectsCircle(p_r0, p_r1, obs.position, R))
-                // {
-                //     return obs;
-                // }
             }
         }
         
+        // Update the time offset for the next segment
         time_into_full_trajectory += T_segment;
     }
 
-    return std::nullopt; // The trajectory is safe.
+    // 5. If the loop completes, no collisions were found
+    return std::nullopt;
 }
-
-
 
 // // This is the primary function, now rewritten to use the Velocity Obstacle method.
 // // This is the new, corrected version of your collision checking function.

@@ -1414,202 +1414,199 @@
 
 
 ///////////////////////////////////////////////////
+#include <iostream>
+#include <memory>
+#include <vector>
+#include <Eigen/Dense>
+#include <cmath>
+#include <tuple>
+#include <algorithm> 
+#include <iomanip>   
 
-// //////////////////////////////////////////////////////5D Many states backwards ///////////////////////////////////////////////////////////
+#include "motion_planning/utils/params.hpp"
+#include "motion_planning/utils/ros2_manager_thruster.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "motion_planning/utils/rviz_visualization.hpp"
+#include "motion_planning/state_space/thruster_statespace.hpp"
 
-// #include <iostream>
-// #include <memory>
-// #include <vector>
-// #include <Eigen/Dense>
-// #include <cmath> // For M_PI
-// #include <tuple> // For std::get (if needed for fineGrain output)
-// #include "motion_planning/utils/params.hpp" // Using the provided Params header
-// #include "motion_planning/utils/ros2_manager_thruster.hpp"
-// #include "rclcpp/rclcpp.hpp"
-// #include "motion_planning/utils/rviz_visualization.hpp"
-// #include "motion_planning/state_space/thruster_statespace.hpp"
+// Helper function
+Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state, int D_spatial_dim) {
+    return full_state.head(D_spatial_dim);
+}
 
-// /**
-//  * @brief This program demonstrates and tests the ThrusterSteerStateSpace for 5D (2D pos/vel/time) and 7D (3D pos/vel/time).
-//  * It performs the following steps:
-//  * 1. Initializes a ROS2 node for visualization.
-//  * 2. Creates an instance of the ThrusterSteerStateSpace.
-//  * 3. Defines a start and an end state (position, velocity, time).
-//  * 4. Calls the `steer` function to compute the optimal kinodynamic trajectory.
-//  * 5. Visualizes the resulting path in RViz as a series of short line segments.
-//  *
-//  * To Compile:
-//  * You will need to link against rclcpp, visualization_msgs, and your other libraries.
-//  * Example in CMakeLists.txt (assuming similar structure to your Dubins test):
-//  *
-//  * find_package(rclcpp REQUIRED)
-//  * find_package(visualization_msgs REQUIRED)
-//  * ...
-//  * add_executable(test_thruster_steer test_thruster_steer.cpp ...)
-//  * ament_target_dependencies(test_thruster_steer rclcpp visualization_msgs ...)
-//  * target_link_libraries(test_thruster_steer ${your_motion_planning_library})
-//  */
+// Corrected, robust implementation of the trajectory combination logic.
+// This version correctly stitches the segments, which are already time-ordered by the steer function.
+ExecutionTrajectory combineExecutionTrajectories(const std::vector<ExecutionTrajectory>& segments) {
+    ExecutionTrajectory final_traj;
+    final_traj.is_valid = false;
+    if (segments.empty()) {
+        return final_traj;
+    }
 
-// // Helper function to print vectors for debugging
-// static void printVec(const Eigen::VectorXd& v) {
-//     std::cout << "[ ";
-//     for (int i = 0; i < v.size(); ++i) {
-//         std::cout << v[i] << (i + 1 < v.size() ? ", " : " ");
-//     }
-//     std::cout << "]";
-// }
+    std::vector<double> time_vec;
+    std::vector<Eigen::RowVectorXd> x_vec, v_vec;
 
-// // Helper to extract spatial position (x,y,z) from full state vector [x,y,z,vx,vy,vz,t] or [x,y,vx,vy,t]
-// Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state, int D_spatial_dim) {
-//     return full_state.head(D_spatial_dim);
-// }
+    // The steer function already produces segments where time decreases (e.g., 90s -> 80s).
+    // The only task is to append them in order, avoiding duplicate connection points.
+    for (size_t i = 0; i < segments.size(); ++i) {
+        const auto& seg = segments[i];
+        if (seg.Time.size() == 0) continue;
 
-// ExecutionTrajectory combineExecutionTrajectories(const std::vector<ExecutionTrajectory>& segments) {
-//     if (segments.empty()) {
-//         return ExecutionTrajectory{};
-//     }
-//     int total_points = 0;
-//     for (const auto& seg : segments) {
-//         if (seg.Time.size() > 0) {
-//             total_points += seg.Time.size() -1;
-//         }
-//     }
-//     total_points +=1;
-//     if (total_points == 0) return ExecutionTrajectory{};
+        // For the first segment (i=0), copy all points.
+        // For all subsequent segments, skip the first point (j=0) because it's identical
+        // to the last point of the previous segment.
+        long start_j = (i == 0) ? 0 : 1;
+
+        for (long j = start_j; j < seg.Time.size(); ++j) {
+            time_vec.push_back(seg.Time(j));
+            x_vec.push_back(seg.X.row(j));
+            v_vec.push_back(seg.V.row(j));
+        }
+    }
+
+
+    if (time_vec.empty()) {
+        return final_traj;
+    }
+
+    // --- Populate the final trajectory object ---
+    int D_spatial = x_vec[0].size();
+    long num_points = time_vec.size();
+    final_traj.Time.resize(num_points);
+    final_traj.X.resize(num_points, D_spatial);
+    final_traj.V.resize(num_points, D_spatial);
+
+    for (long i = 0; i < num_points; ++i) {
+        final_traj.Time(i) = time_vec[i];
+        final_traj.X.row(i) = x_vec[i];
+        final_traj.V.row(i) = v_vec[i];
+    }
     
-//     int D_spatial = segments[0].X.cols();
-//     ExecutionTrajectory final_traj;
-//     final_traj.X = Eigen::MatrixXd(total_points, D_spatial);
-//     final_traj.V = Eigen::MatrixXd(total_points, D_spatial);
-//     final_traj.A = Eigen::MatrixXd(total_points, D_spatial);
-//     final_traj.Time = Eigen::VectorXd(total_points);
-
-//     int current_row = 0;
-//     for (int i = segments.size(); i >= 0; --i) {
-//         const auto& seg = segments[i];
-//         if (seg.Time.size() == 0) continue;
-//         int points_to_copy = (i == segments.size() - 1) ? seg.Time.size() : seg.Time.size() - 1;
-
-//         if (points_to_copy > 0) {
-//             final_traj.Time.segment(current_row, points_to_copy) = seg.Time.head(points_to_copy);
-//             final_traj.X.block(current_row, 0, points_to_copy, D_spatial) = seg.X.topRows(points_to_copy);
-//             final_traj.V.block(current_row, 0, points_to_copy, D_spatial) = seg.V.topRows(points_to_copy);
-//             final_traj.A.block(current_row, 0, points_to_copy, D_spatial) = seg.A.topRows(points_to_copy);
-//             current_row += points_to_copy;
-//         }
-//     }
-//     final_traj.is_valid = true;
-//     if (total_points > 0) {
-//        final_traj.total_cost = final_traj.Time.tail(1)[0] - final_traj.Time.head(1)[0];
-//     }
-//     return final_traj;
-// }
+    final_traj.is_valid = true;
+    return final_traj;
+}
 
 
+int main(int argc, char** argv) {
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<rclcpp::Node>("thruster_steer_test_node");
+    auto visualizer = std::make_shared<RVizVisualization>(node);
 
+    std::cout << "--- ThrusterSteerStateSpace Test (Goal at Origin) ---\n";
 
-// int main(int argc, char** argv) {
-//     // --- 1. Initialization ---
-//     rclcpp::init(argc, argv);
-//     auto node = std::make_shared<rclcpp::Node>("thruster_steer_test_node");
-//     auto visualizer = std::make_shared<RVizVisualization>(node);
+    std::vector<Eigen::VectorXd> waypoints;
+    const int DIM = 5; // [px, py, vx, vy, t]
+    const double MAX_ACCEL = 5.0;
+    int D_SPATIAL_DIM = 2;
 
-//     std::cout << "--- ThrusterSteerStateSpace Test ---\n";
+    waypoints.push_back((Eigen::VectorXd(DIM) << 65.0, 50.0, 0.0, 0.0, 90.0).finished());
+    waypoints.push_back((Eigen::VectorXd(DIM) << 60.0, 48.0, -0.5, -0.5, 80.0).finished());
+    waypoints.push_back((Eigen::VectorXd(DIM) << 55.0, 42.0, -1.0, -0.5, 70.0).finished());
+    waypoints.push_back((Eigen::VectorXd(DIM) << 50.0, 35.0, 0.0, -1.0, 60.0).finished());
+    waypoints.push_back((Eigen::VectorXd(DIM) << 42.0, 28.0, -0.5, -2.0, 50.0).finished());
+    waypoints.push_back((Eigen::VectorXd(DIM) << 30.0, 22.0, -1.0, -1.5, 40.0).finished());
+    waypoints.push_back((Eigen::VectorXd(DIM) << 20.0, 15.0, -1.5, -1.0, 30.0).finished());
+    waypoints.push_back((Eigen::VectorXd(DIM) << 12.0, 8.0, -1.0, -0.5, 20.0).finished());
+    waypoints.push_back((Eigen::VectorXd(DIM) << 5.0, 2.0, -2.0, 1.0, 10.0).finished());
+    waypoints.push_back((Eigen::VectorXd(DIM) << 0.0, 0.0, 0.0, 0.0, 0.0).finished());
 
-//     std::vector<Eigen::VectorXd> waypoints;
+    auto thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> all_path_segments_viz; 
+    std::vector<ExecutionTrajectory> execution_segments;
 
-//     // --- Configuration for 5D (2D position/velocity/time) ---
-//     // Uncomment this block to test 5D
-//     const int DIM = 5; // [x, y, vx, vy, t]
-//     const double MAX_ACCEL = 5.0; // m/s^2 per dimension
+    for (size_t i = 0; i < waypoints.size() - 1; ++i) {
+        Eigen::VectorXd from_state = waypoints[i];
+        Eigen::VectorXd to_state = waypoints[i+1];
 
-//     int D_SPATIAL_DIM = 2;
-//     //--------------------------------------------x----y---vx---vy----t----//
-//     waypoints.push_back((Eigen::VectorXd(DIM) << 0.0, 0.0, 0.0, 0.0, 90.0).finished());    // P0
-//     waypoints.push_back((Eigen::VectorXd(DIM) << 5.0, 2.0, 2.0, -1.0, 80.0).finished());   // P1
-//     waypoints.push_back((Eigen::VectorXd(DIM) << 12.0, 8.0, 1.0, 0.5, 70.0).finished());  // P2
-//     waypoints.push_back((Eigen::VectorXd(DIM) << 20.0, 15.0, 1.5, 1.0, 60.0).finished()); // P3
-//     waypoints.push_back((Eigen::VectorXd(DIM) << 30.0, 22.0, 1.0, 1.5, 50.0).finished()); // P4
-//     waypoints.push_back((Eigen::VectorXd(DIM) << 42.0, 28.0, 0.5, 2.0, 40.0).finished()); // P5
-//     waypoints.push_back((Eigen::VectorXd(DIM) << 50.0, 35.0, 0.0, 1.0, 30.0).finished()); // P6
-//     waypoints.push_back((Eigen::VectorXd(DIM) << 55.0, 42.0, 1.0, 0.5, 20.0).finished()); // P7
-//     waypoints.push_back((Eigen::VectorXd(DIM) << 60.0, 48.0, 0.5, 0.5, 10.0).finished()); // P8
-//     waypoints.push_back((Eigen::VectorXd(DIM) << 65.0, 50.0, 0.0, 0.0, 0.0).finished()); // P
+        std::cout << "\n\n====================================================\n";
+        std::cout << "--- Steering Segment " << i << " ---\n";
+        std::cout << "From: " << from_state.transpose() << "\n";
+        std::cout << "To:   " << to_state.transpose() << "\n";
+        std::cout << "====================================================\n";
 
+        Trajectory traj = thruster_ss->steer(from_state, to_state);
+        if (traj.is_valid) {
+            // DEBUG PRINT: Show the raw output from the steer function for this segment
+            std::cout << "--- Steer Output for Segment " << i << " (Valid) ---\n";
+            std::cout << std::fixed << std::setprecision(4);
+            const auto& data = traj.execution_data;
+            for (long j = 0; j < data.Time.size(); ++j) {
+                std::cout << "  Point[" << j << "]: P=[" << data.X.row(j)
+                          << "], V=[" << data.V.row(j)
+                          << "], T=[" << data.Time(j) << "]\n";
+            }
+            std::cout << "--- End of Steer Output for Segment " << i << " ---\n";
 
+            execution_segments.push_back(traj.execution_data);
+            if (traj.path_points.size() > 1) {
+                for (size_t j = 0; j < traj.path_points.size() - 1; ++j) {
+                    all_path_segments_viz.emplace_back(getSpatialPosition(traj.path_points[j], D_SPATIAL_DIM),
+                                                       getSpatialPosition(traj.path_points[j+1], D_SPATIAL_DIM));
+                }
+            }
+        } else {
+            std::cout << "--- Steer Output for Segment " << i << " (INVALID) ---\n";
+        }
+    }
 
+    auto combined = combineExecutionTrajectories(execution_segments);
+    
+    std::vector<Eigen::VectorXd> final_path_for_manager;
+    if (combined.is_valid) {
+        final_path_for_manager.reserve(combined.Time.size());
+        for (long i = 0; i < combined.Time.size(); ++i) {
+            Eigen::VectorXd state(DIM);
+            
+            state.head(D_SPATIAL_DIM) = combined.X.row(i);
+            state.segment(D_SPATIAL_DIM, D_SPATIAL_DIM) = combined.V.row(i);
+            state(DIM - 1) = combined.Time(i);
 
-//     // --- 2. Create the Thruster State Space ---
-//     std::shared_ptr<StateSpace> thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
-//     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> all_path_segments_viz; 
-//     double total_cost = 0.0;
+            final_path_for_manager.push_back(state);
+        }
+    }
 
-//     std::vector<ExecutionTrajectory> execution_segments;
-//     for (size_t i = 0; i < waypoints.size() - 1; ++i) {
-//         Eigen::VectorXd from_state = waypoints[i+1]; 
-//         Eigen::VectorXd to_state = waypoints[i];
+    // DEBUG PRINT: Print the contents of the final path before sending it.
+    std::cout << "\n\n*********************************************\n";
+    std::cout << "--- Final Path Data to be Sent to Manager ---\n";
+    std::cout << "*********************************************\n";
+    std::cout << std::fixed << std::setprecision(4); // For clean output
+    for (size_t i = 0; i < final_path_for_manager.size(); ++i) {
+        const auto& state = final_path_for_manager[i];
+        Eigen::Vector2d pos = state.head<2>();
+        Eigen::Vector2d vel = state.segment<2>(D_SPATIAL_DIM);
+        double time = state(DIM - 1);
+        std::cout << "State[" << i << "]: P=[" << pos.transpose()
+                  << "], V=[" << vel.transpose()
+                  << "], T=[" << time << "]\n";
+    }
+    std::cout << "--- End of Path Data ---\n\n";
 
-//         std::cout << "\n--- Planning segment " << i << " (" << to_state[DIM-1] << "s to " << from_state[DIM-1] << "s) ---\n";
-//         Trajectory traj = thruster_ss->steer(from_state, to_state);
+    Params params;
+    params.setParam("thruster_state_dimension", DIM);
+    params.setParam("simulation_time_step", -0.05);
+    params.setParam("use_sim_time", false);
 
-//         if (traj.is_valid) {
-//             std::cout << "  SUCCESS: Segment cost (time elapsed): " << traj.cost << "s\n";
-//             execution_segments.push_back(traj.execution_data);
-//             // Debug prints for trajectory points (optional, can remove for cleaner output)
-//             if (!traj.path_points.empty()) {
-//                 std::cout << "    DEBUG TRAJ: First point:  "; printVec(traj.path_points[0]); std::cout << "\n";
-//                 std::cout << "    DEBUG TRAJ: Second point: "; printVec(traj.path_points[1]); std::cout << "\n";
-//                 std::cout << "    DEBUG TRAJ: Last point:   "; printVec(traj.path_points.back()); std::cout << "\n";
-//             } else {
-//                 std::cout << "    DEBUG TRAJ: Trajectory is empty!\n";
-//             }
-//             total_cost += traj.cost;
-//             if (traj.path_points.size() > 1) {
-//                 for (size_t j = 0; j < traj.path_points.size() - 1; ++j) {
-//                     all_path_segments_viz.emplace_back(getSpatialPosition(traj.path_points[j], D_SPATIAL_DIM),
-//                                                        getSpatialPosition(traj.path_points[j+1], D_SPATIAL_DIM));
-//                 }
-//             }
-//         } else {
-//             std::cout << "  FAILURE: Could not find a valid trajectory for this segment.\n";
-//             std::cout << "  This segment's path will not be visualized.\n";
-//         }
-//     }
+    auto ros2_manager = std::make_shared<ROS2Manager>(visualizer, params);
 
+    ros2_manager->setInitialState(waypoints.front()); 
+    
+    ros2_manager->setPlannedThrusterTrajectory(final_path_for_manager);
+    
+    rclcpp::executors::MultiThreadedExecutor executor;
+    executor.add_node(node);
+    executor.add_node(ros2_manager);
 
-//     // std::reverse(execution_segments,execution_segments.begin(),execution_segments.end()); // instead of this i reversed combined it in combineExection function below!
+    rclcpp::WallRate loop_rate(60);
+    while(rclcpp::ok()) {
+        visualizer->visualizeEdges(all_path_segments_viz, "map", "0.0,1.0,0.0", "thruster_path");
+        visualizer->visualizeNodes(waypoints, "map", {1.0f, 0.0f, 0.0f}, "waypoint_nodes");
+        executor.spin_some();
+        loop_rate.sleep();
+    }
 
-//     //////////////////////////////
-//     auto combined = combineExecutionTrajectories(execution_segments);
-//     ///////////////////////////////
-//     Params params;
-//     params.setParam("thruster_state_dimension", DIM);
-//     params.setParam("simulation_time_step", 0.05);
-//     params.setParam("use_sim_time", false);
-
-//     auto ros2_manager = std::make_shared<ROS2Manager>(visualizer, params);
-//     ros2_manager->setInitialState(waypoints[9]); // START AT P0
-//     ros2_manager->setPlannedThrusterTrajectory(combined);
-//     //////////////////////////////
-//     // --- 4. Visualize the Trajectory ---
-//     rclcpp::executors::MultiThreadedExecutor executor;
-//     executor.add_node(node);
-//     executor.add_node(ros2_manager);
-//     // executor.spin();
-
-//     rclcpp::WallRate loop_rate(60); // Publish once per second
-//     while(rclcpp::ok()) {
-//         visualizer->visualizeEdges(all_path_segments_viz, "map", "0.0,1.0,0.0", "thruster_path"); // Green line
-//         visualizer->visualizeNodes(waypoints, "map", {1.0f, 0.0f, 0.0f}, "waypoint_nodes");
-//         executor.spin_some();
-//         loop_rate.sleep();
-//     }
-
-
-//     rclcpp::shutdown();
-//     return 0;
-// }
-
+    rclcpp::shutdown();
+    return 0;
+}
 
 // //////////////////////////////////////////////////////////////////////////////////////
 
@@ -1812,179 +1809,3 @@
 
 
 
-
-
-///////////////////////////////////////////
-#include <iostream>
-#include <memory>
-#include <vector>
-#include <Eigen/Dense>
-#include <cmath> 
-#include <tuple> 
-#include <algorithm> // For std::reverse
-#include "motion_planning/utils/params.hpp" 
-#include "motion_planning/utils/ros2_manager_thruster.hpp"
-
-#include "rclcpp/rclcpp.hpp"
-#include "motion_planning/utils/rviz_visualization.hpp"
-#include "motion_planning/state_space/thruster_statespace.hpp"
-
-// Helper function to print vectors for debugging
-static void printVec(const Eigen::VectorXd& v) {
-    std::cout << "[ ";
-    for (int i = 0; i < v.size(); ++i) {
-        std::cout << v[i] << (i + 1 < v.size() ? ", " : " ");
-    }
-    std::cout << "]";
-}
-
-// Helper to extract spatial position from full state vector
-Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state, int D_spatial_dim) {
-    return full_state.head(D_spatial_dim);
-}
-
-// This function now correctly combines the segments. It assumes the input vector is
-// in the order the planner found them, e.g., [(P1->P0), (P2->P1), ...].
-// It reverses this order and stitches them together to make one forward path.
-ExecutionTrajectory combineExecutionTrajectories(std::vector<ExecutionTrajectory>& segments) {
-    if (segments.empty()) {
-        return ExecutionTrajectory{};
-    }
-
-    // Reverse the order of the segments to get chronological order (P9->P8, P8->P7, ...)
-    std::reverse(segments.begin(), segments.end());
-
-    size_t total_points = 0;
-    for (const auto& seg : segments) {
-        if (seg.Time.size() > 0) {
-            // Subtract 1 to avoid duplicating the junction points
-            total_points += seg.Time.size() - 1;
-        }
-    }
-    // Add back the very first point
-    if (!segments.empty()) total_points++;
-
-
-    if (total_points == 0) return ExecutionTrajectory{};
-    
-    int D_spatial = segments[0].X.cols();
-    ExecutionTrajectory final_traj;
-    final_traj.is_valid = true;
-    final_traj.Time.resize(total_points);
-    final_traj.X.resize(total_points, D_spatial);
-    final_traj.V.resize(total_points, D_spatial);
-    final_traj.A.resize(total_points, D_spatial);
-
-    int current_row = 0;
-    for (size_t i = 0; i < segments.size(); ++i) {
-        const auto& seg = segments[i];
-        if (seg.Time.size() == 0) continue;
-
-        // For the first segment, copy all points. For later segments, skip their first point.
-        int start_idx = (i == 0) ? 0 : 1;
-        int points_to_copy = seg.Time.size() - start_idx;
-        
-        if (points_to_copy > 0) {
-            final_traj.Time.segment(current_row, points_to_copy) = seg.Time.segment(start_idx, points_to_copy);
-            final_traj.X.block(current_row, 0, points_to_copy, D_spatial) = seg.X.block(start_idx, 0, points_to_copy, D_spatial);
-            final_traj.V.block(current_row, 0, points_to_copy, D_spatial) = seg.V.block(start_idx, 0, points_to_copy, D_spatial);
-            final_traj.A.block(current_row, 0, points_to_copy, D_spatial) = seg.A.block(start_idx, 0, points_to_copy, D_spatial);
-            current_row += points_to_copy;
-        }
-    }
-    
-    // Resize to actual filled rows
-    final_traj.Time.conservativeResize(current_row);
-    final_traj.X.conservativeResize(current_row, D_spatial);
-    final_traj.V.conservativeResize(current_row, D_spatial);
-    final_traj.A.conservativeResize(current_row, D_spatial);
-
-    if (current_row > 0) {
-       final_traj.total_cost = final_traj.Time(current_row - 1) - final_traj.Time(0);
-    }
-    return final_traj;
-}
-
-
-int main(int argc, char** argv) {
-    // --- 1. Initialization ---
-    rclcpp::init(argc, argv);
-    auto node = std::make_shared<rclcpp::Node>("thruster_steer_test_node");
-    auto visualizer = std::make_shared<RVizVisualization>(node);
-
-    std::cout << "--- ThrusterSteerStateSpace Backward Planning Simulation ---\n";
-
-    // Waypoints are in REVERSE chronological order, as a backward planner would find them.
-    std::vector<Eigen::VectorXd> waypoints;
-    const int DIM = 5;
-    const double MAX_ACCEL = 5.0;
-    int D_SPATIAL_DIM = 2;
-    
-    waypoints.push_back((Eigen::VectorXd(DIM) << 0.0, 0.0, 0.0, 0.0, 90.0).finished());    // P0 (Goal, Root of Tree)
-    waypoints.push_back((Eigen::VectorXd(DIM) << 5.0, 2.0, 2.0, -1.0, 80.0).finished());   // P1
-    waypoints.push_back((Eigen::VectorXd(DIM) << 12.0, 8.0, 1.0, 0.5, 70.0).finished());  // P2
-    waypoints.push_back((Eigen::VectorXd(DIM) << 20.0, 15.0, 1.5, 1.0, 60.0).finished()); // P3
-    waypoints.push_back((Eigen::VectorXd(DIM) << 30.0, 22.0, 1.0, 1.5, 50.0).finished()); // P4
-    waypoints.push_back((Eigen::VectorXd(DIM) << 42.0, 28.0, 0.5, 2.0, 40.0).finished()); // P5
-    waypoints.push_back((Eigen::VectorXd(DIM) << 50.0, 35.0, 0.0, 1.0, 30.0).finished()); // P6
-    waypoints.push_back((Eigen::VectorXd(DIM) << 55.0, 42.0, 1.0, 0.5, 20.0).finished()); // P7
-    waypoints.push_back((Eigen::VectorXd(DIM) << 60.0, 48.0, 0.5, 0.5, 10.0).finished()); // P8
-    waypoints.push_back((Eigen::VectorXd(DIM) << 65.0, 50.0, 0.0, 0.0, 0.0).finished());  // P9 (Start of Mission)
-
-    std::shared_ptr<StateSpace> thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
-    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> all_path_segments_viz; 
-    
-    std::vector<ExecutionTrajectory> execution_segments;
-    // CORRECTED: Simulate a backward planner by connecting points from earlier mission time to later mission time.
-    for (size_t i = 0; i < waypoints.size() - 1; ++i) {
-        // Planner asks: "Can I get from a state further away (earlier time) TO a state closer to the goal (later time)?"
-        Eigen::VectorXd from_state = waypoints[i+1]; // e.g., P1 @ t=80s
-        Eigen::VectorXd to_state = waypoints[i];   // e.g., P0 @ t=90s
-        
-        // This steer call is now physically correct: t_end (90) > t_start (80)
-        std::cout << "\n--- Planning connection from state at " << from_state[DIM-1] << "s TO state at " << to_state[DIM-1] << "s ---\n";
-        Trajectory traj = thruster_ss->steer(from_state, to_state);
-
-        if (traj.is_valid) {
-            std::cout << "  SUCCESS: Connection is physically possible. Cost: " << traj.cost << "s\n";
-            execution_segments.push_back(traj.execution_data);
-            if (traj.path_points.size() > 1) {
-                for (size_t j = 0; j < traj.path_points.size() - 1; ++j) {
-                    all_path_segments_viz.emplace_back(getSpatialPosition(traj.path_points[j], D_SPATIAL_DIM),
-                                                       getSpatialPosition(traj.path_points[j+1], D_SPATIAL_DIM));
-                }
-            }
-        } else {
-            std::cout << "  FAILURE: Connection is not physically possible.\n";
-        }
-    }
-
-    // --- Setup Simulation ---
-    auto combined = combineExecutionTrajectories(execution_segments);
-
-    Params params;
-    params.setParam("thruster_state_dimension", DIM);
-    params.setParam("simulation_time_step", 0.05); // Positive step for FORWARD simulation
-    params.setParam("use_sim_time", false);
-
-    auto ros2_manager = std::make_shared<ROS2Manager>(visualizer, params);
-    // Start simulation at the true beginning of the mission path (P9 @ t=0s).
-    ros2_manager->setInitialState(waypoints.back()); 
-    ros2_manager->setPlannedThrusterTrajectory(combined);
-
-    // --- 4. Visualize and Run ---
-    rclcpp::executors::MultiThreadedExecutor executor;
-    executor.add_node(node);
-    executor.add_node(ros2_manager);
-
-    rclcpp::WallRate loop_rate(30); 
-    while(rclcpp::ok()) {
-        visualizer->visualizeEdges(all_path_segments_viz, "map", "0.0,1.0,0.0", "thruster_path"); 
-        visualizer->visualizeNodes(waypoints, "map", {1.0f, 0.0f, 0.0f}, "waypoint_nodes");
-        executor.spin_some();
-        loop_rate.sleep();
-    }
-
-    rclcpp::shutdown();
-    return 0;
-}
