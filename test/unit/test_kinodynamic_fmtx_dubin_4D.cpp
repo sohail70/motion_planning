@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
 
     Eigen::VectorXd tree_root_state(4);
-    tree_root_state << -48.0, -48.0, -3 * M_PI / 4.0, -20.0; // Goal: x, y, theta, time-to-go
+    tree_root_state << -48.0, -48.0, -3 * M_PI / 4.0, 0.0; // Goal: x, y, theta, time-to-go
     problem_def->setStart(tree_root_state);
 
     Eigen::VectorXd robot_initial_state(4);
@@ -171,13 +171,13 @@ int main(int argc, char** argv) {
     problem_def->setGoal(robot_initial_state);
 
     Eigen::VectorXd lower_bounds(4), upper_bounds(4);
-    lower_bounds << -50.0, -50.0, -M_PI, -20.0;
-    upper_bounds << 50.0, 50.0, M_PI, 40.0;
+    lower_bounds << -50.0, -50.0, -M_PI, 0.0;
+    upper_bounds << 50.0, 50.0, M_PI, 30.0;
     problem_def->setBounds(lower_bounds, upper_bounds);
 
     double min_turning_radius = 2.0;
     double min_velocity = 1.0;
-    double max_velocity = 10.0;
+    double max_velocity = 15.0;
     auto statespace = std::make_shared<DubinsTimeStateSpace>(min_turning_radius, min_velocity, max_velocity);
 
     auto ros_manager = std::make_shared<DubinsROS2Manager>(obstacle_checker, visualization, manager_params, robot_initial_state);
@@ -206,7 +206,7 @@ int main(int argc, char** argv) {
     // --- 6. Executor Setup ---
     rclcpp::executors::MultiThreadedExecutor executor;
     executor.add_node(ros_manager);
-    executor.add_node(vis_node); // Add vis_node so its timer runs
+    // executor.add_node(vis_node); // for dubin i do not plot the edges based on trajecotry because thats too demanding. i just connected the parent to child via simple edge so you might see soem edges going through obstalce but in reality the dubin is going around them so dont be alarm!
 
     std::thread executor_thread([&executor]() { executor.spin(); });
 

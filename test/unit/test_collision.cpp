@@ -205,16 +205,16 @@ int main(int argc, char** argv) {
 
 /////////////////////////
 
-////////////////////////////////////Dubin Time-StateSpace Collision Test Using Discretized Simulation//////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////////
-//
-//  Dubins Time-State Space Predictive Test
-//
-//  This test simulates a robot following a kinematically feasible Dubins path
-//  and continuously checks the remainder of its trajectory for collisions with
-//  dynamic obstacles.
-//
-//////////////////////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////Dubin Time-StateSpace Collision Test Using Discretized Simulation//////////////////////////////////////////////////////////////
+// ////////////////////////////////////////////////////////////////////////////////////////////////
+
+// //  Dubins Time-State Space Predictive Test
+
+// //  This test simulates a robot following a kinematically feasible Dubins path
+// //  and continuously checks the remainder of its trajectory for collisions with
+// //  dynamic obstacles.
+
+// ////////////////////////////////////////////////////////////////////////////////////////////////
 
 // #include "rclcpp/rclcpp.hpp"
 // #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
@@ -392,10 +392,11 @@ int main(int argc, char** argv) {
 
 //     // Define start and goal with a 4D state: (x, y, theta, time-to-go).
 //     Eigen::VectorXd start_node(4);
-//     start_node << 15.0, 15.0, M_PI / 4.0, 25.0; // Start at (15,15), facing 45deg, with 15s to reach goal.
+//     start_node << 0.0,  0.0,  0.0, 17.0; // Start at (15,15), facing 45deg, with 15s to reach goal.
 
 //     Eigen::VectorXd goal_node(4);
-//     goal_node << -15.0, -15.0, -M_PI / 2.0, 0.0; // Goal at (-15,-15), facing -90deg, at the final moment (t=0).
+//     goal_node << 2.5 , 0.0,  M_PI,  0.0; // Goal at (-15,-15), facing -90deg, at the final moment (t=0).
+
 
 //     // Generate the full, kinematically-aware trajectory
 //     Trajectory full_trajectory = dubin_ss.steer(start_node, goal_node);

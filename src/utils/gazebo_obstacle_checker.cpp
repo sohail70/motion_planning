@@ -786,7 +786,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 
 
 
-// // combined by all the above best features! --> works good with R2T and DubinTimeStateSpace!
+// // combined by all the above best features! --> works good with R2T and DubinTimeStateSpace!--> fully discrete and no analytical root finding --> this is more robust than root finding in my sim
 std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
     const Trajectory& trajectory,
     double global_start_time
@@ -802,7 +802,6 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
 
     double time_into_full_trajectory = 0.0;
 
-    // --- Main Loop: Iterate over each segment of the trajectory ---
     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
         const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
         const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
@@ -816,7 +815,6 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
         const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
         const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
 
-        // --- Check this segment against every obstacle ---
         for (const auto& obs : obstacle_snapshot_) {
             const double obs_radius = (obs.type == Obstacle::CIRCLE)
                                     ? obs.dimensions.radius
@@ -824,44 +822,44 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
             const double R = obs_radius + inflation;
             const double R_sq = R * R;
 
-            // --- 1. Broad-Phase Check (from Function 1) ---
-            const double min_dist_sq_to_path = distanceSqrdPointToSegment(obs.position, p_r0, p_r1);
             if (obs.is_dynamic) {
-                const double v_max_obs = 10.0;
-                const double max_obs_travel_dist = v_max_obs * T_segment;
-                const double danger_radius = R + max_obs_travel_dist;
-                if (min_dist_sq_to_path > danger_radius * danger_radius) {
-                    continue;
-                }
-            } else { // Static obstacle
-                if (min_dist_sq_to_path > R_sq) {
-                    continue;
-                }
-            }
-
-            // --- 2. Narrow-Phase Check ---
-            if (obs.is_dynamic) {
-                // --- Predictive Check using Discrete Time-Stepping (from Function 2) ---
-                const int num_steps = std::max(2, static_cast<int>(v_r.norm() * T_segment / 0.1));
-                const double time_step = T_segment / num_steps;
-
+                // --- Narrow-Phase Check for DYNAMIC Obstacles ---
                 const double delta_t_extrapolation = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
                 const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
-                const Eigen::Vector2d& v_o0 = obs.velocity;
+                
+                const Eigen::Vector2d p_relative_start = p_r0 - p_o0;
+                const Eigen::Vector2d v_relative = v_r - obs.velocity;
+                
+                const double a = v_relative.dot(v_relative);
+                const double b = 2.0 * p_relative_start.dot(v_relative);
+                
+                // ✅ CORRECTED LINE:
+                const double c = p_relative_start.dot(p_relative_start) - R_sq;
 
-                for (int j = 0; j <= num_steps; ++j) {
-                    double current_tau = j * time_step;
-                    Eigen::Vector2d p_robot_at_tau = p_r0 + v_r * current_tau;
-                    Eigen::Vector2d p_obs_at_tau = p_o0 + v_o0 * current_tau;
-                    
-                    if ((p_robot_at_tau - p_obs_at_tau).squaredNorm() <= R_sq) {
-                        return obs; // A predictive collision will occur.
+                if (std::abs(a) < 1e-9) { // Zero relative velocity
+                    if (c <= 0) return obs; // Collision if initially overlapping
+                    else continue;
+                }
+
+                const double discriminant = b * b - 4 * a * c;
+                if (discriminant >= 0) {
+                    const double sqrt_disc = std::sqrt(discriminant);
+                    const double t1 = (-b - sqrt_disc) / (2.0 * a);
+                    const double t2 = (-b + sqrt_disc) / (2.0 * a);
+                    // Check if collision interval overlaps with the segment's duration
+                    if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
+                        return obs; // Collision found
                     }
                 }
             } else {
-                // --- Geometric Check for Static Obstacles ---
-                // If a static obstacle passed the broad-phase, it's a definite collision.
-                return obs;
+                // --- Geometric Check for STATIC Obstacles ---
+                if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
+                    return obs; // Static collision found
+                }
+                // if(lineIntersectsCircle(p_r0, p_r1, obs.position, R))
+                // {
+                //     return obs;
+                // }
             }
         }
         
@@ -870,6 +868,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
 
     return std::nullopt; // The trajectory is safe.
 }
+
 
 
 // // This is the primary function, now rewritten to use the Velocity Obstacle method.

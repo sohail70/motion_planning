@@ -261,69 +261,69 @@ void KinodynamicFMTX::plan() {
 
 
 
-                    // ///////////////////------------------
-                    // // Calculate the global time this edge is SCHEDULED to start, based on our fixed prediction.
-                    // const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
+                    ///////////////////------------------
+                    // Calculate the global time this edge is SCHEDULED to start, based on our fixed prediction.
+                    const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
 
 
 
-                    // // The global start time for the edge x->y is based on the PURE time-to-goal
-                    // // double global_edge_start_time = t_arrival - min_time_for_x;
+                    // The global start time for the edge x->y is based on the PURE time-to-goal
+                    // double global_edge_start_time = t_arrival - min_time_for_x;
 
-                    // // // --- DEBUG BLOCK ---
-                    // // // You can uncomment this to see the data going into the check
-                    // // std::cout << "\n--- Checking Trajectory ---\n"
-                    // //           << "Edge: " << x->getIndex() << " -> " << best_parent_for_x->getIndex() << "\n"
-                    // //           << "Current Sim Time (t_now): " << t_now << "s\n"
-                    // //           << "Predicted Goal Arrival (t_arrival): " << t_arrival << "s\n"
-                    // //           << "Edge Time Duration: " << best_traj_for_x.time_duration << "s\n"
-                    // //           << "New Total Time-to-Goal for Node x: " << min_time_for_x << "s\n"
-                    // //           << "Calculated Edge Start Time (Global): " << global_edge_start_time << "s\n"
-                    // //           << "---------------------------\n";
+                    // // --- DEBUG BLOCK ---
+                    // // You can uncomment this to see the data going into the check
+                    // std::cout << "\n--- Checking Trajectory ---\n"
+                    //           << "Edge: " << x->getIndex() << " -> " << best_parent_for_x->getIndex() << "\n"
+                    //           << "Current Sim Time (t_now): " << t_now << "s\n"
+                    //           << "Predicted Goal Arrival (t_arrival): " << t_arrival << "s\n"
+                    //           << "Edge Time Duration: " << best_traj_for_x.time_duration << "s\n"
+                    //           << "New Total Time-to-Goal for Node x: " << min_time_for_x << "s\n"
+                    //           << "Calculated Edge Start Time (Global): " << global_edge_start_time << "s\n"
+                    //           << "---------------------------\n";
 
 
-                    // // Perform the full predictive check with the CORRECT time context.
-                    // bool obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
-                    // // bool obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, t_now);
+                    // Perform the full predictive check with the CORRECT time context.
+                    bool obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
+                    // bool obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, t_now);
 
-                    // // /////////////////////////////////--------------
+                    // // // /////////////////////////////////--------------
 
-                    bool obstacle_free = true; // ✅ Default to true
+                    // bool obstacle_free = true; // ✅ Default to true
 
-                    // ✅ --- START OF THE OPTIMIZATION ---
-                    // Only perform the expensive predictive check if the node 'x' is on the relevant
-                    // future path of the robot. The robot_node_ stores the robot's current progress.
-                    // ✅ --- CORRECTED OPTIMIZATION ---
-                    // First, check if the robot has a valid, finite time-to-go.
-                    // Then, check if the node 'x' is on the relevant future path.
-                    if (robot_current_time_to_goal_ != std::numeric_limits<double>::infinity()) {
+                    // // ✅ --- START OF THE OPTIMIZATION ---
+                    // // Only perform the expensive predictive check if the node 'x' is on the relevant
+                    // // future path of the robot. The robot_node_ stores the robot's current progress.
+                    // // ✅ --- CORRECTED OPTIMIZATION ---
+                    // // First, check if the robot has a valid, finite time-to-go.
+                    // // Then, check if the node 'x' is on the relevant future path.
+                    // if (robot_current_time_to_goal_ != std::numeric_limits<double>::infinity()) {
                         
-                        // Compare the node's potential time with the robot's ACTUAL current time
-                        if (min_time_for_x < robot_current_time_to_goal_) {
-                            // This is a relevant future edge, so we must check it for collisions.
-                            const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
-                            obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
-                        }
-                        // ELSE: The node is "behind" the robot in time.
-                        // We skip the expensive check, and `obstacle_free` remains true.
+                    //     // Compare the node's potential time with the robot's ACTUAL current time
+                    //     if (min_time_for_x < robot_current_time_to_goal_) {
+                    //         // This is a relevant future edge, so we must check it for collisions.
+                    //         const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
+                    //         obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
+                    //     }
+                    //     // ELSE: The node is "behind" the robot in time.
+                    //     // We skip the expensive check, and `obstacle_free` remains true.
                         
-                    } else {
-                        // Fallback: The robot has no valid time (e.g., at the very start).
-                        // We must check all potential paths for safety.
-                        const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
-                        obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
-                    }
+                    // } else {
+                    //     // Fallback: The robot has no valid time (e.g., at the very start).
+                    //     // We must check all potential paths for safety.
+                    //     const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
+                    //     obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
+                    // }
 
-                    // ELSE: The node 'x' is "behind" the robot in the time-to-go timeline.
-                    // We can skip the safety check, effectively treating the edge as safe
-                    // for the purpose of maintaining the graph structure, even though
-                    // the robot will never actually traverse it.
-                    // --- END OF THE OPTIMIZATION ---
-
-
+                    // // ELSE: The node 'x' is "behind" the robot in the time-to-go timeline.
+                    // // We can skip the safety check, effectively treating the edge as safe
+                    // // for the purpose of maintaining the graph structure, even though
+                    // // the robot will never actually traverse it.
+                    // // --- END OF THE OPTIMIZATION ---
 
 
-                    // ////////////////////------------------------
+
+
+                    // // ////////////////////------------------------
 
 
                     
@@ -621,11 +621,14 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     in_dynamic = true;
 
     /*
-        Now that im thinking about this the max_length's upper bound is neighborhood_radius_ in fmtx! this is not a rrt star based algorithm!
+        Now that im thinking about this the max_length's upper bound is 2 * neighborhood_radius_ in fmtx! this is not a rrt star based algorithm!
         I guess we don't need to track the max_edge! and we can easily use rn for this but for now i'll leave this as is!
+
+        But maybe its best to calc it i don't know if the trade off in the findsamples and the cascading calculation after ward will help the overall performance 
+        or not but i suspect it does. but for now i do not consider this!
     
     */
-    max_length = neighborhood_radius_; // At first Static plan we don't have max_length --> either do this or do a static plan
+    max_length = 2 * neighborhood_radius_; // At first Static plan we don't have max_length --> either do this or do a static plan
     // if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
     // {
     //     auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){

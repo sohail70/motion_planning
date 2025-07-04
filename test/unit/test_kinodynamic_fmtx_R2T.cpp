@@ -158,8 +158,8 @@ int main(int argc, char** argv)
 
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_4_obs.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many.sdf");
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
-    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
 
@@ -178,7 +178,7 @@ int main(int argc, char** argv)
 
     Eigen::VectorXd lower_bounds(3), upper_bounds(3);
     lower_bounds << -50.0, -50.0, 0.0;
-    upper_bounds << 50.0, 50.0, 40.0; // Max time-to-go for any sample
+    upper_bounds << 50.0, 50.0, 30.0; // Max time-to-go for any sample
     problem_def->setBounds(lower_bounds, upper_bounds);
 
 
