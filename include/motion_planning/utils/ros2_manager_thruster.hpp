@@ -232,7 +232,7 @@ private:
             // The velocity vector in the path points opposite to the direction of travel
             // because we are simulating backward in time. Add PI to the yaw to flip it.
             double yaw = std::atan2(new_vel[1], new_vel[0]);
-            yaw += M_PI; // Add 180 degrees to point the arrow in the direction of motion.
+            // yaw += M_PI; // Add 180 degrees to point the arrow in the direction of motion.
             Eigen::Quaterniond q(Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()));
             robot_orientation_quat << q.x(), q.y(), q.z(), q.w();
         } else {

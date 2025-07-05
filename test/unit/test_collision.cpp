@@ -1232,7 +1232,7 @@ int main(int argc, char** argv) {
     std::vector<Eigen::VectorXd> waypoints;
     // ✅ EDITED: Removed the middle waypoint as requested.
     waypoints.push_back((Eigen::VectorXd(dim) << 15.0, 15.0, 0.0, 0.0, 25.0).finished());
-    waypoints.push_back((Eigen::VectorXd(dim) << -15.0, -15.0, 2.0, 2.0, 0.0).finished());
+    waypoints.push_back((Eigen::VectorXd(dim) << -15.0, -15.0, -2.0, 3.0, 0.0).finished());
 
     Trajectory full_trajectory;
     full_trajectory.is_valid = true;
@@ -1332,7 +1332,7 @@ int main(int argc, char** argv) {
         Eigen::Vector3d robot_pos_3d(current_robot_state(0), current_robot_state(1), 0.0);
         Eigen::Vector2d robot_vel_2d(current_robot_state(2), current_robot_state(3));
         
-        Eigen::Vector2d forward_velocity = -robot_vel_2d;
+        Eigen::Vector2d forward_velocity = robot_vel_2d;
 
         double robot_yaw = 0.0; 
         

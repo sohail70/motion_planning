@@ -80,8 +80,8 @@ Eigen::VectorXd ThrusterSteerStateSpace::getSpatialVelocity(const Eigen::VectorX
 Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end, double v_start, double v_end, double t_start, double t_end, double a_max) const {
     
     // --- Initial Setup and Pre-computation ---
-    std::cout << std::fixed << std::setprecision(6);
-    std::cout << "\n--- 1D Steer: x0=" << x_start << ", x1=" << x_end << ", v0=" << v_start << ", v1=" << v_end << ", t0=" << t_start << ", t1=" << t_end << ", a_max=" << a_max << std::endl;
+    // std::cout << std::fixed << std::setprecision(6);
+    // std::cout << "\n--- 1D Steer: x0=" << x_start << ", x1=" << x_end << ", v0=" << v_start << ", v1=" << v_end << ", t0=" << t_start << ", t1=" << t_end << ", a_max=" << a_max << std::endl;
 
     double orig_x_start = x_start, orig_x_end = x_end, orig_v_start = v_start, orig_v_end = v_end;
 
@@ -89,7 +89,7 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
     const double EPS = 1e-9;
 
     if (delta_t < EPS) { 
-        std::cout << "  Delta_t non-positive." << std::endl;
+        // std::cout << "  Delta_t non-positive." << std::endl;
         return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN()); 
     }
 
@@ -97,7 +97,7 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
     // flip signs on all x and v and then solve, and then flip signs back
     bool flip_flag = false;
     if (v_start < 0) { 
-        std::cout << "  DEBUG: Flipping problem (v_start negative)." << std::endl;
+        // std::cout << "  DEBUG: Flipping problem (v_start negative)." << std::endl;
         flip_flag = true;
         x_start = -x_start;
         x_end = -x_end;
@@ -110,7 +110,7 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
     double t_hat = std::abs(v_end - v_start) / a_max;
     // first make sure that we have enough time to do the required velocity
     if (t_hat > delta_t + EPS) {
-        std::cout << "  Not enough time for velocity change." << std::endl;
+        // std::cout << "  Not enough time for velocity change." << std::endl;
         return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN()); 
     }
 
@@ -121,7 +121,7 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
 
     // --- Case A: v_end >= 0 (after potential flip) both start and end velocity is positive ---
     if (v_end >= -EPS) { 
-        std::cout << "  DEBUG: Entering Overall Case A (v_end >= 0).\n";
+        // std::cout << "  DEBUG: Entering Overall Case A (v_end >= 0).\n";
         double tau_1 = (v_start * v_start) / (2.0 * a_max); // distance to v = 0 from start
         double t_a = v_start / a_max;  // time to zero v from start
         double tau_2 = (v_end * v_end) / (2.0 * a_max);  // magnitude of distance from v = 0 to goal
@@ -130,13 +130,13 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
         // === START OF CORRECTED STRUCTURE ===
         // first few are for non-overlapping tau triangles and second few are for overlapping tau triangles
         if (t_a <= t_b) {
-            std::cout << "  DEBUG: Case A, Scenario 1 (t_a <= t_b).\n";
+            // std::cout << "  DEBUG: Case A, Scenario 1 (t_a <= t_b).\n";
             // max and min positins that can be reached at t_end
             double delta_x_max = (delta_t + t_a + delta_t - t_b) * v_max_val / 2.0 - tau_1 - tau_2;
             double delta_x_min = (delta_t - (delta_t-t_b) - t_a) * v_min_val / 2.0 + tau_1 + tau_2;
 
             if (x_start + delta_x_max + EPS < x_end || x_start + delta_x_min - EPS > x_end) {
-                std::cout << "  DEBUG: Unreachable in this scenario. End is too high or end is too low to get to in time \n";
+                // std::cout << "  DEBUG: Unreachable in this scenario. End is too high or end is too low to get to in time \n";
                 return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
             }
 
@@ -175,25 +175,25 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
                 t2 = t_delta_max_v + z / a_max; // time at end of coast
             }
         } else { // Case A, Scenario 2 (t_b < t_a)
-            std::cout << "  DEBUG: Case A, Scenario 2 (t_b < t_a).\n";
+            // std::cout << "  DEBUG: Case A, Scenario 2 (t_b < t_a).\n";
             double t_v_max = (v_max_val - v_start) / a_max;
             double delta_x_max = v_max_val * delta_t - std::pow(v_max_val - v_start, 2) / (2*a_max) - std::pow(v_max_val - v_end, 2) / (2*a_max);
 
             if (delta_x > delta_x_max + EPS) {
-                std::cout << "  DEBUG: Unreachable (end is too high to get to in time).\n";
+                // std::cout << "  DEBUG: Unreachable (end is too high to get to in time).\n";
                 return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
             }
 
             double delta_x_min = -(delta_t - (delta_t-t_b) - t_a) * v_min_val / 2.0 + tau_1 + tau_2;
             if(delta_x < delta_x_min - EPS) {
-                std::cout << "  DEBUG: Unreachable (end is too low to get to in time).\n";
+                // std::cout << "  DEBUG: Unreachable (end is too low to get to in time).\n";
                 return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
             }
             
             double tau_3 = v_min_val * v_min_val / a_max;
             if (delta_x < tau_1 + tau_2 - tau_3) {
                 // sub-case 1, we need negative velocity at some point
-                std::cout<< " DEBUG: Need negative velocity and cannot attain it. \n" ;
+                // std::cout<< " DEBUG: Need negative velocity and cannot attain it. \n" ;
                 return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
             } else if ((tau_1 < tau_2 && delta_x <= tau_1 + tau_2 + t_b * v_start) || (tau_2 <= tau_1 && delta_x <= tau_1 + tau_2 + (delta_t - t_a) * v_end)) {
                 // sub-case 2 reduce velocity, wait, increase velocity
@@ -231,7 +231,7 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
     } 
     // --- Case B: v_start > 0 and  v_end < 0 (after potential flip) ---
     else { 
-        std::cout << "  DEBUG: Entering Overall Case B (v_start > 0 and v_end < 0).\n";
+        // std::cout << "  DEBUG: Entering Overall Case B (v_start > 0 and v_end < 0).\n";
         double tau_1 = (v_start * v_start) / (2.0 * a_max); 
         double t_a = v_start / a_max; 
         double tau_2_abs_v_end = (v_end * v_end) / (2.0 * a_max); 
@@ -244,7 +244,7 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
         double delta_x_min = (2.0 * delta_t - t_b - t_a) * v_min_val / 2.0 + tau_1 + tau_2_abs_v_end;
 
         if (x_start + delta_x_max + EPS < x_end || x_start + delta_x_min - EPS > x_end) {
-            std::cout << "  DEBUG: Unreachable in this scenario. End is too high or end is to low to get to in time. \n";
+            // std::cout << "  DEBUG: Unreachable in this scenario. End is too high or end is to low to get to in time. \n";
             return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
         }
         // The problem can be solved, so figure out which one of the 4 basic sub-case we need to solve
@@ -292,13 +292,13 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
 
     // Final checks before assigning result
     if (t1 < -EPS || t1 > delta_t + EPS || t2 < -EPS || t2 > delta_t + EPS || t1 > t2 + EPS) {
-        std::cout << "  DEBUG: Final time check failed *before* adding t_start: t1=" << t1 << ", t2=" << t2 << ", dt=" << delta_t << std::endl;
+        // std::cout << "  DEBUG: Final time check failed *before* adding t_start: t1=" << t1 << ", t2=" << t2 << ", dt=" << delta_t << std::endl;
         return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN()); 
     }
     
     Eigen::VectorXd result = Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
     result << t1 + t_start, t2 + t_start, (flip_flag ? -a1 : a1), (flip_flag ? -a2 : a2), (flip_flag ? -v_coast : v_coast);
-    std::cout << "  DEBUG: Final returned result (global times): t1=" << result[0] << ", t2=" << result[1] << ", a1=" << result[2] << ", a2=" << result[3] << ", vc=" << result[4] << std::endl;
+    // std::cout << "  DEBUG: Final returned result (global times): t1=" << result[0] << ", t2=" << result[1] << ", a1=" << result[2] << ", a2=" << result[3] << ", vc=" << result[4] << std::endl;
 
     return result;
 }
@@ -334,7 +334,7 @@ ThrusterSteerStateSpace::NDSteeringResult ThrusterSteerStateSpace::steeringND(
         Eigen::VectorXd rets1D = steering1D(x_start[d], x_end[d], v_start[d], v_end[d], t_start, t_end, a_max_vec[d]);
         // Note: rets1D = [t_1 t_2 a_1 a_2 v_coast]
         if (rets1D.hasNaN()) {
-            std::cout << "1D steering failed for dimension " << d << std::endl;
+            // std::cout << "1D steering failed for dimension " << d << std::endl;
             return result; // Cannot solve if any 1D fails
         }
         raw_t.col(d) = rets1D.head<2>(); // t1, t2 from steering1D
@@ -495,101 +495,14 @@ ThrusterSteerStateSpace::fineGrain(const Eigen::VectorXd& Time_raw, const Eigen:
 }
 
 // Main steer function to find optimal trajectory between two full states
-// Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const {
-//     Trajectory traj_out;
-//     traj_out.is_valid = false;
-//     traj_out.cost = std::numeric_limits<double>::infinity();
-//     const double EPS = 1e-9;
-
-//     // from: [x, y, z, vx, vy, vz, t_start]
-//     // to:   [x, y, z, vx, vy, vz, t_end]
-    
-//     // Ensure states have correct dimension
-//     if (from.size() != dimension_ || to.size() != dimension_) {
-//         std::cerr << "Error: 'from' or 'to' state has incorrect dimension." << std::endl;
-//         return traj_out;
-//     }
-
-//     int D_spatial = (dimension_ - 1) / 2; // e.g., 3 for 3D position/velocity
-
-//     // Extract spatial positions and velocities
-//     Eigen::VectorXd from_pos = from.head(D_spatial);
-//     Eigen::VectorXd from_vel = from.segment(D_spatial, D_spatial);
-//     double from_time = from[dimension_ - 1];
-
-//     Eigen::VectorXd to_pos = to.head(D_spatial);
-//     Eigen::VectorXd to_vel = to.segment(D_spatial, D_spatial);
-//     double to_time = to[dimension_ - 1];
-
-//     // IGNORE THE COMMENT BELOW FOR NOW!
-//     // Planning happens in "reverse time" for FMTX/RRTX.
-//     // The 'from' state has a "later" time (closer to robot) than 'to' (closer to goal).
-//     // So, target_delta_t = from_time - to_time.
-//     // Julia code for DFMT uses t_start for the earlier time, t_end for later.
-//     // Here, to use steeringND, we need t_start < t_end.
-//     // So, we effectively "reverse" the problem for steeringND, then reverse solution.
-//     double actual_duration = to_time - from_time; // This is the total time cost if path is valid
-
-//     // if (actual_duration < EPS) { // Duration must be positive
-//     //     std::cout << "Error: Actual duration is non-positive: " << actual_duration << std::endl;
-//     //     return traj_out;
-//     // }
-
-//     // Call N-D steering
-//     // Max acceleration vector (assuming same for all spatial dimensions)
-//     Eigen::VectorXd a_max_vec = Eigen::VectorXd::Constant(D_spatial, max_acceleration_);
-
-//     // The Julia steering_ND takes (x_start, x_end, v_start, v_end, t_start, t_end, a).
-//     // It assumes t_start is the earlier time, t_end is the later time.
-//     // So for our problem (from_time (later) to to_time (earlier)):
-//     // - steeringND_t_start = to_time
-//     // - steeringND_t_end = from_time
-//     // - The X and V are also reversed for steeringND input.
-
-//     // NDSteeringResult nd_result = steeringND(to_pos, from_pos, to_vel, from_vel, to_time, from_time, a_max_vec);
-//     NDSteeringResult nd_result = steeringND(from_pos, to_pos, from_vel, to_vel, from_time, to_time, a_max_vec);
-    
-//     if (!nd_result.success) {
-//         std::cout << "ND steering failed." << std::endl;
-//         return traj_out;
-//     }
-
-//     // Fine-grain the trajectory for output
-//     double discretization_step = 0.5; // meters (or unit of position distance for spatial dimensions)
-//                                      // This could be made dynamic or a parameter.
-
-//     // Calculate fine-grained trajectory
-//     auto [fine_Time, fine_A, fine_V, fine_X] = 
-//         fineGrain(nd_result.Time, nd_result.A, nd_result.V, nd_result.X, discretization_step);
-
-//     // Populate Trajectory object
-//     traj_out.cost = actual_duration; // Total time is the cost for time-optimal thruster
-//     traj_out.is_valid = true;
-
-//     // --- MODIFIED: Populate execution_data with the forward-time trajectory (from 'to' to 'from') ---
-//     traj_out.execution_data.is_valid = true;
-//     traj_out.execution_data.total_cost = actual_duration;
-//     traj_out.execution_data.Time = fine_Time;
-//     traj_out.execution_data.X = fine_X;
-//     traj_out.execution_data.V = fine_V;
-//     traj_out.execution_data.A = fine_A;
-
-
-
-//     traj_out.path_points.reserve(fine_Time.size());
-//     for (int i = 0; i < fine_Time.size(); ++i) {
-//         Eigen::VectorXd state_at_t(dimension_);
-//         state_at_t.head(D_spatial) = fine_X.row(i).transpose();
-//         state_at_t.segment(D_spatial, D_spatial) = fine_V.row(i).transpose();
-//         state_at_t[dimension_ - 1] = fine_Time[i];
-//         traj_out.path_points.push_back(state_at_t);
-//     }
-    
-//     // Reverse the path_points since steer is from `from` to `to`, but solution was computed `to` to `from`.
-//     std::reverse(traj_out.path_points.begin(), traj_out.path_points.end());
-
-//     return traj_out;
-// }
+/*
+    Mind that simulation works backward in time.
+    the from State has higher Time-To-Goal but the steeringND and 1D works forward in time 
+    So we trick it --> CHANGE OF VARIABLES! (MAPPING)
+    use:
+        NDSteeringResult nd_result = steeringND(from_pos, to_pos, from_vel, to_vel, 0.0, duration, a_max_vec);
+    and then map the time from [0,duration] to [from_time,to_time] 
+*/
 
 Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const {
     Trajectory traj_out;
@@ -597,11 +510,11 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
     traj_out.cost = std::numeric_limits<double>::infinity();
     const double EPS = 1e-9;
 
+    // 1. Extract states and calculate the duration of the trajectory
     if (from.size() != dimension_ || to.size() != dimension_) {
         std::cerr << "Error: 'from' or 'to' state has incorrect dimension." << std::endl;
         return traj_out;
     }
-
     int D_spatial = (dimension_ - 1) / 2;
 
     Eigen::VectorXd from_pos = getSpatialPosition(from);
@@ -613,61 +526,41 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
     double to_time = to[dimension_ - 1];
 
     double duration = from_time - to_time;
-
     if (duration < EPS) {
         return traj_out;
     }
 
-    // Plan in forward time (from earlier 'to' state to later 'from' state)
+    // 2. Solve the BVP directly from FROM to TO over the calculated duration.
+    //    We ask the solver to work in a simple [0, duration] time frame.
     Eigen::VectorXd a_max_vec = Eigen::VectorXd::Constant(D_spatial, max_acceleration_);
-    NDSteeringResult nd_result = steeringND(to_pos, from_pos, to_vel, from_vel, to_time, from_time, a_max_vec);
+    NDSteeringResult nd_result = steeringND(from_pos, to_pos, from_vel, to_vel, 0.0, duration, a_max_vec);
     
     if (!nd_result.success) {
         return traj_out;
     }
 
-    // Discretize the trajectory
-    double discretization_step = 0.5; // You can adjust this resolution
-    auto [fine_Time, fine_A, fine_V, fine_X] = 
+    // 3. Discretize the resulting trajectory
+    double discretization_step = 0.5;
+    auto [fine_Time_local, fine_A, fine_V, fine_X] = 
         fineGrain(nd_result.Time, nd_result.A, nd_result.V, nd_result.X, discretization_step);
 
-    // ✅ ROBUST MANUAL REVERSAL
-    // Manually reverse the trajectory to create the correct countdown path.
-    long num_points = fine_Time.size();
-    if (num_points == 0) {
-        return traj_out; // Should not happen if fineGrain is successful
-    }
+    long num_points = fine_Time_local.size();
+    if (num_points == 0) return traj_out;
 
     traj_out.is_valid = true;
     traj_out.cost = duration;
+    
+    // 4. The solver gives us the correct path shape (X) and velocities (V).
+    //    We just need to map the time from [0, duration] to your planner's
+    //    [from_time, to_time] convention.
     traj_out.execution_data.is_valid = true;
     traj_out.execution_data.total_cost = duration;
+    traj_out.execution_data.X = fine_X;
+    traj_out.execution_data.V = fine_V; // No negation needed
+    traj_out.execution_data.A = fine_A; // No negation needed
+    traj_out.execution_data.Time = from_time - fine_Time_local.array(); // Map to decreasing time-to-go
 
-    // Resize the execution data matrices
-    traj_out.execution_data.Time.resize(num_points);
-    traj_out.execution_data.X.resize(num_points, D_spatial);
-    traj_out.execution_data.V.resize(num_points, D_spatial);
-    // Note: The fine-grained acceleration matrix has one less row than the number of points
-    traj_out.execution_data.A.resize(num_points > 1 ? num_points - 1 : 0, D_spatial);
-
-    // Populate the matrices by looping through the fine-grained data in reverse
-    for (long i = 0; i < num_points; ++i) {
-        long reverse_i = num_points - 1 - i;
-        traj_out.execution_data.Time(i) = fine_Time(reverse_i);
-        traj_out.execution_data.X.row(i) = fine_X.row(reverse_i);
-        traj_out.execution_data.V.row(i) = fine_V.row(reverse_i);
-    }
-    
-    // Reverse the acceleration data, which applies to intervals
-    for (long i = 0; i < traj_out.execution_data.A.rows(); ++i) {
-        // A[i] corresponds to the interval from T[i] to T[i+1]
-        // In reverse, this is the interval from fine_Time[N-1-i] to fine_Time[N-2-i]
-        // The acceleration for that interval is fine_A[N-2-i]
-        long reverse_a_idx = fine_A.rows() - 1 - i;
-        traj_out.execution_data.A.row(i) = fine_A.row(reverse_a_idx);
-    }
-
-    // Populate the coarse path_points vector for other uses
+    // 5. Populate the final path_points with the correct states
     traj_out.path_points.reserve(num_points);
     for (long i = 0; i < num_points; ++i) {
         Eigen::VectorXd state_at_t(dimension_);

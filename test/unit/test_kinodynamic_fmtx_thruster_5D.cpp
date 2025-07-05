@@ -194,7 +194,8 @@ int main(int argc, char **argv) {
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
     auto sim_clock = vis_node->get_clock();
 
-    auto obstacle_info = parseSdfObstacles("your_world.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
     // --- 4. Planner and Problem Definition (5D Thruster) ---
@@ -204,14 +205,14 @@ int main(int argc, char **argv) {
     // The GOAL for the robot is the ROOT of the search tree.
     // Time-to-go is 0 at the goal. Velocity is zero.
     Eigen::VectorXd tree_root_state(dim);
-    tree_root_state << -48.0, -48.0, 0.0, 0.0, 0.0;
+    tree_root_state << -48.0, -48.0, 0.0, -5.0, 0.0;
     problem_def->setStart(tree_root_state);
 
     // The robot's INITIAL state is the GOAL of the search tree.
     // It starts with a full time budget.
     Eigen::VectorXd robot_initial_state(dim);
     double time_budget = 40.0;
-    robot_initial_state << 48.0, 48.0, 0.0, 0.0, time_budget;
+    robot_initial_state << 48.0, 48.0, 0.0, -5.0, time_budget;
     problem_def->setGoal(robot_initial_state);
 
     // Define 5D bounds, including velocity limits.
@@ -257,7 +258,7 @@ int main(int argc, char **argv) {
     // --- 6. Executor Setup ---
     rclcpp::executors::MultiThreadedExecutor executor;
     executor.add_node(ros_manager);
-    // executor.add_node(vis_node);
+    executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
     std::thread executor_thread([&executor]() { executor.spin(); });
 
     // --- 7. Main Execution and Replanning Loop ---
