@@ -1,0 +1,588 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+    <!-- Add a ground plane with a lighter color -->
+<model name="ground_plane">
+  <static>true</static>
+  <link name="link">
+    <collision name="collision">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+      <size>100 100</size>
+        </plane>
+      </geometry>
+      <!-- Disable collisions with kinematic objects -->
+      <surface>
+        <contact>
+          <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+        </contact>
+      </surface>
+    </collision>
+    <visual name="visual">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+          <size>100 100</size>
+        </plane>
+      </geometry>
+      <material>
+        <ambient>0.6 0.6 0.6 1</ambient>
+        <diffuse>0.6 0.6 0.6 1</diffuse>
+      </material>
+    </visual>
+  </link>
+</model>
+
+
+
+
+
+
+<model name="moving_cylinder_6">
+<pose>15.0 35.0 0 0 0 0</pose>
+    <link name="moving_link">
+  
+    <visual name="visual">
+      <geometry>
+        <cylinder>
+          <radius>4.0</radius>
+          <length>1.0</length>
+        </cylinder>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+        <link_name>moving_link</link_name>
+        <direction>-1 0 0</direction>  <!-- Move along x-axis -->
+        <amplitude>1000.5</amplitude>    <!-- 0.5 meters -->
+        <speed>0.5</speed>            <!-- 2 rad/s -->
+    </plugin>
+</model>
+
+
+    <!-- Adding 10 static cylinders at random positions -->
+    
+
+
+
+<!--***********************%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%************************* -->
+<model name="moving_cylinder_7">
+  <pose>-40.0 15.0 0 0 0 0</pose>
+  <link name="moving_link">
+   
+    <visual name="visual">
+      <geometry><cylinder><radius>5.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 0 1 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>1 0 0</direction>
+    <amplitude>800.5</amplitude>
+    <speed>0.5</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_8">
+  <pose>5.0 -45.0 0 0 0 0</pose>
+  <link name="moving_link">
+   
+    <visual name="visual">
+      <geometry><cylinder><radius>4.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 0 1 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>0 1 0</direction>
+    <amplitude>900.5</amplitude>
+    <speed>0.5</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_9">
+  <pose>-15.0 -15.0 0 0 0 0</pose>
+  <link name="moving_link">
+   
+    <visual name="visual">
+      <geometry><cylinder><radius>6.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 0 1 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>1 1 0</direction>
+    <amplitude>350.5</amplitude>
+    <speed>0.5</speed>
+  </plugin>
+</model>
+
+
+
+
+<!--***********************%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%************************* -->
+<model name="moving_cylinder_11">
+  <pose>20.0 -30.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry>
+        <cylinder>
+          <radius>3.0</radius>
+          <length>1.0</length>
+        </cylinder>
+      </geometry>
+      <material><ambient>0 0 1 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>1 0 0</direction>
+    <amplitude>500.5</amplitude>
+    <speed>0.8</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_11_5">
+  <pose>-20.0 -20.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry>
+        <cylinder>
+          <radius>3.0</radius>
+          <length>1.0</length>
+        </cylinder>
+      </geometry>
+      <material><ambient>0 0 1 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>-1 0 0</direction>
+    <amplitude>500.5</amplitude>
+    <speed>0.8</speed>
+  </plugin>
+</model>
+
+
+
+<model name="moving_cylinder_12">
+  <pose>-28.0 -22.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry>
+        <cylinder>
+          <radius>5.0</radius>
+          <length>1.0</length>
+        </cylinder>
+      </geometry>
+      <material><ambient>0 0 1 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>0 1 0</direction>
+    <amplitude>1000.5</amplitude>
+    <speed>0.3</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_12_5">
+  <pose>28.0 22.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry>
+        <cylinder>
+          <radius>5.0</radius>
+          <length>1.0</length>
+        </cylinder>
+      </geometry>
+      <material><ambient>0 0 1 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>0 -1 0</direction>
+    <amplitude>1000.5</amplitude>
+    <speed>0.3</speed>
+  </plugin>
+</model>
+
+
+<model name="moving_cylinder_12_6">
+  <pose>0.0 -3.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry>
+        <cylinder>
+          <radius>5.0</radius>
+          <length>1.0</length>
+        </cylinder>
+      </geometry>
+      <material><ambient>0 0 1 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>0 -1 0</direction>
+    <amplitude>500.5</amplitude>
+    <speed>0.3</speed>
+  </plugin>
+</model>
+
+
+<model name="moving_cylinder_13">
+  <pose>30.0 18.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry>
+        <cylinder>
+          <radius>2.5</radius>
+          <length>1.0</length>
+        </cylinder>
+      </geometry>
+      <material><ambient>0 0 1 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>-1 0 0</direction>
+    <amplitude>1000.5</amplitude>
+    <speed>0.6</speed>
+  </plugin>
+</model>
+
+
+<!--***********************%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%************************* -->
+
+
+
+<model name="moving_cylinder_14">
+  <pose>10.0 -25.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>3.5</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>1 0 0</direction>
+    <amplitude>600.0</amplitude>
+    <speed>0.4</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_15">
+  <pose>-30.0 30.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>4.5</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>0 1 0</direction>
+    <amplitude>750.0</amplitude>
+    <speed>0.6</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_16">
+  <pose>40.0 -10.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>-1 0 0</direction>
+    <amplitude>400.0</amplitude>
+    <speed>0.8</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_17">
+  <pose>-5.0 40.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>5.5</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>0 -1 0</direction>
+    <amplitude>950.0</amplitude>
+    <speed>0.2</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_18">
+  <pose>25.0 25.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>3.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>0.707 0.707 0</direction>
+    <amplitude>550.0</amplitude>
+    <speed>0.7</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_19">
+  <pose>-45.0 -5.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>4.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>1 0 0</direction>
+    <amplitude>850.0</amplitude>
+    <speed>0.4</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_20">
+  <pose>0.0 0.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>6.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>-0.707 0.707 0</direction>
+    <amplitude>300.0</amplitude>
+    <speed>0.9</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_21">
+  <pose>-25.0 -35.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>2.5</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>0 1 0</direction>
+    <amplitude>700.0</amplitude>
+    <speed>0.3</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_22">
+  <pose>35.0 5.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>5.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>0 -1 0</direction>
+    <amplitude>1100.0</amplitude>
+    <speed>0.5</speed>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_23">
+  <pose>15.0 -40.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>4.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>-0.707 -0.707 0</direction>
+    <amplitude>650.0</amplitude>
+    <speed>0.6</speed>
+  </plugin>
+</model>
+
+
+
+
+<!--******** -->
+<model name="static_cylinder_1">
+  <static>true</static>
+  <pose>-25 10 0.5 0 0 0.785</pose>
+  <link name="link">
+    <collision name="collision">
+      <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
+    </collision>
+    <visual name="visual">
+      <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+    </visual>
+  </link>
+</model>
+
+<model name="static_cylinder_2">
+  <static>true</static>
+  <pose>30 -30 0.5 0 0 0.2</pose>
+  <link name="link">
+    <collision name="collision">
+      <geometry><cylinder><radius>1.5</radius><length>1.0</length></cylinder></geometry>
+    </collision>
+    <visual name="visual">
+      <geometry><cylinder><radius>1.5</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+    </visual>
+  </link>
+</model>
+
+<model name="static_cylinder_3">
+  <static>true</static>
+  <pose>0 20 0.5 0 0 -0.5</pose>
+  <link name="link">
+    <collision name="collision">
+      <geometry><cylinder><radius>2.5</radius><length>1.0</length></cylinder></geometry>
+    </collision>
+    <visual name="visual">
+      <geometry><cylinder><radius>2.5</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+    </visual>
+  </link>
+</model>
+
+<model name="static_cylinder_4">
+  <static>true</static>
+  <pose>-40 -40 0.5 0 0 1.57</pose>
+  <link name="link">
+    <collision name="collision">
+      <geometry><cylinder><radius>3.0</radius><length>1.0</length></cylinder></geometry>
+    </collision>
+    <visual name="visual">
+      <geometry><cylinder><radius>3.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+    </visual>
+  </link>
+</model>
+
+<model name="static_cylinder_5">
+  <static>true</static>
+  <pose>45 40 0.5 0 0 0</pose>
+  <link name="link">
+    <collision name="collision">
+      <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
+    </collision>
+    <visual name="visual">
+      <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+    </visual>
+  </link>
+</model>
+
+<model name="static_cylinder_6">
+  <static>true</static>
+  <pose>10 10 0.5 0 0 -1.1</pose>
+  <link name="link">
+    <collision name="collision">
+      <geometry><cylinder><radius>3.5</radius><length>1.0</length></cylinder></geometry>
+    </collision>
+    <visual name="visual">
+      <geometry><cylinder><radius>3.5</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+    </visual>
+  </link>
+</model>
+
+<model name="static_cylinder_7">
+  <static>true</static>
+  <pose>-15 35 0.5 0 0 0.4</pose>
+  <link name="link">
+    <collision name="collision">
+      <geometry><cylinder><radius>2.5</radius><length>1.0</length></cylinder></geometry>
+    </collision>
+    <visual name="visual">
+      <geometry><cylinder><radius>2.5</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+    </visual>
+  </link>
+</model>
+
+<model name="static_cylinder_8">
+  <static>true</static>
+  <pose>20 -5 0.5 0 0 0</pose>
+  <link name="link">
+    <collision name="collision">
+      <geometry><cylinder><radius>1.5</radius><length>1.0</length></cylinder></geometry>
+    </collision>
+    <visual name="visual">
+      <geometry><cylinder><radius>1.5</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+    </visual>
+  </link>
+</model>
+
+<model name="static_cylinder_9">
+  <static>true</static>
+  <pose>-35 0 0.5 0 0 1.0</pose>
+  <link name="link">
+    <collision name="collision">
+      <geometry><cylinder><radius>3.0</radius><length>1.0</length></cylinder></geometry>
+    </collision>
+    <visual name="visual">
+      <geometry><cylinder><radius>3.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+    </visual>
+  </link>
+</model>
+
+<model name="static_cylinder_10">
+  <static>true</static>
+  <pose>0 -30 0.5 0 0 -0.8</pose>
+  <link name="link">
+    <collision name="collision">
+      <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
+    </collision>
+    <visual name="visual">
+      <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>0 1 0 1</ambient><diffuse>0 1 0 1</diffuse></material>
+    </visual>
+  </link>
+</model>
+
+<!--****** -->
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+
+<!-- 
+  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+    <speed>0.8</speed>
+    <interpolation_step>0.3</interpolation_step>
+  </plugin> -->
+
+
+    </include>
+
+  </world>
+</sdf>
+
+
+
+

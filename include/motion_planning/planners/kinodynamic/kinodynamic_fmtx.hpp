@@ -6,6 +6,7 @@
 #include "motion_planning/ds/fmt_node.hpp"
 #include "motion_planning/utils/visualization.hpp"
 #include "motion_planning/ds/priority_queue.hpp"
+#include <omp.h> 
 
 class KinodynamicFMTX : public Planner {
  public:

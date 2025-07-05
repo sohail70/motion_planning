@@ -1,0 +1,136 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+    <!-- Add a ground plane with a lighter color -->
+<model name="ground_plane">
+  <static>true</static>
+  <link name="link">
+    <collision name="collision">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+      <size>100 100</size>
+        </plane>
+      </geometry>
+      <!-- Disable collisions with kinematic objects -->
+      <surface>
+        <contact>
+          <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+        </contact>
+      </surface>
+    </collision>
+    <visual name="visual">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+          <size>100 100</size>
+        </plane>
+      </geometry>
+      <material>
+        <ambient>0.6 0.6 0.6 1</ambient>
+        <diffuse>0.6 0.6 0.6 1</diffuse>
+      </material>
+    </visual>
+  </link>
+</model>
+
+
+<model name="moving_cylinder_2">
+<pose>0.0 -35.0 0 0 0 0</pose>
+    <link name="moving_link">
+    <kinematic>true</kinematic>
+    <visual name="visual">
+      <geometry>
+        <cylinder>
+          <radius>6.0</radius>
+          <length>1.0</length>
+        </cylinder>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+        <link_name>moving_link</link_name>
+        <direction>0 1 0</direction>  <!-- Move along x-axis -->
+        <amplitude>40.0</amplitude>    <!-- 0.5 meters -->
+        <speed>8.0</speed>            <!-- 2 rad/s -->
+    </plugin>
+</model>
+
+
+
+<model name="moving_cylinder_16">
+  <pose>40.0 -10.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>-1 0 0</direction>
+    <amplitude>40.0</amplitude>
+    <speed>8.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+
+<model name="moving_cylinder_18">
+  <pose>15.0 15.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>3.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>0.707 0.707 0</direction>
+    <amplitude>40.0</amplitude>
+    <speed>8.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_19">
+  <pose>-45.0 -5.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <visual name="visual">
+      <geometry><cylinder><radius>4.0</radius><length>1.0</length></cylinder></geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <link_name>moving_link</link_name>
+    <direction>1 0 0</direction>
+    <amplitude>40.0</amplitude>
+    <speed>8.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+
+<!-- 
+  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+    <speed>0.8</speed>
+    <interpolation_step>0.3</interpolation_step>
+  </plugin> -->
+
+
+    </include>
+
+  </world>
+</sdf>
+
+
+
+

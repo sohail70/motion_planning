@@ -19,6 +19,9 @@ endif()
 find_package(Eigen3 REQUIRED)
 find_package(nanoflann REQUIRED)
 
+find_package(OpenMP REQUIRED)
+
+
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED) 
 find_package(visualization_msgs REQUIRED) 
@@ -117,6 +120,11 @@ add_library(motion_planning
 target_precompile_headers(motion_planning PRIVATE include/motion_planning/pch.hpp)
 target_include_directories(motion_planning PUBLIC include) 
 target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann visualization)
+if(OpenMP_CXX_FOUND)
+  target_compile_options(motion_planning PUBLIC "${OpenMP_CXX_FLAGS}")
+  target_link_libraries(motion_planning PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
 
 # Tests
 enable_testing()

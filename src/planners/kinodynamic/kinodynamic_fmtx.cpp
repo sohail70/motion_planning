@@ -76,7 +76,6 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     }
     setGoal(problem_->getGoal());
 
-    std::cout<<statespace_->getSamplesCopy()<<"\n";
     std::cout << "KDTree: \n\n";
     if (use_kdtree == true) {
         // // Put all the points at once because fmtx doesnt need incremental addition
@@ -228,6 +227,7 @@ void KinodynamicFMTX::plan() {
                 // if(x->getIndex()==3)
                 //     std::cout<<"\n";
                 // std::cout<<"----\n";
+                //////////////////////////NOT PARALLEL////////////////////////
                 for (auto& [y, edge_info_xy] : x->neighbors()) {
                     // std::cout<<y->getIndex()<<"\n";
                     // std::cout<<"----\n";
@@ -248,6 +248,15 @@ void KinodynamicFMTX::plan() {
                         }
                     }
                 }
+                // ////////////////////////PARALLEL/////////////////////////////////
+            
+
+
+                ////////////////////////////////////////////////////////////////
+
+
+
+
                 if (costUpdated[x]) {
                     // std::cout<<"Node " << x->getIndex() 
                     //     << "  updated a second time! "
@@ -489,7 +498,7 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples;
-    const double PREDICTION_HORIZON_SECONDS = 1.0; // How far into the future to predict
+    const double PREDICTION_HORIZON_SECONDS = 3.0; // How far into the future to predict
     
     // Controls how many steps we check between the start and end of the horizon.
     // 0 = just start and end points. 1 = start, middle, and end points.
@@ -1586,7 +1595,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
     // Define a hysteresis factor. A new path must be at least 5% cheaper to be adopted.
     // This prevents switching for negligible gains.
-    const double hysteresis_factor = 0.75;
+    const double hysteresis_factor = 0.80;
     double cost_of_current_path = std::numeric_limits<double>::infinity();
 
     // First, calculate the cost of sticking with the current anchor node, if it's valid.
@@ -1606,7 +1615,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     double best_candidate_cost = std::numeric_limits<double>::infinity();
     double current_search_radius = neighborhood_radius_;
     const int max_attempts = 4;
-    const double radius_multiplier = 1.8;
+    const double radius_multiplier = 1.2;
 
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
         auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head<2>(), current_search_radius);
@@ -1737,6 +1746,54 @@ ExecutionTrajectory KinodynamicFMTX::getFinalExecutionTrajectory() const {
 
 
 
+// bool KinodynamicFMTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path, const Eigen::VectorXd& current_robot_state) const {
+//     if (path.size() < 2) {
+//         return true;
+//     }
+
+//     const double t_now = clock_->now().seconds();
+//     const double robot_time_to_go = current_robot_state(current_robot_state.size() - 1);
+//     const double t_arrival_predicted = t_now + robot_time_to_go;
+
+//     // Find the segment the robot is currently on.
+//     auto it = std::lower_bound(path.begin(), path.end(), robot_time_to_go,
+//         [](const Eigen::VectorXd& point, double time_val) {
+//             return point(point.size() - 1) > time_val;
+//         });
+
+//     size_t start_check_index = 0;
+//     if (it != path.begin()) {
+//         start_check_index = std::distance(path.begin(), std::prev(it));
+//     }
+
+//     // Check all future planned segments for safety.
+//     for (size_t i = start_check_index; i < path.size() - 1; ++i) {
+//         const Eigen::VectorXd& segment_start_state = path[i];
+//         const Eigen::VectorXd& segment_end_state = path[i+1];
+
+//         // --- FIX: Generate the TRUE kinodynamic trajectory for this segment ---
+//         Trajectory segment_traj = statespace_->steer(segment_start_state, segment_end_state);
+
+//         // If the segment itself is not valid, the whole path is invalid.
+//         if (!segment_traj.is_valid) {
+//             RCLCPP_WARN(rclcpp::get_logger("fmtx_validator"), "Path invalidated by invalid segment from state %zu to %zu.", i, i+1);
+//             return false;
+//         }
+
+//         // Calculate the absolute world time when this segment starts.
+//         const double segment_global_start_time = t_arrival_predicted - segment_start_state(segment_start_state.size() - 1);
+
+//         // --- FIX: Check the safety of the TRUE trajectory ---
+//         if (!obs_checker_->isTrajectorySafe(segment_traj, segment_global_start_time)) {
+//             RCLCPP_WARN(rclcpp::get_logger("fmtx_validator"), "Path invalidated by predictive check on segment %zu.", i);
+//             return false;
+//         }
+//     }
+
+//     return true;
+// }
+
+
 bool KinodynamicFMTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path, const Eigen::VectorXd& current_robot_state) const {
     if (path.size() < 2) {
         return true;
@@ -1762,6 +1819,15 @@ bool KinodynamicFMTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path,
         const Eigen::VectorXd& segment_start_state = path[i];
         const Eigen::VectorXd& segment_end_state = path[i+1];
 
+        // *** ADD THIS CHECK ***
+        // If the segment is extremely short, assume it's valid and continue.
+        // A threshold of 0.01 seconds (10ms) is a reasonable choice.
+        const double segment_duration = segment_start_state(segment_start_state.size() - 1) - segment_end_state(segment_end_state.size() - 1);
+        if (segment_duration < 0.01) {
+            continue;
+        }
+        // *********************
+
         // --- FIX: Generate the TRUE kinodynamic trajectory for this segment ---
         Trajectory segment_traj = statespace_->steer(segment_start_state, segment_end_state);
 
@@ -1783,8 +1849,6 @@ bool KinodynamicFMTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path,
 
     return true;
 }
-
-
 
 // void KinodynamicFMTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
 //     robot_position_ = robot_position;
@@ -2220,11 +2284,14 @@ void KinodynamicFMTX::visualizeTree() {
     if (!tree_.empty()) {
         edges.reserve(tree_.size());
     }
+    std::vector<Eigen::VectorXd> tree_nodes;
 
     // Iterate through all nodes in the tree.
     for (const auto& node_ptr : tree_) {
         FMTNode* child_node = node_ptr.get();
         FMTNode* parent_node = child_node->getParent();
+
+        tree_nodes.push_back(node_ptr->getStateValue());
 
         // If a node has a parent, it forms a valid edge in the tree.
         if (parent_node) {
@@ -2234,6 +2301,10 @@ void KinodynamicFMTX::visualizeTree() {
         }
     }
 
+    // visualization_->visualizeNodes(tree_nodes, "map", 
+    //                         std::vector<float>{1.0f, 0.0f, 0.0f},  // Red for tree
+    //                         "tree_nodes");
+    
     // Visualize the collected straight-line edges.
     visualization_->visualizeEdges(edges, "map");
 }

@@ -1231,8 +1231,8 @@ int main(int argc, char** argv) {
 
     std::vector<Eigen::VectorXd> waypoints;
     // ✅ EDITED: Removed the middle waypoint as requested.
-    waypoints.push_back((Eigen::VectorXd(dim) << 15.0, 15.0, 0.0, 0.0, 25.0).finished());
-    waypoints.push_back((Eigen::VectorXd(dim) << -15.0, -15.0, -2.0, 3.0, 0.0).finished());
+    waypoints.push_back((Eigen::VectorXd(dim) << 15.0, 15.0, 0.0, 0.0, 15.0).finished());
+    waypoints.push_back((Eigen::VectorXd(dim) << -15.0, -15.0, 5.0, -5.0, 0.0).finished());
 
     Trajectory full_trajectory;
     full_trajectory.is_valid = true;

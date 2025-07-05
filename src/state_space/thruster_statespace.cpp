@@ -303,6 +303,175 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
     return result;
 }
 
+// // optimized
+// Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end, double v_start, double v_end, double t_start, double t_end, double a_max) const {
+//     const double EPS = 1e-9;
+//     double delta_t = t_end - t_start;
+
+//     // A trajectory is not possible in zero or negative time.
+//     if (delta_t < EPS) {
+//         return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
+//     }
+
+//     // The solver assumes a positive start velocity. If v_start is negative, we can
+//     // flip the signs of the entire problem, solve it, and then flip the results back.
+//     bool flip_flag = false;
+//     if (v_start < 0) {
+//         flip_flag = true;
+//         x_start = -x_start;
+//         x_end = -x_end;
+//         v_start = -v_start;
+//         v_end = -v_end;
+//     }
+
+//     // Pre-calculate constants to replace division with multiplication where possible.
+//     const double a_max_inv = 1.0 / a_max;
+//     const double a_max_2 = 2.0 * a_max;
+
+//     // Check if the required velocity change is even possible in the given time.
+//     if (std::abs(v_end - v_start) * a_max_inv > delta_t + EPS) {
+//         return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
+//     }
+
+//     const double delta_x = x_end - x_start;
+//     const double v_sum = v_start + v_end;
+
+//     // Calculate the maximum and minimum possible velocities during the maneuver.
+//     const double v_max_val = (delta_t * a_max + v_sum) * 0.5;
+//     const double v_min_val = (v_sum - delta_t * a_max) * 0.5;
+
+//     double t1 = NAN, t2 = NAN, v_coast = NAN;
+
+//     // --- CASE A: Final velocity is non-negative (after potential flip) ---
+//     if (v_end >= -EPS) {
+//         const double tau_1 = (v_start * v_start) / a_max_2;
+//         const double t_a = v_start * a_max_inv;
+//         const double tau_2 = (v_end * v_end) / a_max_2;
+//         const double t_b = delta_t - v_end * a_max_inv;
+
+//         if (t_a <= t_b) { // Scenario 1: Non-overlapping velocity profiles
+//             const double delta_x_max = (2.0 * delta_t + t_a - t_b) * v_max_val * 0.5 - tau_1 - tau_2;
+//             const double delta_x_min = (t_b - t_a) * v_min_val * 0.5 + tau_1 + tau_2;
+
+//             if (delta_x > delta_x_max + EPS || delta_x < delta_x_min - EPS) return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
+
+//             if (delta_x < delta_t * std::min(v_start, v_end) + (v_start - v_end)*(v_start - v_end) / a_max_2) {
+//                 double z = std::sqrt((delta_x - delta_x_min) * a_max);
+//                 double t_delta_min_v = (t_a + t_b) * 0.5;
+//                 v_coast = v_min_val + z;
+//                 t1 = t_delta_min_v - z * a_max_inv;
+//                 t2 = t_delta_min_v + z * a_max_inv;
+//             } else if (delta_x > delta_t * std::max(v_start, v_end) - (v_start - v_end)*(v_start - v_end) / a_max_2) {
+//                 double z = std::sqrt((delta_x_max - delta_x) * a_max);
+//                 v_coast = v_max_val - z;
+//                 double t_delta_max_v = (v_max_val - v_start) * a_max_inv;
+//                 t1 = t_delta_max_v - z * a_max_inv;
+//                 t2 = t_delta_max_v + z * a_max_inv;
+//             } else {
+//                  if (tau_1 < tau_2) {
+//                     v_coast = (delta_x + tau_1 - tau_2) / (t_b + t_a);
+//                     t1 = (v_coast - v_start) * a_max_inv;
+//                     t2 = t_b + v_coast * a_max_inv;
+//                 } else {
+//                     v_coast = (delta_x - tau_1 + tau_2) / (2.0 * delta_t - t_a - t_b);
+//                     t1 = (v_start - v_coast) * a_max_inv;
+//                     t2 = delta_t - (v_coast - v_end) * a_max_inv;
+//                 }
+//             }
+//         } else { // Scenario 2: Overlapping velocity profiles
+//             double t_v_max = (v_max_val - v_start) * a_max_inv;
+//             double delta_x_max = v_max_val * delta_t - (v_max_val - v_start)*(v_max_val - v_start) / a_max_2 - (v_max_val - v_end)*(v_max_val - v_end) / a_max_2;
+//             if (delta_x > delta_x_max + EPS) return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
+
+//             double delta_x_min = -(t_a - t_b) * v_min_val * 0.5 + tau_1 + tau_2;
+//             if(delta_x < delta_x_min - EPS) return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
+            
+//             double tau_3 = (v_min_val * v_min_val) / a_max;
+//             if (delta_x < tau_1 + tau_2 - tau_3) return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
+            
+//             if ((tau_1 < tau_2 && delta_x <= tau_1 + tau_2 + t_b * v_start) || (tau_2 <= tau_1 && delta_x <= tau_1 + tau_2 + (delta_t - t_a) * v_end)) {
+//                 double z = std::sqrt((delta_x - tau_1 - tau_2 + tau_3) * a_max);
+//                 v_coast = (t_a - t_b) * 0.5 * a_max + z;
+//                 t1 = (t_a + t_b) * 0.5 - z * a_max_inv;
+//                 t2 = (t_a + t_b) * 0.5 + z * a_max_inv;
+//             } else if (delta_x < delta_t * std::max(v_end, v_start) - (v_end-v_start)*(v_end-v_start)/a_max_2) {
+//                 if(tau_1 < tau_2) {
+//                     double x_i = t_b + v_start * a_max_inv;
+//                     double z = (delta_x - tau_1 - tau_2 - v_start*t_b) / x_i;
+//                     v_coast = v_start + z;
+//                     t1 = z * a_max_inv;
+//                     t2 = z * a_max_inv + x_i;
+//                 } else {
+//                     double x_i = delta_t - (t_a - v_end * a_max_inv);
+//                     double z = (delta_x - tau_1 - tau_2 - (delta_t-t_a)*v_end) / x_i;
+//                     v_coast = v_end + z;
+//                     t1 = delta_t - z * a_max_inv - x_i;
+//                     t2 = delta_t - z * a_max_inv;
+//                 }
+//             } else {
+//                 double z = std::sqrt((delta_x_max - delta_x) * a_max);
+//                 v_coast = v_max_val - z;
+//                 t1 = t_v_max - z * a_max_inv;
+//                 t2 = t_v_max + z * a_max_inv;
+//             }
+//         }
+//     } 
+//     // --- CASE B: Final velocity is negative (after potential flip) ---
+//     else { 
+//         const double tau_1 = (v_start * v_start) / a_max_2;
+//         const double t_a = v_start * a_max_inv;
+//         const double tau_2_abs_v_end = (v_end * v_end) / a_max_2;
+//         const double t_b = delta_t + v_end * a_max_inv;
+            
+//         const double delta_x_max = (t_a + t_b) * v_max_val * 0.5 - tau_1 - tau_2_abs_v_end;
+//         const double delta_x_min = (2.0 * delta_t - t_b - t_a) * v_min_val * 0.5 + tau_1 + tau_2_abs_v_end;
+
+//         if (delta_x > delta_x_max + EPS || delta_x < delta_x_min - EPS) return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
+         
+//         if (delta_x < tau_1 - tau_2_abs_v_end + v_end * (t_b - t_a)) {
+//             double z = std::sqrt((delta_x - delta_x_min) * a_max);
+//             double t_delta_min_v = (v_start - v_min_val) * a_max_inv;
+//             v_coast = v_min_val + z;
+//             t1 = t_delta_min_v - z * a_max_inv;
+//             t2 = t_delta_min_v + z * a_max_inv;
+//         } else if (delta_x < tau_1 - tau_2_abs_v_end + v_start * (delta_t + (v_end - v_start) * a_max_inv)) {
+//             v_coast = (delta_x - tau_1 + tau_2_abs_v_end) / (t_b - t_a);
+//             t1 = t_a - v_coast * a_max_inv;
+//             t2 = t_b - v_coast * a_max_inv;
+//         } else { 
+//             double z = std::sqrt((delta_x_max - delta_x) * a_max);
+//             double t_delta_max_v = (v_max_val - v_start) * a_max_inv;
+//             v_coast = v_max_val - z;
+//             t1 = t_delta_max_v - z * a_max_inv;
+//             t2 = t_delta_max_v + z * a_max_inv;
+//         }
+//     }
+
+//     // --- Final Validation and Result Assembly ---
+//     if (t1 < -EPS || t1 > delta_t + EPS || t2 < -EPS || t2 > delta_t + EPS || t1 > t2 + EPS) {
+//         return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
+//     }
+    
+//     double dt1 = t1;
+//     double dt2 = delta_t - t2;
+//     // Prevent division by zero for instantaneous maneuvers.
+//     if (std::abs(dt1) < EPS) dt1 = EPS;
+//     if (std::abs(dt2) < EPS) dt2 = EPS;
+
+//     // Clamp acceleration to its maximum allowed value.
+//     double a1 = std::clamp((v_coast - v_start) / dt1, -a_max, a_max);
+//     double a2 = std::clamp((v_end - v_coast) / dt2, -a_max, a_max);
+    
+//     Eigen::VectorXd result(5);
+//     if (flip_flag) {
+//         result << t1 + t_start, t2 + t_start, -a1, -a2, -v_coast;
+//     } else {
+//         result << t1 + t_start, t2 + t_start, a1, a2, v_coast;
+//     }
+//     return result;
+// }
+
+
 // Implements Julia's steering_ND
 /*
     solves the ND steering function for the two point bouandary value problem
@@ -416,6 +585,112 @@ ThrusterSteerStateSpace::NDSteeringResult ThrusterSteerStateSpace::steeringND(
     result.A = A_interleaved; 
     return result;
 }
+
+
+
+
+
+
+// //optimized with parallel openMP --> not giving any gain!
+// ThrusterSteerStateSpace::NDSteeringResult ThrusterSteerStateSpace::steeringND(
+//     const Eigen::VectorXd& x_start, const Eigen::VectorXd& x_end,
+//     const Eigen::VectorXd& v_start, const Eigen::VectorXd& v_end,
+//     double t_start, double t_end, const Eigen::VectorXd& a_max_vec) const {
+
+//     int D_spatial = x_start.size();
+//     NDSteeringResult result;
+//     result.success = true; // Assume success, set to false on failure
+//     const double EPS = 1e-9;
+
+//     Eigen::MatrixXd raw_t(2, D_spatial);
+//     Eigen::MatrixXd raw_a_vals(3, D_spatial);
+
+//     // This loop is the performance bottleneck. We parallelize it using OpenMP.
+//     // Each dimension is an independent problem, so this is a safe and effective optimization.
+//     #pragma omp parallel for
+//     for (int d = 0; d < D_spatial; ++d) {
+//         // If another thread has already failed, no need to compute further.
+//         if (!result.success) continue;
+
+//         Eigen::VectorXd rets1D = steering1D(x_start[d], x_end[d], v_start[d], v_end[d], t_start, t_end, a_max_vec[d]);
+        
+//         if (rets1D.hasNaN()) {
+//             // Use a critical section to safely write to the shared 'success' flag from multiple threads.
+//             #pragma omp critical
+//             {
+//                 result.success = false;
+//             }
+//         } else {
+//             // This write is safe because each thread 'd' writes to its own column.
+//             raw_t.col(d) = rets1D.head<2>();
+//             raw_a_vals.col(d) << rets1D[2], rets1D[4], rets1D[3]; // a1, v_coast, a2
+//         }
+//     }
+
+//     if (!result.success) {
+//         return result; // Return immediately if any 1D problem failed.
+//     }
+
+//     // --- Interleave time points from all dimensions to create a unified trajectory ---
+//     std::set<double> unique_times_set;
+//     unique_times_set.insert(t_start);
+//     unique_times_set.insert(t_end);
+//     for (int d = 0; d < D_spatial; ++d) {
+//         if (raw_t(0, d) > t_start + EPS && raw_t(0, d) < t_end - EPS) unique_times_set.insert(raw_t(0, d));
+//         if (raw_t(1, d) > t_start + EPS && raw_t(1, d) < t_end - EPS) unique_times_set.insert(raw_t(1, d));
+//     }
+
+//     std::vector<double> unique_times_vec(unique_times_set.begin(), unique_times_set.end());
+//     Eigen::VectorXd Time_interleaved = Eigen::VectorXd::Map(unique_times_vec.data(), unique_times_vec.size());
+    
+//     long num_interleaved_points = Time_interleaved.size();
+//     Eigen::MatrixXd X_interleaved(num_interleaved_points, D_spatial);
+//     Eigen::MatrixXd V_interleaved(num_interleaved_points, D_spatial);
+//     Eigen::MatrixXd A_interleaved(num_interleaved_points - 1, D_spatial);
+
+//     // --- Propagate state through the interleaved time points ---
+//     for (int d = 0; d < D_spatial; ++d) {
+//         double current_x = x_start[d];
+//         double current_v = v_start[d];
+//         double t1_dim = raw_t(0, d);
+//         double t2_dim = raw_t(1, d);
+//         double a1_dim = raw_a_vals(0, d);
+//         double a2_dim = raw_a_vals(2, d);
+
+//         for (long i = 1; i < num_interleaved_points; ++i) {
+//             double t_prev = Time_interleaved[i-1];
+//             double t_curr = Time_interleaved[i];
+//             double dt = t_curr - t_prev;
+
+//             double a_current_segment;
+//             if (t_prev >= t2_dim - EPS) a_current_segment = a2_dim;
+//             else if (t_prev >= t1_dim - EPS) a_current_segment = 0.0;
+//             else a_current_segment = a1_dim;
+            
+//             if (i == 1) { // Set initial state at t_start
+//                 X_interleaved(0, d) = x_start[d];
+//                 V_interleaved(0, d) = v_start[d];
+//             }
+            
+//             current_x += current_v * dt + 0.5 * a_current_segment * dt * dt;
+//             current_v += a_current_segment * dt;
+            
+//             X_interleaved(i, d) = current_x;
+//             V_interleaved(i, d) = current_v;
+//             A_interleaved(i-1, d) = a_current_segment;
+//         }
+//     }
+    
+//     result.Time = Time_interleaved;
+//     result.X = X_interleaved;
+//     result.V = V_interleaved;
+//     result.A = A_interleaved; 
+//     return result;
+// }
+
+
+
+
 
 // Implements Julia's fineGrain
 std::tuple<Eigen::VectorXd, Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd>

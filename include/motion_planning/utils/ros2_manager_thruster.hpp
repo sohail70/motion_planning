@@ -135,28 +135,51 @@ private:
     bool is_path_set_;
     Eigen::VectorXd current_interpolated_state_;
 
+
     void visualizationLoop() {
+        // This loop is only needed for the full manager, but must exist.
         if (!obstacle_checker_ || !visualizer_) return;
         
+        // Attempt to cast to the Gazebo-specific checker to get obstacle details
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
         if (!gazebo_checker) return;
 
+        // Get the latest obstacle information
         const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
         
+        // Prepare containers for visualization data
         std::vector<Eigen::VectorXd> cylinder_obstacles;
         std::vector<double> cylinder_radii;
+        std::vector<Eigen::Vector2d> dynamic_obstacle_positions;
+        std::vector<Eigen::Vector2d> dynamic_obstacle_velocities;
 
+        // Process each obstacle to sort it for visualization
         for (const auto& obstacle : all_obstacles) {
             if (obstacle.type == Obstacle::CIRCLE) {
                 Eigen::VectorXd vec(2);
                 vec << obstacle.position.x(), obstacle.position.y();
                 cylinder_obstacles.push_back(vec);
-                cylinder_radii.push_back(obstacle.dimensions.radius);
+                cylinder_radii.push_back(obstacle.dimensions.radius); // Using base radius for visualization
+            }
+            
+            // Collect data for velocity arrows for dynamic obstacles
+            if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
+                dynamic_obstacle_positions.push_back(obstacle.position);
+                dynamic_obstacle_velocities.push_back(obstacle.velocity);
             }
         }
 
+        // Send data to the visualizer
         if (!cylinder_obstacles.empty()) {
             visualizer_->visualizeCylinder(cylinder_obstacles, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "obstacles");
+        }
+        if (!dynamic_obstacle_positions.empty()) {
+            visualizer_->visualizeVelocityVectors(
+                dynamic_obstacle_positions, 
+                dynamic_obstacle_velocities, 
+                "map", 
+                {1.0f, 0.5f, 0.0f}, // Orange color for velocity
+                "velocity_vectors");
         }
     }
 
@@ -241,10 +264,10 @@ private:
         
         visualizer_->visualizeRobotArrow(new_pos, robot_orientation_quat, "map", {0.8f, 0.1f, 0.8f}, "simulated_robot");
         
-        // Add to the robot's trace for visualization
-        if (robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - new_pos).norm() > 0.1) {
-             robot_spatial_trace_.push_back(new_pos);
-        }
-        visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 0.5f, 0.0f}, "robot_trace");
+        // // Add to the robot's trace for visualization
+        // if (robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - new_pos).norm() > 0.1) {
+        //      robot_spatial_trace_.push_back(new_pos);
+        // }
+        // visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 0.5f, 0.0f}, "robot_trace");
     }
 };

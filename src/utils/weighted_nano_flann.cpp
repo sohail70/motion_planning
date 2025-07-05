@@ -64,10 +64,10 @@ void WeightedNanoFlann::addPoints(const Eigen::MatrixXd& states) {
         scaled_states.row(i) = states.row(i).cwiseProduct(weights_.transpose());
     }
     rawTree_.addPoints(scaled_states);
-    std::cout<<"------------- \n";
-    std::cout<<unscaled_data_<<"\n";
-    std::cout<<"------------- \n";
-    std::cout<<scaled_states<<"\n";
+    // std::cout<<"------------- \n";
+    // std::cout<<unscaled_data_<<"\n";
+    // std::cout<<"------------- \n";
+    // std::cout<<scaled_states<<"\n";
 }
 
 // --- Core Search Logic with Ghost Points ---
