@@ -65,6 +65,18 @@ public:
     void setTimeToGoal(double time) noexcept;
 
 
+
+    // NEW: Distinct accessors for forward and backward neighbors
+    NeighborMap& forwardNeighbors() noexcept { return forward_neighbors_; }
+    const NeighborMap& forwardNeighbors() const noexcept { return forward_neighbors_; }
+    
+    NeighborMap& backwardNeighbors() noexcept { return backward_neighbors_; }
+    const NeighborMap& backwardNeighbors() const noexcept { return backward_neighbors_; }
+
+    bool isNeighborsCached() const { return neighbors_cached_; }
+
+
+
     bool in_queue_;
     size_t heap_index_;  // Tracks position in the priority queue
 
@@ -88,6 +100,11 @@ public:
 private:
     std::shared_ptr<State> state_;
     NeighborMap neighbors_;
+
+    // REPLACED the single 'neighbors_' map
+    NeighborMap forward_neighbors_;  // Nodes reachable FROM this node
+    NeighborMap backward_neighbors_; // Nodes that can reach this node
+
     double cost_; // This is optimization cost
     double time_to_goal_; // This is the pure accumulated time
     int index_;

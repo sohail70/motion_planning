@@ -258,6 +258,7 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
     traj.cost = std::sqrt(std::pow(traj.time_duration, 2) +
                           std::pow(spatial_distance, 2));
 
+    traj.geometric_distance = spatial_distance;
     // Provide the start and end states for the collision checker.
     traj.path_points.push_back(from);
     traj.path_points.push_back(to);
@@ -273,6 +274,122 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
     
     return traj;
 }
+
+//calc T based on V
+// Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
+//                                 const Eigen::VectorXd& to) const
+// {
+//     Trajectory traj;
+//     traj.is_valid = false;
+
+//     // --- 1) Extract only the spatial parts
+//     const Eigen::VectorXd from_spatial = from.head(euclidean_dim_);
+//     const Eigen::VectorXd to_spatial   = to.head(euclidean_dim_);
+
+//     // --- 2) Straight‐line distance in space
+//     double spatial_distance = (to_spatial - from_spatial).norm();
+//     if (spatial_distance < 1e-9) {
+//         // trivial zero‐length segment
+//         traj.is_valid      = true;
+//         traj.time_duration = 0.0;
+//         traj.cost          = 0.0;
+//         return traj;
+//     }
+
+//     // --- 3) Compute the time it *must* take at max speed
+//     double dt = spatial_distance / max_velocity_;
+
+//     // If you also have a minimum speed, you can enforce:
+//     if (dt * max_velocity_ < spatial_distance - 1e-6 ||
+//         dt * min_velocity_ > spatial_distance + 1e-6) {
+//         // unreachable within your velocity bounds
+//         return traj;
+//     }
+
+//     // --- 4) Build the valid trajectory
+//     traj.is_valid      = true;
+//     traj.time_duration = dt;
+//     // Cost = time (you can combine with distance or energy if desired)
+//     traj.cost          = std::sqrt(dt*dt+spatial_distance*spatial_distance);
+
+//     traj.geometric_distance = spatial_distance;
+//     traj.path_points.push_back(from);   // full state, time ignored
+//     traj.path_points.push_back(to);
+
+//     // One analytic line segment for collision checking
+//     traj.analytical_segments.clear();
+//     traj.analytical_segments.push_back({
+//         .type        = SegmentType::LINE,
+//         .duration    = dt,
+//         .start_point = from_spatial,
+//         .end_point   = to_spatial
+//     });
+
+//     return traj;
+// }
+
+
+// // steer function with "Optimal Steering"
+// /*
+//  In the new, more powerful model, you cannot know the time-to-go for a child node until you have selected its optimal parent and calculated the optimal dt to connect to it.
+// */
+// Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from_spatial,
+//                                 const Eigen::VectorXd& to_spatial) const
+// {
+//     Trajectory traj;
+//     traj.is_valid = false;
+
+//     double d = (to_spatial - from_spatial).norm();
+//     if (d < 1e-6) {
+//         // Trivial connection to the same point
+//         traj.is_valid = true;
+//         traj.time_duration = 0.0;
+//         traj.cost = 0.0;
+//         traj.path_points.push_back(from_spatial);
+//         traj.path_points.push_back(to_spatial);
+//         return traj;
+//     }
+
+//     // --- Optimal Time Calculation based on J(t) = α*t + β*(d²/t) ---
+//     const double alpha = 1.0; // Weight for time duration
+//     const double beta = 0.1;  // Weight for control effort (velocity squared). Tune this!
+
+//     // 1. Calculate the unconstrained optimal time
+//     double t_unconstrained = d * std::sqrt(beta / alpha);
+
+//     // 2. Define the feasible time interval based on physical velocity limits
+//     double t_min_feasible = d / max_velocity_;
+//     double t_max_feasible = (min_velocity_ > 1e-6) ? (d / min_velocity_) : std::numeric_limits<double>::infinity();
+
+//     // 3. Clamp the optimal time to the feasible range
+//     double t_optimal = std::clamp(t_unconstrained, t_min_feasible, t_max_feasible);
+
+//     if (std::isinf(t_optimal)) {
+//         return traj; // Connection is impossible
+//     }
+
+//     // --- Build the valid trajectory ---
+//     traj.is_valid = true;
+//     traj.time_duration = t_optimal;
+//     traj.cost = alpha * t_optimal + beta * (d*d / t_optimal);
+//     traj.geometric_distance = d;
+
+//     // The path points now only contain spatial information
+//     traj.path_points.push_back(from_spatial);
+//     traj.path_points.push_back(to_spatial);
+    
+//     // The analytical segment for the collision checker
+//     traj.analytical_segments.clear();
+//     traj.analytical_segments.push_back({
+//         .type = SegmentType::LINE,
+//         .duration = t_optimal,
+//         .start_point = from_spatial,
+//         .end_point = to_spatial
+//     });
+    
+//     return traj;
+// }
+
 
 
 // For state types, we can just reuse EuclideanState.

@@ -11,13 +11,13 @@ using namespace gz;
 using namespace sim;
 using namespace systems;
 
-class MoverPlugin : public System,
+class MoverPluginC : public System,
                       public ISystemConfigure,
                       public ISystemPreUpdate
 {
 public:
-    MoverPlugin() = default;
-    ~MoverPlugin() override = default;
+    MoverPluginC() = default;
+    ~MoverPluginC() override = default;
 
     void Configure(const Entity &_entity,
                    const std::shared_ptr<const sdf::Element> &_sdf,
@@ -26,14 +26,14 @@ public:
     {
         // Parse required link name
         if (!_sdf->HasElement("link_name")) {
-            gzerr << "MoverPlugin: Missing required parameter <link_name>\n";
+            gzerr << "MoverPluginC: Missing required parameter <link_name>\n";
             return;
         }
         std::string linkName = _sdf->Get<std::string>("link_name");
 
         Model model(_entity);
         if (!model.Valid(_ecm)) {
-            gzerr << "MoverPlugin must be attached to a model entity.\n";
+            gzerr << "MoverPluginC must be attached to a model entity.\n";
             return;
         }
 
@@ -60,7 +60,7 @@ public:
         this->endPoint = this->startPoint + this->direction * this->amplitude;
         this->currentTarget = this->endPoint;
 
-        gzmsg << "MoverPlugin (Constant Velocity Mode) configured for link '" << linkName
+        gzmsg << "MoverPluginC (Constant Velocity Mode) configured for link '" << linkName
               << "': amplitude=" << this->amplitude
               << ", velocity=" << this->velocity
               << ", direction=" << this->direction << "\n";
@@ -116,11 +116,11 @@ private:
 
 // Register the plugin
 GZ_ADD_PLUGIN(
-    MoverPlugin,
+    MoverPluginC,
     System,
-    MoverPlugin::ISystemConfigure,
-    MoverPlugin::ISystemPreUpdate
+    MoverPluginC::ISystemConfigure,
+    MoverPluginC::ISystemPreUpdate
 )
 
 // Optional: Alias for ease of use
-GZ_ADD_PLUGIN_ALIAS(MoverPlugin, "gz::sim::systems::MoverPlugin")
+GZ_ADD_PLUGIN_ALIAS(MoverPluginC, "gz::sim::systems::MoverPluginC")

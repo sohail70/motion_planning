@@ -28,6 +28,7 @@ public:
     std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const override;
     bool isValid(const std::shared_ptr<State>& state) const override;
 
+
     // The main steering function for the 3rd-order thruster
     // from: [x, y, z, vx, vy, vz, t_start]
     // to:   [x, y, z, vx, vy, vz, t_end]
@@ -54,6 +55,8 @@ public:
     std::tuple<Eigen::VectorXd, Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd>
     fineGrain(const Eigen::VectorXd& Time_raw, const Eigen::MatrixXd& A_raw,
               const Eigen::MatrixXd& V_raw, const Eigen::MatrixXd& X_raw, double dt_res) const;
+    
+    double getGeometricDistance(const NDSteeringResult& result) const;
 private:
     double max_acceleration_; // Maximum absolute acceleration per dimension
     Eigen::VectorXd weights_; // To balance

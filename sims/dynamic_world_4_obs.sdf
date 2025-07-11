@@ -52,7 +52,7 @@
     </visual>
     </link>
 
-    <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
         <link_name>moving_link</link_name>
         <direction>0 1 0</direction>  <!-- Move along x-axis -->
         <amplitude>40.0</amplitude>    <!-- 0.5 meters -->
@@ -70,7 +70,7 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
     <link_name>moving_link</link_name>
     <direction>-1 0 0</direction>
     <amplitude>40.0</amplitude>
@@ -88,7 +88,7 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
     <link_name>moving_link</link_name>
     <direction>0.707 0.707 0</direction>
     <amplitude>40.0</amplitude>
@@ -105,7 +105,7 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
     <link_name>moving_link</link_name>
     <direction>1 0 0</direction>
     <amplitude>40.0</amplitude>

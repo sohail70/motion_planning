@@ -93,6 +93,8 @@ class KinodynamicFMTX : public Planner {
             }
 
 
+            void printCacheStatus() const;
+
 
 
             

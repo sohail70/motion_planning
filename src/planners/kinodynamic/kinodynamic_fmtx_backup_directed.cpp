@@ -805,8 +805,6 @@ void KinodynamicFMTX::near(int node_index) {
         // Test FORWARD connection: node -> neighbor
         Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
         if (traj_forward.is_valid && traj_forward.cost < neighborhood_radius_) {
-        // if (traj_forward.is_valid ) { // I think we already doing radiusSeach (even though d is an approximation on d_pi) so no need for traj cost <= rn check
-        // if (traj_forward.is_valid) {
             // If we can go from node to neighbor:
             // - neighbor is in node's forward set
             // - node is in neighbor's backward set
@@ -820,7 +818,6 @@ void KinodynamicFMTX::near(int node_index) {
         Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
 
         if (traj_backward.is_valid && traj_backward.cost < neighborhood_radius_) {
-        // if (traj_backward.is_valid ) {
             // If we can go from neighbor to node:
             // - node is in neighbor's backward set
             // - neighbor is in node's forward set
@@ -1075,8 +1072,6 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
         But maybe its best to calc it i don't know if the trade off in the findsamples and the cascading calculation after ward will help the overall performance 
         or not but i suspect it does. but for now i do not consider this!
-
-        mind that in kinodynamic case this is not the case i guess unless you put some constraint that the cost of the traj is not more that neighborhood radius
     
     */
     max_length = 2 * neighborhood_radius_; // At first Static plan we don't have max_length --> either do this or do a static plan
@@ -1094,58 +1089,58 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     // auto [current, direct] = findSamplesNearObstaclesDual(obstacles, max_length);
 
 
-    // // --- START OF NEW FILTERING LOGIC ---
-    // // This is the narrow-phase check to refine the 'current' set.
-    // // We iterate through the potentially conflicting nodes and remove any whose
-    // // connection to their parent is actually still safe.
-    // for (auto it = current.begin(); it != current.end(); ) {
-    //     int node_index = *it;
-    //     auto node = tree_[node_index].get();
-    //     auto parent = node->getParent();
+    // --- START OF NEW FILTERING LOGIC ---
+    // This is the narrow-phase check to refine the 'current' set.
+    // We iterate through the potentially conflicting nodes and remove any whose
+    // connection to their parent is actually still safe.
+    for (auto it = current.begin(); it != current.end(); ) {
+        int node_index = *it;
+        auto node = tree_[node_index].get();
+        auto parent = node->getParent();
 
-    //     // If the node has no parent, it's an orphan or the root.
-    //     // It's definitely in a state of conflict or change, so we must keep it.
-    //     if (!parent) {
-    //         ++it;
-    //         continue;
-    //     }
+        // If the node has no parent, it's an orphan or the root.
+        // It's definitely in a state of conflict or change, so we must keep it.
+        if (!parent) {
+            ++it;
+            continue;
+        }
 
-    //     // The trajectory from this node to its parent defines its connection to the tree.
-    //     Trajectory traj_to_parent;
-    //     // auto& neighbors = node->neighbors();
-    //     auto& neighbors = node->forwardNeighbors(); // the trajectory from a child to its parent is stored in the child's forwardNeighbors
-    //     auto neighbor_it = neighbors.find(parent);
+        // The trajectory from this node to its parent defines its connection to the tree.
+        Trajectory traj_to_parent;
+        // auto& neighbors = node->neighbors();
+        auto& neighbors = node->forwardNeighbors(); // the trajectory from a child to its parent is stored in the child's forwardNeighbors
+        auto neighbor_it = neighbors.find(parent);
 
-    //     // Ensure the trajectory has been computed. If not, compute and cache it.
-    //     if (neighbor_it != neighbors.end() && neighbor_it->second.is_trajectory_computed) {
-    //         traj_to_parent = neighbor_it->second.cached_trajectory;
-    //     } else {
-    //         traj_to_parent = statespace_->steer(node->getStateValue(), parent->getStateValue());
-    //         if (neighbor_it != neighbors.end()) {
-    //             neighbor_it->second.cached_trajectory = traj_to_parent;
-    //             neighbor_it->second.is_trajectory_computed = true;
-    //         }
-    //     }
+        // Ensure the trajectory has been computed. If not, compute and cache it.
+        if (neighbor_it != neighbors.end() && neighbor_it->second.is_trajectory_computed) {
+            traj_to_parent = neighbor_it->second.cached_trajectory;
+        } else {
+            traj_to_parent = statespace_->steer(node->getStateValue(), parent->getStateValue());
+            if (neighbor_it != neighbors.end()) {
+                neighbor_it->second.cached_trajectory = traj_to_parent;
+                neighbor_it->second.is_trajectory_computed = true;
+            }
+        }
 
-    //     // If the trajectory is geometrically invalid, the edge is broken. Keep the node.
-    //     if (!traj_to_parent.is_valid) {
-    //         ++it;
-    //         continue;
-    //     }
+        // If the trajectory is geometrically invalid, the edge is broken. Keep the node.
+        if (!traj_to_parent.is_valid) {
+            ++it;
+            continue;
+        }
 
-    //     // Check if this specific trajectory is safe against dynamic obstacles.
-    //     // We use a heuristic start time of 'now' since we are reacting to a current obstacle update.
-    //     const double global_start_time_heuristic = clock_->now().seconds();
-    //     if (obs_checker_->isTrajectorySafe(traj_to_parent, global_start_time_heuristic)) {
-    //         // The connection to the parent is SAFE. This node is not in immediate conflict
-    //         // via its tree connection. Therefore, we can filter it out (erase it).
-    //         it = current.erase(it);
-    //     } else {
-    //         // The connection to the parent is NOT safe. Keep this node in the set.
-    //         ++it;
-    //     }
-    // }
-    // // --- END OF NEW FILTERING LOGIC ---
+        // Check if this specific trajectory is safe against dynamic obstacles.
+        // We use a heuristic start time of 'now' since we are reacting to a current obstacle update.
+        const double global_start_time_heuristic = clock_->now().seconds();
+        if (obs_checker_->isTrajectorySafe(traj_to_parent, global_start_time_heuristic)) {
+            // The connection to the parent is SAFE. This node is not in immediate conflict
+            // via its tree connection. Therefore, we can filter it out (erase it).
+            it = current.erase(it);
+        } else {
+            // The connection to the parent is NOT safe. Keep this node in the set.
+            ++it;
+        }
+    }
+    // --- END OF NEW FILTERING LOGIC ---
 
 
 
@@ -1178,18 +1173,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
 
 
-    if (current == samples_in_obstacles_ && current.size()!=tree_.size()) return false; // Early exit if nothing has changed
-
-    bool force_repair = false;
-    // Heuristic: If the set of nodes near obstacles contains nearly every node in the tree,
-    // we should force a full re-check to handle potential obstacle movement within this large set.
-    // Using a threshold like 90% is safer than an exact '==' check.
-    /*
-        My reason is if current is all of the nodes then samples_in_obstalces (prev) and current would make the addNewObstalce and etc to get skipped
-    */
-    if (current.size() >= tree_.size() * 0.9) {
-        force_repair = true;
-    }
+    if (current == samples_in_obstacles_) return false; // Early exit if nothing has changed
 
     std::vector<int> added, removed;
     std::vector<int> cur, prev;
@@ -1208,14 +1192,14 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     }
 
     if (ignore_sample) {
-        if (!added.empty() || force_repair) handleAddedObstacleSamples(added);
-        if (!removed.empty() || force_repair ) handleRemovedObstacleSamples(removed);
+        if (!added.empty()) handleAddedObstacleSamples(added);
+        if (!removed.empty()) handleRemovedObstacleSamples(removed);
         samples_in_obstacles_ = std::move(current);
 
 
     } else {
-        if (!cur.empty() || force_repair) handleAddedObstacleSamples(cur);
-        if (!prev.empty() || force_repair) handleRemovedObstacleSamples(prev);
+        if (!cur.empty()) handleAddedObstacleSamples(cur);
+        if (!prev.empty()) handleRemovedObstacleSamples(prev);
         samples_in_obstacles_ = current;
 
     }
@@ -2806,9 +2790,9 @@ void KinodynamicFMTX::visualizeTree() {
 
 
     // Visualize all nodes that were sampled/loaded
-    // visualization_->visualizeNodes(tree_nodes, "map", 
-    //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
-    //                         "tree_nodes");
+    visualization_->visualizeNodes(tree_nodes, "map", 
+                            std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
+                            "tree_nodes");
     
     // Visualize the edges forming the connected tree
     visualization_->visualizeEdges(edges, "map");

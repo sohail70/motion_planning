@@ -129,9 +129,9 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
         marker.action = visualization_msgs::msg::Marker::ADD;
         marker.scale.x = 0.05; // Line width
         marker.color.r = 1.0;  // Red
-        marker.color.g = 0.0;  // Green
-        marker.color.b = 0.0;  // Blue
-        marker.color.a = 1.0;  // Fully opaque
+        marker.color.g = 1.0;  // Green
+        marker.color.b = 1.0;  // Blue
+        marker.color.a = 0.5;  // Fully opaque
 
         // Add edges to the marker
         for (const auto& edge : edges) {

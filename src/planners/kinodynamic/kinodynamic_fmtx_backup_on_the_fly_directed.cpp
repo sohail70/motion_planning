@@ -148,9 +148,6 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
 
-
-
-
     std::cout << "KDTree: \n\n";
     if (use_kdtree == true) {
         // // Put all the points at once because fmtx doesnt need incremental addition
@@ -179,8 +176,6 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
     }
 
-
-
     ///////////////////Neighborhood Radius////////////////////////////////
     int d = statespace_->getDimension();
     // mu = std::pow(problem_->getUpperBound()[0] - problem_->getLowerBound()[0] , 2);
@@ -196,62 +191,8 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     factor = params.getParam<double>("factor");
     std::cout<<"factor: "<<factor<<"\n";
     neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
-    // // neighborhood_radius_ = 15.0;
-
-//     ////////////////////////////////////////////////////////////////////////
-// // 1) State dims & controllability indices
-// int n = statespace_->getDimension();   // e.g. 3 (x,y,t)
-// double D = 2.0;                        // single integrator on x and y
-
-// // 2) Hybrid dim
-// double tildeD = 0.5 * (n + D);         // (3 + 2) / 2 = 2.5
-
-// // // 3) Volume of the *controllable* subspace (x,y)
-// // Eigen::Vector2d range_xy = upper_bounds_.head<2>() - lower_bounds_.head<2>();
-// // double mu = range_xy.prod();           // area
-// Eigen::Vector3d range = upper_bounds_ - lower_bounds_;  // includes time range
-// double mu = range.prod();  // e.g. (x_max–x_min)*(y_max–y_min)*(t_max–t_min)
-
-// // 4) Unit‐ball volume in 2D
-// double zeta = M_PI;                    // π·1²
-
-// // 5) Constant C = (µ / ζ)^(1/2)
-// double C = std::pow(mu / zeta, 1.0 / 2.0);
-
-// // 6) Tuning factor (1+η)^(1/˜D)
-// double eta = 0.5;                      // e.g. 10% inflation
-// double factor = std::pow(1.0 + eta, 1.0 / tildeD);
-
-// // 7) Sample count
-// double N = double(statespace_->getNumStates());
-
-// // 8) Final radius
-// neighborhood_radius_ =
-//     factor
-//   * C
-//   * std::pow(std::log(N) / N, 1.0 / tildeD);
-
-
-    /////////////////////////////////////////////////////////////////////////
+    // neighborhood_radius_ = 15.0;
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
-
-
-    // In complex state spaces with complex steer function its better to cache before leaving the robot in the wild!
-    if (params.getParam<bool>("precache_neighbors")){
-        std::cout << "Forcing neighbor caching for all " << tree_.size() << " nodes..." << std::endl;
-        auto cache_start = std::chrono::high_resolution_clock::now();
-
-        for (size_t i = 0; i < tree_.size(); ++i) {
-            near(i);
-        }
-
-        auto cache_end = std::chrono::high_resolution_clock::now();
-        auto cache_duration = std::chrono::duration_cast<std::chrono::milliseconds>(cache_end - cache_start);
-        std::cout << "Neighbor caching complete. Time taken: " << cache_duration.count() << " ms." << std::endl;
-    }
-
-
-
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Time taken by setup: " << duration.count() << " milliseconds\n";
@@ -260,252 +201,8 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
 
+
 }
-
-
-// void KinodynamicFMTX::plan() {
-
-//     //
-//     // ---> START OF NEW LOGIC <---
-//     //
-//     // 1. Get the current time ONCE at the beginning of the planning cycle.
-//     const double t_now = clock_->now().seconds();
-
-//     // 2. Get the current best time-to-go from the robot's anchor node.
-//     //    Use a large fallback if the path is not yet found.
-//     // const double best_known_time_to_goal = (robot_node_ && robot_node_->getTimeToGoal() != INFINITY)
-//     //                                        ? robot_node_->getTimeToGoal()
-//     //                                        : problem_->getGoal()(2); // Use initial time budget as fallback
-
-//     const double best_known_time_to_goal = robot_current_time_to_goal_;
-
-//     // 3. Calculate the single, predicted global time of arrival for this planning cycle.
-//     //    This provides a stable anchor for all time calculations within this plan() call.
-//     const double t_arrival_predicted = t_now + best_known_time_to_goal;
-//     //
-//     // ---> END OF NEW LOGIC <---
-//     //
-
-//     std::unordered_map<FMTNode*, bool> costUpdated;
-//     int checks = 0;
-//     while (!v_open_heap_.empty() &&
-//            (partial_update ? (v_open_heap_.top().first < robot_node_->getCost() ||
-//                                robot_node_->getCost() == INFINITY || robot_node_->in_queue_ == true) : true)) {
-
-//         // visualizeHeapAndUnvisited();
-//         // Get the node with the lowest cost from the priority queue.
-//         // FMTNode* z = v_open_heap_.top(); // .pop() also sets z->in_queue_ = false;
-
-//         auto top_element = v_open_heap_.top();
-//         double cost = top_element.first;  // Changed .min_key to .first
-//         FMTNode* z = top_element.second;  // Changed .index to .second
-//         int zIndex = z->getIndex();
-
-//         // Find neighbors for z if they haven't been found yet.
-//         near(z->getIndex());
-        
-//         // --- STAGE 1: IDENTIFY POTENTIALLY SUBOPTIMAL NEIGHBORS ---
-//         // Iterate through all neighbors 'x' of the expanding node 'z'.
-//         for (auto& [x, edge_info_from_z] : z->neighbors()) {
-//             // if (zIndex==2 && x->getIndex()==3){
-//             //     std::cout<<"here \n";
-//             //     std::cout<<"z: "<<z->getStateValue()<<"\n";
-//             //     std::cout<<"x: "<<x->getStateValue()<<"\n";
-//             // } 
-//             // The edge we care about is from child 'x' to parent 'z' in our backward search.
-//             // The authoritative trajectory is stored in the child's (x's) map for that edge.
-//             near(x->getIndex()); // Ensure x's neighbor map is initialized.
-//             auto& edge_info_from_x = x->neighbors().at(z);
-
-//             // Compute the kinodynamic path only once and cache it.
-//             if (!edge_info_from_x.is_trajectory_computed) {
-//                 edge_info_from_x.cached_trajectory = statespace_->steer(x->getStateValue(), z->getStateValue());
-//                 edge_info_from_x.is_trajectory_computed = true;
-//             }
-//             const Trajectory& traj_xz = edge_info_from_x.cached_trajectory;
-//             if (!traj_xz.is_valid) {
-//                 // std::cout<<"INVALID \n";
-//                 continue;
-//             }
-
-//             // --- THE TRIGGER CONDITION ---
-//             // Calculate the potential cost for 'x' if it were to connect through 'z'.
-//             double cost_via_z = z->getCost() + traj_xz.cost;
-//             // if (!traj_xz.is_valid){
-//             //     cost_via_z = z->getCost() + edge_info_from_z.distance;
-//             // } 
-//             // This condition is the core of FMTX. It serves two purposes:
-//             // 1. If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
-//             // 2. If x is already connected, this condition acts as a "witness" that a better path *might* exist.
-//             //    It proves x's current cost is suboptimal and justifies the more expensive search that follows.
-//             if (x->getCost() > cost_via_z) {
-//                 if (costUpdated[x]) {
-//                     // std::cout<<"Node " << x->getIndex() 
-//                     //     << " is about to be updated a second time! "
-//                     //     "previous cost = " << x->getCost() << "\n";
-                    
-//                     checks++;
-
-//                 } 
-//                 // --- STAGE 2: SEARCH FOR THE TRUE BEST PARENT ---
-//                 // 'x' is suboptimal. We now search for its true best parent among ALL its neighbors
-//                 // that are currently in the open set.
-//                 double min_cost_for_x = std::numeric_limits<double>::infinity();
-//                 FMTNode* best_parent_for_x = nullptr;
-//                 Trajectory best_traj_for_x;
-//                 // std::cout<<x->getIndex()<<"\n";
-//                 // if(x->getIndex()==3)
-//                 //     std::cout<<"\n";
-//                 // std::cout<<"----\n";
-//                 //////////////////////////NOT PARALLEL////////////////////////
-//                 for (auto& [y, edge_info_xy] : x->neighbors()) {
-//                     // std::cout<<y->getIndex()<<"\n";
-//                     // std::cout<<"----\n";
-//                     if (y->in_queue_) { // We only consider parents that are in V_open.
-//                         // Steer from child 'x' to potential parent 'y'. Reuse cached trajectory if possible.
-//                         if (!edge_info_xy.is_trajectory_computed) {
-//                             edge_info_xy.cached_trajectory = statespace_->steer(x->getStateValue(), y->getStateValue());
-//                             edge_info_xy.is_trajectory_computed = true;
-//                         }
-
-//                         if (edge_info_xy.cached_trajectory.is_valid) {
-//                             double cost_via_y = y->getCost() + edge_info_xy.cached_trajectory.cost;
-//                             if (cost_via_y < min_cost_for_x) {
-//                                 min_cost_for_x = cost_via_y;
-//                                 best_parent_for_x = y;
-//                                 best_traj_for_x = edge_info_xy.cached_trajectory;
-//                             }
-//                         }
-//                     }
-//                 }
-//                 // ////////////////////////PARALLEL/////////////////////////////////
-            
-
-
-//                 ////////////////////////////////////////////////////////////////
-
-
-
-
-//                 if (costUpdated[x]) {
-//                     // std::cout<<"Node " << x->getIndex() 
-//                     //     << "  updated a second time! "
-//                     //     "new cost = " << min_cost_for_x << "\n";
-//                 }
-
-//                 // --- STAGE 3: UPDATE (if a better parent was found) ---
-//                 if (best_parent_for_x != nullptr) {
-                    
-//                     double min_time_for_x = best_parent_for_x->getTimeToGoal() + best_traj_for_x.time_duration;
-
-
-
-//                     ///////////////////------------------
-//                     // Calculate the global time this edge is SCHEDULED to start, based on our fixed prediction.
-//                     const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
-
-
-
-//                     // The global start time for the edge x->y is based on the PURE time-to-goal
-//                     // double global_edge_start_time = t_arrival - min_time_for_x;
-
-//                     // // --- DEBUG BLOCK ---
-//                     // // You can uncomment this to see the data going into the check
-//                     // std::cout << "\n--- Checking Trajectory ---\n"
-//                     //           << "Edge: " << x->getIndex() << " -> " << best_parent_for_x->getIndex() << "\n"
-//                     //           << "Current Sim Time (t_now): " << t_now << "s\n"
-//                     //           << "Predicted Goal Arrival (t_arrival): " << t_arrival << "s\n"
-//                     //           << "Edge Time Duration: " << best_traj_for_x.time_duration << "s\n"
-//                     //           << "New Total Time-to-Goal for Node x: " << min_time_for_x << "s\n"
-//                     //           << "Calculated Edge Start Time (Global): " << global_edge_start_time << "s\n"
-//                     //           << "---------------------------\n";
-
-
-//                     // Perform the full predictive check with the CORRECT time context.
-//                     bool obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
-//                     // bool obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, t_now);
-
-//                     // // // /////////////////////////////////--------------
-
-//                     // bool obstacle_free = true; // ✅ Default to true
-
-//                     // // ✅ --- START OF THE OPTIMIZATION ---
-//                     // // Only perform the expensive predictive check if the node 'x' is on the relevant
-//                     // // future path of the robot. The robot_node_ stores the robot's current progress.
-//                     // // ✅ --- CORRECTED OPTIMIZATION ---
-//                     // // First, check if the robot has a valid, finite time-to-go.
-//                     // // Then, check if the node 'x' is on the relevant future path.
-//                     // if (robot_current_time_to_goal_ != std::numeric_limits<double>::infinity()) {
-                        
-//                     //     // Compare the node's potential time with the robot's ACTUAL current time
-//                     //     if (min_time_for_x < robot_current_time_to_goal_) {
-//                     //         // This is a relevant future edge, so we must check it for collisions.
-//                     //         const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
-//                     //         obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
-//                     //     }
-//                     //     // ELSE: The node is "behind" the robot in time.
-//                     //     // We skip the expensive check, and `obstacle_free` remains true.
-                        
-//                     // } else {
-//                     //     // Fallback: The robot has no valid time (e.g., at the very start).
-//                     //     // We must check all potential paths for safety.
-//                     //     const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
-//                     //     obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
-//                     // }
-
-//                     // // ELSE: The node 'x' is "behind" the robot in the time-to-go timeline.
-//                     // // We can skip the safety check, effectively treating the edge as safe
-//                     // // for the purpose of maintaining the graph structure, even though
-//                     // // the robot will never actually traverse it.
-//                     // // --- END OF THE OPTIMIZATION ---
-
-
-
-
-//                     // // ////////////////////------------------------
-
-
-                    
-
-//                     if (obstacle_free) {
-//                         costUpdated[x] = true;   // mark “done once”
-//                         // // The connection is valid and locally optimal. Update the tree and priority queue.
-//                         // std::cout<<"-------\n";
-//                         // std::cout<<"index: "<<x->getIndex()<<"\n";
-//                         // std::cout<<"state: "<<x->getStateValue()<<"\n";
-//                         // std::cout<<"cost: "<<min_cost_for_x<<"\n";
-//                         // std::cout<<"-------\n";
-//                         x->setCost(min_cost_for_x);
-//                         x->setParent(best_parent_for_x, best_traj_for_x.cost);
-//                         x->setTimeToGoal(min_time_for_x);
-
-//                         double h_value = use_heuristic ? heuristic(x->getIndex()) : 0.0;
-//                         double priorityCost = x->getCost() + h_value;
-
-//                         if (x->in_queue_) {
-//                             v_open_heap_.update(x, priorityCost);
-//                         } else {
-//                             v_open_heap_.add(x, priorityCost); // add() also sets in_queue_ = true
-//                         }
-//                     }
-//                 }
-//             } // End of STAGE 2/3 trigger
-//             // visualizeTree();
-//             // std::this_thread::sleep_for(std::chrono::milliseconds(200));
-//         } // End of STAGE 1 loop
-//         v_open_heap_.pop();
-//         // visualizeTree();
-//         // std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-//     } // End of while loop
-//     std::cout<<"REVISITS: "<<checks<<"\n";
-// }
-
-
-
-
-
-
 
 
 void KinodynamicFMTX::plan() {
@@ -549,12 +246,9 @@ void KinodynamicFMTX::plan() {
         // Find neighbors for z if they haven't been found yet.
         near(z->getIndex());
         
-            // std::cout << "[expand] z=" << zIndex << " cost=" << z->getCost()
-            // << "  |Near⁺|=" << z->forwardNeighbors().size() << "\n";
         // --- STAGE 1: IDENTIFY POTENTIALLY SUBOPTIMAL NEIGHBORS ---
         // Iterate through all neighbors 'x' of the expanding node 'z'.
-        for (auto& [x, edge_info_from_z] : z->backwardNeighbors()) {
-
+        for (auto& [x, edge_info_from_z] : z->neighbors()) {
             // if (zIndex==2 && x->getIndex()==3){
             //     std::cout<<"here \n";
             //     std::cout<<"z: "<<z->getStateValue()<<"\n";
@@ -563,8 +257,13 @@ void KinodynamicFMTX::plan() {
             // The edge we care about is from child 'x' to parent 'z' in our backward search.
             // The authoritative trajectory is stored in the child's (x's) map for that edge.
             near(x->getIndex()); // Ensure x's neighbor map is initialized.
-            auto& edge_info_from_x = x->forwardNeighbors().at(z);
+            auto& edge_info_from_x = x->neighbors().at(z);
 
+            // Compute the kinodynamic path only once and cache it.
+            if (!edge_info_from_x.is_trajectory_computed) {
+                edge_info_from_x.cached_trajectory = statespace_->steer(x->getStateValue(), z->getStateValue());
+                edge_info_from_x.is_trajectory_computed = true;
+            }
             const Trajectory& traj_xz = edge_info_from_x.cached_trajectory;
             if (!traj_xz.is_valid) {
                 // std::cout<<"INVALID \n";
@@ -601,10 +300,16 @@ void KinodynamicFMTX::plan() {
                 //     std::cout<<"\n";
                 // std::cout<<"----\n";
                 //////////////////////////NOT PARALLEL////////////////////////
-                for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
+                for (auto& [y, edge_info_xy] : x->neighbors()) {
                     // std::cout<<y->getIndex()<<"\n";
                     // std::cout<<"----\n";
                     if (y->in_queue_) { // We only consider parents that are in V_open.
+                        // Steer from child 'x' to potential parent 'y'. Reuse cached trajectory if possible.
+                        if (!edge_info_xy.is_trajectory_computed) {
+                            edge_info_xy.cached_trajectory = statespace_->steer(x->getStateValue(), y->getStateValue());
+                            edge_info_xy.is_trajectory_computed = true;
+                        }
+
                         if (edge_info_xy.cached_trajectory.is_valid) {
                             double cost_via_y = y->getCost() + edge_info_xy.cached_trajectory.cost;
                             if (cost_via_y < min_cost_for_x) {
@@ -614,7 +319,6 @@ void KinodynamicFMTX::plan() {
                             }
                         }
                     }
-                    
                 }
                 // ////////////////////////PARALLEL/////////////////////////////////
             
@@ -740,18 +444,6 @@ void KinodynamicFMTX::plan() {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 /*
     Near function at first uses kd tree and after that it caches node so it doesnt need to spend time on cache
     WHEN KD TREE PROVIDES DISTANCE WHY DO YOU CALC DISTS AGAIN IN BELOW! --> ALSO DO THIS FOR RRTX  ---->
@@ -771,87 +463,28 @@ void KinodynamicFMTX::plan() {
 // }
 
 
-// // Finds potential neighbors but does not calculate final cost.
-// void KinodynamicFMTX::near(int node_index) {
-//     auto node = tree_[node_index].get();
-//     if (node->neighbors_cached_) return;
-
-//     auto indices = kdtree_->radiusSearch(node->getStateValue().head(2), neighborhood_radius_);
-//     for (int idx : indices) {
-//         if (idx == node_index) continue;
-//         FMTNode* neighbor = tree_[idx].get();
-//         // Initialize EdgeInfo without a computed trajectory.
-//         // The geometric distance is just a placeholder.
-//         double geometric_dist = (node->getStateValue().head<2>() - neighbor->getStateValue().head<2>()).norm();
-        
-//         //IMPORTANT: mind that the geometric_dist we are saving to edge info is useless and also know that in RRTX IT SHOULD BE THE REAL COST NOT JUST THE GEOMETRIC
-//         // Symmetrically add neighbor relationship
-//         node->neighbors()[neighbor] = EdgeInfo{geometric_dist, geometric_dist, false, Trajectory(), false};
-//         neighbor->neighbors()[node] = EdgeInfo{geometric_dist, geometric_dist, false, Trajectory(), false};
-
-//     }
-//     node->neighbors_cached_ = true;
-// }
-
-
+// Finds potential neighbors but does not calculate final cost.
 void KinodynamicFMTX::near(int node_index) {
     auto node = tree_[node_index].get();
     if (node->neighbors_cached_) return;
-    auto candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(2), neighborhood_radius_);
-    for (int idx : candidate_indices) {
+
+    auto indices = kdtree_->radiusSearch(node->getStateValue().head(2), neighborhood_radius_);
+    for (int idx : indices) {
         if (idx == node_index) continue;
         FMTNode* neighbor = tree_[idx].get();
+        // Initialize EdgeInfo without a computed trajectory.
+        // The geometric distance is just a placeholder.
+        double geometric_dist = (node->getStateValue().head<2>() - neighbor->getStateValue().head<2>()).norm();
+        
+        //IMPORTANT: mind that the geometric_dist we are saving to edge info is useless and also know that in RRTX IT SHOULD BE THE REAL COST NOT JUST THE GEOMETRIC
+        // Symmetrically add neighbor relationship
+        node->neighbors()[neighbor] = EdgeInfo{geometric_dist, geometric_dist, false, Trajectory(), false};
+        neighbor->neighbors()[node] = EdgeInfo{geometric_dist, geometric_dist, false, Trajectory(), false};
 
-        // Test FORWARD connection: node -> neighbor
-        Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
-        if (traj_forward.is_valid && traj_forward.cost < neighborhood_radius_) {
-        // if (traj_forward.is_valid ) { // I think we already doing radiusSeach (even though d is an approximation on d_pi) so no need for traj cost <= rn check
-        // if (traj_forward.is_valid) {
-            // If we can go from node to neighbor:
-            // - neighbor is in node's forward set
-            // - node is in neighbor's backward set
-            
-            // FIX: Use brace initialization {} instead of parentheses ()
-            node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, false, traj_forward, true};
-            neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, false, traj_forward, true};
-        }
-
-        // Test BACKWARD connection: neighbor -> node
-        Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-
-        if (traj_backward.is_valid && traj_backward.cost < neighborhood_radius_) {
-        // if (traj_backward.is_valid ) {
-            // If we can go from neighbor to node:
-            // - node is in neighbor's backward set
-            // - neighbor is in node's forward set
-            
-            // FIX: Use brace initialization {} instead of parentheses ()
-            node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, false, traj_backward, true};
-            neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, false, traj_backward, true};
-        }
     }
     node->neighbors_cached_ = true;
 }
 
-
-
-void KinodynamicFMTX::printCacheStatus() const {
-    if (tree_.empty()) {
-        std::cout << "[CACHE STATUS] Tree is empty." << std::endl;
-        return;
-    }
-
-    size_t cached_count = 0;
-    for (const auto& node_ptr : tree_) {
-        if (node_ptr->isNeighborsCached()) {
-            cached_count++;
-        }
-    }
-
-    double percentage = 100.0 * static_cast<double>(cached_count) / tree_.size();
-    std::cout << "[CACHE STATUS] Cached Nodes: " << cached_count << " / " << tree_.size()
-              << " (" << std::fixed << std::setprecision(1) << percentage << "%)" << std::endl;
-}
 
 /*
     When an obstalce appears on some node we rely on the position of the obstalce and its radius to (D-ball containing that obstalce)
@@ -1075,8 +708,6 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
         But maybe its best to calc it i don't know if the trade off in the findsamples and the cascading calculation after ward will help the overall performance 
         or not but i suspect it does. but for now i do not consider this!
-
-        mind that in kinodynamic case this is not the case i guess unless you put some constraint that the cost of the traj is not more that neighborhood radius
     
     */
     max_length = 2 * neighborhood_radius_; // At first Static plan we don't have max_length --> either do this or do a static plan
@@ -1094,58 +725,57 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     // auto [current, direct] = findSamplesNearObstaclesDual(obstacles, max_length);
 
 
-    // // --- START OF NEW FILTERING LOGIC ---
-    // // This is the narrow-phase check to refine the 'current' set.
-    // // We iterate through the potentially conflicting nodes and remove any whose
-    // // connection to their parent is actually still safe.
-    // for (auto it = current.begin(); it != current.end(); ) {
-    //     int node_index = *it;
-    //     auto node = tree_[node_index].get();
-    //     auto parent = node->getParent();
+    // --- START OF NEW FILTERING LOGIC ---
+    // This is the narrow-phase check to refine the 'current' set.
+    // We iterate through the potentially conflicting nodes and remove any whose
+    // connection to their parent is actually still safe.
+    for (auto it = current.begin(); it != current.end(); ) {
+        int node_index = *it;
+        auto node = tree_[node_index].get();
+        auto parent = node->getParent();
 
-    //     // If the node has no parent, it's an orphan or the root.
-    //     // It's definitely in a state of conflict or change, so we must keep it.
-    //     if (!parent) {
-    //         ++it;
-    //         continue;
-    //     }
+        // If the node has no parent, it's an orphan or the root.
+        // It's definitely in a state of conflict or change, so we must keep it.
+        if (!parent) {
+            ++it;
+            continue;
+        }
 
-    //     // The trajectory from this node to its parent defines its connection to the tree.
-    //     Trajectory traj_to_parent;
-    //     // auto& neighbors = node->neighbors();
-    //     auto& neighbors = node->forwardNeighbors(); // the trajectory from a child to its parent is stored in the child's forwardNeighbors
-    //     auto neighbor_it = neighbors.find(parent);
+        // The trajectory from this node to its parent defines its connection to the tree.
+        Trajectory traj_to_parent;
+        auto& neighbors = node->neighbors();
+        auto neighbor_it = neighbors.find(parent);
 
-    //     // Ensure the trajectory has been computed. If not, compute and cache it.
-    //     if (neighbor_it != neighbors.end() && neighbor_it->second.is_trajectory_computed) {
-    //         traj_to_parent = neighbor_it->second.cached_trajectory;
-    //     } else {
-    //         traj_to_parent = statespace_->steer(node->getStateValue(), parent->getStateValue());
-    //         if (neighbor_it != neighbors.end()) {
-    //             neighbor_it->second.cached_trajectory = traj_to_parent;
-    //             neighbor_it->second.is_trajectory_computed = true;
-    //         }
-    //     }
+        // Ensure the trajectory has been computed. If not, compute and cache it.
+        if (neighbor_it != neighbors.end() && neighbor_it->second.is_trajectory_computed) {
+            traj_to_parent = neighbor_it->second.cached_trajectory;
+        } else {
+            traj_to_parent = statespace_->steer(node->getStateValue(), parent->getStateValue());
+            if (neighbor_it != neighbors.end()) {
+                neighbor_it->second.cached_trajectory = traj_to_parent;
+                neighbor_it->second.is_trajectory_computed = true;
+            }
+        }
 
-    //     // If the trajectory is geometrically invalid, the edge is broken. Keep the node.
-    //     if (!traj_to_parent.is_valid) {
-    //         ++it;
-    //         continue;
-    //     }
+        // If the trajectory is geometrically invalid, the edge is broken. Keep the node.
+        if (!traj_to_parent.is_valid) {
+            ++it;
+            continue;
+        }
 
-    //     // Check if this specific trajectory is safe against dynamic obstacles.
-    //     // We use a heuristic start time of 'now' since we are reacting to a current obstacle update.
-    //     const double global_start_time_heuristic = clock_->now().seconds();
-    //     if (obs_checker_->isTrajectorySafe(traj_to_parent, global_start_time_heuristic)) {
-    //         // The connection to the parent is SAFE. This node is not in immediate conflict
-    //         // via its tree connection. Therefore, we can filter it out (erase it).
-    //         it = current.erase(it);
-    //     } else {
-    //         // The connection to the parent is NOT safe. Keep this node in the set.
-    //         ++it;
-    //     }
-    // }
-    // // --- END OF NEW FILTERING LOGIC ---
+        // Check if this specific trajectory is safe against dynamic obstacles.
+        // We use a heuristic start time of 'now' since we are reacting to a current obstacle update.
+        const double global_start_time_heuristic = clock_->now().seconds();
+        if (obs_checker_->isTrajectorySafe(traj_to_parent, global_start_time_heuristic)) {
+            // The connection to the parent is SAFE. This node is not in immediate conflict
+            // via its tree connection. Therefore, we can filter it out (erase it).
+            it = current.erase(it);
+        } else {
+            // The connection to the parent is NOT safe. Keep this node in the set.
+            ++it;
+        }
+    }
+    // --- END OF NEW FILTERING LOGIC ---
 
 
 
@@ -1178,18 +808,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
 
 
-    if (current == samples_in_obstacles_ && current.size()!=tree_.size()) return false; // Early exit if nothing has changed
-
-    bool force_repair = false;
-    // Heuristic: If the set of nodes near obstacles contains nearly every node in the tree,
-    // we should force a full re-check to handle potential obstacle movement within this large set.
-    // Using a threshold like 90% is safer than an exact '==' check.
-    /*
-        My reason is if current is all of the nodes then samples_in_obstalces (prev) and current would make the addNewObstalce and etc to get skipped
-    */
-    if (current.size() >= tree_.size() * 0.9) {
-        force_repair = true;
-    }
+    if (current == samples_in_obstacles_) return false; // Early exit if nothing has changed
 
     std::vector<int> added, removed;
     std::vector<int> cur, prev;
@@ -1208,14 +827,14 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     }
 
     if (ignore_sample) {
-        if (!added.empty() || force_repair) handleAddedObstacleSamples(added);
-        if (!removed.empty() || force_repair ) handleRemovedObstacleSamples(removed);
+        if (!added.empty()) handleAddedObstacleSamples(added);
+        if (!removed.empty()) handleRemovedObstacleSamples(removed);
         samples_in_obstacles_ = std::move(current);
 
 
     } else {
-        if (!cur.empty() || force_repair) handleAddedObstacleSamples(cur);
-        if (!prev.empty() || force_repair) handleRemovedObstacleSamples(prev);
+        if (!cur.empty()) handleAddedObstacleSamples(cur);
+        if (!prev.empty()) handleRemovedObstacleSamples(prev);
         samples_in_obstacles_ = current;
 
     }
@@ -1429,212 +1048,210 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
   
 // }
-void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) {
-    std::unordered_set<int> orphan_candidates;
+
+void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) { // Renamed 'added' to 'added_indices' for clarity
+    std::unordered_set<int> nodes_to_make_orphan_and_process_neighbors; // Nodes whose state changed to trigger neighbor queueing
 
     for (int idx : added_indices) {
-        FMTNode* node = tree_[idx].get();
+        FMTNode* node = tree_[idx].get(); // Assuming tree_ stores FMTNode pointers or shared_ptr
         bool node_itself_is_now_in_obstacle = false;
 
-        if (ignore_sample) {
-            samples_in_obstacles_.insert(idx);
+        if (ignore_sample) { // Corresponds to RRTX ignore_sample = true
+            // If ignore_sample is true, 'added_indices' are nodes now considered part of an obstacle.
+            // No explicit point collision check needed here for 'node' itself if this is the mode's definition.
+            samples_in_obstacles_.insert(idx); // Mark this node as being "in an obstacle"
             node_itself_is_now_in_obstacle = true;
-        } else if (prune) {
-            if (!obs_checker_->isObstacleFree(node->getStateValue())) {
+        } else if (prune) { // Corresponds to RRTX ignore_sample = false, with proactive checks
+            // Explicitly check if the node's point itself is in an obstacle
+            if (!obs_checker_->isObstacleFree(node->getStateValue())) { // Assuming this checks the point
                 node_itself_is_now_in_obstacle = true;
             }
         }
+        // If not ignore_sample and not prune, the original else block logic applies (make all 'added_indices' nodes orphans)
 
         if (!ignore_sample && prune && node_itself_is_now_in_obstacle) {
-            // Node itself is in an obstacle. Invalidate ALL its connections.
-            near(idx); // Ensure neighbors are loaded.
+            // OPTIMIZATION: Node 'idx' itself is in an obstacle (and prune=true, ignore_sample=false).
+            // Invalidate all its existing edges WITHOUT individual collision checks for each edge.
+            near(idx); // Ensure neighbors are loaded if needed by your 'near' implementation
+            for (auto& [neighbor, edge_info] : node->neighbors()) { // Iterate existing graph neighbors
+                edge_info.distance = INFINITY;
+                // Also update the symmetric part in the neighbor
+                near(neighbor->getIndex()); // Ensure neighbor's neighbors are loaded
+                if (neighbor->neighbors().count(node)) { // Check if symmetric entry exists
+                    neighbor->neighbors().at(node).distance = INFINITY;
+                }
 
-            // Invalidate outgoing connections (node is parent).
-            for (auto& [neighbor, edge_info] : node->backwardNeighbors()) {
-                edge_info.distance = INFINITY;
-                // Symmetrically invalidate in neighbor's forward set.
-                if (neighbor->forwardNeighbors().count(node)) {
-                    neighbor->forwardNeighbors().at(node).distance = INFINITY;
+                // If this edge was a parent link, the child becomes an orphan candidate
+                if (node->getParent() == neighbor) { // 'node' loses 'neighbor' as parent
+                    // 'node' is already determined to be an orphan due to being in an obstacle.
+                    // This specific parent link is now broken.
                 }
-                if (neighbor->getParent() == node) {
-                    orphan_candidates.insert(neighbor->getIndex());
-                }
-            }
-            // Invalidate incoming connections (node is child).
-            for (auto& [neighbor, edge_info] : node->forwardNeighbors()) {
-                edge_info.distance = INFINITY;
-                // Symmetrically invalidate in neighbor's backward set.
-                if (neighbor->backwardNeighbors().count(node)) {
-                    neighbor->backwardNeighbors().at(node).distance = INFINITY;
-                }
-                if (node->getParent() == neighbor) {
-                    orphan_candidates.insert(node->getIndex());
+                if (neighbor->getParent() == node) { // 'neighbor' loses 'node' as parent
+                    nodes_to_make_orphan_and_process_neighbors.insert(neighbor->getIndex());
+                    // No need to get descendants here yet, will do it once for all primary orphans
                 }
             }
-            // The node itself is definitely an orphan now.
-            orphan_candidates.insert(idx);
+            // 'node' itself is the primary orphan here
+            nodes_to_make_orphan_and_process_neighbors.insert(idx);
 
         } else if (!ignore_sample && prune && !node_itself_is_now_in_obstacle) {
-            // Node is fine, but check its edges individually for collisions.
+            // PRUNE MODE, BUT NODE ITSELF IS FINE: Check its edges individually.
             near(idx);
-
-            // Check outgoing connections (from neighbor to node).
-            for (auto& [neighbor, edge_info] : node->backwardNeighbors()) {
+            for (auto& [neighbor, edge_info] : node->neighbors()) {
                 if (edge_info.distance == INFINITY) continue;
-                // Check trajectory from neighbor to node.
-                if (!obs_checker_->isObstacleFree(neighbor->getStateValue(), node->getStateValue())) {
+
+                // Perform collision check for this specific edge (node -> neighbor)
+                if (!obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue())) {
+                    // Edge is blocked
                     edge_info.distance = INFINITY;
-                    if (neighbor->forwardNeighbors().count(node)) {
-                        neighbor->forwardNeighbors().at(node).distance = INFINITY;
+                    near(neighbor->getIndex());
+                    if (neighbor->neighbors().count(node)) {
+                        neighbor->neighbors().at(node).distance = INFINITY;
+                    }
+
+                    // Handle parent relationships leading to orphans
+                    if (node->getParent() == neighbor) {
+                        nodes_to_make_orphan_and_process_neighbors.insert(node->getIndex());
                     }
                     if (neighbor->getParent() == node) {
-                        orphan_candidates.insert(neighbor->getIndex());
+                        nodes_to_make_orphan_and_process_neighbors.insert(neighbor->getIndex());
                     }
                 }
             }
-            // Check incoming connections (from node to neighbor).
-            for (auto& [neighbor, edge_info] : node->forwardNeighbors()) {
-                 if (edge_info.distance == INFINITY) continue;
-                // Check trajectory from node to neighbor.
-                if (!obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue())) {
-                    edge_info.distance = INFINITY;
-                    if (neighbor->backwardNeighbors().count(node)) {
-                        neighbor->backwardNeighbors().at(node).distance = INFINITY;
-                    }
-                    if (node->getParent() == neighbor) {
-                        orphan_candidates.insert(node->getIndex());
-                    }
-                }
-            }
-        } else {
-            // The simplest case: just mark the node as an orphan and find its children later.
-            orphan_candidates.insert(idx);
+        } else { // Original logic: ignore_sample is true (node_itself_is_now_in_obstacle is true),
+                 // OR prune is false. In these cases, all nodes in 'added_indices' are directly considered orphans.
+            nodes_to_make_orphan_and_process_neighbors.insert(idx);
         }
     }
 
-    // Now, gather all descendants for the initial set of orphaned nodes.
+    // Now, gather all descendants for the initial set of orphaned nodes
     std::unordered_set<int> final_orphan_nodes;
-    for (int orphan_idx : orphan_candidates) {
-        if (tree_.at(orphan_idx)->getParent() != nullptr || tree_.at(orphan_idx)->getCost() == INFINITY) {
-             final_orphan_nodes.insert(orphan_idx);
-             auto descendants = getDescendants(orphan_idx);
-             final_orphan_nodes.insert(descendants.begin(), descendants.end());
-        }
+    for (int orphan_idx : nodes_to_make_orphan_and_process_neighbors) {
+        final_orphan_nodes.insert(orphan_idx);
+        auto descendants = getDescendants(orphan_idx); // Assuming getDescendants works correctly
+        final_orphan_nodes.insert(descendants.begin(), descendants.end());
     }
 
-    // Process all final orphan nodes by resetting their state.
+    // Process all final orphan nodes
     for (int node_index : final_orphan_nodes) {
         auto node = tree_.at(node_index).get();
         
         if (node->in_queue_) {
-            v_open_heap_.remove(node);
+            v_open_heap_.remove(node); // Assuming remove also sets node->in_queue_ = false
         }
-        // Do not reset the root of the tree (index 0 is a common convention).
-        if (node->getIndex() != root_state_index_) {
-            node->setCost(INFINITY);
+        if (node->getIndex() != 0) { // Assuming 0 is a special root/goal node index
+            node->setCost(INFINITY); 
             node->setTimeToGoal(std::numeric_limits<double>::infinity());
         }
-        node->setParent(nullptr, INFINITY);
-        edge_length_[node_index] = -std::numeric_limits<double>::infinity();
+        node->setParent(nullptr, INFINITY); // Sever parent link and set parent_edge_cost_
+        // Children links will be broken when their parent (this node) is no longer their parent,
+        // or when they themselves are processed as orphans and get a new parent (or nullptr).
+        // You might need an explicit RRTxNode::removeChild if setParent doesn't notify the old parent.
+        edge_length_[node_index] = -std::numeric_limits<double>::infinity(); // Or some other marker for invalid edge to parent
     }
   
-    // Add valid neighbors of the now-orphaned region to the open heap to begin the repair.
+    // Add valid neighbors of the final (now cost-infinity) orphans to the open heap
+    // This is your "QueueNeighbors" equivalent from the RRTX discussion
     for (int node_index : final_orphan_nodes) {
         auto node = tree_.at(node_index).get();
-        near(node_index); // Ensure neighbors are loaded.
+        near(node_index); // Ensure neighbors are loaded
+        for (const auto& [neighbor_ptr, edge_data] : node->neighbors()){ // Assuming edge_data not used here, just neighbor_ptr
+            // 'neighbor_ptr' is of type FMTNode* (or RRTxNode*)
+            if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == INFINITY ) continue; 
+            // If neighbor_ptr->getCost() == INFINITY, it means it's also an orphan, so skip.
+            // We only want to queue neighbors that are still validly connected to the goal.
 
-        // Define a helper lambda to avoid repeating the queuing logic.
-        auto queue_if_valid = [&](FMTNode* neighbor_ptr) {
-            // Don't queue a neighbor if it's already in the heap or is an orphan itself.
-            if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == INFINITY) return;
-            
             double h_value = use_heuristic ? heuristic(neighbor_ptr->getIndex()) : 0.0;
             v_open_heap_.add(neighbor_ptr, neighbor_ptr->getCost() + h_value);
-        };
-
-        // Iterate over BOTH sets to find all valid neighbors on the boundary of the orphan set.
-        for (const auto& [neighbor_ptr, edge_data] : node->forwardNeighbors()){
-            queue_if_valid(neighbor_ptr);
-        }
-        for (const auto& [neighbor_ptr, edge_data] : node->backwardNeighbors()){
-            queue_if_valid(neighbor_ptr);
+            // neighbor_ptr->in_queue_ = true; // Assuming v_open_heap_.add() handles this
         }
     }
 }
 
 
-void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& removed_indices) {
-    // --- PART 1: RE-VALIDATE PREVIOUSLY BLOCKED EDGES (GRAPH OPERATION) ---
-    // This loop checks if any connections to the now-free nodes can be restored.
-    for (const auto& node_index : removed_indices) {
-        auto node = tree_[node_index].get();
 
-        // The check for `in_queue_` is a good safeguard, though it's unlikely for a
-        // node just removed from an obstacle to be in the queue with INF cost.
-        if (node->in_queue_ && node->getCost() == INFINITY) {
+void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
+    for (const auto& node_index : removed) {
+        auto node = tree_[node_index].get();
+        /*
+            if you use the following line "node->in_unvisited_ = true;  " since some of the surrounding nodes already have a parent and the parent cost
+            hasn't changed then we go to plan() function trying to repair some redundant node and the worst thing is all of them goes till the 
+            core if condtion for the cost update the cost doesnt get updated because newCost is exaclty the same as the previous cost! so they will end up
+            staying in the v unvisted and currupting the upcoming heap addition in the handleadd/remove function!
+        
+        */
+
+        if (node->in_queue_ && node->getCost()==INFINITY) {
+        /*
+            it doesnt come here so maybe we don't need this --> im thinking there shouldn't be a node in remove that is in heap
+            my reason is the removed nodes are the current nodes of the previous iteration and we didn't put any of the current
+            nodes(messedup node actually which is a subset of current) in heap and havent updated those nodes yet!(because we haven't reached
+            plan function yet)
+            we didn't put them in heap because they had "inf" cost! but im gonna leave this here for later pondering!
+        */
+            std::cout<<"is it here?? \n";
             v_open_heap_.remove(node);
+            // node->in_queue_ = false;
         }
 
         if (!ignore_sample && prune) {
-            near(node_index); // Ensure neighbor sets are populated.
-
-            // Check incoming connections (neighbor -> node).
-            for (auto& [neighbor, edge_info] : node->backwardNeighbors()) {
-                if (edge_info.distance != INFINITY) continue; // Edge is already valid.
-
-                // If the edge is now obstacle-free, restore its original cost.
-                if (obs_checker_->isObstacleFree(neighbor->getStateValue(), node->getStateValue())) {
-                    edge_info.distance = edge_info.distance_original;
-                    // Restore the symmetric edge in the neighbor's forward set.
-                    if (neighbor->forwardNeighbors().count(node)) {
-                        neighbor->forwardNeighbors().at(node).distance = edge_info.distance_original;
-                    }
-                }
-            }
-            
-            // Check outgoing connections (node -> neighbor).
-            for (auto& [neighbor, edge_info] : node->forwardNeighbors()) {
+            near(node_index);
+            for (auto& [neighbor, edge_info] : node->neighbors()) {
                 if (edge_info.distance != INFINITY) continue;
-
                 if (obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue())) {
                     edge_info.distance = edge_info.distance_original;
-                    // Restore the symmetric edge in the neighbor's backward set.
-                    if (neighbor->backwardNeighbors().count(node)) {
-                        neighbor->backwardNeighbors().at(node).distance = edge_info.distance_original;
-                    }
+                    near(neighbor->getIndex());
+                    neighbor->neighbors().at(node).distance = edge_info.distance_original;
                 }
             }
         }
     }
 
-    // --- PART 2: QUEUE NEIGHBORS TO TRIGGER REWIRING (GRAPH OPERATION) ---
-    // This loop adds the valid neighbors of the freed nodes to the open heap.
-    // This prompts the planner to check if a better path now exists through this region.
-    for (int node_index : removed_indices) {
-        auto node = tree_[node_index].get();
-        near(node_index); // Ensure neighbors are loaded.
-
-        // Helper lambda to avoid repeating the queuing logic.
-        auto queue_if_valid = [&](FMTNode* neighbor_ptr) {
-            // A neighbor is on the "boundary" if it's connected to the valid tree (cost != INF)
-            // and not already scheduled for expansion (not in_queue_).
-            if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == INFINITY) {
-                return;
-            }
-            
-            double h_value = use_heuristic ? heuristic(neighbor_ptr->getIndex()) : 0.0;
-            v_open_heap_.add(neighbor_ptr, neighbor_ptr->getCost() + h_value);
-        };
-
-        // Iterate over BOTH sets to find all valid neighbors on the boundary.
-        for (const auto& [neighbor_ptr, edge_data] : node->forwardNeighbors()) {
-            queue_if_valid(neighbor_ptr);
-        }
-        for (const auto& [neighbor_ptr, edge_data] : node->backwardNeighbors()) {
-            queue_if_valid(neighbor_ptr);
+    for (int node_index : removed) {
+        auto node = tree_.at(node_index).get();
+        near(node_index);
+        for (const auto& [neighbor, dist] : node->neighbors()) {
+            const int n_idx = neighbor->getIndex();
+            if (neighbor->in_queue_ || neighbor->getCost()==INFINITY) continue;
+            double h_value = use_heuristic ? heuristic(n_idx) : 0.0;
+            v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
+            // neighbor->in_queue_ = true;
         }
     }
+
+    // ////////////////////////////////////////////////////
+    // // 1) Gather & mark neighbors of removed nodes
+    // std::vector<std::pair<double, FMTNode*>> to_enqueue;
+    // // to_enqueue.reserve(removed.size() * average_degree);  // optional hint
+
+    // for (int node_index : removed) {
+    //     FMTNode* node = tree_.at(node_index).get();
+    //     near(node_index);  // ensure neighbors are cached
+
+    //     for (const auto& [neighbor, dist] : node->neighbors()) {
+    //         if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
+    //             continue;
+
+    //         neighbor->in_queue_ = true;  // mark to avoid duplicates
+
+    //         double h_value = use_heuristic 
+    //                         ? heuristic(neighbor->getIndex()) 
+    //                         : 0.0;
+    //         double priority = neighbor->getCost() + h_value;
+
+    //         to_enqueue.emplace_back(priority, neighbor);
+    //     }
+    // }
+
+    // // 2) Bulk‑add into the open set
+    // v_open_heap_.bulkAdd(to_enqueue);
+
+    // // After bulkAdd, in_queue_ remains true; later pops will reset it.
+    // ////////////////////////////////////////////////////////////
+
+
 }
+
 
 
 
@@ -2023,8 +1640,7 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
 
     while (parent) {
         // Use the pre-computed trajectories cached in the graph during the `plan()` phase.
-        // const auto& cached_traj = child->neighbors().at(parent).cached_trajectory;
-        const auto& cached_traj = child->forwardNeighbors().at(parent).cached_trajectory;
+        const auto& cached_traj = child->neighbors().at(parent).cached_trajectory;
         
         if (cached_traj.is_valid && cached_traj.path_points.size() > 1) {
             // Append all points from the segment except the first one to avoid duplicates.
@@ -2806,9 +2422,9 @@ void KinodynamicFMTX::visualizeTree() {
 
 
     // Visualize all nodes that were sampled/loaded
-    // visualization_->visualizeNodes(tree_nodes, "map", 
-    //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
-    //                         "tree_nodes");
+    visualization_->visualizeNodes(tree_nodes, "map", 
+                            std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
+                            "tree_nodes");
     
     // Visualize the edges forming the connected tree
     visualization_->visualizeEdges(edges, "map");

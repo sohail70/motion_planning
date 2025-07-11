@@ -9,6 +9,8 @@ ThrusterSteerStateSpace::ThrusterSteerStateSpace(int dimension, double max_accel
     if (dimension <= 1 || (dimension - 1) % 2 != 0) {
         throw std::invalid_argument("ThrusterStateSpace dimension must be 2*D_spatial + 1 (e.g., 7 for 3D pos/vel/time).");
     }
+
+    std::srand(42); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
     // Set up weights for KD-Tree distance, if desired. Otherwise, unit weights.
     // These weights would be for: [x,y,z,vx,vy,vz,t]
     weights_.resize(dimension_);
@@ -591,7 +593,7 @@ ThrusterSteerStateSpace::NDSteeringResult ThrusterSteerStateSpace::steeringND(
 
 
 
-// //optimized with parallel openMP --> not giving any gain!
+// //optimized with parallel openMP --> not giving any gain! --> even made it worse!!!
 // ThrusterSteerStateSpace::NDSteeringResult ThrusterSteerStateSpace::steeringND(
 //     const Eigen::VectorXd& x_start, const Eigen::VectorXd& x_end,
 //     const Eigen::VectorXd& v_start, const Eigen::VectorXd& v_end,
@@ -813,6 +815,8 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
     if (!nd_result.success) {
         return traj_out;
     }
+    traj_out.geometric_distance = getGeometricDistance(nd_result);
+
 
     // 3. Discretize the resulting trajectory
     double discretization_step = 0.5;
@@ -823,18 +827,19 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
     if (num_points == 0) return traj_out;
 
     traj_out.is_valid = true;
-    traj_out.cost = duration;
+    // traj_out.cost = duration;
+    traj_out.cost = std::sqrt(duration * duration + traj_out.geometric_distance * traj_out.geometric_distance);
     
     // 4. The solver gives us the correct path shape (X) and velocities (V).
     //    We just need to map the time from [0, duration] to your planner's
     //    [from_time, to_time] convention.
     traj_out.execution_data.is_valid = true;
-    traj_out.execution_data.total_cost = duration;
+    traj_out.execution_data.total_cost = traj_out.cost;
     traj_out.execution_data.X = fine_X;
     traj_out.execution_data.V = fine_V; // No negation needed
     traj_out.execution_data.A = fine_A; // No negation needed
     traj_out.execution_data.Time = from_time - fine_Time_local.array(); // Map to decreasing time-to-go
-
+    
     // 5. Populate the final path_points with the correct states
     traj_out.path_points.reserve(num_points);
     for (long i = 0; i < num_points; ++i) {
@@ -846,4 +851,23 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
     }
     
     return traj_out;
+}
+
+
+double ThrusterSteerStateSpace::getGeometricDistance(const NDSteeringResult& result) const {
+    // If the trajectory is not successful or has fewer than two points, the distance is zero.
+    if (!result.success || result.X.rows() < 2) {
+        return 0.0;
+    }
+
+    double total_distance = 0.0;
+
+    // Iterate through the position matrix 'X' from the first point to the second-to-last point.
+    for (long i = 0; i < result.X.rows() - 1; ++i) {
+        // Calculate the Euclidean distance between the current point (row i)
+        // and the next point (row i+1) and add it to the total.
+        total_distance += (result.X.row(i + 1) - result.X.row(i)).norm();
+    }
+
+    return total_distance;
 }

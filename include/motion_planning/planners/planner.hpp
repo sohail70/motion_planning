@@ -27,6 +27,7 @@ enum class PlannerType{
     RRT,
     BITStar,
     KinodynamicFMTX,
+    KinodynamicRRTX,
 };
 
 

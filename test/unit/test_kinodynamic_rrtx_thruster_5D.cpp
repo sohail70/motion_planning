@@ -166,7 +166,6 @@ int main(int argc, char **argv) {
         another thing i notices is this doesnt help much with performance in my 2D case. but im gonna leave it in case i have time to test it in more dimensions
     
     */
-    planner_params.setParam("obs_cache", false); // TODO: later i should implement it in the fmt node (edge info) it self but right now im using a hash map in fmtx it self which i dont think is efficient but at the same time since im in replanning mode then restarting the obs status of edges is also maybe a challenge but i think its doable
     planner_params.setParam("partial_plot", false);
     planner_params.setParam("use_heuristic", false); // TODO: I need to verify if its legit workingor not.
     planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update --> when ignore_sample true the prune is not happening anymore so doesnt matter what you put there
@@ -192,7 +191,7 @@ int main(int argc, char **argv) {
     planner_params.setParam("precache_neighbors", true);
     /////////////////////////////////////////////////////////////////////////////////////////////////
     // --- 3. Object Initialization ---
-    auto vis_node = std::make_shared<rclcpp::Node>("fmtx_thruster_visualizer",
+    auto vis_node = std::make_shared<rclcpp::Node>("rrtx_thruster_visualizer",
         rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
     auto sim_clock = vis_node->get_clock();
@@ -232,8 +231,8 @@ int main(int argc, char **argv) {
     // The ROS manager now uses the thruster-specific version.
     auto ros_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization, manager_params);
     
-    auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicFMTX, statespace, problem_def, obstacle_checker);
-    auto kinodynamic_planner = dynamic_cast<KinodynamicFMTX*>(planner.get());
+    auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicRRTX, statespace, problem_def, obstacle_checker);
+    auto kinodynamic_planner = dynamic_cast<KinodynamicRRTX*>(planner.get());
     kinodynamic_planner->setClock(sim_clock);
     planner->setup(planner_params, visualization);
 
@@ -269,49 +268,6 @@ int main(int argc, char **argv) {
     const double goal_tolerance = 2.0;
     rclcpp::Rate loop_rate(20); // Replanning loop can run slower
 
-    // while (g_running && rclcpp::ok()) {
-    //     // Get the robot's current 5D state from the simulator.
-    //     Eigen::VectorXd current_state = ros_manager->getCurrentKinodynamicState();
-    //     kinodynamic_planner->setRobotState(current_state);
-
-    //     // Check for goal arrival.
-    //     double dist_to_goal = (current_state.head<2>() - tree_root_state.head<2>()).norm();
-    //     if (dist_to_goal < goal_tolerance) {
-    //         RCLCPP_INFO(vis_node->get_logger(), "Goal Reached! Mission Accomplished.");
-    //         g_running = false;
-    //         break;
-    //     }
-    //     auto start = std::chrono::high_resolution_clock::now();
-
-    //     // Update obstacles and check if replanning is needed.
-    //     auto snapshot = obstacle_checker->getAtomicSnapshot();
-    //     bool obstacles_changed = kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
-
-    //     // Here, you would also add a call to a path validator like `isPathStillValid`.
-    //     // For simplicity, we replan only on obstacle changes.
-    //     if (obstacles_changed) {
-    //         RCLCPP_INFO(vis_node->get_logger(), "Obstacles changed. Triggering replan...");
-            
-    //         // Update the planner's knowledge of the robot's state right before planning.
-    //         kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
-            
-    //         planner->plan();
-
-    //         kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
-    //         // Get the new execution trajectory.
-    //         auto path = kinodynamic_planner->getPathPositions(); // Returns the correct format directly
-    //         if (!path.empty()) {
-    //             ros_manager->setPlannedThrusterTrajectory(path);
-    //             kinodynamic_planner->visualizePath(path);
-    //         }
-    //     }
-    //     auto end = std::chrono::high_resolution_clock::now();
-    //     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    //     std::cout << "Time taken for the update : " << duration.count() 
-    //             << " milliseconds\n";
-
-    //     loop_rate.sleep();
-    // }
 
 
     while (g_running && rclcpp::ok()) {
@@ -328,36 +284,20 @@ int main(int argc, char **argv) {
         }
         
         // 3. Get the trajectory the robot is currently trying to execute.
-        // auto current_path = kinodynamic_planner->getPathPositions();
+        auto current_path = kinodynamic_planner->getPathPositions();
 
         // 4. PROACTIVELY VALIDATE THE CURRENT PATH
-        // bool is_path_still_safe = kinodynamic_planner->isPathStillValid(current_path, current_state);
+        bool is_path_still_safe = kinodynamic_planner->isPathStillValid(current_path, current_state);
 
         // 5. REPLAN IF, AND ONLY IF, THE CURRENT PATH IS UNSAFE
-        // if (!is_path_still_safe) {
+        if (!is_path_still_safe) {
             RCLCPP_WARN(vis_node->get_logger(), "Collision predicted on current path! Triggering replan...");
-            
-            // *** THIS IS THE CRITICAL FIX ***
-            // Before replanning, update the planner's internal map of obstacles.
-            // This invalidates the colliding edges so the planner can route around them.
             auto snapshot = obstacle_checker->getAtomicSnapshot();
             auto start = std::chrono::high_resolution_clock::now();
-            std::cout<<kinodynamic_planner->updateObstacleSamples(snapshot.obstacles)<<"\n";
-            // *******************************
-            // auto end = std::chrono::high_resolution_clock::now();
-            // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            // std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
-            // // Update the planner's knowledge of the robot's state to be as current as possible.
-            kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
-            
-            obstacle_checker->getAtomicSnapshot();
-            start = std::chrono::high_resolution_clock::now();
-            // Run the core planning algorithm to find a new, safe path.
-            planner->plan();
-
+            kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
             auto end = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            std::cout << "Time taken for the plan and update : " << duration.count() << " milliseconds\n";
+            std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
             kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
 
             // Get the new path to execute.
@@ -369,11 +309,12 @@ int main(int argc, char **argv) {
                 RCLCPP_ERROR(vis_node->get_logger(), "Replanning failed to find a new path!");
                 // Consider adding safety stop logic here.
             }
-        // }
+        }
         
         // Wait for the next cycle.
         loop_rate.sleep();
     }
+
 
 
     // --- 8. Graceful Shutdown ---

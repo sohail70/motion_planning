@@ -81,8 +81,8 @@ int main(int argc, char** argv) {
 
 
         // 1) Parse your flags
-    int num_samples = 5000;
-    double factor = 1.5;
+    int num_samples = 400;
+    double factor = 3.0;
     unsigned int seed = 42;
     int run_secs = 30;
 
@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
     planner_params.setParam("precache_neighbors", true);
 
     // --- 3. Object Initialization ---
-    auto vis_node = std::make_shared<rclcpp::Node>("fmtx_dubins_visualizer",
+    auto vis_node = std::make_shared<rclcpp::Node>("rrtx_dubins_visualizer",
         rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
     auto sim_clock = vis_node->get_clock();
@@ -182,8 +182,8 @@ int main(int argc, char** argv) {
     auto statespace = std::make_shared<DubinsTimeStateSpace>(min_turning_radius, min_velocity, max_velocity);
 
     auto ros_manager = std::make_shared<DubinsROS2Manager>(obstacle_checker, visualization, manager_params, robot_initial_state);
-    auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicFMTX, statespace, problem_def, obstacle_checker);
-    auto kinodynamic_planner = dynamic_cast<KinodynamicFMTX*>(planner.get());
+    auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicRRTX, statespace, problem_def, obstacle_checker);
+    auto kinodynamic_planner = dynamic_cast<KinodynamicRRTX*>(planner.get());
     kinodynamic_planner->setClock(sim_clock);
     planner->setup(planner_params, visualization);
 
@@ -220,138 +220,98 @@ int main(int argc, char** argv) {
 
 
 
-    while (g_running && rclcpp::ok()) {
-        // --- 1. Read robot state once ---
-        Eigen::VectorXd current_state = ros_manager->getCurrentSimulatedState();
-        kinodynamic_planner->setRobotState(current_state);
-
-        if (current_state.size() == 0) {
-            loop_rate.sleep();
-            continue;
+    while (g_running && rclcpp::ok())
+    {
+        bool needs_replan = false;
+        
+        // Get the robot's current state ONCE per cycle.
+        Eigen::VectorXd current_sim_state = ros_manager->getCurrentSimulatedState();
+        kinodynamic_planner->setRobotState(current_sim_state);
+        if (current_sim_state.size() == 0) { // Wait for the simulation to initialize
+             loop_rate.sleep();
+             continue;
         }
+        // Calculate the 2D distance to the goal using the tree_root_state variable.
+        double distance_to_goal = (current_sim_state.head<2>() - tree_root_state.head<2>()).norm();
 
-        // --- 2. Check goal reached ---
-        double dist_to_goal = (current_state.head<2>() - tree_root_state.head<2>()).norm();
-        if (dist_to_goal < goal_tolerance) {
+        if (distance_to_goal < goal_tolerance) {
             RCLCPP_INFO(vis_node->get_logger(), "Goal Reached! Mission Accomplished.");
-            g_running = false;
-            break;
+            g_running = false; // Set the flag to cleanly exit the loop.
+            continue;          // Skip the rest of this loop iteration.
         }
 
-        // --- 3. Update obstacle snapshot ---
-        auto snapshot = obstacle_checker->getAtomicSnapshot();
+
+        const auto& snapshot = obstacle_checker->getAtomicSnapshot();
+
+        // --- TRIGGER 1 (Reactive): Is my current path predictively safe? ---
+        // Pass both the path and the robot's current state to the validator.
+        // if (!kinodynamic_planner->isPathStillValid(current_executable_path, current_sim_state)) {
+        //     RCLCPP_INFO(vis_node->get_logger(), "Current path is no longer predictively valid! Triggering replan.");
+        //     needs_replan = true;
+        // }
+
+        // --- TRIGGER 2 (Proactive): Have obstacles changed in a significant way? ---
+        // if (!needs_replan && kinodynamic_planner->updateObstacleSamples(snapshot.obstacles)) {
+        //     RCLCPP_INFO(vis_node->get_logger(), "Obstacle change detected! Proactively replanning...");
+        //     needs_replan = true;
+        // }
         auto start = std::chrono::steady_clock::now();
 
-        bool obstacles_changed = kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
+        kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
 
-        current_state = ros_manager->getCurrentSimulatedState();
-        kinodynamic_planner->setRobotState(current_state);
-
-        // --- 4. Reactive safety check ---
-        bool path_invalid = !kinodynamic_planner->isPathStillValid(current_executable_path, current_state);
-
-        // --- 5. Decide whether to replan ---
-        if (path_invalid || obstacles_changed) {
-            RCLCPP_INFO(vis_node->get_logger(), "Triggering replan (invalid path: %s, obstacles changed: %s)",
-                        path_invalid ? "yes" : "no",
-                        obstacles_changed ? "yes" : "no");
-
-            current_state = ros_manager->getCurrentSimulatedState();
-            kinodynamic_planner->setRobotState(current_state);
-            // 6. Execute replanning
-            planner->plan();
-
-            auto end = std::chrono::steady_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            if (duration.count() > 0) {
-                std::cout << "time taken for the update : " << duration.count() 
-                        << " milliseconds\n";
-            }
-  
-            Eigen::VectorXd fresh_robot_state = ros_manager->getCurrentSimulatedState();
-            kinodynamic_planner->setRobotState(fresh_robot_state);
-            auto new_path = kinodynamic_planner->getPathPositions();
-            //////////////////////////
-            if (new_path.empty()) {
-                // Failure: stop in place
-                RCLCPP_ERROR(vis_node->get_logger(), "Replanning failed. Engaging E-STOP.");
-                current_executable_path = { current_state };
-            } else {
-                // Success: only update if meaningfully different
-                if (!kinodynamic_planner->arePathsSimilar(current_executable_path, new_path, 0.1)) {
-                    RCLCPP_INFO(vis_node->get_logger(), "Updating to new optimal path.");
-                    current_executable_path = new_path;
-                } else {
-                    RCLCPP_INFO(vis_node->get_logger(), "New path similar to current. Keeping existing.");
-                }
-            }
-            //////////////////////////
-            // if (new_path.empty()) {
-            //     // Failure: Attempt to generate a safe hover path.
-            //     RCLCPP_WARN(vis_node->get_logger(), "Replanning failed. Searching for a safe hover maneuver.");
-
-            //     auto dubins_time_ss = std::dynamic_pointer_cast<DubinsTimeStateSpace>(statespace);
-            //     bool hover_path_found = false;
-
-            //     if (dubins_time_ss) {
-            //         const double hover_duration = 3.0; // seconds
-            //         const double current_time = sim_clock->now().seconds();
-
-            //         // 1. First, try to generate a hover path to the RIGHT.
-            //         // FIX: Remove the class name prefix from the enum.
-            //         auto hover_traj_right = dubins_time_ss->createHoverPath(
-            //             fresh_robot_state, hover_duration, HoverDirection::RIGHT);
-
-            //         // 2. Check if this path is safe.
-            //         if (obstacle_checker->isTrajectorySafe(hover_traj_right, current_time)) {
-            //             RCLCPP_INFO(vis_node->get_logger(), "Safe hover path found (RIGHT). Executing.");
-            //             current_executable_path = hover_traj_right.path_points;
-            //             hover_path_found = true;
-            //         } else {
-            //             // 3. If right is not safe, try to generate a path to the LEFT.
-            //             RCLCPP_WARN(vis_node->get_logger(), "Right hover is unsafe. Trying left.");
-            //             // FIX: Remove the class name prefix from the enum.
-            //             auto hover_traj_left = dubins_time_ss->createHoverPath(
-            //                 fresh_robot_state, hover_duration, HoverDirection::LEFT);
-
-            //             // 4. Check if the left path is safe.
-            //             if (obstacle_checker->isTrajectorySafe(hover_traj_left, current_time)) {
-            //                 RCLCPP_INFO(vis_node->get_logger(), "Safe hover path found (LEFT). Executing.");
-            //                 current_executable_path = hover_traj_left.path_points;
-            //                 hover_path_found = true;
-            //             }
-            //         }
-            //     }
-
-            //     // 5. If neither hover path is safe, stop as a last resort.
-            //     if (!hover_path_found) {
-            //         RCLCPP_ERROR(vis_node->get_logger(), "No safe hover maneuver possible. Robot is trapped. Engaging E-STOP.");
-            //         current_executable_path = { fresh_robot_state };
-            //     }
-            // } else {
-            //     // Success case remains the same
-            //     if (!kinodynamic_planner->arePathsSimilar(current_executable_path, new_path, 0.1)) {
-            //         RCLCPP_INFO(vis_node->get_logger(), "Updating to new optimal path.");
-            //         current_executable_path = new_path;
-            //     } else {
-            //         RCLCPP_INFO(vis_node->get_logger(), "New path similar to current. Keeping existing.");
-            //     }
-            // }
-
-
-
-            //////////////////////////
-            // Send updated (or stop) path to robot
-            ros_manager->setPath(current_executable_path);
+        auto end = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        if (duration.count() > 0) {
+            std::cout << "time taken for the update : " << duration.count() 
+                    << " milliseconds\n";
         }
 
-        // --- 7. Always visualize current plan ---
+        // if (needs_replan) {
+            // Get the robot's current state to plan FROM.
+            Eigen::VectorXd current_sim_state_replan = ros_manager->getCurrentSimulatedState();
+            if (current_sim_state_replan.size() == 0) continue; // Skip if state not ready
+
+            RCLCPP_INFO(vis_node->get_logger(), "Replanning triggered. Finding new optimal path...");
+            
+            current_sim_state = ros_manager->getCurrentSimulatedState();
+
+            Eigen::VectorXd fresh_robot_state = ros_manager->getCurrentSimulatedState();
+            kinodynamic_planner->setRobotState(fresh_robot_state);
+            auto new_executable_path = kinodynamic_planner->getPathPositions();
+            
+            // *** CORRECTED LOGIC TO HANDLE FAILURE ***
+            if (new_executable_path.empty()) {
+                // FAILURE CASE: The planner could not find a valid path from the robot's current state.
+                RCLCPP_ERROR(vis_node->get_logger(), "Replanning failed! Commanding robot to STOP.");
+                
+                // Create a "stop" path containing only the robot's current state.
+                std::vector<Eigen::VectorXd> stop_path;
+                stop_path.push_back(current_sim_state_replan);
+                
+                // Update the current path and send it to the manager to halt execution.
+                current_executable_path = stop_path;
+                ros_manager->setPath(current_executable_path);
+
+            } else {
+                // SUCCESS CASE: A new path was found.
+                // Check if the newly generated path is actually different from the one we're already on.
+                if (kinodynamic_planner->arePathsSimilar(current_executable_path, new_executable_path, 0.1)) { // Increased tolerance
+                    RCLCPP_INFO(vis_node->get_logger(), "Replanning resulted in a similar path. No update needed.");
+                } else {
+                    RCLCPP_INFO(vis_node->get_logger(), "New optimal path found. Updating trajectory.");
+                    // If the path is meaningfully new, update our stored path and send it to the manager.
+                    current_executable_path = new_executable_path;
+                    ros_manager->setPath(current_executable_path);
+                }
+            }
+        // }
+
         kinodynamic_planner->visualizePath(current_executable_path);
-
-        // --- 8. Control layer can fetch and follow 'current_executable_path' at high rate elsewhere ---
-
+        // We visualize the tree in every frame, regardless of replanning.
+        // kinodynamic_planner->visualizeTree();
         loop_rate.sleep();
     }
+
 
     // --- 8. Graceful Shutdown ---
     RCLCPP_INFO(vis_node->get_logger(), "Shutting down.");
