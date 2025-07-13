@@ -610,7 +610,7 @@ void FMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     in_dynamic = true;
 
     /*
-        Now that im thinking about this the max_length's upper bound is 2 * neighborhood_radius_ in fmtx! this is not a rrt star based algorithm!
+        Now that im thinking about this the max_length's upper bound is neighborhood_radius_ in fmtx! this is not a rrt star based algorithm!
         I guess we don't need to track the max_edge! and we can easily use rn for this but for now i'll leave this as is!
     
     */

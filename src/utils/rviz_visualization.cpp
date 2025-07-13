@@ -861,3 +861,108 @@ void RVizVisualization::visualizeVelocityVectors(
     // Publish the array of arrows
     marker_pub_2_->publish(marker_array);
 }
+
+
+void RVizVisualization::visualizeCircle(
+    const Eigen::Vector2d& center,
+    double radius,
+    const std::string& frame_id,
+    const std::vector<float>& color,
+    const std::string& ns)
+{
+    visualization_msgs::msg::MarkerArray marker_array;
+
+    // A marker to clear any previous circles in this namespace
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id;
+    clear_marker.header.stamp = node_->now();
+    clear_marker.ns = ns;
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    marker_array.markers.push_back(clear_marker);
+
+    // The marker for the new circle
+    visualization_msgs::msg::Marker circle_marker;
+    circle_marker.header.frame_id = frame_id;
+    circle_marker.header.stamp = node_->now();
+    circle_marker.ns = ns;
+    circle_marker.id = 0; // Unique ID for this circle
+    circle_marker.type = visualization_msgs::msg::Marker::CYLINDER;
+    circle_marker.action = visualization_msgs::msg::Marker::ADD;
+
+    // Position the circle's center
+    circle_marker.pose.position.x = center.x();
+    circle_marker.pose.position.y = center.y();
+    circle_marker.pose.position.z = -0.1; // Place it slightly below the points
+
+    // The scale of a CYLINDER is its (diameter_x, diameter_y, height)
+    circle_marker.scale.x = radius * 2.0;
+    circle_marker.scale.y = radius * 2.0;
+    circle_marker.scale.z = 0.05; // Make it very thin
+
+    // Set the color and transparency
+    circle_marker.color.r = color[0];
+    circle_marker.color.g = color[1];
+    circle_marker.color.b = color[2];
+    circle_marker.color.a = 0.35; // Semi-transparent
+
+    marker_array.markers.push_back(circle_marker);
+
+    // The publisher for cylinders and cubes uses a MarkerArray
+    marker_pub_2_->publish(marker_array);
+}
+
+
+
+void RVizVisualization::visualizeText(
+    const std::vector<Eigen::Vector3d>& points,
+    const std::vector<std::string>& texts,
+    const std::string& frame_id,
+    const std::string& ns)
+{
+    if (points.size() != texts.size()) {
+        RCLCPP_ERROR(node_->get_logger(), "Mismatch between points and texts for visualization.");
+        return;
+    }
+
+    visualization_msgs::msg::MarkerArray marker_array;
+
+    // Clear previous text markers in this namespace
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id;
+    clear_marker.header.stamp = node_->now();
+    clear_marker.ns = ns;
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    marker_array.markers.push_back(clear_marker);
+
+    // Create a new marker for each text element
+    for (size_t i = 0; i < points.size(); ++i) {
+        visualization_msgs::msg::Marker text_marker;
+        text_marker.header.frame_id = frame_id;
+        text_marker.header.stamp = node_->now();
+        text_marker.ns = ns;
+        text_marker.id = i;
+        text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+        text_marker.action = visualization_msgs::msg::Marker::ADD;
+
+        // Position the text slightly above the node
+        text_marker.pose.position.x = points[i].x();
+        text_marker.pose.position.y = points[i].y();
+        text_marker.pose.position.z = points[i].z() + 0.3; // Z-offset
+
+        // Set the text content
+        text_marker.text = texts[i];
+
+        // Set the scale (height of the text)
+        text_marker.scale.z = 0.3;
+
+        // Set the color
+        text_marker.color.r = 1.0f;
+        text_marker.color.g = 1.0f;
+        text_marker.color.b = 1.0f;
+        text_marker.color.a = 1.0; // Opaque white
+
+        marker_array.markers.push_back(text_marker);
+    }
+
+    marker_pub_2_->publish(marker_array);
+}

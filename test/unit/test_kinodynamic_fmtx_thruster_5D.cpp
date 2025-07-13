@@ -190,6 +190,8 @@ int main(int argc, char **argv) {
     */
 
     planner_params.setParam("precache_neighbors", true);
+    planner_params.setParam("kd_dim", 3); // 2 or 3 for only 2nd order thruster and 4 incase you do 3rd order [x, y, z, vx, vy, vz, time]
+
     /////////////////////////////////////////////////////////////////////////////////////////////////
     // --- 3. Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("fmtx_thruster_visualizer",
@@ -259,7 +261,9 @@ int main(int argc, char **argv) {
         [&]() { if (kinodynamic_planner) kinodynamic_planner->visualizeTree(); });
 
     // --- 6. Executor Setup ---
-    rclcpp::executors::MultiThreadedExecutor executor;
+    // rclcpp::executors::MultiThreadedExecutor executor;
+    rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
+
     executor.add_node(ros_manager);
     executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
     std::thread executor_thread([&executor]() { executor.spin(); });
@@ -268,6 +272,13 @@ int main(int argc, char **argv) {
     resetAndPlaySimulation();
     const double goal_tolerance = 2.0;
     rclcpp::Rate loop_rate(20); // Replanning loop can run slower
+    std::vector<double> sim_durations;
+    std::vector<std::tuple<double, double>> sim_duration_2;
+
+
+
+    auto global_start = std::chrono::steady_clock::now();
+
 
     // while (g_running && rclcpp::ok()) {
     //     // Get the robot's current 5D state from the simulator.
@@ -335,29 +346,30 @@ int main(int argc, char **argv) {
 
         // 5. REPLAN IF, AND ONLY IF, THE CURRENT PATH IS UNSAFE
         // if (!is_path_still_safe) {
-            RCLCPP_WARN(vis_node->get_logger(), "Collision predicted on current path! Triggering replan...");
+            // RCLCPP_WARN(vis_node->get_logger(), "Collision predicted on current path! Triggering replan...");
             
             // *** THIS IS THE CRITICAL FIX ***
             // Before replanning, update the planner's internal map of obstacles.
             // This invalidates the colliding edges so the planner can route around them.
             auto snapshot = obstacle_checker->getAtomicSnapshot();
-            auto start = std::chrono::high_resolution_clock::now();
-            std::cout<<kinodynamic_planner->updateObstacleSamples(snapshot.obstacles)<<"\n";
-            // *******************************
-            // auto end = std::chrono::high_resolution_clock::now();
-            // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            // std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
-            // // Update the planner's knowledge of the robot's state to be as current as possible.
+            auto start = std::chrono::steady_clock::now();
+            kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
+
             kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
             
             obstacle_checker->getAtomicSnapshot();
-            start = std::chrono::high_resolution_clock::now();
             // Run the core planning algorithm to find a new, safe path.
             planner->plan();
 
-            auto end = std::chrono::high_resolution_clock::now();
+            auto end = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
             std::cout << "Time taken for the plan and update : " << duration.count() << " milliseconds\n";
+            sim_durations.push_back(duration.count());
+            double elapsed_s = std::chrono::duration<double>(start - global_start).count();
+            double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
+            sim_duration_2.emplace_back(elapsed_s, duration_ms);
+
+
             kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
 
             // Get the new path to execute.
@@ -374,6 +386,69 @@ int main(int argc, char **argv) {
         // Wait for the next cycle.
         loop_rate.sleep();
     }
+
+
+
+    const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations
+
+    int num_of_samples_ = planner_params.getParam<int>("num_of_samples");
+    std::time_t now_time = std::time(nullptr); 
+    std::tm* local_tm = std::localtime(&now_time);
+
+    int day    = local_tm->tm_mday;
+    int month  = local_tm->tm_mon + 1;
+    int year   = local_tm->tm_year + 1900;
+    int hour   = local_tm->tm_hour;
+    int minute = local_tm->tm_min;
+    int second = local_tm->tm_sec;
+
+    // Create base filename with timestamp and samples
+    std::string planner_type = "fmtx";
+    std::string base_filename = "sim_" + planner_type + "_" +
+        std::to_string(num_of_samples_) + "samples_" + 
+        std::to_string(day) + "_" +
+        std::to_string(month) + "_" +
+        std::to_string(year) + "_" +
+        std::to_string(hour) + "_" +
+        std::to_string(minute) + "_" +
+        std::to_string(second);
+
+    if (SAVE_TIMED_DATA) {
+        // Save timed data (elapsed_s, duration_ms)
+        std::string filename = base_filename + "_timed.csv";
+        std::cout << "Writing timed durations to: " << filename << std::endl;
+
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: failed to open " << filename << std::endl;
+            return 1;
+        }
+
+        out << "elapsed_s,duration_ms\n"; // CSV header
+        for (const auto& [elapsed, duration] : sim_duration_2) {
+            out << elapsed << "," << duration << "\n";
+        }
+        out.close();
+    } else {
+        // Save raw durations (legacy format)
+        std::string filename = base_filename + "_raw.csv";
+        std::cout << "Writing raw durations to: " << filename << std::endl;
+
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: failed to open " << filename << std::endl;
+            return 1;
+        }
+
+        for (const auto& d : sim_durations) {
+            out << d << "\n";
+        }
+        out.close();
+    }
+
+    std::cout << "Done writing CSV.\n";
+    
+
 
 
     // --- 8. Graceful Shutdown ---

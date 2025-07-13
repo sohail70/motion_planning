@@ -17,7 +17,6 @@ class KinodynamicFMTX : public Planner {
             std::vector<Eigen::VectorXd> getPathPositions() const;
             void setStart(const Eigen::VectorXd& start) override;
             void setGoal(const Eigen::VectorXd& goal) override;
-            void setRobotIndex(const Eigen::VectorXd& robot_position);
 
             FMTNode* getRobotNode() const {
                 return robot_node_;
@@ -204,7 +203,7 @@ class KinodynamicFMTX : public Planner {
 
             std::unordered_set<int> dir;
             
-
+            int kd_dim ; 
 
             bool static_obs_presence;
             ObstacleVector seen_statics_;

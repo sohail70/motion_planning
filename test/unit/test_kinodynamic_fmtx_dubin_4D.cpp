@@ -148,6 +148,7 @@ int main(int argc, char** argv) {
     planner_params.setParam("ignore_sample", false);
     planner_params.setParam("prune", false);
     planner_params.setParam("precache_neighbors", true);
+    planner_params.setParam("kd_dim", 4); // 2 or 3 or 4 only dubin
 
     // --- 3. Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("fmtx_dubins_visualizer",
@@ -205,7 +206,9 @@ int main(int argc, char** argv) {
         [&]() { if (kinodynamic_planner) kinodynamic_planner->visualizeTree(); });
 
     // --- 6. Executor Setup ---
-    rclcpp::executors::MultiThreadedExecutor executor;
+    // rclcpp::executors::MultiThreadedExecutor executor;
+    rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
+
     executor.add_node(ros_manager);
     executor.add_node(vis_node); // for dubin i do not plot the edges based on trajecotry because thats too demanding. i just connected the parent to child via simple edge so you might see soem edges going through obstalce but in reality the dubin is going around them so dont be alarm!
 
@@ -217,7 +220,12 @@ int main(int argc, char** argv) {
     const double goal_tolerance = 2.0;
     rclcpp::Rate loop_rate(20);
 
+    std::vector<double> sim_durations;
+    std::vector<std::tuple<double, double>> sim_duration_2;
 
+
+
+    auto global_start = std::chrono::steady_clock::now();
 
 
     while (g_running && rclcpp::ok()) {
@@ -246,7 +254,6 @@ int main(int argc, char** argv) {
 
         current_state = ros_manager->getCurrentSimulatedState();
         kinodynamic_planner->setRobotState(current_state);
-
         // --- 4. Reactive safety check ---
         bool path_invalid = !kinodynamic_planner->isPathStillValid(current_executable_path, current_state);
 
@@ -267,6 +274,11 @@ int main(int argc, char** argv) {
                 std::cout << "time taken for the update : " << duration.count() 
                         << " milliseconds\n";
             }
+            sim_durations.push_back(duration.count());
+            double elapsed_s = std::chrono::duration<double>(start - global_start).count();
+            double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
+            sim_duration_2.emplace_back(elapsed_s, duration_ms);
+
   
             Eigen::VectorXd fresh_robot_state = ros_manager->getCurrentSimulatedState();
             kinodynamic_planner->setRobotState(fresh_robot_state);
@@ -352,6 +364,70 @@ int main(int argc, char** argv) {
 
         loop_rate.sleep();
     }
+
+
+    const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations
+
+    int num_of_samples_ = planner_params.getParam<int>("num_of_samples");
+    std::time_t now_time = std::time(nullptr); 
+    std::tm* local_tm = std::localtime(&now_time);
+
+    int day    = local_tm->tm_mday;
+    int month  = local_tm->tm_mon + 1;
+    int year   = local_tm->tm_year + 1900;
+    int hour   = local_tm->tm_hour;
+    int minute = local_tm->tm_min;
+    int second = local_tm->tm_sec;
+
+    // Create base filename with timestamp and samples
+    std::string planner_type = "fmtx";
+    std::string base_filename = "sim_" + planner_type + "_" +
+        std::to_string(num_of_samples_) + "samples_" + 
+        std::to_string(day) + "_" +
+        std::to_string(month) + "_" +
+        std::to_string(year) + "_" +
+        std::to_string(hour) + "_" +
+        std::to_string(minute) + "_" +
+        std::to_string(second);
+
+    if (SAVE_TIMED_DATA) {
+        // Save timed data (elapsed_s, duration_ms)
+        std::string filename = base_filename + "_timed.csv";
+        std::cout << "Writing timed durations to: " << filename << std::endl;
+
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: failed to open " << filename << std::endl;
+            return 1;
+        }
+
+        out << "elapsed_s,duration_ms\n"; // CSV header
+        for (const auto& [elapsed, duration] : sim_duration_2) {
+            out << elapsed << "," << duration << "\n";
+        }
+        out.close();
+    } else {
+        // Save raw durations (legacy format)
+        std::string filename = base_filename + "_raw.csv";
+        std::cout << "Writing raw durations to: " << filename << std::endl;
+
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: failed to open " << filename << std::endl;
+            return 1;
+        }
+
+        for (const auto& d : sim_durations) {
+            out << d << "\n";
+        }
+        out.close();
+    }
+
+    std::cout << "Done writing CSV.\n";
+    
+
+
+
 
     // --- 8. Graceful Shutdown ---
     RCLCPP_INFO(vis_node->get_logger(), "Shutting down.");

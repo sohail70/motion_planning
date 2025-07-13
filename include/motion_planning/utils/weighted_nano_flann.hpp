@@ -67,6 +67,7 @@ public:
     // Validation is complex and marked as not fully supported
     bool validateAgainstSamples(const std::vector<std::shared_ptr<IFMTNode>>& samples) const override;
     bool validateAgainstSamples(const std::vector<std::shared_ptr<BITNode>>& samples) const override;
+    int getDimension() override {return dimension_;}
 
 private:
     int dimension_;

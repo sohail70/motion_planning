@@ -1,19 +1,19 @@
 cmake_minimum_required(VERSION 3.10)
 project(MotionPlanning)
 # add_compile_options(-g -O0)  # Force debug symbols and disable optimizations
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_CXX_STANDARD 20)
+# set(CMAKE_BUILD_TYPE Release)
 # set(CMAKE_BUILD_TYPE RelWithDebInfo)
-# set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Debug)
 
 
 
-# AddressSanitizer for debugging heap corruption
-if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-  message(STATUS "Debug build: Enabling AddressSanitizer")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
-  set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
-endif()
+# # AddressSanitizer for debugging heap corruption
+# if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+#   message(STATUS "Debug build: Enabling AddressSanitizer")
+#   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
+#   set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+# endif()
 
 
 find_package(Eigen3 REQUIRED)
@@ -178,6 +178,10 @@ add_test(NAME test_rrtx COMMAND test_rrtx)
 add_executable(test_weighted_kdtree test/unit/test_weighted_kdtree.cpp)
 target_link_libraries(test_weighted_kdtree motion_planning)
 add_test(NAME test_weighted_kdtree COMMAND test_weighted_kdtree)
+
+add_executable(test_weighted_kdtree_visualization test/unit/test_weighted_kdtree_visualization.cpp)
+target_link_libraries(test_weighted_kdtree_visualization motion_planning)
+add_test(NAME test_weighted_kdtree_visualization COMMAND test_weighted_kdtree_visualization)
 
 add_executable(test_lie_kdtree test/unit/test_lie_kdtree.cpp)
 target_link_libraries(test_lie_kdtree motion_planning)

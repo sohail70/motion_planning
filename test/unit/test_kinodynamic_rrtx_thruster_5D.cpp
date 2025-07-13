@@ -188,7 +188,8 @@ int main(int argc, char **argv) {
         NEW UPDATE: in 30 obstalce case testing with the whole environment visible doing the fmt style was much better!--> maybe i should put two variants!!! --> Need to decide !
     */
 
-    planner_params.setParam("precache_neighbors", true);
+    planner_params.setParam("kd_dim", 3); // 2 or 3 for only 2nd order thruster and 4 incase you do 3rd order [x, y, z, vx, vy, vz, time]
+
     /////////////////////////////////////////////////////////////////////////////////////////////////
     // --- 3. Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("rrtx_thruster_visualizer",
@@ -240,6 +241,7 @@ int main(int argc, char **argv) {
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
     planner->plan();
 
+    kinodynamic_planner->dumpTreeToCSV("rrtx_tree_nodes.csv");
     // To get the path, we need a function that stitches the ExecutionTrajectory data.
     // (See Section 3 for the implementation of this new function).
     kinodynamic_planner->setRobotState(robot_initial_state);
@@ -269,7 +271,11 @@ int main(int argc, char **argv) {
     rclcpp::Rate loop_rate(20); // Replanning loop can run slower
 
 
+    std::vector<double> sim_durations;
+    std::vector<std::tuple<double, double>> sim_duration_2;
 
+
+    auto global_start = std::chrono::steady_clock::now();
     while (g_running && rclcpp::ok()) {
         // 1. Get the robot's current state from the simulator.
         Eigen::VectorXd current_state = ros_manager->getCurrentKinodynamicState();
@@ -287,17 +293,22 @@ int main(int argc, char **argv) {
         auto current_path = kinodynamic_planner->getPathPositions();
 
         // 4. PROACTIVELY VALIDATE THE CURRENT PATH
-        bool is_path_still_safe = kinodynamic_planner->isPathStillValid(current_path, current_state);
+        // bool is_path_still_safe = kinodynamic_planner->isPathStillValid(current_path, current_state);
 
         // 5. REPLAN IF, AND ONLY IF, THE CURRENT PATH IS UNSAFE
-        if (!is_path_still_safe) {
+        // if (!is_path_still_safe) {
             RCLCPP_WARN(vis_node->get_logger(), "Collision predicted on current path! Triggering replan...");
             auto snapshot = obstacle_checker->getAtomicSnapshot();
-            auto start = std::chrono::high_resolution_clock::now();
+            auto start = std::chrono::steady_clock::now();
             kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
-            auto end = std::chrono::high_resolution_clock::now();
+            auto end = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
             std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
+            sim_durations.push_back(duration.count());
+            double elapsed_s = std::chrono::duration<double>(start - global_start).count();
+            double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
+            sim_duration_2.emplace_back(elapsed_s, duration_ms);
+
             kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
 
             // Get the new path to execute.
@@ -309,11 +320,75 @@ int main(int argc, char **argv) {
                 RCLCPP_ERROR(vis_node->get_logger(), "Replanning failed to find a new path!");
                 // Consider adding safety stop logic here.
             }
-        }
+        // }
         
         // Wait for the next cycle.
         loop_rate.sleep();
     }
+
+
+    const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations
+    int num_of_samples_ = planner_params.getParam<int>("num_of_samples");
+
+
+    std::time_t now_time = std::time(nullptr); 
+    std::tm* local_tm = std::localtime(&now_time);
+
+    int day    = local_tm->tm_mday;
+    int month  = local_tm->tm_mon + 1;
+    int year   = local_tm->tm_year + 1900;
+    int hour   = local_tm->tm_hour;
+    int minute = local_tm->tm_min;
+    int second = local_tm->tm_sec;
+
+    // Create base filename with timestamp
+    std::string planner_type = "rrtx";
+    std::string base_filename = "sim_" + planner_type + "_" +
+        std::to_string(num_of_samples_) + "samples_" + 
+        std::to_string(day) + "_" +
+        std::to_string(month) + "_" +
+        std::to_string(year) + "_" +
+        std::to_string(hour) + "_" +
+        std::to_string(minute) + "_" +
+        std::to_string(second);
+
+    if (SAVE_TIMED_DATA) {
+        // Save timed data (elapsed_s, duration_ms)
+        std::string filename = base_filename + "_timed.csv";
+        std::cout << "Writing timed durations to: " << filename << std::endl;
+
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: failed to open " << filename << std::endl;
+            return 1;
+        }
+
+        out << "elapsed_s,duration_ms\n"; // CSV header
+        for (const auto& [elapsed, duration] : sim_duration_2) {
+            out << elapsed << "," << duration << "\n";
+        }
+        out.close();
+    } else {
+        // Save raw durations (legacy format)
+        std::string filename = base_filename + "_raw.csv";
+        std::cout << "Writing raw durations to: " << filename << std::endl;
+
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: failed to open " << filename << std::endl;
+            return 1;
+        }
+
+        for (const auto& d : sim_durations) {
+            out << d << "\n";
+        }
+        out.close();
+    }
+
+    std::cout << "Done writing CSV.\n";
+
+
+
 
 
 

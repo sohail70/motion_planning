@@ -215,6 +215,8 @@ RDTStateSpace::RDTStateSpace(int euclidean_dimension, double min_velocity, doubl
 Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
                                 const Eigen::VectorXd& to) const
 {
+    // static int steer_call_ = 0;
+    // steer_call_++;
     Trajectory traj;
     traj.is_valid = false;
 
@@ -272,6 +274,7 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
         .end_point    = to_spatial
     });
     
+    // std::cout<<steer_call_<<"\n";
     return traj;
 }
 

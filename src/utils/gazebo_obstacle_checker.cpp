@@ -287,6 +287,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
     double global_edge_start_time
 ) const {
     // A nullopt from getCollidingObstacle means the path is safe.
+    // return isObstacleFree(trajectory.path_points.at(0),trajectory.path_points.at(1));
     return !getCollidingObstacle(trajectory, global_edge_start_time).has_value();
 }
 

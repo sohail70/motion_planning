@@ -16,6 +16,8 @@
 #include <gz/transport/Node.hh>
 #include <iostream>
 #include <thread>
+#include <valgrind/callgrind.h>
+
 
 // Define a global running flag for signal handling
 std::atomic<bool> g_running{true};
@@ -81,8 +83,8 @@ int main(int argc, char** argv)
 
 
     // 1) Parse your flags
-    int num_samples = 5000;
-    double factor = 1.5;
+    int num_samples = 500;
+    double factor = 3.0;
     unsigned int seed = 42;
     int run_secs = 30;
 
@@ -148,6 +150,7 @@ int main(int argc, char** argv)
     planner_params.setParam("use_heuristic", false);
     planner_params.setParam("ignore_sample", false);
     planner_params.setParam("prune", false);
+    planner_params.setParam("kd_dim", 3); // 2 or 3 only for R2T
 
     planner_params.setParam("precache_neighbors", true);
     // --- 3. Object Initialization ---
@@ -202,8 +205,15 @@ int main(int argc, char** argv)
     // --- 5. Perform the INITIAL Plan ---
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
     // obstacle_checker->getAtomicSnapshot();
+    auto start = std::chrono::steady_clock::now();
 
     planner->plan();
+    auto end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    if (duration.count() > 0) {
+        std::cout << "time taken for the initial plan : " << duration.count() 
+                << " milliseconds\n";
+    }
 
     // kinodynamic_planner->printCacheStatus();
 
@@ -233,9 +243,11 @@ int main(int argc, char** argv)
 
 
     // --- 6. Set Up Executor (Unchanged) ---
-    rclcpp::executors::MultiThreadedExecutor executor;
+    // rclcpp::executors::MultiThreadedExecutor executor;
+    rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
+
     executor.add_node(ros_manager);
-    executor.add_node(vis_node); // **IMPORTANT**: Add the vis_node to the executor so its timer runs!
+    // executor.add_node(vis_node); // **IMPORTANT**: Add the vis_node to the executor so its timer runs!
 
     std::thread executor_thread([&executor]() {
         executor.spin();
@@ -245,8 +257,15 @@ int main(int argc, char** argv)
     resetAndPlaySimulation();
     RCLCPP_INFO(vis_node->get_logger(), "Starting execution and monitoring loop. Press Ctrl+C to exit.");
     const double goal_tolerance = 0.5; // How close to (0,0) counts as "reached", in meters.
+    std::vector<double> sim_durations;
+    std::vector<std::tuple<double, double>> sim_duration_2;
 
+
+
+    auto global_start = std::chrono::steady_clock::now();
     rclcpp::Rate loop_rate(20); // Frequency to check for replan triggers
+    // Start profiling
+    CALLGRIND_START_INSTRUMENTATION;
     while (g_running && rclcpp::ok())
     {
         bool needs_replan = false;
@@ -286,13 +305,8 @@ int main(int argc, char** argv)
         kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
         // if (needs_replan) {
             // Get the robot's current state to plan FROM.
-            Eigen::VectorXd current_sim_state_replan = ros_manager->getCurrentSimulatedState();
-            if (current_sim_state_replan.size() == 0) continue; // Skip if state not ready
-
-            RCLCPP_INFO(vis_node->get_logger(), "Replanning triggered. Finding new optimal path...");
-            
-            current_sim_state = ros_manager->getCurrentSimulatedState();
-            kinodynamic_planner->setRobotState(current_sim_state);
+            // current_sim_state = ros_manager->getCurrentSimulatedState();
+            // kinodynamic_planner->setRobotState(current_sim_state);
             planner->plan();
             auto end = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -300,11 +314,16 @@ int main(int argc, char** argv)
                 std::cout << "time taken for the update : " << duration.count() 
                         << " milliseconds\n";
             }
+            sim_durations.push_back(duration.count());
+            double elapsed_s = std::chrono::duration<double>(start - global_start).count();
+            double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
+            sim_duration_2.emplace_back(elapsed_s, duration_ms);
+
   
 
             // Re-run the full planning pipeline
-            Eigen::VectorXd fresh_robot_state = ros_manager->getCurrentSimulatedState();
-            kinodynamic_planner->setRobotState(fresh_robot_state);
+            current_sim_state = ros_manager->getCurrentSimulatedState();
+            kinodynamic_planner->setRobotState(current_sim_state);
             auto new_executable_path = kinodynamic_planner->getPathPositions();
             
             // *** CORRECTED LOGIC TO HANDLE FAILURE ***
@@ -314,7 +333,7 @@ int main(int argc, char** argv)
                 
                 // Create a "stop" path containing only the robot's current state.
                 std::vector<Eigen::VectorXd> stop_path;
-                stop_path.push_back(current_sim_state_replan);
+                stop_path.push_back(current_sim_state);
                 
                 // Update the current path and send it to the manager to halt execution.
                 current_executable_path = stop_path;
@@ -339,6 +358,8 @@ int main(int argc, char** argv)
         // kinodynamic_planner->visualizeTree();
         loop_rate.sleep();
     }
+    // Stop profiling
+    CALLGRIND_STOP_INSTRUMENTATION;
 
     // while (g_running && rclcpp::ok())
     // {
@@ -473,6 +494,69 @@ int main(int argc, char** argv)
     //     // kinodynamic_planner->visualizeTree();
     //     loop_rate.sleep();
     // }
+
+
+
+    const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations
+
+    int num_of_samples_ = planner_params.getParam<int>("num_of_samples");
+    std::time_t now_time = std::time(nullptr); 
+    std::tm* local_tm = std::localtime(&now_time);
+
+    int day    = local_tm->tm_mday;
+    int month  = local_tm->tm_mon + 1;
+    int year   = local_tm->tm_year + 1900;
+    int hour   = local_tm->tm_hour;
+    int minute = local_tm->tm_min;
+    int second = local_tm->tm_sec;
+
+    // Create base filename with timestamp and samples
+    std::string planner_type = "fmtx";
+    std::string base_filename = "sim_" + planner_type + "_" +
+        std::to_string(num_of_samples_) + "samples_" + 
+        std::to_string(day) + "_" +
+        std::to_string(month) + "_" +
+        std::to_string(year) + "_" +
+        std::to_string(hour) + "_" +
+        std::to_string(minute) + "_" +
+        std::to_string(second);
+
+    if (SAVE_TIMED_DATA) {
+        // Save timed data (elapsed_s, duration_ms)
+        std::string filename = base_filename + "_timed.csv";
+        std::cout << "Writing timed durations to: " << filename << std::endl;
+
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: failed to open " << filename << std::endl;
+            return 1;
+        }
+
+        out << "elapsed_s,duration_ms\n"; // CSV header
+        for (const auto& [elapsed, duration] : sim_duration_2) {
+            out << elapsed << "," << duration << "\n";
+        }
+        out.close();
+    } else {
+        // Save raw durations (legacy format)
+        std::string filename = base_filename + "_raw.csv";
+        std::cout << "Writing raw durations to: " << filename << std::endl;
+
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: failed to open " << filename << std::endl;
+            return 1;
+        }
+
+        for (const auto& d : sim_durations) {
+            out << d << "\n";
+        }
+        out.close();
+    }
+
+    std::cout << "Done writing CSV.\n";
+    
+
 
 
 

@@ -30,6 +30,8 @@ class KDTree {
      virtual bool validateAgainstSamples(const std::vector<std::shared_ptr<IFMTNode>>& samples) const = 0;
      virtual bool validateAgainstSamples(const std::vector<std::shared_ptr<BITNode>>& samples) const = 0;
 
+     virtual int getDimension() = 0;
+
  private:
 
 };

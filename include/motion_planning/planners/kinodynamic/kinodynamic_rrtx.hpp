@@ -20,7 +20,6 @@ class KinodynamicRRTX : public Planner {
 
     void setStart(const Eigen::VectorXd& start) override;
     void setGoal(const Eigen::VectorXd& goal) override;
-    void setRobotIndex(const Eigen::VectorXd& robot_position);
     void clearPlannerState() ;
 
     // Obstacle management
@@ -99,6 +98,7 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     bool use_kdtree;
 
 
+    int kd_dim ; 
 
 
     bool static_obs_presence;
@@ -132,6 +132,7 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     double shrinkingBallRadius() const;
     void addNewObstacle(const std::vector<int>& added_indices);
     void removeObstacle(const std::vector<int>& removed_indices);
+    Eigen::VectorXd saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta);
 
     // Path smoothing implementations
     std::vector<Eigen::VectorXd> smoothPath(const std::vector<Eigen::VectorXd>& path, 
@@ -139,7 +140,8 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     std::vector<Eigen::VectorXd> interpolatePath(const std::vector<Eigen::VectorXd>& path,
                                                int num_intermediates) const;
 
-
+    
+    int obs_check = 0;
 
 
 };

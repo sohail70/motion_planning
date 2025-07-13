@@ -81,6 +81,7 @@ public:
     bool removeByIndex(size_t index) override;
     bool validateAgainstSamples(const std::vector<std::shared_ptr<IFMTNode>>& samples) const override;
     bool validateAgainstSamples(const std::vector<std::shared_ptr<BITNode>>& samples) const override;
+    int getDimension() override {return dimension_;}
 
 private:
     LieNode* root_ = nullptr;

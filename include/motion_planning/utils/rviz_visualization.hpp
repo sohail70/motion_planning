@@ -51,6 +51,10 @@ public:
         const std::string& ns);
 
 
+    void visualizeCircle( const Eigen::Vector2d& center, double radius, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);
+
+    void visualizeText( const std::vector<Eigen::Vector3d>& points, const std::vector<std::string>& texts, const std::string& frame_id, const std::string& ns) override;
+
 
 private:
     rclcpp::Node::SharedPtr node_;

@@ -93,55 +93,6 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::getPathPositions() const {
 }
 
 
-void KinodynamicRRTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
-    robot_position_ = robot_position;
-
-    const double MAX_SEARCH_RADIUS = 5.0; // Meters
-    std::vector<size_t> nearest_indices = kdtree_->radiusSearch(robot_position, MAX_SEARCH_RADIUS);
-
-    size_t best_index = std::numeric_limits<size_t>::max(); 
-    double min_total_cost = std::numeric_limits<double>::max();
-    RRTxNode* best_node = nullptr; 
-
-    for (size_t index : nearest_indices) {
-        auto node = tree_.at(index).get();
-        if (node->getCost() == std::numeric_limits<double>::infinity()) continue;
-
-        Eigen::VectorXd node_position = node->getStateValue();  // Fixed typo: getStateValue -> getStateValue
-        double distance_to_node = (node_position - robot_position).norm();
-        double total_cost = distance_to_node + node->getCost();
-
-        if (total_cost < min_total_cost) {
-            min_total_cost = total_cost;
-            best_index = index;
-            best_node = node;
-        }
-    }
-
-    if (best_index != std::numeric_limits<size_t>::max()) {
-        vbot_index_ = best_node->getIndex();
-        vbot_node_ = best_node; // Directly assign the raw pointer
-        return;
-    }
-
-    bool keep_prev_state_ = false;
-    if (vbot_node_ && keep_prev_state_ == true) {
-        std::cout << "No valid node found in neighborhood. Keeping previous vbot_node_.\n";
-        return;
-    }
-    if (vbot_node_) {
-        std::cout << "No valid node found in neighborhood. Setting to nearest node.\n";
-        std::vector<size_t> nearest_indices = kdtree_->knnSearch(robot_position, 1);
-        int nearest = nearest_indices.empty() ? -1 : static_cast<int>(nearest_indices[0]);  
-        vbot_node_ = tree_.at(nearest).get();
-        vbot_index_ = vbot_node_->getIndex();
-        return;
-    }
-
-    vbot_index_ = -1;
-    vbot_node_ = nullptr; 
-    std::cout << "No valid node found and no previous vbot_node_. Setting vbot_node_ to nullptr.\n";
-}
 
 void KinodynamicRRTX::clearPlannerState() {
     // Clear all critical variables
@@ -232,12 +183,30 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
     use_kdtree = params.getParam<bool>("use_kdtree");
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
 
+    kd_dim = params.getParam<int>("kd_dim",2);
+
 
     if (use_kdtree == true && kdtree_type == "NanoFlann"){
-        Eigen::VectorXd weights(2);
+        Eigen::VectorXd weights(kd_dim);
         // weights << 1.0, 1.0, 1.0; // Weights for x, y, time
-        weights << 1.0, 1.0; // Weights for x, y,
-        kdtree_ = std::make_shared<WeightedNanoFlann>(2, weights);
+        switch (kd_dim) {
+            case 2: // (x, y)
+                weights << 1.0, 1.0; // Weights for x, y,
+                break;
+            case 3: // (x, y, time)
+                {
+                    weights << 1.0, 1.0, 1.0; // Weights for x, y, time
+                }
+                break;
+            case 4: // (x, y, theta, time) - From your Dubins example
+                {
+                    weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
+                }
+                break;
+            default: 
+                RCLCPP_ERROR(rclcpp::get_logger("Planner_Obstacle_Update"), "Unsupported k-d tree dimension : %d", kd_dim);
+        }
+        kdtree_ = std::make_shared<WeightedNanoFlann>(kd_dim, weights);
     } else if (use_kdtree == true && kdtree_type == "LieKDTree"){
         kdtree_ = std::make_unique<LieSplittingKDTree>(statespace_->getDimension(), statespace_);
     } else {
@@ -265,7 +234,7 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
         // 2. Define how many spatial dimensions you have.
         //    This makes the code robust for future changes (e.g., to 3D space).
         //    Assuming (x, y, time), the spatial dimension is 2.
-        int spatial_dimension = 2; // For (x, y)
+        int spatial_dimension = kd_dim; // For (x, y)
         // For a future Dubins (x, y, theta, time) planner, this would still be 2.
 
         // 3. Use .leftCols() to create a new matrix with only the spatial data.
@@ -321,6 +290,60 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
     sample_counter = 1;
 }
 
+Eigen::VectorXd KinodynamicRRTX::saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta) {
+    int dimension = newPoint.size();
+    Eigen::VectorXd saturatedPoint = newPoint;
+
+    switch (dimension) {
+        case 3: { // State: (x, y, time)
+            double dist = (newPoint - closestPoint).norm();
+            if (dist > delta) {
+                saturatedPoint = closestPoint + (newPoint - closestPoint) * (delta / dist);
+            }
+            break;
+        }
+
+        case 4: { // State: (x, y, theta, time)
+            constexpr int X = 0, Y = 1, THETA = 2, TIME = 3;
+
+            // Distance is calculated on Euclidean components (x, y, time)
+            Eigen::Vector3d p1(newPoint(X), newPoint(Y), newPoint(TIME));
+            Eigen::Vector3d p2(closestPoint(X), closestPoint(Y), closestPoint(TIME));
+            double dist = (p1 - p2).norm();
+
+            if (dist > delta) {
+                double scale = delta / dist;
+                // Saturate Euclidean parts
+                saturatedPoint(X) = closestPoint(X) + (newPoint(X) - closestPoint(X)) * scale;
+                saturatedPoint(Y) = closestPoint(Y) + (newPoint(Y) - closestPoint(Y)) * scale;
+                saturatedPoint(TIME) = closestPoint(TIME) + (newPoint(TIME) - closestPoint(TIME)) * scale;
+
+                // Saturate angle along the shortest path
+                double thetaDiff = normalizeAngle(newPoint(THETA) - closestPoint(THETA));
+                saturatedPoint(THETA) = closestPoint(THETA) + thetaDiff * scale;
+            }
+            // Always normalize the final angle
+            saturatedPoint(THETA) = normalizeAngle(saturatedPoint(THETA));
+            break;
+        }
+
+        case 5: { // State: (x, y, vx, vy, time)
+            // For this state space, all components are Euclidean.
+            // We calculate distance and saturate across all 5 dimensions.
+            double dist = (newPoint - closestPoint).norm();
+            if (dist > delta) {
+                saturatedPoint = closestPoint + (newPoint - closestPoint) * (delta / dist);
+            }
+            break;
+        }
+
+        default:
+            // Handle unsupported dimensions
+            throw std::runtime_error("Unsupported state dimension for saturate function: " + std::to_string(dimension));
+    }
+
+    return saturatedPoint;
+}
 
 // Well for now I use this for the first tree creation
 void KinodynamicRRTX::plan() {
@@ -334,22 +357,24 @@ void KinodynamicRRTX::plan() {
 
         Eigen::VectorXd sample = Eigen::VectorXd::Random(dimension_);
         sample = (lower_bounds_.array() + (upper_bounds_ - lower_bounds_).array() * ((sample.array() + 1.0) / 2.0)).matrix();
-
+        
         sample_counter++;
-        std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample.head(2), 1);
+        std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample.head(kd_dim), 1);
         RRTxNode* nearest_node = tree_[nearest_indices[0]].get();
         Eigen::VectorXd nearest_state = nearest_node->getStateValue();
         
-        // Steer towards sample
-        // Calculate direction and distance using only the first two elements
-        Eigen::Vector2d direction_2d = sample.head(2) - nearest_state.head(2);
-        double distance_2d = direction_2d.norm();
+        // // Steer towards sample
+        // // Calculate direction and distance using only the first two elements
+        // Eigen::VectorXd direction_xd = sample.head(kd_dim) - nearest_state.head(kd_dim);
+        // double distance_xd = direction_xd.norm();
 
-        // Check if the 2D distance exceeds the step size
-        if (distance_2d > delta) {
-            // Update only the first two elements of the original 'sample' vector
-            sample.head(2) = nearest_state.head(2) + (direction_2d / distance_2d) * delta;
-        }
+        // // Check if the 2D distance exceeds the step size
+        // if (distance_xd > delta) {
+        //     // Update only the first two elements of the original 'sample' vector
+        //     sample.head(kd_dim) = nearest_state.head(kd_dim) + (direction_xd / distance_xd) * delta;
+        // }
+        sample = saturate(sample, nearest_state, delta);
+
 
         // Attempt to extend tree
         bool node_added = false;
@@ -442,7 +467,7 @@ void KinodynamicRRTX::plan() {
 
 bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
-    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(2), neighborhood_radius_ + 0.01);
+    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
     
     auto trajs_from_v_to_u = findParent(new_node, neighbors);
 
@@ -452,7 +477,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     }
 
     tree_.push_back(new_node);
-    kdtree_->addPoint(new_node->getStateValue().head(2));
+    kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
     kdtree_->buildTree(); 
 
     // Algorithm 2 lines 7-13 implementation
@@ -601,6 +626,7 @@ void KinodynamicRRTX::reduceInconsistency() {
 
         node->setCost(node->getLMC());
     }
+
 }
 
 
@@ -612,59 +638,174 @@ double KinodynamicRRTX::shrinkingBallRadius() const {
 
 }
 
+// // Suited for 2D kd tree
+// std::unordered_set<int> KinodynamicRRTX::findSamplesNearObstacles(
+//     const ObstacleVector& obstacles,
+//     double max_length
+// ) {
+//     std::unordered_set<int> conflicting_samples;
+//     const double PREDICTION_HORIZON_SECONDS = 3.0; // How far into the future to predict
+    
+//     // Controls how many steps we check between the start and end of the horizon.
+//     // 0 = just start and end points. 1 = start, middle, and end points.
+//     const int num_intermediate_steps = 3; 
+
+//     for (const auto& obstacle : obstacles) {
+//         // --- The existing logic for calculating search radius is good. ---
+//         double obstacle_radius;
+//         if (obstacle.type == Obstacle::CIRCLE) {
+//             obstacle_radius = obstacle.dimensions.radius + obstacle.inflation;
+//         } else { // BOX
+//             double half_diagonal = std::sqrt(
+//                 std::pow(obstacle.dimensions.width/2, 2) +
+//                 std::pow(obstacle.dimensions.height/2, 2)
+//             );
+//             obstacle_radius = half_diagonal + obstacle.inflation;
+//         }
+//         // This search radius is a heuristic to find potentially colliding EDGES.
+//         // It should be the radius of our "swept volume" check.
+//         double edge_heuristic_radius = std::sqrt(
+//             std::pow(obstacle_radius, 2) +
+//             std::pow(max_length / 2.0, 2)
+//         );
+//         // double edge_heuristic_radius = obstacle_radius + max_length;
+
+//         // --- LOGIC FOR DYNAMIC OBSTACLES ---
+//         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
+            
+//             // Perform searches at multiple points along the predicted path
+//             for (int i = 0; i <= num_intermediate_steps + 1; ++i) {
+//                 // Calculate the time for the current step
+//                 double t = (static_cast<double>(i) / (num_intermediate_steps + 1)) * PREDICTION_HORIZON_SECONDS;
+                
+//                 // Predict the obstacle's position at time t
+//                 Eigen::VectorXd predicted_pos = obstacle.position + obstacle.velocity * t;
+
+//                 // Perform the radius search at this intermediate point
+//                 auto indices = kdtree_->radiusSearch(predicted_pos, edge_heuristic_radius);
+//                 conflicting_samples.insert(indices.begin(), indices.end());
+//             }
+
+//         } else {
+//             // --- STATIC OBSTACLE LOGIC (Unchanged) ---
+//             Eigen::VectorXd obs_state(2);
+//             obs_state << obstacle.position(0), obstacle.position(1);
+//             auto sample_indices = kdtree_->radiusSearch(obs_state, edge_heuristic_radius);
+//             conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
+//         }
+//     }
+//     return conflicting_samples;
+// }
+
+
 std::unordered_set<int> KinodynamicRRTX::findSamplesNearObstacles(
     const ObstacleVector& obstacles,
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples;
-    const double PREDICTION_HORIZON_SECONDS = 3.0; // How far into the future to predict
-    
-    // Controls how many steps we check between the start and end of the horizon.
-    // 0 = just start and end points. 1 = start, middle, and end points.
-    const int num_intermediate_steps = 3; 
+
+    // 1. Ensure the robot's state is valid before proceeding.
+    if (robot_continuous_state_.size() == 0) {
+        RCLCPP_WARN(rclcpp::get_logger("Planner_Obstacle_Update"), "Robot state not set. Skipping obstacle update.");
+        return conflicting_samples;
+    }
+
+    // 2. Get the necessary information from the current state and k-d tree.
+    const double robot_current_heading = (kd_dim == 4) ? robot_continuous_state_(2) : 0.0;
+    const double robot_current_timestamp = (kd_dim >= 3) ? robot_continuous_state_(kd_dim - 1) : 0.0;
 
     for (const auto& obstacle : obstacles) {
-        // --- The existing logic for calculating search radius is good. ---
+        // --- Calculate the search radius for this obstacle ---
         double obstacle_radius;
         if (obstacle.type == Obstacle::CIRCLE) {
             obstacle_radius = obstacle.dimensions.radius + obstacle.inflation;
         } else { // BOX
-            double half_diagonal = std::sqrt(
-                std::pow(obstacle.dimensions.width/2, 2) +
-                std::pow(obstacle.dimensions.height/2, 2)
-            );
+            double half_diagonal = std::hypot(obstacle.dimensions.width / 2.0, obstacle.dimensions.height / 2.0);
             obstacle_radius = half_diagonal + obstacle.inflation;
         }
-        // This search radius is a heuristic to find potentially colliding EDGES.
-        // It should be the radius of our "swept volume" check.
         double edge_heuristic_radius = std::sqrt(
             std::pow(obstacle_radius, 2) +
             std::pow(max_length / 2.0, 2)
         );
-        // double edge_heuristic_radius = obstacle_radius + max_length;
 
-        // --- LOGIC FOR DYNAMIC OBSTACLES ---
+        // --- Handle DYNAMIC Obstacles ---
         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
-            
-            // Perform searches at multiple points along the predicted path
-            for (int i = 0; i <= num_intermediate_steps + 1; ++i) {
-                // Calculate the time for the current step
-                double t = (static_cast<double>(i) / (num_intermediate_steps + 1)) * PREDICTION_HORIZON_SECONDS;
-                
-                // Predict the obstacle's position at time t
-                Eigen::VectorXd predicted_pos = obstacle.position + obstacle.velocity * t;
+            const double PREDICTION_HORIZON_SECONDS = 0.0;
+            const int num_intermediate_steps = 1;
 
-                // Perform the radius search at this intermediate point
-                auto indices = kdtree_->radiusSearch(predicted_pos, edge_heuristic_radius);
+            // Perform searches at multiple discrete time steps along the predicted path
+            for (int i = 0; i <= num_intermediate_steps; ++i) {
+                double delta_t = (static_cast<double>(i) / num_intermediate_steps) * PREDICTION_HORIZON_SECONDS;
+                
+                // Predict the obstacle's future 2D position
+                Eigen::Vector2d predicted_pos_2d = obstacle.position + obstacle.velocity * delta_t;
+                
+                // Construct the full-dimensional query point for the k-d tree
+                Eigen::VectorXd query_point(kd_dim);
+                
+                switch (kd_dim) {
+                    case 2: // (x, y)
+                        query_point = predicted_pos_2d;
+                        break;
+                    case 3: // (x, y, time)
+                    case 4: // (x, y, theta, time)
+                        {
+                            // // Translate future time into the planner's "time-to-go" frame
+                            // double query_timestamp = robot_current_timestamp - delta_t;
+                            // if (query_timestamp < 0) {
+                            //     // std::cout<<"skipped" << query_timestamp<<"\n";
+                            //     query_timestamp = 0.0;
+                            //     // continue;
+                            // } // Skip if predicted time is "after" the goal
+
+                            
+                            // By not subtracting delta_t, we create a spatial query
+                            // centered temporally near the robot's current plan.
+                            double query_timestamp = robot_current_timestamp;
+                            if (kd_dim == 3) {
+                                query_point << predicted_pos_2d, query_timestamp;
+                            } else { // kd_dim == 4
+                                query_point << predicted_pos_2d, robot_current_heading, query_timestamp;
+                            }
+                        }
+                        break;
+                    default:
+                        continue; // Skip unsupported dimensions
+                }
+                
+                auto indices = kdtree_->radiusSearch(query_point, edge_heuristic_radius);
                 conflicting_samples.insert(indices.begin(), indices.end());
             }
-
         } else {
-            // --- STATIC OBSTACLE LOGIC (Unchanged) ---
-            Eigen::VectorXd obs_state(2);
-            obs_state << obstacle.position(0), obstacle.position(1);
-            auto sample_indices = kdtree_->radiusSearch(obs_state, edge_heuristic_radius);
-            conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
+            // --- Handle STATIC Obstacles ---
+            // Optimization: If we have seen this static obstacle before, skip it.
+            auto it = std::find(seen_statics_.begin(), seen_statics_.end(), obstacle);
+            if (it != seen_statics_.end()) {
+                continue;
+            }
+            seen_statics_.push_back(obstacle);
+
+            Eigen::VectorXd query_point(kd_dim);
+            
+            switch (kd_dim) {
+                case 2: // (x, y)
+                    query_point = obstacle.position;
+                    break;
+                case 3: // (x, y, time)
+                case 4: // (x, y, theta, time)
+                    // For static obstacles, query at the robot's current timestamp
+                    if (kd_dim == 3) {
+                        query_point << obstacle.position, robot_current_timestamp;
+                    } else { // kd_tree_dim == 4
+                        query_point << obstacle.position, robot_current_heading, robot_current_timestamp;
+                    }
+                    break;
+                default:
+                    continue;
+            }
+            
+            auto indices = kdtree_->radiusSearch(query_point, edge_heuristic_radius);
+            conflicting_samples.insert(indices.begin(), indices.end());
         }
     }
     return conflicting_samples;
@@ -1131,6 +1272,7 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::smoothPath(const std::vector<Eigen
 
 void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     update_obstacle = true;
+    obs_check = 0;
 
     // // Common initialization
     // if (edge_length_[max_length_edge_ind] != max_length) {
@@ -1140,7 +1282,6 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     //     max_length_edge_ind = max_it->first;
     // }
     max_length = delta;
-    std::cout<<"Max Length: "<<max_length <<"\n";
     auto current = findSamplesNearObstacles(obstacles, max_length);
     // if (current == samples_in_obstacles_ && current.size()!=tree_.size()) return false; // Early exit if nothing has changed
 
@@ -1174,33 +1315,31 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 /////////////
 
 
+    // ==============================================================================
+    // ================= CURRENT NODE VISUALIZATION CODE BLOCK ======================
+    // ==============================================================================
+    if (visualization_) {
+        // Create a vector to hold the 2D positions of the nodes near obstacles.
+        std::vector<Eigen::VectorXd> positions_to_visualize;
+        positions_to_visualize.reserve(current.size());
 
-    // std::vector<std::shared_ptr<RRTxNode>> nodes_to_visualize;
-    // nodes_to_visualize.reserve(current.size());
-    // for (int sample_index : current) {
-    //     if (sample_index >= 0 && sample_index < tree_.size()) {
-    //         nodes_to_visualize.push_back(tree_[sample_index]);
-    //     }
-    // }
+        // Iterate through the indices of the nodes in the 'current' set.
+        for (int node_index : current) {
+            // Get the full state of the node from the tree.
+            const Eigen::VectorXd& state = tree_.at(node_index)->getStateValue();
+            // Extract the 2D spatial part (x, y) for visualization.
+            positions_to_visualize.push_back(state.head<2>());
+        }
 
-    // // 2. THE FIX: Create a new vector to hold just the positions
-    // std::vector<Eigen::VectorXd> positions_to_visualize;
-    // positions_to_visualize.reserve(nodes_to_visualize.size());
-
-    // // 3. Loop through the nodes and extract their state/position
-    // for (const auto& node : nodes_to_visualize) {
-    //     positions_to_visualize.push_back(node->getStateValue());
-    // }
-
-    // // 4. Call visualizeNodes with the correct types and number of arguments
-    // if (visualization_) {
-    //     // This calls the version that accepts a position vector, frame_id, color, and namespace.
-    //     // Example color: Red (r=1.0, g=0.0, b=0.0, a=1.0)
-    //     std::vector<float> color = {1.0f, 0.0f, 0.0f, 1.0f};
-    //     visualization_->visualizeNodes(positions_to_visualize, "map", color, "current_obstacle_neighbors");
-    // }
-
-
+        // Call the visualization function to draw these nodes in RViz.
+        // We use a bright cyan color and a unique namespace to distinguish them.
+        visualization_->visualizeNodes(positions_to_visualize, "map", 
+                                     {0.0f, 1.0f, 1.0f},  // Cyan color
+                                     "current_obstacle_nodes");
+    }
+    // ==============================================================================
+    // ======================= END OF VISUALIZATION CODE BLOCK ======================
+    // ==============================================================================   
 
 ////////////
     bool force_repair = false;
@@ -1215,6 +1354,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     }
 
 
+    auto start = std::chrono::steady_clock::now();
 
     if (ignore_sample) {
         // Version 1: Track samples on obstacles without explicit checks
@@ -1246,16 +1386,23 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         if (!removed.empty() || force_repair) 
             removeObstacle(prev);
         if (!added.empty() || force_repair) {
-            auto start = std::chrono::high_resolution_clock::now();
+            // auto start = std::chrono::high_resolution_clock::now();
             addNewObstacle(cur);
-            auto end = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            std::cout << "Time taken for the addNew and propagate : " << duration.count() << " milliseconds\n";
+            // auto end = std::chrono::high_resolution_clock::now();
+            // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+            // std::cout << "Time taken for the addNew and propagate : " << duration.count() << " milliseconds\n";
             propagateDescendants();
             verifyQueue(tree_[vbot_index_].get());
         }
     }
     reduceInconsistency();
+    auto end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    if (duration.count() > 0) {
+        std::cout << "time taken for the plan rrtx : " << duration.count() 
+                << " milliseconds\n";
+    }
+    std::cout<<"OBS CHECK: "<<obs_check<<"\n";
 }
 
 // void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
@@ -1354,6 +1501,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
 void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
     // We need a stable time anchor for all checks in this cycle.
+    int count = 0;
     const double t_now = clock_->now().seconds();
     const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
     std::cout<<"added indices : "<<added_indices.size()<<"\n";
@@ -1368,9 +1516,9 @@ void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
             node_itself_is_unusable = true;
         } else {
             // ignore_sample is false: explicitly check if the node's location is now in an obstacle.
-            if (!obs_checker_->isObstacleFree(node->getStateValue())) { // Check the node's point itself
-                node_itself_is_unusable = true;
-            }
+            // if (!obs_checker_->isObstacleFree(node->getStateValue())) { // Check the node's point itself
+            //     node_itself_is_unusable = true;
+            // }
         }
 
         if (node_itself_is_unusable) {
@@ -1426,10 +1574,11 @@ void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
                 
                 // Calculate the global time this edge starts.
                 const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
-
+                if (edge.distance != INFINITY) obs_check++;
                 if (edge.distance != INFINITY &&
                     !obs_checker_->isTrajectorySafe(traj_node_to_u, global_edge_start_time)) {
                     // This specific edge (node -> u) is now blocked.
+                    count++;
                     edge.distance = INFINITY;
                     if (u->incomingEdges().count(node)) {
                         u->incomingEdges().at(node).distance = INFINITY;
@@ -1454,6 +1603,7 @@ void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
             }
         }
     }
+    std::cout<<"OBSOLETE: "<<count<<"\n";
 }
 
 
@@ -1501,7 +1651,7 @@ void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
                         // Re-check the original trajectory for safety.
                         const Trajectory& original_traj = edge.cached_trajectory;
                         const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
-
+                        obs_check++;
                         if (obs_checker_->isTrajectorySafe(original_traj, global_edge_start_time)) {
                             edge.distance = edge.distance_original;
                             if (u->incomingEdges().count(node)) u->incomingEdges().at(node).distance = edge.distance_original;
@@ -1605,7 +1755,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     const double radius_multiplier = 1.2;
 
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
-        auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head<2>(), current_search_radius);
+        auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head(kd_dim), current_search_radius);
         
         // Note: The min_total_cost is reset each attempt to find the best in the new, larger radius.
         double min_cost_in_radius = std::numeric_limits<double>::infinity();

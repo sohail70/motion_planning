@@ -30,7 +30,7 @@ class NanoFlann : public KDTree {
           size_t size() const override;
           bool validateAgainstSamples(const std::vector<std::shared_ptr<IFMTNode>>& samples) const;
           bool validateAgainstSamples(const std::vector<std::shared_ptr<BITNode>>& samples) const;
-
+          int getDimension() override {return dimension_;}
 
  private:
           int dimension_;

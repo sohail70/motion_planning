@@ -107,7 +107,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
             // Read the state vector (x0, x1, x2...)
             // This assumes state is 3D for R2T space. Adjust if needed.
-            for(int i = 0; i < statespace_->getDimension(); ++i) {
+            for(int i = 0; i < 5; ++i) {
                 std::getline(lineStream, cell, ',');
                 state_values.push_back(std::stod(cell));
             }
@@ -567,7 +567,7 @@ void KinodynamicFMTX::plan() {
     // ---> END OF NEW LOGIC <---
     //
 
-    // std::unordered_map<FMTNode*, bool> costUpdated;
+    std::unordered_map<FMTNode*, bool> costUpdated;
     int checks = 0;
     int obs_check = 0;
     while (!v_open_heap_.empty() &&
@@ -586,15 +586,13 @@ void KinodynamicFMTX::plan() {
         near(z->getIndex());
         // --- STAGE 1: IDENTIFY POTENTIALLY SUBOPTIMAL NEIGHBORS ---
         // Iterate through all neighbors 'x' of the expanding node 'z'.
-        for (auto& [x, edge_info_from_z] : z->backwardNeighbors()) { //backward means incoming . forward is outgoing
+        for (auto& [x, edge_info_from_z] : z->backwardNeighbors()) {
 
 
             // The edge we care about is from child 'x' to parent 'z' in our backward search.
             // The authoritative trajectory is stored in the child's (x's) map for that edge.
             near(x->getIndex()); // Ensure x's neighbor map is initialized.
-
-            // auto& edge_info_from_x = x->forwardNeighbors().at(z);
-            auto& edge_info_from_x = edge_info_from_z;
+            auto& edge_info_from_x = x->forwardNeighbors().at(z);
 
             // // --- LAZY STEERING WITH SYMMETRIC CACHING ---
             // if (!edge_info_from_x.is_trajectory_computed) {
@@ -629,22 +627,20 @@ void KinodynamicFMTX::plan() {
             // 2. If x is already connected, this condition acts as a "witness" that a better path *might* exist.
             //    It proves x's current cost is suboptimal and justifies the more expensive search that follows.
             if (x->getCost() > cost_via_z) {
-                // if (costUpdated[x]) {
-                //     // std::cout<<"Node " << x->getIndex() 
-                //     //     << " is about to be updated a second time! "
-                //     //     "previous cost = " << x->getCost() << "\n";
+                if (costUpdated[x]) {
+                    // std::cout<<"Node " << x->getIndex() 
+                    //     << " is about to be updated a second time! "
+                    //     "previous cost = " << x->getCost() << "\n";
                     
-                //     checks++;
+                    checks++;
 
-                // } 
-
+                } 
                 // --- STAGE 2: SEARCH FOR THE TRUE BEST PARENT ---
                 // 'x' is suboptimal. We now search for its true best parent among ALL its neighbors
                 // that are currently in the open set.
                 double min_cost_for_x = std::numeric_limits<double>::infinity();
                 FMTNode* best_parent_for_x = nullptr;
-                // Trajectory best_traj_for_x;
-                const Trajectory* best_traj_for_x = nullptr;
+                Trajectory best_traj_for_x;
 
                 for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
                     // std::cout<<y->getIndex()<<"\n";
@@ -668,7 +664,7 @@ void KinodynamicFMTX::plan() {
                             if (cost_via_y < min_cost_for_x) {
                                 min_cost_for_x = cost_via_y;
                                 best_parent_for_x = y;
-                                best_traj_for_x = &edge_info_xy.cached_trajectory;
+                                best_traj_for_x = edge_info_xy.cached_trajectory;
                             }
                         }
                     }
@@ -678,15 +674,15 @@ void KinodynamicFMTX::plan() {
 
 
 
-                // if (costUpdated[x]) {
-                //     // std::cout<<"Node " << x->getIndex() 
-                //     //     << "  updated a second time! "
-                //     //     "new cost = " << min_cost_for_x << "\n";
-                // }
+                if (costUpdated[x]) {
+                    // std::cout<<"Node " << x->getIndex() 
+                    //     << "  updated a second time! "
+                    //     "new cost = " << min_cost_for_x << "\n";
+                }
 
                 // --- STAGE 3: UPDATE (if a better parent was found) ---
                 if (best_parent_for_x != nullptr) {
-                    double min_time_for_x = best_parent_for_x->getTimeToGoal() + best_traj_for_x->time_duration;
+                    double min_time_for_x = best_parent_for_x->getTimeToGoal() + best_traj_for_x.time_duration;
 
 
 
@@ -714,7 +710,7 @@ void KinodynamicFMTX::plan() {
                     // Perform the full predictive check with the CORRECT time context.
                     bool obstacle_free = true;
                     // if(!prune)
-                        obstacle_free = obs_checker_->isTrajectorySafe(*best_traj_for_x, global_edge_start_time);
+                        obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
                     // else if (!in_dynamic)
                     //     obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
 
@@ -764,8 +760,7 @@ void KinodynamicFMTX::plan() {
                     
 
                     if (obstacle_free) {
-                        // costUpdated[x] = true;   // mark “done once”
-
+                        costUpdated[x] = true;   // mark “done once”
                         // // The connection is valid and locally optimal. Update the tree and priority queue.
                         // std::cout<<"-------\n";
                         // std::cout<<"index: "<<x->getIndex()<<"\n";
@@ -773,7 +768,7 @@ void KinodynamicFMTX::plan() {
                         // std::cout<<"cost: "<<min_cost_for_x<<"\n";
                         // std::cout<<"-------\n";
                         x->setCost(min_cost_for_x);
-                        x->setParent(best_parent_for_x, best_traj_for_x->cost);
+                        x->setParent(best_parent_for_x, best_traj_for_x.cost);
                         x->setTimeToGoal(min_time_for_x);
 
                         double h_value = use_heuristic ? heuristic(x->getIndex()) : 0.0;
@@ -1145,8 +1140,8 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
                 const int num_intermediate_steps = static_cast<int>(std::ceil(PREDICTION_HORIZON_SECONDS / desired_time_resolution));
             */
 
-            const double PREDICTION_HORIZON_SECONDS = 0.0;
-            const int num_intermediate_steps = 1;
+            const double PREDICTION_HORIZON_SECONDS = 3.0;
+            const int num_intermediate_steps = 10;
 
             // Perform searches at multiple discrete time steps along the predicted path
             for (int i = 0; i <= num_intermediate_steps; ++i) {
@@ -1331,58 +1326,58 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     // auto [current, direct] = findSamplesNearObstaclesDual(obstacles, max_length);
 
 
-    // // --- START OF NEW FILTERING LOGIC ---
-    // // This is the narrow-phase check to refine the 'current' set.
-    // // We iterate through the potentially conflicting nodes and remove any whose
-    // // connection to their parent is actually still safe.
-    // for (auto it = current.begin(); it != current.end(); ) {
-    //     int node_index = *it;
-    //     auto node = tree_[node_index].get();
-    //     auto parent = node->getParent();
+    // --- START OF NEW FILTERING LOGIC ---
+    // This is the narrow-phase check to refine the 'current' set.
+    // We iterate through the potentially conflicting nodes and remove any whose
+    // connection to their parent is actually still safe.
+    for (auto it = current.begin(); it != current.end(); ) {
+        int node_index = *it;
+        auto node = tree_[node_index].get();
+        auto parent = node->getParent();
 
-    //     // If the node has no parent, it's an orphan or the root.
-    //     // It's definitely in a state of conflict or change, so we must keep it.
-    //     if (!parent) {
-    //         ++it;
-    //         continue;
-    //     }
+        // If the node has no parent, it's an orphan or the root.
+        // It's definitely in a state of conflict or change, so we must keep it.
+        if (!parent) {
+            ++it;
+            continue;
+        }
 
-    //     // The trajectory from this node to its parent defines its connection to the tree.
-    //     Trajectory traj_to_parent;
-    //     // auto& neighbors = node->neighbors();
-    //     auto& neighbors = node->forwardNeighbors(); // the trajectory from a child to its parent is stored in the child's forwardNeighbors
-    //     auto neighbor_it = neighbors.find(parent);
+        // The trajectory from this node to its parent defines its connection to the tree.
+        Trajectory traj_to_parent;
+        // auto& neighbors = node->neighbors();
+        auto& neighbors = node->forwardNeighbors(); // the trajectory from a child to its parent is stored in the child's forwardNeighbors
+        auto neighbor_it = neighbors.find(parent);
 
-    //     // Ensure the trajectory has been computed. If not, compute and cache it.
-    //     if (neighbor_it != neighbors.end() && neighbor_it->second.is_trajectory_computed) {
-    //         traj_to_parent = neighbor_it->second.cached_trajectory;
-    //     } else {
-    //         traj_to_parent = statespace_->steer(node->getStateValue(), parent->getStateValue());
-    //         if (neighbor_it != neighbors.end()) {
-    //             neighbor_it->second.cached_trajectory = traj_to_parent;
-    //             neighbor_it->second.is_trajectory_computed = true;
-    //         }
-    //     }
+        // Ensure the trajectory has been computed. If not, compute and cache it.
+        if (neighbor_it != neighbors.end() && neighbor_it->second.is_trajectory_computed) {
+            traj_to_parent = neighbor_it->second.cached_trajectory;
+        } else {
+            traj_to_parent = statespace_->steer(node->getStateValue(), parent->getStateValue());
+            if (neighbor_it != neighbors.end()) {
+                neighbor_it->second.cached_trajectory = traj_to_parent;
+                neighbor_it->second.is_trajectory_computed = true;
+            }
+        }
 
-    //     // If the trajectory is geometrically invalid, the edge is broken. Keep the node.
-    //     if (!traj_to_parent.is_valid) {
-    //         ++it;
-    //         continue;
-    //     }
+        // If the trajectory is geometrically invalid, the edge is broken. Keep the node.
+        if (!traj_to_parent.is_valid) {
+            ++it;
+            continue;
+        }
 
-    //     // Check if this specific trajectory is safe against dynamic obstacles.
-    //     // We use a heuristic start time of 'now' since we are reacting to a current obstacle update.
-    //     const double global_start_time_heuristic = clock_->now().seconds();
-    //     if (obs_checker_->isTrajectorySafe(traj_to_parent, global_start_time_heuristic)) {
-    //         // The connection to the parent is SAFE. This node is not in immediate conflict
-    //         // via its tree connection. Therefore, we can filter it out (erase it).
-    //         it = current.erase(it);
-    //     } else {
-    //         // The connection to the parent is NOT safe. Keep this node in the set.
-    //         ++it;
-    //     }
-    // }
-    // // --- END OF NEW FILTERING LOGIC ---
+        // Check if this specific trajectory is safe against dynamic obstacles.
+        // We use a heuristic start time of 'now' since we are reacting to a current obstacle update.
+        const double global_start_time_heuristic = clock_->now().seconds();
+        if (obs_checker_->isTrajectorySafe(traj_to_parent, global_start_time_heuristic)) {
+            // The connection to the parent is SAFE. This node is not in immediate conflict
+            // via its tree connection. Therefore, we can filter it out (erase it).
+            it = current.erase(it);
+        } else {
+            // The connection to the parent is NOT safe. Keep this node in the set.
+            ++it;
+        }
+    }
+    // --- END OF NEW FILTERING LOGIC ---
 
 
 
@@ -2871,8 +2866,6 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::smoothPath(const std::vector<Eigen
 //     visualization_->visualizeEdges(edges, "map");
 // }
 
-
-// Edge + Nodes
 void KinodynamicFMTX::visualizeTree() {
     // Using a more appropriate name since the edges are straight lines.
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
@@ -2920,143 +2913,6 @@ void KinodynamicFMTX::visualizeTree() {
     // Visualize the edges forming the connected tree
     visualization_->visualizeEdges(edges, "map");
 }
-
-// // Edge + Nodes + Time Of Arrival
-// void KinodynamicFMTX::visualizeTree() {
-//     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-//     if (!tree_.empty()) {
-//         edges.reserve(tree_.size());
-//     }
-    
-//     std::vector<Eigen::VectorXd> tree_nodes;
-
-//     // --- NEW: Data structures for time-of-arrival text ---
-//     std::vector<Eigen::Vector3d> text_positions;
-//     std::vector<std::string> time_texts;
-//     text_positions.reserve(tree_.size());
-//     time_texts.reserve(tree_.size());
-
-//     // --- NEW: Calculate the predicted global arrival time at the goal ---
-//     const double t_now = (clock_) ? clock_->now().seconds() : 0.0;
-//     const double best_known_time_to_goal = (robot_current_time_to_goal_ != std::numeric_limits<double>::infinity())
-//                                            ? robot_current_time_to_goal_
-//                                            : 0.0;
-//     const double t_arrival_predicted = t_now + best_known_time_to_goal;
-    
-//     int connected_nodes_count = 0;
-
-//     for (const auto& node_ptr : tree_) {
-//         FMTNode* child_node = node_ptr.get();
-//         FMTNode* parent_node = child_node->getParent();
-
-//         if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
-//             connected_nodes_count++;
-
-//             // --- NEW: Calculate and store the global arrival time text ---
-//             const double node_time_to_goal = child_node->getTimeToGoal();
-//             if (node_time_to_goal != std::numeric_limits<double>::infinity()) {
-//                 const double node_global_arrival_time = t_arrival_predicted - node_time_to_goal;
-
-//                 const Eigen::VectorXd& state = child_node->getStateValue();
-//                 text_positions.emplace_back(state.x(), state.y(), (state.size() > 2) ? state.z() : 0.0);
-                
-//                 std::stringstream ss;
-//                 ss << std::fixed << std::setprecision(2) << node_global_arrival_time;
-//                 time_texts.push_back(ss.str());
-//             }
-//         }
-
-//         tree_nodes.push_back(node_ptr->getStateValue());
-
-
-//         if (parent_node) {
-//             edges.emplace_back(parent_node->getStateValue(), child_node->getStateValue());
-//         }
-//     }
-
-//     std::cout << "[FMTX INFO] Total nodes available: " << tree_.size()
-//               << " | Nodes connected to graph: " << connected_nodes_count << std::endl;
-
-//     // Visualize all nodes that were sampled/loaded
-//     // visualization_->visualizeNodes(tree_nodes, "map", 
-//     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
-//     //                         "tree_nodes");
-
-
-//     // --- Original visualization calls ---
-//     visualization_->visualizeEdges(edges, "map");
-
-//     // --- NEW: Call the text visualization function ---
-//     if (visualization_ && !text_positions.empty()) {
-//         visualization_->visualizeText(text_positions, time_texts, "map", "arrival_times");
-//     }
-// }
-
-
-
-// // // Edge + Nodes + (Time Of Arrival, Time To Goal)
-// void KinodynamicFMTX::visualizeTree() {
-//     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-//     if (!tree_.empty()) {
-//         edges.reserve(tree_.size());
-//     }
-    
-//     // Data structures for time-of-arrival text
-//     std::vector<Eigen::Vector3d> text_positions;
-//     std::vector<std::string> time_texts;
-//     text_positions.reserve(tree_.size());
-//     time_texts.reserve(tree_.size());
-
-//     // Calculate the predicted global arrival time at the goal
-//     const double t_now = (clock_) ? clock_->now().seconds() : 0.0;
-//     const double best_known_time_to_goal = (robot_current_time_to_goal_ != std::numeric_limits<double>::infinity())
-//                                            ? robot_current_time_to_goal_
-//                                            : 0.0;
-//     const double t_arrival_predicted = t_now + best_known_time_to_goal;
-    
-//     int connected_nodes_count = 0;
-
-//     for (const auto& node_ptr : tree_) {
-//         FMTNode* child_node = node_ptr.get();
-//         FMTNode* parent_node = child_node->getParent();
-
-//         if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
-//             connected_nodes_count++;
-
-//             // Calculate and store the text for visualization
-//             const double node_time_to_goal = child_node->getTimeToGoal();
-//             if (node_time_to_goal != std::numeric_limits<double>::infinity()) {
-//                 const double node_global_arrival_time = t_arrival_predicted - node_time_to_goal;
-
-//                 const Eigen::VectorXd& state = child_node->getStateValue();
-//                 text_positions.emplace_back(state.x(), state.y(), (state.size() > 2) ? state.z() : 0.0);
-                
-//                 // --- MODIFIED: Format the string as "(arrival, ttg)" ---
-//                 std::stringstream ss;
-//                 ss << "(" << std::fixed << std::setprecision(2) << node_global_arrival_time
-//                    << ", " << std::fixed << std::setprecision(2) << node_time_to_goal << ")";
-//                 time_texts.push_back(ss.str());
-//             }
-//         }
-
-//         if (parent_node) {
-//             edges.emplace_back(parent_node->getStateValue(), child_node->getStateValue());
-//         }
-//     }
-
-//     std::cout << "[FMTX INFO] Total nodes available: " << tree_.size()
-//               << " | Nodes connected to graph: " << connected_nodes_count << std::endl;
-
-//     // Original visualization calls
-//     visualization_->visualizeEdges(edges, "map");
-
-//     // Call the text visualization function
-//     if (visualization_ && !text_positions.empty()) {
-//         visualization_->visualizeText(text_positions, time_texts, "map", "arrival_times");
-//     }
-// }
-
-
 
 void KinodynamicFMTX::visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints) {
     // A path needs at least two points to have an edge.
