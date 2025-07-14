@@ -243,9 +243,11 @@ int main(int argc, char** argv)
 
 
     // --- 6. Set Up Executor (Unchanged) ---
-    rclcpp::executors::MultiThreadedExecutor executor;
+    // rclcpp::executors::MultiThreadedExecutor executor;
+    rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
+
     executor.add_node(ros_manager);
-    // executor.add_node(vis_node); // **IMPORTANT**: Add the vis_node to the executor so its timer runs!
+    executor.add_node(vis_node); // **IMPORTANT**: Add the vis_node to the executor so its timer runs!
 
     std::thread executor_thread([&executor]() {
         executor.spin();

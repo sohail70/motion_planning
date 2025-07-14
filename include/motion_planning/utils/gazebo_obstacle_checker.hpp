@@ -149,8 +149,12 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
     };
 
     Snapshot getAtomicSnapshot() const {
+        /*
+            The snapshot_mutex_ guarantees that the Gazebo callback cannot change obstacle_positions_ 
+            while getAtomicSnapshot is in the middle of copying it.
+        */
         std::lock_guard<std::mutex> lock(snapshot_mutex_);
-        obstacle_snapshot_ = obstacle_positions_;  // Atomic copy --> obstacle snapshot is gonna be used in is obstacle free, because obstalce_positions_ is live updating while you are in a plan() function
+        obstacle_snapshot_ = obstacle_positions_;  // Atomic copy --> obstacle snapshot is gonna be used in isObstacleFree or isTrajectorySafe, because obstalce_positions_ is live updating while you are in a plan() function
         return {robot_position_, obstacle_snapshot_};
     }
 

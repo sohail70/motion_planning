@@ -399,69 +399,6 @@ void KinodynamicRRTX::plan() {
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Planning time: " << duration.count() << " ms" << std::endl;
-
-
-
-    // ===== Add this verification loop at the end =====
-    bool has_inconsistency = false;
-    int edge_counter = 0;
-
-    // Loop through all nodes in the tree
-    for (const auto& node_ptr : tree_) {
-        // Check outgoing edges
-        for (const auto& [neighbor, edge_info] : node_ptr->outgoingEdges()) {
-            edge_counter++;
-            
-            // Check if distance != distance_original (unexpected)
-            if (edge_info.distance != edge_info.distance_original) {
-                std::cerr << "ERROR: Outgoing edge mismatch at node " << node_ptr->getIndex()
-                          << " -> " << neighbor->getIndex() 
-                          << " | dist=" << edge_info.distance 
-                          << ", dist_original=" << edge_info.distance_original << "\n";
-                has_inconsistency = true;
-            }
-
-            // Check if distance_original is zero (invalid)
-            if (edge_info.distance_original == 0.0) {
-                std::cerr << "WARNING: Zero distance_original at node " << node_ptr->getIndex()
-                          << " -> " << neighbor->getIndex() 
-                          << " | State1: " << node_ptr->getStateValue().transpose()
-                          << " | State2: " << neighbor->getStateValue().transpose() << "\n";
-            }
-        }
-
-        // Check incoming edges
-        for (const auto& [neighbor, edge_info] : node_ptr->incomingEdges()) {
-            edge_counter++;
-            
-            if (edge_info.distance != edge_info.distance_original) {
-                std::cerr << "ERROR: Incoming edge mismatch at node " << node_ptr->getIndex()
-                          << " <- " << neighbor->getIndex() 
-                          << " | dist=" << edge_info.distance 
-                          << ", dist_original=" << edge_info.distance_original << "\n";
-                has_inconsistency = true;
-            }
-
-            if (edge_info.distance_original == 0.0) {
-                std::cerr << "WARNING: Zero distance_original at node " << node_ptr->getIndex()
-                          << " <- " << neighbor->getIndex() 
-                          << " | State1: " << neighbor->getStateValue().transpose()
-                          << " | State2: " << node_ptr->getStateValue().transpose() << "\n";
-            }
-        }
-    }
-
-    std::cout << "Edge verification complete. Checked " << edge_counter << " edges.\n";
-    if (!has_inconsistency) {
-        std::cout << "All edges have consistent distance/distance_original.\n";
-    }
-
-
-
-
-
-
-
 }
 
 
@@ -817,12 +754,13 @@ void KinodynamicRRTX::updateLMC(RRTxNode* v) {
     double min_lmc = v->getLMC();
     RRTxNode* best_parent = nullptr;
     double best_edge_distance = INFINITY;  // Track the distance of the best edge
-    Trajectory best_traj = v->getParentTrajectory();
+    // Trajectory best_traj = v->getParentTrajectory();
+    Trajectory* best_traj = nullptr;
 
     
 
     // Iterate over outgoing edges (v → u)
-    for (const auto& [u, edge] : v->outgoingEdges()) {
+    for (auto& [u, edge] : v->outgoingEdges()) {
         // if (v->getIndex() == 538 && u->getIndex() == 260 || 
         //     u->getIndex() == 260 && v->getIndex() == 538  
         //     )
@@ -836,7 +774,7 @@ void KinodynamicRRTX::updateLMC(RRTxNode* v) {
             min_lmc = candidate_lmc;
             best_parent = u;
             best_edge_distance = edge.distance;  // Capture the distance here
-            best_traj = edge.cached_trajectory;
+            best_traj = &edge.cached_trajectory;
         }
     }
 
@@ -852,7 +790,7 @@ void KinodynamicRRTX::updateLMC(RRTxNode* v) {
         // visualization_->visualizeNodes(positions4,"map",color_str);
 
 
-        v->setParent(best_parent, best_traj);  // Use the captured distance
+        v->setParent(best_parent, *best_traj);  // Use the captured distance
         v->setLMC(min_lmc);
     } 
 }
@@ -1315,31 +1253,31 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 /////////////
 
 
-    // ==============================================================================
-    // ================= CURRENT NODE VISUALIZATION CODE BLOCK ======================
-    // ==============================================================================
-    if (visualization_) {
-        // Create a vector to hold the 2D positions of the nodes near obstacles.
-        std::vector<Eigen::VectorXd> positions_to_visualize;
-        positions_to_visualize.reserve(current.size());
+    // // ==============================================================================
+    // // ================= CURRENT NODE VISUALIZATION CODE BLOCK ======================
+    // // ==============================================================================
+    // if (visualization_) {
+    //     // Create a vector to hold the 2D positions of the nodes near obstacles.
+    //     std::vector<Eigen::VectorXd> positions_to_visualize;
+    //     positions_to_visualize.reserve(current.size());
 
-        // Iterate through the indices of the nodes in the 'current' set.
-        for (int node_index : current) {
-            // Get the full state of the node from the tree.
-            const Eigen::VectorXd& state = tree_.at(node_index)->getStateValue();
-            // Extract the 2D spatial part (x, y) for visualization.
-            positions_to_visualize.push_back(state.head<2>());
-        }
+    //     // Iterate through the indices of the nodes in the 'current' set.
+    //     for (int node_index : current) {
+    //         // Get the full state of the node from the tree.
+    //         const Eigen::VectorXd& state = tree_.at(node_index)->getStateValue();
+    //         // Extract the 2D spatial part (x, y) for visualization.
+    //         positions_to_visualize.push_back(state.head<2>());
+    //     }
 
-        // Call the visualization function to draw these nodes in RViz.
-        // We use a bright cyan color and a unique namespace to distinguish them.
-        visualization_->visualizeNodes(positions_to_visualize, "map", 
-                                     {0.0f, 1.0f, 1.0f},  // Cyan color
-                                     "current_obstacle_nodes");
-    }
-    // ==============================================================================
-    // ======================= END OF VISUALIZATION CODE BLOCK ======================
-    // ==============================================================================   
+    //     // Call the visualization function to draw these nodes in RViz.
+    //     // We use a bright cyan color and a unique namespace to distinguish them.
+    //     visualization_->visualizeNodes(positions_to_visualize, "map", 
+    //                                  {0.0f, 1.0f, 1.0f},  // Cyan color
+    //                                  "current_obstacle_nodes");
+    // }
+    // // ==============================================================================
+    // // ======================= END OF VISUALIZATION CODE BLOCK ======================
+    // // ==============================================================================   
 
 ////////////
     bool force_repair = false;
@@ -1354,7 +1292,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     }
 
 
-    auto start = std::chrono::steady_clock::now();
+    // auto start = std::chrono::steady_clock::now();
 
     if (ignore_sample) {
         // Version 1: Track samples on obstacles without explicit checks
@@ -1396,12 +1334,12 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         }
     }
     reduceInconsistency();
-    auto end = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    if (duration.count() > 0) {
-        std::cout << "time taken for the plan rrtx : " << duration.count() 
-                << " milliseconds\n";
-    }
+    // auto end = std::chrono::steady_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    // if (duration.count() > 0) {
+    //     std::cout << "time taken for the plan rrtx : " << duration.count() 
+    //             << " milliseconds\n";
+    // }
     std::cout<<"OBS CHECK: "<<obs_check<<"\n";
 }
 
@@ -1515,6 +1453,10 @@ void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
             samples_in_obstacles_.insert(idx);
             node_itself_is_unusable = true;
         } else {
+            /*
+                In kinodynamic case since we are having time aware graph this optimization is not making sense and it might even add
+                more conflicting nodes that may not even is necessary.
+            */
             // ignore_sample is false: explicitly check if the node's location is now in an obstacle.
             // if (!obs_checker_->isObstacleFree(node->getStateValue())) { // Check the node's point itself
             //     node_itself_is_unusable = true;
@@ -1603,7 +1545,7 @@ void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
             }
         }
     }
-    std::cout<<"OBSOLETE: "<<count<<"\n";
+    // std::cout<<"OBSOLETE: "<<count<<"\n";
 }
 
 

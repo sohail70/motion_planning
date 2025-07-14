@@ -13,6 +13,7 @@
 #include <gz/transport/Node.hh>
 #include <iostream>
 #include <thread>
+#include <valgrind/callgrind.h>
 
 
 void resetAndPlaySimulation()
@@ -260,7 +261,9 @@ int main(int argc, char **argv) {
         [&]() { if (kinodynamic_planner) kinodynamic_planner->visualizeTree(); });
 
     // --- 6. Executor Setup ---
-    rclcpp::executors::MultiThreadedExecutor executor;
+    // rclcpp::executors::MultiThreadedExecutor executor;
+    rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
+
     executor.add_node(ros_manager);
     executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
     std::thread executor_thread([&executor]() { executor.spin(); });
@@ -276,6 +279,8 @@ int main(int argc, char **argv) {
 
 
     auto global_start = std::chrono::steady_clock::now();
+    // Start profiling
+    CALLGRIND_START_INSTRUMENTATION;
     while (g_running && rclcpp::ok()) {
         // 1. Get the robot's current state from the simulator.
         Eigen::VectorXd current_state = ros_manager->getCurrentKinodynamicState();
@@ -325,6 +330,8 @@ int main(int argc, char **argv) {
         // Wait for the next cycle.
         loop_rate.sleep();
     }
+    // Stop profiling
+    CALLGRIND_STOP_INSTRUMENTATION;
 
 
     const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations

@@ -1230,9 +1230,12 @@ int main(int argc, char** argv) {
     auto thruster_ss = std::make_shared<ThrusterSteerStateSpace>(dim, max_acceleration);
 
     std::vector<Eigen::VectorXd> waypoints;
-    // ✅ EDITED: Removed the middle waypoint as requested.
     waypoints.push_back((Eigen::VectorXd(dim) << 15.0, 15.0, 0.0, 0.0, 15.0).finished());
     waypoints.push_back((Eigen::VectorXd(dim) << -15.0, -15.0, 5.0, -5.0, 0.0).finished());
+    
+    // waypoints.push_back((Eigen::VectorXd(dim) << -20.0, 0.0, 10.0, 2.0, 20.0).finished());
+    // waypoints.push_back((Eigen::VectorXd(dim) << 0.0, -10.0, 2.0, -8.0, 0.0).finished());
+
 
     Trajectory full_trajectory;
     full_trajectory.is_valid = true;

@@ -13,6 +13,8 @@
 #include <gz/transport/Node.hh>
 #include <iostream>
 #include <thread>
+#include <valgrind/callgrind.h>
+
 
 
 void resetAndPlaySimulation()
@@ -324,7 +326,8 @@ int main(int argc, char **argv) {
     //     loop_rate.sleep();
     // }
 
-
+    // Start profiling
+    CALLGRIND_START_INSTRUMENTATION;
     while (g_running && rclcpp::ok()) {
         // 1. Get the robot's current state from the simulator.
         Eigen::VectorXd current_state = ros_manager->getCurrentKinodynamicState();
@@ -386,7 +389,8 @@ int main(int argc, char **argv) {
         // Wait for the next cycle.
         loop_rate.sleep();
     }
-
+    // Stop profiling
+    CALLGRIND_STOP_INSTRUMENTATION;
 
 
     const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations

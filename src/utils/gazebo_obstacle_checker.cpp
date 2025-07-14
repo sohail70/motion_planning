@@ -878,7 +878,12 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
     const Trajectory& trajectory,
     double global_start_time
 ) const {
-    std::lock_guard<std::mutex> lock(snapshot_mutex_);
+    /*
+        I Guarantee that getAtomicSnapshot() is only called once before plan() so no race between getAtomicSnapshot() and getCollidingObstalce for obstalce_snapshots variable. Hence I can comment the following lock
+        The lock in getAtomicSnapshot() is for the race between getAtomicSnapshot (Reader/Copier runs on my main planner thread.) and poseInfoCallback (Writer runs on the gazebo thread) and thats necessary
+
+    */
+    // std::lock_guard<std::mutex> lock(snapshot_mutex_);
 
     // 1. Initial validation of the trajectory
     if (trajectory.path_points.size() < 2) {
@@ -908,7 +913,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
             // =======================================================
             // == ACCELERATION MODEL (5D): Subdivide the curved path ==
             // =======================================================
-            const int num_subdivisions = 4; // A tunable parameter for accuracy vs. performance
+            const int num_subdivisions = 3; // A tunable parameter for accuracy vs. performance
             
             // Calculate the constant acceleration for the entire segment
             const Eigen::Vector2d p_r0_seg = get_xy(segment_start_state);
@@ -934,6 +939,29 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
                                             : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
                     const double R = obs_radius + inflation;
                     const double R_sq = R * R;
+
+
+                    // // --- OPTIMIZATION: BROAD-PHASE CHECK --- This Phase gives us Some performance boost but it makes the detection to be delayed a bit because it ignores detection after some distance
+                    // // Calculate the maximum distance the obstacle could travel during this segment
+                    // const double v_max_obs = 30.0; // A reasonable upper bound on any obstacle's speed
+                    // const double max_obs_travel_dist = v_max_obs * T_segment;
+                    
+                    // // The "danger zone" is the collision radius plus this travel distance
+                    // const double danger_radius = R + max_obs_travel_dist;
+                    // const double danger_radius_sq = danger_radius * danger_radius;
+
+                    // // Get the geometric path of the robot segment (line or curve)
+                    // const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
+                    // const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
+                    
+                    // // Check if the obstacle is geometrically too far to ever reach the path
+                    // if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) > danger_radius_sq) {
+                    //     continue; // Skip this obstacle; it's too far away
+                    // }
+                    // // --- END OF OPTIMIZATION ---
+
+
+
 
                     if (obs.is_dynamic) {
                         // Dynamic obstacle check for the sub-segment
@@ -987,6 +1015,27 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
                                         : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
                 const double R = obs_radius + inflation;
                 const double R_sq = R * R;
+
+                // // --- OPTIMIZATION: BROAD-PHASE CHECK ---
+                // // Calculate the maximum distance the obstacle could travel during this segment
+                // const double v_max_obs = 15.0; // A reasonable upper bound on any obstacle's speed
+                // const double max_obs_travel_dist = v_max_obs * T_segment;
+                
+                // // The "danger zone" is the collision radius plus this travel distance
+                // const double danger_radius = R + max_obs_travel_dist;
+                // const double danger_radius_sq = danger_radius * danger_radius;
+
+                // // Get the geometric path of the robot segment (line or curve)
+                // const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
+                // const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
+                
+                // // Check if the obstacle is geometrically too far to ever reach the path
+                // if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) > danger_radius_sq) {
+                //     continue; // Skip this obstacle; it's too far away
+                // }
+                // // --- END OF OPTIMIZATION ---
+
+
 
                 if (obs.is_dynamic) {
                     // Dynamic obstacle check for the whole linear segment

@@ -7,6 +7,9 @@ valgrind --tool=callgrind --instr-atstart=no  ./test_rrtx2          -->  if want
 
 kcachegrind callgrind.out
 
+callgrind_annotate callgrind.out.fmtxx | grep -E '^[0-9]' | head -200
+
+
 /*
 debug in WATCH for Eigen lib variables!
 *((z->getStateValue().m_storage.m_data))

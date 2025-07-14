@@ -207,7 +207,9 @@ int main(int argc, char** argv) {
         [&]() { if (kinodynamic_planner) kinodynamic_planner->visualizeTree(); });
 
     // --- 6. Executor Setup ---
-    rclcpp::executors::MultiThreadedExecutor executor;
+    // rclcpp::executors::MultiThreadedExecutor executor;
+    rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
+
     executor.add_node(ros_manager);
     executor.add_node(vis_node); // for dubin i do not plot the edges based on trajecotry because thats too demanding. i just connected the parent to child via simple edge so you might see soem edges going through obstalce but in reality the dubin is going around them so dont be alarm!
 
