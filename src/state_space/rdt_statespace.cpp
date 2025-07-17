@@ -265,14 +265,14 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
     traj.path_points.push_back(from);
     traj.path_points.push_back(to);
 
-    // --- NEW: Add the single analytical segment for the collision checker ---
-    traj.analytical_segments.clear();
-    traj.analytical_segments.push_back({
-        .type         = SegmentType::LINE,
-        .duration     = time_duration,
-        .start_point  = from_spatial,
-        .end_point    = to_spatial
-    });
+    // // --- NEW: Add the single analytical segment for the collision checker ---
+    // traj.analytical_segments.clear();
+    // traj.analytical_segments.push_back({
+    //     .type         = SegmentType::LINE,
+    //     .duration     = time_duration,
+    //     .start_point  = from_spatial,
+    //     .end_point    = to_spatial
+    // });
     
     // std::cout<<steer_call_<<"\n";
     return traj;

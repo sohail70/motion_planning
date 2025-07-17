@@ -84,7 +84,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
     std::cout << "Taking care of the samples: \n \n";
-    bool use_rrtx_saved_samples_ = false;
+    bool use_rrtx_saved_samples_ = true;
     if (use_rrtx_saved_samples_) {
         std::string filepath = "/home/sohail/motion_planning/build/rrtx_tree_nodes.csv";
                std::cout << "Loading nodes from file: " << filepath << "\n";
@@ -265,7 +265,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     /////////////////////////////////////////////////////////////////////////
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
 
-
+    neighbor_precache = params.getParam<bool>("precache_neighbors");
     // In complex state spaces with complex steer function its better to cache before leaving the robot in the wild!
     if (params.getParam<bool>("precache_neighbors")){
         std::cout << "Forcing neighbor caching for all " << tree_.size() << " nodes..." << std::endl;
@@ -568,8 +568,11 @@ void KinodynamicFMTX::plan() {
     //
 
     // std::unordered_map<FMTNode*, bool> costUpdated;
-    int checks = 0;
+    // int checks = 0;
+    // int revisits = 0;
     int obs_check = 0;
+    // long long total_neighbor_iterations = 0; // The new, more accurate counter
+
     while (!v_open_heap_.empty() &&
            (partial_update ? (v_open_heap_.top().first < robot_node_->getCost() ||
                                robot_node_->getCost() == INFINITY || robot_node_->in_queue_ == true) : true)) {
@@ -583,7 +586,8 @@ void KinodynamicFMTX::plan() {
         int zIndex = z->getIndex();
 
         // Find neighbors for z if they haven't been found yet.
-        near(z->getIndex());
+        if (!neighbor_precache)
+            near(z->getIndex());
         // --- STAGE 1: IDENTIFY POTENTIALLY SUBOPTIMAL NEIGHBORS ---
         // Iterate through all neighbors 'x' of the expanding node 'z'.
         for (auto& [x, edge_info_from_z] : z->backwardNeighbors()) { //backward means incoming . forward is outgoing
@@ -591,7 +595,8 @@ void KinodynamicFMTX::plan() {
 
             // The edge we care about is from child 'x' to parent 'z' in our backward search.
             // The authoritative trajectory is stored in the child's (x's) map for that edge.
-            near(x->getIndex()); // Ensure x's neighbor map is initialized.
+            if (!neighbor_precache)
+                near(x->getIndex()); // Ensure x's neighbor map is initialized.
 
             // auto& edge_info_from_x = x->forwardNeighbors().at(z);
             auto& edge_info_from_x = edge_info_from_z;
@@ -629,14 +634,17 @@ void KinodynamicFMTX::plan() {
             // 2. If x is already connected, this condition acts as a "witness" that a better path *might* exist.
             //    It proves x's current cost is suboptimal and justifies the more expensive search that follows.
             if (x->getCost() > cost_via_z) {
+                // checks++;
                 // if (costUpdated[x]) {
                 //     // std::cout<<"Node " << x->getIndex() 
                 //     //     << " is about to be updated a second time! "
                 //     //     "previous cost = " << x->getCost() << "\n";
                     
-                //     checks++;
+                //     revisits++;
 
                 // } 
+
+                // total_neighbor_iterations += x->forwardNeighbors().size();
 
                 // --- STAGE 2: SEARCH FOR THE TRUE BEST PARENT ---
                 // 'x' is suboptimal. We now search for its true best parent among ALL its neighbors
@@ -646,6 +654,7 @@ void KinodynamicFMTX::plan() {
                 // Trajectory best_traj_for_x;
                 const Trajectory* best_traj_for_x = nullptr;
 
+                
                 for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
                     // std::cout<<y->getIndex()<<"\n";
                     // std::cout<<"----\n";
@@ -773,11 +782,13 @@ void KinodynamicFMTX::plan() {
                         // std::cout<<"cost: "<<min_cost_for_x<<"\n";
                         // std::cout<<"-------\n";
                         x->setCost(min_cost_for_x);
-                        x->setParent(best_parent_for_x, best_traj_for_x->cost);
+                        x->setParent(best_parent_for_x, *best_traj_for_x);
                         x->setTimeToGoal(min_time_for_x);
 
-                        double h_value = use_heuristic ? heuristic(x->getIndex()) : 0.0;
-                        double priorityCost = x->getCost() + h_value;
+                        // double h_value = use_heuristic ? heuristic(x->getIndex()) : 0.0;
+                        // double priorityCost = min_cost_for_x + h_value;
+
+                        double priorityCost = min_cost_for_x;
 
                         if (x->in_queue_) {
                             v_open_heap_.update(x, priorityCost);
@@ -795,7 +806,9 @@ void KinodynamicFMTX::plan() {
         // std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     } // End of while loop
-    std::cout<<"REVISITS: "<<checks<<"\n";
+    // std::cout<<"checks: "<<checks<<"\n";
+    // std::cout<<"REVISITS: "<<revisits<<"\n";
+    // std::cout << "TOTAL NEIGHBOR ITERATIONS: " << total_neighbor_iterations << "\n"; // <-- Print the new metric
     std::cout<<"OBS CHECK: "<<obs_check<<"\n";
 
     auto end = std::chrono::steady_clock::now();
@@ -1230,6 +1243,7 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
 
 ////////////////////////////////////////////////////////
 
+
 /*
     This is using two circles with same center but different radius to find the nodes exactly on obstalce and nodes that are on surrounding using the above formula
     its still using the old api scale factor but since i don't wanna use it for now i kept the old api but you can use the above formula instead of scale factor
@@ -1277,6 +1291,9 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> KinodynamicFMTX::fin
 
     return {conflicting_samples_inflated, conflicting_samples};
 }
+
+
+
 
 
 
@@ -1383,9 +1400,67 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     //     }
     // }
     // // --- END OF NEW FILTERING LOGIC ---
+    
+
+    //////////////////////////////////////////////////////////////////////////////////
+
+    // // 'current' is the set of nodes from findSamplesNearObstacles
+    // for (auto it = current.begin(); it != current.end(); /* no increment here */) {
+    //     auto node = tree_[*it].get();
+    //     auto parent = node->getParent();
+
+    //     // A node with no parent must be processed.
+    //     if (!parent) {
+    //         ++it;
+    //         continue;
+    //     }
+
+    //     // Use your existing, correct method to get the trajectory.
+    //     const Trajectory& traj_to_parent = node->getParentTrajectory();
+
+    //     // If the cached trajectory is invalid, the edge is broken. Keep the node for replanning.
+    //     if (!traj_to_parent.is_valid) {
+    //         ++it;
+    //         continue;
+    //     }
+
+    //     bool is_edge_in_confirmed_conflict = false;
+    //     // Check this specific edge against all dynamic obstacles.
+    //     for (const auto& obstacle : obstacles) {
+    //         if (!obstacle.is_dynamic) continue;
+
+    //         // Stage 1: Time-Relevance Check.
+    //         const double node_time_to_goal = node->getTimeToGoal();
+    //         const double node_global_time = clock_->now().seconds() + (robot_current_time_to_goal_ - node_time_to_goal);
+
+    //         if (std::abs(node_global_time - obstacle.last_update_time.seconds()) > 3.0) {
+    //             continue; // This obstacle is not a threat at this time.
+    //         }
+
+    //         // Stage 2: The actual collision check.
+    //         if (!obs_checker_->isTrajectorySafe(traj_to_parent, node_global_time)) {
+    //             is_edge_in_confirmed_conflict = true;
+    //             break; // Collision found; no need to check other obstacles for this edge.
+    //         }
+    //     }
+
+    //     // Stage 3: Hysteresis logic.
+    //     if (is_edge_in_confirmed_conflict) {
+    //         node->bad_count++;
+    //     } else {
+    //         node->bad_count = 0;
+    //     }
+
+    //     // Only keep nodes that have failed consistently.
+    //     if (node->bad_count >= 2) {
+    //         ++it; // KEEP this node.
+    //     } else {
+    //         it = current.erase(it); // REMOVE this node; it's considered safe for now.
+    //     }
+    // }
 
 
-
+//////////////////////////////////////////////////////
     // // ==============================================================================
     // // ================= CURRENT NODE VISUALIZATION CODE BLOCK ======================
     // // ==============================================================================
@@ -1410,7 +1485,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     // }
     // // ==============================================================================
     // // ======================= END OF VISUALIZATION CODE BLOCK ======================
-    // // ==============================================================================    
+    // ==============================================================================    
 
 
 
@@ -1665,140 +1740,139 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
   
 // }
-void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) {
-    std::cout<<"added indices : "<<added_indices.size()<<"\n";
 
-    std::unordered_set<int> orphan_candidates;
+// void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) {
+//     std::cout<<"added indices : "<<added_indices.size()<<"\n";
+
+
+//     std::unordered_set<int> final_orphan_nodes;
+//     for (int idx : added_indices) {
+//         final_orphan_nodes.insert(idx);
+//         auto descendants = getDescendants(idx); // Assuming getDescendants works correctly
+//         final_orphan_nodes.insert(descendants.begin(), descendants.end());
+//     }
+
+//       // Process all final orphan nodes by resetting their state.
+//     for (int node_index : final_orphan_nodes) {
+//         auto node = tree_.at(node_index).get();
+        
+//         if (node->in_queue_) {
+//             v_open_heap_.remove(node);
+//         }
+//         // Do not reset the root of the tree (index 0 is a common convention).
+//         if (node->getIndex() != root_state_index_) {
+//             node->setCost(INFINITY);
+//             node->setTimeToGoal(std::numeric_limits<double>::infinity());
+//         }
+//         node->setParent(nullptr, Trajectory{});
+//         edge_length_[node_index] = -std::numeric_limits<double>::infinity();
+//     }
+  
+//     // Add valid neighbors of the now-orphaned region to the open heap to begin the repair.
+//     for (int node_index : final_orphan_nodes) {
+//         auto node = tree_.at(node_index).get();
+//         if (!neighbor_precache)
+//             near(node_index); // Ensure neighbors are loaded.
+
+//         // Define a helper lambda to avoid repeating the queuing logic.
+//         auto queue_if_valid = [&](FMTNode* neighbor_ptr) {
+//             // Don't queue a neighbor if it's already in the heap or is an orphan itself.
+//             if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == INFINITY) return;
+            
+//             double h_value = use_heuristic ? heuristic(neighbor_ptr->getIndex()) : 0.0;
+//             v_open_heap_.add(neighbor_ptr, neighbor_ptr->getCost() + h_value);
+//         };
+
+//         // Iterate over BOTH sets to find all valid neighbors on the boundary of the orphan set.
+//         for (const auto& [neighbor_ptr, edge_data] : node->forwardNeighbors()){
+//             queue_if_valid(neighbor_ptr);
+//         }
+//         for (const auto& [neighbor_ptr, edge_data] : node->backwardNeighbors()){
+//             queue_if_valid(neighbor_ptr);
+//         }
+//     }
+//     std::cout<<"orphans size"<<final_orphan_nodes.size()<<"\n";
+
+// }
+
+
+void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) {
+    if (added_indices.empty()) {
+        return;
+    }
+    std::cout << "added indices: " << added_indices.size() << "\n";
+
+    // --- Step 1: Iteratively find all descendants (the orphan set) ---
+    std::unordered_set<int> orphan_indices;
+    std::queue<FMTNode*> propagation_queue;
 
     for (int idx : added_indices) {
-        FMTNode* node = tree_[idx].get();
-        bool node_itself_is_now_in_obstacle = false;
-
-        if (ignore_sample) {
-            samples_in_obstacles_.insert(idx);
-            node_itself_is_now_in_obstacle = true;
-        } else if (prune) {
-            if (!obs_checker_->isObstacleFree(node->getStateValue())) {
-                node_itself_is_now_in_obstacle = true;
-            }
-        }
-
-        if (!ignore_sample && prune && node_itself_is_now_in_obstacle) {
-            // Node itself is in an obstacle. Invalidate ALL its connections.
-            near(idx); // Ensure neighbors are loaded.
-
-            // Invalidate outgoing connections (node is parent).
-            for (auto& [neighbor, edge_info] : node->backwardNeighbors()) {
-                edge_info.distance = INFINITY;
-                // Symmetrically invalidate in neighbor's forward set.
-                if (neighbor->forwardNeighbors().count(node)) {
-                    neighbor->forwardNeighbors().at(node).distance = INFINITY;
-                }
-                if (neighbor->getParent() == node) {
-                    orphan_candidates.insert(neighbor->getIndex());
-                }
-            }
-            // Invalidate incoming connections (node is child).
-            for (auto& [neighbor, edge_info] : node->forwardNeighbors()) {
-                edge_info.distance = INFINITY;
-                // Symmetrically invalidate in neighbor's backward set.
-                if (neighbor->backwardNeighbors().count(node)) {
-                    neighbor->backwardNeighbors().at(node).distance = INFINITY;
-                }
-                if (node->getParent() == neighbor) {
-                    orphan_candidates.insert(node->getIndex());
-                }
-            }
-            // The node itself is definitely an orphan now.
-            orphan_candidates.insert(idx);
-
-        } else if (!ignore_sample && prune && !node_itself_is_now_in_obstacle) {
-            // Node is fine, but check its edges individually for collisions.
-            near(idx);
-
-            // Check outgoing connections (from neighbor to node).
-            for (auto& [neighbor, edge_info] : node->backwardNeighbors()) {
-                if (edge_info.distance == INFINITY) continue;
-                // Check trajectory from neighbor to node.
-                if (!obs_checker_->isObstacleFree(neighbor->getStateValue(), node->getStateValue())) {
-                    edge_info.distance = INFINITY;
-                    if (neighbor->forwardNeighbors().count(node)) {
-                        neighbor->forwardNeighbors().at(node).distance = INFINITY;
-                    }
-                    if (neighbor->getParent() == node) {
-                        orphan_candidates.insert(neighbor->getIndex());
-                    }
-                }
-            }
-            // Check incoming connections (from node to neighbor).
-            for (auto& [neighbor, edge_info] : node->forwardNeighbors()) {
-                 if (edge_info.distance == INFINITY) continue;
-                // Check trajectory from node to neighbor.
-                if (!obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue())) {
-                    edge_info.distance = INFINITY;
-                    if (neighbor->backwardNeighbors().count(node)) {
-                        neighbor->backwardNeighbors().at(node).distance = INFINITY;
-                    }
-                    if (node->getParent() == neighbor) {
-                        orphan_candidates.insert(node->getIndex());
-                    }
-                }
-            }
-        } else {
-            // The simplest case: just mark the node as an orphan and find its children later.
-            orphan_candidates.insert(idx);
+        // The insert method returns a pair, the .second is a bool indicating if insertion happened.
+        if (orphan_indices.insert(idx).second) {
+            propagation_queue.push(tree_.at(idx).get());
         }
     }
 
-    // Now, gather all descendants for the initial set of orphaned nodes.
-    std::unordered_set<int> final_orphan_nodes;
-    for (int orphan_idx : orphan_candidates) {
-        if (tree_.at(orphan_idx)->getParent() != nullptr || tree_.at(orphan_idx)->getCost() == INFINITY) {
-             final_orphan_nodes.insert(orphan_idx);
-             auto descendants = getDescendants(orphan_idx);
-             final_orphan_nodes.insert(descendants.begin(), descendants.end());
+    while (!propagation_queue.empty()) {
+        FMTNode* current = propagation_queue.front();
+        propagation_queue.pop();
+
+        for (FMTNode* child : current->getChildren()) {
+            if (orphan_indices.insert(child->getIndex()).second) {
+                propagation_queue.push(child);
+            }
         }
     }
 
-    // Process all final orphan nodes by resetting their state.
-    for (int node_index : final_orphan_nodes) {
+    // --- Step 2: Reset orphans and find the unique boundary for repair ---
+    // Using a hash set is faster than adding to a vector and then sorting.
+    std::unordered_set<FMTNode*> boundary_nodes_to_requeue;
+
+    for (int node_index : orphan_indices) {
         auto node = tree_.at(node_index).get();
-        
+
+        // Reset the orphan node's state
         if (node->in_queue_) {
             v_open_heap_.remove(node);
         }
-        // Do not reset the root of the tree (index 0 is a common convention).
         if (node->getIndex() != root_state_index_) {
             node->setCost(INFINITY);
             node->setTimeToGoal(std::numeric_limits<double>::infinity());
         }
-        node->setParent(nullptr, INFINITY);
+        node->setParent(nullptr, Trajectory{});
         edge_length_[node_index] = -std::numeric_limits<double>::infinity();
-    }
-  
-    // Add valid neighbors of the now-orphaned region to the open heap to begin the repair.
-    for (int node_index : final_orphan_nodes) {
-        auto node = tree_.at(node_index).get();
-        near(node_index); // Ensure neighbors are loaded.
 
-        // Define a helper lambda to avoid repeating the queuing logic.
-        auto queue_if_valid = [&](FMTNode* neighbor_ptr) {
-            // Don't queue a neighbor if it's already in the heap or is an orphan itself.
-            if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == INFINITY) return;
-            
-            double h_value = use_heuristic ? heuristic(neighbor_ptr->getIndex()) : 0.0;
-            v_open_heap_.add(neighbor_ptr, neighbor_ptr->getCost() + h_value);
+        // Check neighbors to find the boundary
+        if (!neighbor_precache) {
+            near(node_index);
+        }
+        
+        auto find_boundary = [&](const auto& neighbors) {
+            for (const auto& [neighbor_ptr, edge_data] : neighbors) {
+                if (orphan_indices.find(neighbor_ptr->getIndex()) == orphan_indices.end()) {
+                    // insert() automatically handles duplicates for us.
+                    boundary_nodes_to_requeue.insert(neighbor_ptr);
+                }
+            }
         };
 
-        // Iterate over BOTH sets to find all valid neighbors on the boundary of the orphan set.
-        for (const auto& [neighbor_ptr, edge_data] : node->forwardNeighbors()){
-            queue_if_valid(neighbor_ptr);
-        }
-        for (const auto& [neighbor_ptr, edge_data] : node->backwardNeighbors()){
-            queue_if_valid(neighbor_ptr);
-        }
+        find_boundary(node->forwardNeighbors());
+        find_boundary(node->backwardNeighbors());
     }
+
+    // --- Step 3: Add the unique boundary nodes to the open heap ---
+    for (FMTNode* neighbor_ptr : boundary_nodes_to_requeue) {
+        // This check is still useful as a safeguard, though the set ensures uniqueness.
+        if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == INFINITY) continue;
+            
+        double h_value = use_heuristic ? heuristic(neighbor_ptr->getIndex()) : 0.0;
+        v_open_heap_.add(neighbor_ptr, neighbor_ptr->getCost() + h_value);
+    }
+
+    std::cout << "orphans size: " << orphan_indices.size() << "\n";
 }
+
+
 
 
 void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& removed_indices) {
@@ -1814,7 +1888,8 @@ void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& remov
         }
 
         if (!ignore_sample && prune) {
-            near(node_index); // Ensure neighbor sets are populated.
+            if (!neighbor_precache)
+                near(node_index); // Ensure neighbor sets are populated.
 
             // Check incoming connections (neighbor -> node).
             for (auto& [neighbor, edge_info] : node->backwardNeighbors()) {
@@ -1850,7 +1925,8 @@ void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& remov
     // This prompts the planner to check if a better path now exists through this region.
     for (int node_index : removed_indices) {
         auto node = tree_[node_index].get();
-        near(node_index); // Ensure neighbors are loaded.
+        if (!neighbor_precache)
+            near(node_index); // Ensure neighbors are loaded.
 
         // Helper lambda to avoid repeating the queuing logic.
         auto queue_if_valid = [&](FMTNode* neighbor_ptr) {
@@ -2261,8 +2337,9 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
 
     while (parent) {
         // Use the pre-computed trajectories cached in the graph during the `plan()` phase.
-        // const auto& cached_traj = child->neighbors().at(parent).cached_trajectory;
-        const auto& cached_traj = child->forwardNeighbors().at(parent).cached_trajectory;
+        // const auto& cached_traj = child->forwardNeighbors().at(parent).cached_trajectory;
+        const Trajectory& cached_traj = child->getParentTrajectory();
+
         
         if (cached_traj.is_valid && cached_traj.path_points.size() > 1) {
             // Append all points from the segment except the first one to avoid duplicates.
@@ -2307,6 +2384,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     // This part of your logic remains unchanged.
     FMTNode* best_candidate_node = nullptr;
     Trajectory best_candidate_bridge;
+    Trajectory current_bridge;
     double best_candidate_cost = std::numeric_limits<double>::infinity();
     double current_search_radius = neighborhood_radius_;
     const int max_attempts = 4;
@@ -2315,26 +2393,32 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
         auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head(kd_dim), current_search_radius);
         
-        // Note: The min_total_cost is reset each attempt to find the best in the new, larger radius.
         double min_cost_in_radius = std::numeric_limits<double>::infinity();
 
         for (auto idx : nearby_indices) {
             FMTNode* candidate = tree_[idx].get();
             if (candidate->getCost() == INFINITY) continue;
 
-            Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
-            if (!bridge.is_valid || !obs_checker_->isTrajectorySafe(bridge, clock_->now().seconds())) continue;
+            // CHANGED: Reuse 'current_bridge' object via assignment. No new object is constructed here.
+            current_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+            
+            if (!current_bridge.is_valid || !obs_checker_->isTrajectorySafe(current_bridge, clock_->now().seconds())) continue;
 
-            double cost = bridge.cost + candidate->getCost();
+            double cost = current_bridge.cost + candidate->getCost();
             if (cost < min_cost_in_radius) {
                 min_cost_in_radius = cost;
                 best_candidate_node = candidate;
-                best_candidate_bridge = bridge;
-                best_candidate_cost = cost;
+                
+                // CHANGED: Use std::swap instead of copying. This is a very cheap move operation.
+                std::swap(best_candidate_bridge, current_bridge);
+                
+                best_candidate_cost = cost; // Note: 'cost' was calculated with the old 'current_bridge' before the swap.
+                                            // We need to re-calculate it with the new best, or better, use its own data.
+                best_candidate_cost = best_candidate_bridge.cost + candidate->getCost(); // Correct way
             }
         }
 
-        if (best_candidate_node) break; // Exit if a connection was found
+        if (best_candidate_node) break;
         current_search_radius *= radius_multiplier;
     }
 

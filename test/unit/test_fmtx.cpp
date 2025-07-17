@@ -191,7 +191,7 @@ int main(int argc, char **argv) {
     int num_samples = 5000;
     double factor = 2.0;
     unsigned int seed = 42;
-    int run_secs = 30;
+    int run_secs = 20;
 
 
     for(int i = 1; i < argc; ++i) {
@@ -369,8 +369,9 @@ int main(int argc, char **argv) {
 
 
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
-    problem_def->setStart(start_position); //Root of the tree
+    // problem_def->setStart(start_position); //Root of the tree
     // problem_def->setStart(Eigen::VectorXd::Zero(dim));
+    problem_def->setStart(Eigen::VectorXd::Ones(dim)* -50);
     problem_def->setGoal(Eigen::VectorXd::Ones(dim) * 50); // where the robot starts!
     problem_def->setBounds(-50, 50);
 
@@ -446,6 +447,10 @@ int main(int argc, char **argv) {
 
     std::vector<double> sim_durations;
     std::vector<std::tuple<double, double>> sim_duration_2;
+
+    // Start profiling
+    CALLGRIND_START_INSTRUMENTATION;
+
     // The main loop
     while (running && rclcpp::ok()) {
 
@@ -501,6 +506,8 @@ int main(int argc, char **argv) {
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();
     }
+    // Stop profiling
+    CALLGRIND_STOP_INSTRUMENTATION;
 
 
     const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations

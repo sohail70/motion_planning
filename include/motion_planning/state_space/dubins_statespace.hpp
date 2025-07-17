@@ -28,6 +28,17 @@ public:
     std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const override;
     bool isValid(const std::shared_ptr<State>& state) const override;
 
+    // static inline void sample_arc_optimized( std::vector<Eigen::VectorXd>& path_points,
+    //     const Eigen::VectorXd& from_state,
+    //     const Eigen::Vector2d& start_point_2d,
+    //     const Eigen::Vector2d& end_point_2d,
+    //     const Eigen::Vector2d& center_2d,
+    //     double radius,
+    //     bool is_clockwise,
+    //     double angular_resolution_rad);
+
+    // static inline double arc_len_optimized( const Eigen::Vector2d& A, const Eigen::Vector2d& B, const Eigen::Vector2d& C, double r, bool clockwise);
+
 protected:
     double min_turning_radius_;
     Eigen::VectorXd weights_; // To balance x, y vs. theta in the distance metric.

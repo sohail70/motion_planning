@@ -1306,7 +1306,7 @@ int main(int argc, char** argv) {
     resetAndPlaySimulation();
     RCLCPP_INFO(node->get_logger(), "Starting simulation and prediction loop...");
     
-    rclcpp::Rate loop_rate(30); 
+    rclcpp::Rate loop_rate(20); 
     rclcpp::Clock::SharedPtr clock = node->get_clock();
     rclcpp::Time last_update_time = clock->now();
 

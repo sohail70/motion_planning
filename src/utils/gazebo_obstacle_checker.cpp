@@ -27,9 +27,14 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
     
 
     std::string topic = "/world/" + world_name_ + "/pose/info";
-    if (!gz_node_.Subscribe(topic, &GazeboObstacleChecker::poseInfoCallback, this)) {
+    // if (!gz_node_.Subscribe(topic, &GazeboObstacleChecker::poseInfoCallback, this)) {
+    //     std::cerr << "Failed to subscribe to Gazebo topic: " << topic << std::endl;
+    // }
+    if (!gz_node_.Subscribe(topic, &GazeboObstacleChecker::lightweightPoseCallback, this)) {
         std::cerr << "Failed to subscribe to Gazebo topic: " << topic << std::endl;
     }
+
+
 
 
     path_pub_ = gz_node_.Advertise<gz::msgs::Pose_V>("/path");
@@ -65,7 +70,7 @@ void GazeboObstacleChecker::publishPath(const std::vector<Eigen::VectorXd>& wayp
 
 
 bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const Eigen::VectorXd& end) const {
-    std::lock_guard<std::mutex> lock(snapshot_mutex_);
+    // std::lock_guard<std::mutex> lock(snapshot_mutex_);
     Eigen::Vector2d start2d = start.head<2>();
     Eigen::Vector2d end2d = end.head<2>();
 
@@ -91,7 +96,7 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const E
 }
 
 bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
-    std::lock_guard<std::mutex> lock(snapshot_mutex_);
+    // std::lock_guard<std::mutex> lock(snapshot_mutex_);
     Eigen::Vector2d point2d = point.head<2>();
 
     for (const auto& obstacle : obstacle_snapshot_) {
@@ -277,6 +282,74 @@ bool GazeboObstacleChecker::check_arc_line_collision(
 
 
 
+// In gazebo_obstacle_checker.cpp
+
+bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
+    const Trajectory& trajectory,
+    double global_start_time,
+    const Obstacle& obs // Note: we now take a single obstacle
+) const {
+    if (trajectory.path_points.size() < 2) return true;
+
+    // Get the dimension of the state once. Time is always the last element.
+    const int time_dim_idx = trajectory.path_points[0].size() - 1;
+
+    double time_into_full_trajectory = 0.0;
+    
+    for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+        const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
+        const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
+
+        // ✅ CORRECTED: Access last element by index, not with .back()
+        const double T_segment = segment_start_state(time_dim_idx) - segment_end_state(time_dim_idx);
+        
+        if (T_segment <= 1e-9) continue;
+
+        // ✅ CORRECTED: Use the correct start time for the segment
+        const double time_at_segment_start = global_start_time + time_into_full_trajectory;
+        
+        const Eigen::Vector2d p_r0 = segment_start_state.head<2>();
+        const Eigen::Vector2d p_r1 = segment_end_state.head<2>();
+        const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
+
+        const double R = obs.dimensions.radius + inflation;
+        const double R_sq = R * R;
+
+        if (obs.is_dynamic) {
+            const double delta_t = std::max(0.0, time_at_segment_start - obs.last_update_time.seconds());
+            const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+            const Eigen::Vector2d p_rel_start = p_r0 - p_o0;
+            const Eigen::Vector2d v_rel = v_r - obs.velocity;
+            
+            const double a = v_rel.dot(v_rel);
+            const double b = 2.0 * p_rel_start.dot(v_rel);
+            const double c = p_rel_start.dot(p_rel_start) - R_sq;
+
+            if (std::abs(a) < 1e-9) { 
+                if (c <= 0) return false; // Collision
+                continue;
+            }
+
+            const double discriminant = b * b - 4 * a * c;
+            if (discriminant >= 0) {
+                const double sqrt_disc = std::sqrt(discriminant);
+                const double t1 = (-b - sqrt_disc) / (2.0 * a);
+                // Check if the valid collision interval overlaps with the segment's duration
+                if (t1 >= 0 && t1 <= T_segment) {
+                    return false; // Collision
+                }
+            }
+        } else {
+            if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
+                return false; // Collision
+            }
+        }
+        
+        time_into_full_trajectory += T_segment;
+    }
+
+    return true; // No collision found with this specific obstacle
+}
 
 
 
@@ -885,6 +958,9 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
     */
     // std::lock_guard<std::mutex> lock(snapshot_mutex_);
 
+    // auto start = std::chrono::steady_clock::now();
+
+
     // 1. Initial validation of the trajectory
     if (trajectory.path_points.size() < 2) {
         return std::nullopt;
@@ -909,7 +985,8 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
         const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
 
         // 4. Conditionally apply the correct physics model based on state dimension
-        if (state_dim == 5) {
+        // if (state_dim == 5) {
+        if (false) {
             // =======================================================
             // == ACCELERATION MODEL (5D): Subdivide the curved path ==
             // =======================================================
@@ -1075,6 +1152,10 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
         // Update the time offset for the next segment
         time_into_full_trajectory += T_segment;
     }
+    // auto end = std::chrono::steady_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    // std::cout << "time taken for the update : " << duration.count() << " nano-seconds\n";
+
 
     // 5. If the loop completes, no collisions were found
     return std::nullopt;
@@ -1167,22 +1248,22 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
 
 
 Eigen::Vector2d GazeboObstacleChecker::getRobotPosition() const {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    // std::lock_guard<std::mutex> lock(data_mutex_);
     return robot_position_;
 }
 
 Eigen::VectorXd GazeboObstacleChecker::getRobotOrientation() const {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    // std::lock_guard<std::mutex> lock(data_mutex_);
     return robot_orientation_;
 }
 
 const ObstacleVector& GazeboObstacleChecker::getObstaclePositions() const {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    // std::lock_guard<std::mutex> lock(data_mutex_);
     return obstacle_positions_;
 }
 
 Eigen::VectorXd GazeboObstacleChecker::getRobotEulerAngles() const {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    // std::lock_guard<std::mutex> lock(data_mutex_);
     return quaternionToEuler(robot_orientation_);
 }
 
@@ -1399,7 +1480,193 @@ Eigen::VectorXd GazeboObstacleChecker::quaternionToEuler(const Eigen::VectorXd& 
 
 // KF Estimation with constant acc model (the next model that can be used is Singer Acceleration Model)
 void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
+    // std::lock_guard<std::mutex> lock(snapshot_mutex_);
+    obstacle_positions_.clear();
+    ObstacleVector current_dynamic_obstacles;
+
+    // Get the current simulation time from the stored clock
+    rclcpp::Time now = clock_->now();
+
+    // Update robot position
+    for (int i = 0; i < msg.pose_size(); ++i) {
+        const auto& pose = msg.pose(i);
+        if (pose.name() == robot_model_name_) {
+            robot_position_ = Eigen::Vector2d(pose.position().x(), pose.position().y());
+            break;
+        }
+    }
+
+    // Process obstacles
+    for (int i = 0; i < msg.pose_size(); ++i) {
+        const auto& pose = msg.pose(i);
+        const std::string name = pose.name();
+        Eigen::Vector2d position(pose.position().x(), pose.position().y());
+
+        if (name == robot_model_name_) continue;
+
+        bool is_cylinder = name.find("cylinder") != std::string::npos;
+        bool is_box = name.find("box") != std::string::npos;
+        bool is_static = name.find("static_") != std::string::npos;
+        bool is_moving = name.find("moving_") != std::string::npos;
+
+        if (!is_cylinder && !is_box) continue;
+
+        auto info_it = obstacle_info_.find(name);
+
+        // Create obstacle object
+        Obstacle obstacle;
+        obstacle.is_dynamic = is_moving;
+        if (is_cylinder) {
+            obstacle.type = Obstacle::CIRCLE;
+            double radius = (info_it != obstacle_info_.end()) ? info_it->second.radius : 5.0;
+            obstacle = Obstacle(position, radius, inflation, is_moving);
+        } else {
+            obstacle.type = Obstacle::BOX;
+            double width = (info_it != obstacle_info_.end()) ? info_it->second.width : 10.0;
+            double height = (info_it != obstacle_info_.end()) ? info_it->second.height : 10.0;
+            
+            Eigen::Vector4d quat(
+                pose.orientation().x(),
+                pose.orientation().y(),
+                pose.orientation().z(),
+                pose.orientation().w()
+            );
+            double yaw = calculateYawFromQuaternion(quat);
+            obstacle = Obstacle(position, width, height, yaw, inflation, is_moving);
+        }
+
+        const bool within_range = !use_range || 
+            (robot_position_ - position).norm() < sensor_range;
+
+        // Handle static obstacles
+        if (is_static) {
+            if (persistent_static_obstacles) {
+                auto map_it = static_obstacle_positions_.find(name);
+                
+                if (map_it == static_obstacle_positions_.end()) {
+                    if (within_range) {
+                        static_obstacle_positions_[name] = obstacle;
+                    }
+                } else {
+                    map_it->second.position = position;
+                }
+            }
+            
+            if (within_range) {
+                obstacle_positions_.push_back(obstacle);
+            }
+        }
+        // Handle dynamic obstacles
+        else if (is_moving && within_range) {
+            // This is the new block that replaces finite difference with a Kalman Filter.
+            if(estimation) {
+                auto filter_it = obstacle_filters_.find(name);
+                if (filter_it == obstacle_filters_.end()) {
+                    // First time seeing this obstacle, initialize a new filter.
+                    
+                    // --- ✅ 1. Use the Factory to create the filter ---
+                    KalmanFilter new_filter = KalmanFilterFactory::createFilter(kf_model_type_);
+
+                    // --- ✅ 2. Initialize the state with the correct size ---
+                    int state_size = (kf_model_type_ == "cv") ? 4 : 6;
+                    Eigen::VectorXd initial_state = Eigen::VectorXd::Zero(state_size);
+                    initial_state.head<2>() << obstacle.position.x(), obstacle.position.y();
+                    new_filter.init(initial_state);
+                    
+                    filter_it = obstacle_filters_.emplace(name, new_filter).first;
+                    
+                    obstacle.velocity.setZero();
+                    obstacle.acceleration.setZero();
+
+                } else {
+                    // This obstacle has an existing filter. Predict and Update.
+                    double dt = (now - obstacle_filters_times_[name]).seconds();
+
+                    // Prevent instability from tiny or zero dt
+                    if (dt <= 1e-6) {
+                        dt = 0.016; // Fallback to a reasonable timestep, e.g., ~60Hz
+                    }
+
+                    // 1. Predict step: Estimate where the filter thinks the obstacle should be.
+                    filter_it->second.predict(dt);
+
+                    // 2. Update step: Correct the prediction with the new measurement.
+                    Eigen::VectorXd measurement(2);
+                    measurement << obstacle.position.x(), obstacle.position.y();
+                    filter_it->second.update(measurement);
+
+                    // 3. Get the smoothed state from the filter to use in planning.
+                    Eigen::VectorXd estimated_state = filter_it->second.getState();
+                    obstacle.velocity << estimated_state(2), estimated_state(3);
+
+                    if (kf_model_type_ == "cv") {
+                        obstacle.acceleration.setZero();
+                    } else { // For "ca" and "singer"
+                        obstacle.acceleration << estimated_state(4), estimated_state(5);
+                    }
+
+                }
+                 // Store the timestamp of this update for the next iteration's dt calculation
+                obstacle_filters_times_[name] = now;
+            }
+
+            // Store the last update time on the obstacle object itself for the collision checker
+            obstacle.last_update_time = now;
+            current_dynamic_obstacles.push_back(obstacle);
+            
+            // // --- DEBUG OUTPUT BLOCK ---
+            // std::cout << std::fixed << std::setprecision(3);
+            // std::cout << "--- Obstacle [" << name << "] at " << now.seconds() << "s ---\n"
+            //           << "  Raw Position:      (" << position.x() << ", " << position.y() << ")\n"
+            //           << "  Kalman Velocity:   (" << obstacle.velocity.x() << ", " << obstacle.velocity.y() << ")\n"
+            //           << "  Kalman Accel:      (" << obstacle.acceleration.x() << ", " << obstacle.acceleration.y() << ")\n";
+        }
+    }
+
+    // Add persistent static obstacles (even if currently out of range)
+    if (persistent_static_obstacles) {
+        for (const auto& [name, static_obs] : static_obstacle_positions_) {
+            bool exists = std::any_of(
+                obstacle_positions_.begin(),
+                obstacle_positions_.end(),
+                [&](const Obstacle& o) {
+                    return o.position == static_obs.position && 
+                           o.type == static_obs.type;
+                }
+            );
+            
+            if (!exists) {
+                obstacle_positions_.push_back(static_obs);
+            }
+        }
+    }
+
+    // Add all processed dynamic obstacles to the main list
+    obstacle_positions_.insert(obstacle_positions_.end(),
+                             current_dynamic_obstacles.begin(),
+                             current_dynamic_obstacles.end());
+}
+
+
+// The new lightweight callback implementation
+void GazeboObstacleChecker::lightweightPoseCallback(const gz::msgs::Pose_V& msg) {
     std::lock_guard<std::mutex> lock(snapshot_mutex_);
+    latest_pose_msg_ = msg; // Overwrite the previous message
+    new_pose_msg_available_ = true;
+}
+
+// The new processing function
+void GazeboObstacleChecker::processLatestPoseInfo() {
+    gz::msgs::Pose_V msg;
+    {
+        std::lock_guard<std::mutex> lock(snapshot_mutex_);
+        if (!new_pose_msg_available_) {
+            return; // No new message to process
+        }
+        msg = latest_pose_msg_; // the lock above is for this line because latest_pose_msg_ is shared resource. writer is lightWeightPoseCallback and and reader is the current function. in case read and write is happening at the same time then we get a crash if we do not use lock
+        new_pose_msg_available_ = false; // Mark as consumed
+    }
+
     obstacle_positions_.clear();
     ObstacleVector current_dynamic_obstacles;
 
@@ -1568,9 +1835,6 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
 
 
 
-
-
-
 double GazeboObstacleChecker::calculateYawFromQuaternion(const Eigen::VectorXd& quaternion) {
     // Ensure the quaternion is valid (x, y, z, w)
     if (quaternion.size() != 4) {
@@ -1592,7 +1856,7 @@ double GazeboObstacleChecker::calculateYawFromQuaternion(const Eigen::VectorXd& 
 
 
 void GazeboObstacleChecker::robotPoseCallback(const gz::msgs::Pose_V& msg) {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    // std::lock_guard<std::mutex> lock(data_mutex_);
 
     if (msg.pose_size() > 0) {
         const auto& pose = msg.pose(0);
@@ -1661,7 +1925,7 @@ bool GazeboObstacleChecker::pointIntersectsCircle(const Eigen::Vector2d& point,
 
 
 ObstacleVector GazeboObstacleChecker::getObstacles() const {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    // std::lock_guard<std::mutex> lock(data_mutex_);
     ObstacleVector filtered_obstacles;
     
     for (const auto& obstacle : obstacle_positions_) {

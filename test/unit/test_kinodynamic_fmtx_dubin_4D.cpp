@@ -12,6 +12,8 @@
 #include <gz/transport/Node.hh>
 #include <iostream>
 #include <thread>
+#include <valgrind/callgrind.h>
+
 
 
 // NEW: Define the states for our state machine
@@ -115,6 +117,8 @@ int main(int argc, char** argv) {
     manager_params.setParam("sim_time_step", -0.04); // Time-to-go consumed per sim step
     manager_params.setParam("sim_frequency_hz", 50);  // Smoothness of arrow
     manager_params.setParam("vis_frequency_hz", 10);  // Obstacle visualization rate
+    manager_params.setParam("follow_path", false);
+
 
     Params gazebo_params;
     gazebo_params.setParam("robot_model_name", "tugbot");
@@ -210,7 +214,7 @@ int main(int argc, char** argv) {
     rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
 
     executor.add_node(ros_manager);
-    executor.add_node(vis_node); // for dubin i do not plot the edges based on trajecotry because thats too demanding. i just connected the parent to child via simple edge so you might see soem edges going through obstalce but in reality the dubin is going around them so dont be alarm!
+    // executor.add_node(vis_node); // for dubin i do not plot the edges based on trajecotry because thats too demanding. i just connected the parent to child via simple edge so you might see soem edges going through obstalce but in reality the dubin is going around them so dont be alarm!
 
     std::thread executor_thread([&executor]() { executor.spin(); });
 
@@ -224,11 +228,26 @@ int main(int argc, char** argv) {
     std::vector<std::tuple<double, double>> sim_duration_2;
 
 
+    bool limited = true; 
+    auto start_time = std::chrono::steady_clock::now();
+    auto time_limit = std::chrono::seconds(run_secs);
 
     auto global_start = std::chrono::steady_clock::now();
 
-
+    // Start profiling
+    CALLGRIND_START_INSTRUMENTATION;
     while (g_running && rclcpp::ok()) {
+        /////////////
+        if (limited) {
+            auto now = std::chrono::steady_clock::now();
+            if (now - start_time > time_limit) {
+                std::cout << "[INFO] time_limit seconds have passed. Exiting loop.\n";
+                break;  // exit the loop
+            }
+        }
+        /////////////
+
+
         // --- 1. Read robot state once ---
         Eigen::VectorXd current_state = ros_manager->getCurrentSimulatedState();
         kinodynamic_planner->setRobotState(current_state);
@@ -364,7 +383,8 @@ int main(int argc, char** argv) {
 
         loop_rate.sleep();
     }
-
+    // Stop profiling
+    CALLGRIND_STOP_INSTRUMENTATION;
 
     const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations
 

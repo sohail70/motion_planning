@@ -430,6 +430,7 @@ void visualizeDWA(const DWAVisualization& data) {
             cylinder_obstacles = grid_checker->getObstaclesInRange(robot_x, robot_y);
         } 
         else if (auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_)) {
+            gazebo_checker->processLatestPoseInfo();
             // Process Gazebo obstacles
             all_visible_obstacles = gazebo_checker->getObstaclePositions();
 

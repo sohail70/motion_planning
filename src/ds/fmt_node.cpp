@@ -16,9 +16,9 @@ const Eigen::VectorXd& FMTNode::getStateValue() const {
     return state_->getValue(); 
 }
 
-double FMTNode::getCost() const noexcept { 
-    return cost_; 
-}
+// double FMTNode::getCost() const noexcept { 
+//     return cost_; 
+// }
 
 void FMTNode::setCost(double cost) noexcept { 
     cost_ = cost; 
@@ -51,6 +51,34 @@ void FMTNode::setParent(FMTNode* parent, double edge_cost) {
     if(parent_ ){ //&& !hasChild(this, parent_->children_)) {
         parent_->children_.push_back(this);
     }
+}
+
+
+void FMTNode::setParent(FMTNode* parent, const Trajectory& trajectory_to_parent) {
+    // Early exit if parent is the same
+    if (parent == parent_) { 
+        return;
+    }
+    // If parent has changed remove this node from its old parent's children list
+    if(parent_ && parent_ != parent) {
+        auto& childs = parent_->children_;
+        childs.erase(std::remove(childs.begin(), childs.end(), this), childs.end());
+    }
+    
+    parent_ = parent;
+    
+    // Add this node to the new parent's children list
+    if(parent_ ){ //&& !hasChild(this, parent_->children_)) {
+        parent_->children_.push_back(this);
+        parent_trajectory_ = trajectory_to_parent;
+
+    }
+}
+
+
+
+const Trajectory& FMTNode::getParentTrajectory() const {
+    return parent_trajectory_;
 }
 
 void FMTNode::disconnectFromGraph() {

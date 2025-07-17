@@ -140,6 +140,7 @@ int main(int argc, char **argv) {
     manager_params.setParam("thruster_state_dimension", 5);
     manager_params.setParam("sim_frequency_hz", 50);  // Smoothness of arrow
     manager_params.setParam("vis_frequency_hz", 10);  // Obstacle visualization rate
+    manager_params.setParam("follow_path", false);
 
     Params gazebo_params;
     gazebo_params.setParam("robot_model_name", "tugbot");
@@ -277,6 +278,9 @@ int main(int argc, char **argv) {
     std::vector<double> sim_durations;
     std::vector<std::tuple<double, double>> sim_duration_2;
 
+    bool limited = true; 
+    auto start_time = std::chrono::steady_clock::now();
+    auto time_limit = std::chrono::seconds(run_secs);
 
 
     auto global_start = std::chrono::steady_clock::now();
@@ -329,6 +333,17 @@ int main(int argc, char **argv) {
     // Start profiling
     CALLGRIND_START_INSTRUMENTATION;
     while (g_running && rclcpp::ok()) {
+        /////////////
+        if (limited) {
+            auto now = std::chrono::steady_clock::now();
+            if (now - start_time > time_limit) {
+                std::cout << "[INFO] time_limit seconds have passed. Exiting loop.\n";
+                break;  // exit the loop
+            }
+        }
+        /////////////
+
+
         // 1. Get the robot's current state from the simulator.
         Eigen::VectorXd current_state = ros_manager->getCurrentKinodynamicState();
         kinodynamic_planner->setRobotState(current_state);

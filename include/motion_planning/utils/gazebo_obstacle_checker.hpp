@@ -25,6 +25,11 @@ public:
 
     bool isObstacleFree(const std::vector<Eigen::VectorXd>& path) const override;
 
+bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, 
+                                           double global_start_time, 
+                                           const Obstacle& obstacle) const;
+
+
     bool isInVelocityObstacle(
         const Eigen::Vector2d& robot_velocity,
         const Eigen::Vector2d& obs_velocity,
@@ -82,7 +87,7 @@ ObstacleVector getObstacles() const override;
 bool checkFootprintCollision(const Eigen::Vector2d& position,
                                double yaw,
                                const std::vector<Eigen::Vector2d>& footprint) const override {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    // std::lock_guard<std::mutex> lock(data_mutex_);
     
     const Eigen::Rotation2Dd rot(yaw);
     for(const auto& local_point : footprint) {
@@ -108,7 +113,7 @@ bool checkFootprintCollision(const Eigen::Vector2d& position,
 }
 
 double distanceToNearestObstacle(const Eigen::Vector2d& position) const override {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    // std::lock_guard<std::mutex> lock(data_mutex_);
     double min_distance = std::numeric_limits<double>::max();
     
     for(const auto& obstacle : obstacle_positions_) {
@@ -148,12 +153,15 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
         ObstacleVector obstacles;
     };
 
-    Snapshot getAtomicSnapshot() const {
+    Snapshot getAtomicSnapshot() {
+        // 1. First, process any new pose message that has arrived since the last call.
+        //    This updates the internal state (Kalman filters, obstacle_positions_, etc.).
+        processLatestPoseInfo();
         /*
             The snapshot_mutex_ guarantees that the Gazebo callback cannot change obstacle_positions_ 
             while getAtomicSnapshot is in the middle of copying it.
         */
-        std::lock_guard<std::mutex> lock(snapshot_mutex_);
+        // std::lock_guard<std::mutex> lock(snapshot_mutex_);
         obstacle_snapshot_ = obstacle_positions_;  // Atomic copy --> obstacle snapshot is gonna be used in isObstacleFree or isTrajectorySafe, because obstalce_positions_ is live updating while you are in a plan() function
         return {robot_position_, obstacle_snapshot_};
     }
@@ -241,7 +249,7 @@ double distanceSqrdPointToArc(
 
 
     double findNearestObstacleDistance(const Eigen::Vector2d& point) const {
-        std::lock_guard<std::mutex> lock(snapshot_mutex_);
+        // std::lock_guard<std::mutex> lock(snapshot_mutex_);
         double min_distance = std::numeric_limits<double>::infinity();
 
         if (obstacle_snapshot_.empty()) {
@@ -271,8 +279,16 @@ double distanceSqrdPointToArc(
     }
 
 
+    void processLatestPoseInfo();
 private:
     void poseInfoCallback(const gz::msgs::Pose_V& msg);
+    bool new_pose_msg_available_;
+
+    gz::msgs::Pose_V latest_pose_msg_;
+
+    void lightweightPoseCallback(const gz::msgs::Pose_V& msg);
+
+
     static bool lineIntersectsCircle(const Eigen::Vector2d& start,
                                     const Eigen::Vector2d& end,
                                     const Eigen::Vector2d& center,

@@ -45,9 +45,11 @@ public:
             std::chrono::milliseconds(1000 / vis_frequency_hz),
             std::bind(&R2TROS2Manager::visualizationLoop, this));
 
-        sim_timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(1000 / sim_frequency_hz),
-            std::bind(&R2TROS2Manager::simulationLoop, this));
+        if (params.getParam<bool>("follow_path")){
+            sim_timer_ = this->create_wall_timer(
+                std::chrono::milliseconds(1000 / sim_frequency_hz),
+                std::bind(&R2TROS2Manager::simulationLoop, this));
+        }
     }
 
 
@@ -74,7 +76,7 @@ public:
     // }
 
     void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
-        std::lock_guard<std::mutex> lock(path_mutex_);
+        // std::lock_guard<std::mutex> lock(path_mutex_);
 
         if (new_path_from_main.empty()) {
             is_path_set_ = false;
@@ -100,7 +102,7 @@ public:
 
 
     Eigen::VectorXd getCurrentSimulatedState() {
-        std::lock_guard<std::mutex> lock(path_mutex_);
+        // std::lock_guard<std::mutex> lock(path_mutex_);
         // It's possible this is called before the first simulation tick,
         // so ensure the state is initialized.
         if (current_interpolated_state_.size() == 0) {
@@ -134,6 +136,8 @@ private:
         if (!obstacle_checker_ || !visualizer_) return;
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
         if (!gazebo_checker) return;
+
+        gazebo_checker->processLatestPoseInfo();
         const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
         std::vector<Eigen::VectorXd> cylinder_obstacles;
         std::vector<double> cylinder_radii;
@@ -259,7 +263,7 @@ private:
 
     // With speed logs!
     void simulationLoop() {
-        std::lock_guard<std::mutex> lock(path_mutex_);
+        // std::lock_guard<std::mutex> lock(path_mutex_);
         if (!is_path_set_ || current_path_.size() < 2) {
             return;
         }

@@ -42,7 +42,7 @@ struct Trajectory {
     ExecutionTrajectory execution_data; // Detailed profile for simulation and execution
 
     // --- Data for Analytical Collision Checking ---
-    std::vector<AnalyticalSegment> analytical_segments;
+    // std::vector<AnalyticalSegment> analytical_segments;
     
     // Helper fields to pass info from base to derived steer function
     std::string maneuver_type;

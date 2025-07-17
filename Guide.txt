@@ -10,6 +10,24 @@ kcachegrind callgrind.out
 callgrind_annotate callgrind.out.fmtxx | grep -E '^[0-9]' | head -200
 
 
+callgrind_annotate \
+  --inclusive=no \
+  --auto=no \
+  --threshold=0.0 \
+  --context=0 \
+  callgrind.out.fmtxR2T \
+  /home/sohail/motion_planning/src/planners/kinodynamic/kinodynamic_fmtx.cpp \
+| sed -n '/KinodynamicFMTX::plan/,/^}/p'
+
+
+
+ callgrind_annotate   --inclusive=yes   --threshold=100.0   callgrind.out.fmtxR2T | grep -E '^[0-9,]+ '
+
+
+
+gdb --args ./test_kinodynamic_fmtx_R2T --samples 500 --factor 2.0 --> then write run
+
+
 /*
 debug in WATCH for Eigen lib variables!
 *((z->getStateValue().m_storage.m_data))

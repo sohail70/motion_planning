@@ -32,6 +32,8 @@ public:
         }
         current_interpolated_state_ = initial_sim_state;
 
+
+
         simulation_time_step_ = params.getParam<double>("sim_time_step", -0.02);
         int sim_frequency_hz = params.getParam<int>("sim_frequency_hz", 50);
         int vis_frequency_hz = params.getParam<int>("vis_frequency_hz", 30);
@@ -42,9 +44,11 @@ public:
             std::chrono::milliseconds(1000 / vis_frequency_hz),
             std::bind(&DubinsROS2Manager::visualizationLoop, this));
 
-        sim_timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(1000 / sim_frequency_hz),
-            std::bind(&DubinsROS2Manager::simulationLoop, this));
+        if (params.getParam<bool>("follow_path")){
+            sim_timer_ = this->create_wall_timer(
+                std::chrono::milliseconds(1000 / sim_frequency_hz),
+                std::bind(&DubinsROS2Manager::simulationLoop, this));
+        }
     }
 
     /**
@@ -165,6 +169,7 @@ private:
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
         if (!gazebo_checker) return;
 
+        gazebo_checker->processLatestPoseInfo();
         // Get the latest obstacle information
         const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
         

@@ -667,8 +667,8 @@ std::unordered_set<int> KinodynamicRRTX::findSamplesNearObstacles(
 
         // --- Handle DYNAMIC Obstacles ---
         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
-            const double PREDICTION_HORIZON_SECONDS = 0.0;
-            const int num_intermediate_steps = 1;
+            const double PREDICTION_HORIZON_SECONDS = 3.0;
+            const int num_intermediate_steps = 10;
 
             // Perform searches at multiple discrete time steps along the predicted path
             for (int i = 0; i <= num_intermediate_steps; ++i) {
@@ -985,6 +985,8 @@ void KinodynamicRRTX::propagateDescendants() {
         node->setTimeToGoal(std::numeric_limits<double>::infinity());
         node->setParent(nullptr, Trajectory{});
     }
+    std::cout<<"orphans size"<<Vc_T_.size()<<"\n";
+
 
     Vc_T_.clear();
 }
@@ -1691,6 +1693,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     // This part of your logic remains unchanged.
     RRTxNode* best_candidate_node = nullptr;
     Trajectory best_candidate_bridge;
+    Trajectory current_bridge;
     double best_candidate_cost = std::numeric_limits<double>::infinity();
     double current_search_radius = neighborhood_radius_;
     const int max_attempts = 4;
@@ -1699,26 +1702,32 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
         auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head(kd_dim), current_search_radius);
         
-        // Note: The min_total_cost is reset each attempt to find the best in the new, larger radius.
         double min_cost_in_radius = std::numeric_limits<double>::infinity();
 
         for (auto idx : nearby_indices) {
             RRTxNode* candidate = tree_[idx].get();
             if (candidate->getCost() == INFINITY) continue;
 
-            Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
-            if (!bridge.is_valid || !obs_checker_->isTrajectorySafe(bridge, clock_->now().seconds())) continue;
+            // CHANGED: Reuse 'current_bridge' object via assignment. No new object is constructed here.
+            current_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+            
+            if (!current_bridge.is_valid || !obs_checker_->isTrajectorySafe(current_bridge, clock_->now().seconds())) continue;
 
-            double cost = bridge.cost + candidate->getCost();
+            double cost = current_bridge.cost + candidate->getCost();
             if (cost < min_cost_in_radius) {
                 min_cost_in_radius = cost;
                 best_candidate_node = candidate;
-                best_candidate_bridge = bridge;
-                best_candidate_cost = cost;
+                
+                // CHANGED: Use std::swap instead of copying. This is a very cheap move operation.
+                std::swap(best_candidate_bridge, current_bridge);
+                
+                best_candidate_cost = cost; // Note: 'cost' was calculated with the old 'current_bridge' before the swap.
+                                            // We need to re-calculate it with the new best, or better, use its own data.
+                best_candidate_cost = best_candidate_bridge.cost + candidate->getCost(); // Correct way
             }
         }
 
-        if (best_candidate_node) break; // Exit if a connection was found
+        if (best_candidate_node) break;
         current_search_radius *= radius_multiplier;
     }
 

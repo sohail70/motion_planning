@@ -191,6 +191,7 @@ class KinodynamicFMTX : public Planner {
             bool partial_update = false;
             bool ignore_sample;
             bool prune;
+            bool neighbor_precache = false;
 
             bool in_dynamic = false;
 

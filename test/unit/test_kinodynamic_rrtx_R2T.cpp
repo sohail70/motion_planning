@@ -118,6 +118,7 @@ int main(int argc, char** argv)
     manager_params.setParam("sim_time_step", -0.04); // Time-to-go consumed per sim step
     manager_params.setParam("sim_frequency_hz", 50);  // Smoothness of arrow
     manager_params.setParam("vis_frequency_hz", 10);  // Obstacle visualization rate
+    manager_params.setParam("follow_path", false);
 
     Params gazebo_params;
     gazebo_params.setParam("robot_model_name", "tugbot");
@@ -247,7 +248,7 @@ int main(int argc, char** argv)
     rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
 
     executor.add_node(ros_manager);
-    executor.add_node(vis_node); // **IMPORTANT**: Add the vis_node to the executor so its timer runs!
+    // executor.add_node(vis_node); // **IMPORTANT**: Add the vis_node to the executor so its timer runs!
 
     std::thread executor_thread([&executor]() {
         executor.spin();
@@ -261,6 +262,9 @@ int main(int argc, char** argv)
     std::vector<double> sim_durations;
     std::vector<std::tuple<double, double>> sim_duration_2;
 
+    bool limited = true; 
+    auto start_time = std::chrono::steady_clock::now();
+    auto time_limit = std::chrono::seconds(run_secs);
 
     auto global_start = std::chrono::steady_clock::now();
     rclcpp::Rate loop_rate(20); // Frequency to check for replan triggers
@@ -268,6 +272,17 @@ int main(int argc, char** argv)
     CALLGRIND_START_INSTRUMENTATION;
     while (g_running && rclcpp::ok())
     {
+
+        /////////////
+        if (limited) {
+            auto now = std::chrono::steady_clock::now();
+            if (now - start_time > time_limit) {
+                std::cout << "[INFO] time_limit seconds have passed. Exiting loop.\n";
+                break;  // exit the loop
+            }
+        }
+        /////////////
+        
         bool needs_replan = false;
         
         // Get the robot's current state ONCE per cycle.
@@ -285,7 +300,6 @@ int main(int argc, char** argv)
             g_running = false; // Set the flag to cleanly exit the loop.
             continue;          // Skip the rest of this loop iteration.
         }
-
 
         const auto& snapshot = obstacle_checker->getAtomicSnapshot();
 
@@ -319,12 +333,12 @@ int main(int argc, char** argv)
 
         // if (needs_replan) {
             // Get the robot's current state to plan FROM.
-            Eigen::VectorXd current_sim_state_replan = ros_manager->getCurrentSimulatedState();
-            if (current_sim_state_replan.size() == 0) continue; // Skip if state not ready
+            // Eigen::VectorXd current_sim_state_replan = ros_manager->getCurrentSimulatedState();
+            // if (current_sim_state_replan.size() == 0) continue; // Skip if state not ready
 
-            RCLCPP_INFO(vis_node->get_logger(), "Replanning triggered. Finding new optimal path...");
+            // RCLCPP_INFO(vis_node->get_logger(), "Replanning triggered. Finding new optimal path...");
             
-            current_sim_state = ros_manager->getCurrentSimulatedState();
+            // current_sim_state = ros_manager->getCurrentSimulatedState();
 
             Eigen::VectorXd fresh_robot_state = ros_manager->getCurrentSimulatedState();
             kinodynamic_planner->setRobotState(fresh_robot_state);
@@ -337,7 +351,7 @@ int main(int argc, char** argv)
                 
                 // Create a "stop" path containing only the robot's current state.
                 std::vector<Eigen::VectorXd> stop_path;
-                stop_path.push_back(current_sim_state_replan);
+                stop_path.push_back(fresh_robot_state);
                 
                 // Update the current path and send it to the manager to halt execution.
                 current_executable_path = stop_path;

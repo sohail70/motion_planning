@@ -49,7 +49,7 @@ class StateSpace {
 
 
     std::shared_ptr<State> addState(std::shared_ptr<State> state) {
-        std::lock_guard<std::mutex> lock(state_mutex_);
+        // std::lock_guard<std::mutex> lock(state_mutex_);
 
         state_objects_.push_back(state);  // Keep alive
 

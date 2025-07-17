@@ -18,7 +18,10 @@ public:
     explicit FMTNode(std::shared_ptr<State> state, int index = -1);
     
     const Eigen::VectorXd& getStateValue() const;
-    double getCost() const noexcept;
+    // double getCost() const noexcept;
+    inline double getCost() const { 
+        return cost_; 
+    }
     void setCost(double cost) noexcept;
 
     NeighborMap& neighbors() noexcept;
@@ -32,6 +35,8 @@ public:
         are gonna end up using "parent_children_.push_back(this)" alot!
     */
     void setParent(FMTNode* parent, double edge_cost);
+    
+    void setParent(FMTNode* parent, const Trajectory& trajectory_to_parent);
 
     // I used raw pointers for speed and I use this in clear function inside setup() to be sure!
     void disconnectFromGraph();
@@ -75,6 +80,8 @@ public:
 
     bool isNeighborsCached() const { return neighbors_cached_; }
 
+    const Trajectory& getParentTrajectory() const;
+
 
 
     bool in_queue_;
@@ -97,6 +104,7 @@ public:
     std::vector<FMTNode*> children_;
     FMTNode* parent_;
     bool neighbors_cached_ = false;
+    int bad_count = 0;
 private:
     std::shared_ptr<State> state_;
     NeighborMap neighbors_;
@@ -104,6 +112,9 @@ private:
     // REPLACED the single 'neighbors_' map
     NeighborMap forward_neighbors_;  // Nodes reachable FROM this node
     NeighborMap backward_neighbors_; // Nodes that can reach this node
+
+    Trajectory parent_trajectory_; 
+
 
     double cost_; // This is optimization cost
     double time_to_goal_; // This is the pure accumulated time

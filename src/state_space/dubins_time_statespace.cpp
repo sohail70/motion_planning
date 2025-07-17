@@ -66,30 +66,30 @@ Trajectory DubinsTimeStateSpace::steer(const Eigen::VectorXd& from, const Eigen:
         return traj_geom;
     }
 
-    ///// FOR ANALYTICAL/////////////
-    auto arc_len = [&](const Eigen::Vector2d& A,
-                       const Eigen::Vector2d& B,
-                       const Eigen::Vector2d& C,
-                       bool clockwise)
-    {
-        double alpha = atan2(A.y() - C.y(), A.x() - C.x());
-        double beta  = atan2(B.y() - C.y(), B.x() - C.x());
-        double d_th  = normalizeAngle(beta - alpha);
-        if (clockwise && d_th > 0)    d_th -= 2*M_PI;
-        if (!clockwise && d_th < 0)   d_th += 2*M_PI;
-        return std::abs(d_th) * min_turning_radius_;
-    };
+    // ///// FOR ANALYTICAL/////////////
+    // auto arc_len = [&](const Eigen::Vector2d& A,
+    //                    const Eigen::Vector2d& B,
+    //                    const Eigen::Vector2d& C,
+    //                    bool clockwise)
+    // {
+    //     double alpha = atan2(A.y() - C.y(), A.x() - C.x());
+    //     double beta  = atan2(B.y() - C.y(), B.x() - C.x());
+    //     double d_th  = normalizeAngle(beta - alpha);
+    //     if (clockwise && d_th > 0)    d_th -= 2*M_PI;
+    //     if (!clockwise && d_th < 0)   d_th += 2*M_PI;
+    //     return std::abs(d_th) * min_turning_radius_;
+    // };
 
-    for (auto& segment : traj_geom.analytical_segments) {
-        double segment_len = 0.0;
-        if (segment.type == SegmentType::LINE) {
-            segment_len = (segment.end_point - segment.start_point).norm();
-        } else { // SegmentType::ARC
-            segment_len = arc_len(segment.start_point, segment.end_point, segment.center, segment.is_clockwise);
-        }
-        segment.duration = segment_len / required_velocity;
-    }
-    ///////////////////////////////////
+    // for (auto& segment : traj_geom.analytical_segments) {
+    //     double segment_len = 0.0;
+    //     if (segment.type == SegmentType::LINE) {
+    //         segment_len = (segment.end_point - segment.start_point).norm();
+    //     } else { // SegmentType::ARC
+    //         segment_len = arc_len(segment.start_point, segment.end_point, segment.center, segment.is_clockwise);
+    //     }
+    //     segment.duration = segment_len / required_velocity;
+    // }
+    // ///////////////////////////////////
 
 
 
