@@ -151,13 +151,14 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("estimation", true);
     gazebo_params.setParam("inflation", 0.5); 
     gazebo_params.setParam("persistent_static_obstacles", false);
+    gazebo_params.setParam("fcl", false);
 
     Params planner_params;
     planner_params.setParam("num_of_samples", num_samples);
     planner_params.setParam("factor", factor);
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
-    planner_params.setParam("partial_update", false); //update till the robot's costToInit
+    planner_params.setParam("partial_update", true); //update till the robot's costToInit
     planner_params.setParam("static_obs_presence", false); // to not process static obstalces twice because obstacle checker keeps sending all the obstalces! i geuss the persisten_static_obstalces needs to be true always
     /*
         we can cache and its useful because near obstacle there comes a time that too many z indices came up with the same best neighbor node for specific x index
@@ -199,7 +200,9 @@ int main(int argc, char **argv) {
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
     auto sim_clock = vis_node->get_clock();
 
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
@@ -266,7 +269,7 @@ int main(int argc, char **argv) {
     rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
 
     executor.add_node(ros_manager);
-    // executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
+    executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
     std::thread executor_thread([&executor]() { executor.spin(); });
 
     // --- 7. Main Execution and Replanning Loop ---
@@ -280,6 +283,8 @@ int main(int argc, char **argv) {
 
 
     bool limited = true; 
+    if (manager_params.getParam<bool>("follow_path"))
+        limited = false;
     auto start_time = std::chrono::steady_clock::now();
     auto time_limit = std::chrono::seconds(run_secs);
 

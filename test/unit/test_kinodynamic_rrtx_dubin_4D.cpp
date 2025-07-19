@@ -128,6 +128,7 @@ int main(int argc, char** argv) {
     gazebo_params.setParam("sensor_range", 20.0);
     gazebo_params.setParam("estimation", true);
     gazebo_params.setParam("kf_model_type", "cv");
+    gazebo_params.setParam("fcl", false);
 
     // gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
     // This value is CRITICAL. If it's 0.0, your robot has no size.
@@ -143,7 +144,7 @@ int main(int argc, char** argv) {
     planner_params.setParam("factor", factor);
     planner_params.setParam("use_kdtree", true);
     planner_params.setParam("kdtree_type", "NanoFlann");
-    planner_params.setParam("partial_update", false);
+    planner_params.setParam("partial_update", true);
     planner_params.setParam("static_obs_presence", false);
     planner_params.setParam("obs_cache", false);
     planner_params.setParam("partial_plot", false);
@@ -159,7 +160,9 @@ int main(int argc, char** argv) {
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
     auto sim_clock = vis_node->get_clock();
 
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
@@ -214,7 +217,7 @@ int main(int argc, char** argv) {
     rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
 
     executor.add_node(ros_manager);
-    // executor.add_node(vis_node); // for dubin i do not plot the edges based on trajecotry because thats too demanding. i just connected the parent to child via simple edge so you might see soem edges going through obstalce but in reality the dubin is going around them so dont be alarm!
+    executor.add_node(vis_node); // for dubin i do not plot the edges based on trajecotry because thats too demanding. i just connected the parent to child via simple edge so you might see soem edges going through obstalce but in reality the dubin is going around them so dont be alarm!
 
     std::thread executor_thread([&executor]() { executor.spin(); });
 
@@ -229,6 +232,8 @@ int main(int argc, char** argv) {
 
 
     bool limited = true; 
+    if (manager_params.getParam<bool>("follow_path"))
+        limited = false;
     auto start_time = std::chrono::steady_clock::now();
     auto time_limit = std::chrono::seconds(run_secs);
 

@@ -46,6 +46,7 @@ bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory,
      * predicted. Returns std::nullopt if the path is clear.
      */
     std::optional<Obstacle> getCollidingObstacle(const Trajectory& trajectory, double start_node_cost) const override;
+    std::optional<Obstacle> getCollidingObstacleFCL(const Trajectory& trajectory, double start_node_cost) const override;
     
     /**
      * @brief [NEW & CORRECTED] Performs a full time-aware collision check for a trajectory.
@@ -325,6 +326,7 @@ private:
     double inflation;
     bool persistent_static_obstacles;
     bool estimation;
+    bool use_fcl;
 
 
     std::unordered_map<std::string, Obstacle> static_obstacle_positions_;

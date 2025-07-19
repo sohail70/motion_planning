@@ -139,34 +139,43 @@ private:
 
 
     void visualizationLoop() {
-        // This loop is only needed for the full manager, but must exist.
         if (!obstacle_checker_ || !visualizer_) return;
         
-        // Attempt to cast to the Gazebo-specific checker to get obstacle details
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
         if (!gazebo_checker) return;
 
         gazebo_checker->processLatestPoseInfo();
-
-        // Get the latest obstacle information
         const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
         
+        // --- MODIFIED SECTION START ---
+        
         // Prepare containers for visualization data
-        std::vector<Eigen::VectorXd> cylinder_obstacles;
+        std::vector<Eigen::VectorXd> cylinder_positions;
         std::vector<double> cylinder_radii;
+        
+        // ✅ Create the specific data structure your visualizeCube function needs
+        std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_data_for_viz;
+
         std::vector<Eigen::Vector2d> dynamic_obstacle_positions;
         std::vector<Eigen::Vector2d> dynamic_obstacle_velocities;
 
-        // Process each obstacle to sort it for visualization
+        // Process each obstacle and sort it into the correct container
         for (const auto& obstacle : all_obstacles) {
             if (obstacle.type == Obstacle::CIRCLE) {
-                Eigen::VectorXd vec(2);
-                vec << obstacle.position.x(), obstacle.position.y();
-                cylinder_obstacles.push_back(vec);
-                cylinder_radii.push_back(obstacle.dimensions.radius); // Using base radius for visualization
+                Eigen::VectorXd pos(2);
+                pos << obstacle.position.x(), obstacle.position.y();
+                cylinder_positions.push_back(pos);
+                cylinder_radii.push_back(obstacle.dimensions.radius);
+            } else if (obstacle.type == Obstacle::BOX) {
+                // ✅ Populate the vector of tuples directly
+                box_data_for_viz.emplace_back(
+                    obstacle.position,
+                    obstacle.dimensions.width,
+                    obstacle.dimensions.height,
+                    obstacle.dimensions.rotation
+                );
             }
             
-            // Collect data for velocity arrows for dynamic obstacles
             if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
                 dynamic_obstacle_positions.push_back(obstacle.position);
                 dynamic_obstacle_velocities.push_back(obstacle.velocity);
@@ -174,17 +183,18 @@ private:
         }
 
         // Send data to the visualizer
-        if (!cylinder_obstacles.empty()) {
-            visualizer_->visualizeCylinder(cylinder_obstacles, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "obstacles");
+        if (!cylinder_positions.empty()) {
+            visualizer_->visualizeCylinder(cylinder_positions, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "cylinder_obstacles");
+        }
+        if (!box_data_for_viz.empty()) {
+            // ✅ Call your actual visualizeCube function with the correct data structure
+            visualizer_->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
         }
         if (!dynamic_obstacle_positions.empty()) {
-            visualizer_->visualizeVelocityVectors(
-                dynamic_obstacle_positions, 
-                dynamic_obstacle_velocities, 
-                "map", 
-                {1.0f, 0.5f, 0.0f}, // Orange color for velocity
-                "velocity_vectors");
+            visualizer_->visualizeVelocityVectors(dynamic_obstacle_positions, dynamic_obstacle_velocities, "map", {1.0f, 0.5f, 0.0f}, "velocity_vectors");
         }
+        
+        // --- MODIFIED SECTION END ---
     }
 
     void simulationLoop() {

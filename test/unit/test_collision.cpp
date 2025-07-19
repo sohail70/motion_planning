@@ -1249,7 +1249,7 @@ int main(int argc, char** argv) {
     gazebo_params.setParam("estimation", true);
     gazebo_params.setParam("kf_model_type", "cv");
     
-    auto obstacle_info = parseSdfObstacles("dynamic_world_4_obs.sdf");
+    auto obstacle_info = parseSdfObstacles("dynamic_world_1_obs.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
 
     // --- 2. Define Robot's Path using ThrusterSteerStateSpace ---
@@ -1396,14 +1396,41 @@ int main(int argc, char** argv) {
         std::string trajectory_color_str = is_safe ? "0.1,0.8,0.1" : "1.0,0.1,0.1";
         visualizer->visualizeEdges(remaining_path_edges, "map", trajectory_color_str, "remaining_trajectory");
 
-        // Visualize obstacles
-        std::vector<Eigen::VectorXd> cylinder_obstacles;
+        // =======================================================
+        // === 🛠️ CORRECTED OBSTACLE VISUALIZATION LOGIC START ===
+        // =======================================================
+        
+        // Prepare separate containers for each shape type
+        std::vector<Eigen::VectorXd> cylinder_positions;
         std::vector<double> cylinder_radii;
+        std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_data_for_viz;
+
+        // Sort obstacles by type
         for (const auto& obs : snapshot.obstacles) {
-            cylinder_obstacles.push_back(obs.position);
-            cylinder_radii.push_back(obs.dimensions.radius + obs.inflation);
+            if (obs.type == Obstacle::CIRCLE) {
+                cylinder_positions.push_back(obs.position);
+                cylinder_radii.push_back(obs.dimensions.radius + obs.inflation);
+            } else if (obs.type == Obstacle::BOX) {
+                box_data_for_viz.emplace_back(
+                    obs.position,
+                    obs.dimensions.width + 2 * obs.inflation,
+                    obs.dimensions.height + 2 * obs.inflation,
+                    obs.dimensions.rotation
+                );
+            }
         }
-        visualizer->visualizeCylinder(cylinder_obstacles, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "obstacles");
+
+        // Call the correct visualization function for each shape
+        if (!cylinder_positions.empty()) {
+            visualizer->visualizeCylinder(cylinder_positions, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "cylinder_obstacles");
+        }
+        if (!box_data_for_viz.empty()) {
+            visualizer->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
+        }
+        
+        // =====================================================
+        // === CORRECTED OBSTACLE VISUALIZATION LOGIC END ======
+        // =====================================================
 
         loop_rate.sleep();
     }

@@ -17,6 +17,7 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
     robot_position_ << params.getParam<double>("default_robot_x"), params.getParam<double>("default_robot_y");
     estimation = params.getParam<bool>("estimation");
     kf_model_type_ = params.getParam<std::string>("kf_model_type", "cv");
+    use_fcl = params.getParam<bool>("fcl", false);
     // Subscribe to the robot pose topic
     std::string robot_pose_topic = "/model/" + robot_model_name_ + "/tf";
     if (!gz_node_.Subscribe(robot_pose_topic, &GazeboObstacleChecker::robotPoseCallback, this)) {
@@ -361,7 +362,10 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 ) const {
     // A nullopt from getCollidingObstacle means the path is safe.
     // return isObstacleFree(trajectory.path_points.at(0),trajectory.path_points.at(1));
-    return !getCollidingObstacle(trajectory, global_edge_start_time).has_value();
+    if (use_fcl)
+        return !getCollidingObstacleFCL(trajectory, global_edge_start_time).has_value();
+    else
+        return !getCollidingObstacle(trajectory, global_edge_start_time).has_value();
 }
 
 //  With Constant Acc and Constant Vel implmented depending on what the obstalces movement and you KF is!
@@ -990,7 +994,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //             // =======================================================
 //             // == ACCELERATION MODEL (5D): Subdivide the curved path ==
 //             // =======================================================
-//             const int num_subdivisions = 3; // A tunable parameter for accuracy vs. performance
+//             const int num_subdivisions = 1; // A tunable parameter for accuracy vs. performance
             
 //             // Calculate the constant acceleration for the entire segment
 //             const Eigen::Vector2d p_r0_seg = get_xy(segment_start_state);
@@ -1161,9 +1165,152 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //     return std::nullopt;
 // }
 
+std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
+    const Trajectory& trajectory,
+    double global_start_time
+) const {
+    if (trajectory.path_points.size() < 2) {
+        return std::nullopt;
+    }
+
+    auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
+    auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
+    auto get_vxy = [](const Eigen::VectorXd& state) { return state.segment<2>(2); };
+
+    double time_into_full_trajectory = 0.0;
+    const int state_dim = trajectory.path_points[0].size();
+
+    for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+        const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
+        const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
+
+        const double T_segment = get_time(segment_start_state) - get_time(segment_end_state);
+        if (T_segment <= 1e-9) continue;
+        
+        const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
+        
+        if (state_dim == 5) {
+            // =======================================================
+            // == ACCELERATION MODEL (5D): Approximate the CURVED path ==
+            // =======================================================
+            const int num_subdivisions = 3; // Use 2 or 3 for a good balance of accuracy and speed
+            
+            const Eigen::Vector2d p_r0_seg = get_xy(segment_start_state);
+            const Eigen::Vector2d v_r0_seg = get_vxy(segment_start_state);
+            const Eigen::Vector2d v_r1_seg = get_vxy(segment_end_state);
+            const Eigen::Vector2d a_r_seg = (v_r1_seg - v_r0_seg) / T_segment;
+            
+            Eigen::Vector2d p_sub_start = p_r0_seg;
+            double t_sub_start = 0.0;
+            double t_sub_end = T_segment;
+            Eigen::Vector2d p_sub_end = p_r0_seg + v_r0_seg * t_sub_end + 0.5 * a_r_seg * t_sub_end * t_sub_end;
+            
+            // Perform a linear check on this small, straight-line approximation of the curve
+            const double T_sub_segment = t_sub_end - t_sub_start;
+            const Eigen::Vector2d v_r_sub = (p_sub_end - p_sub_start) / T_sub_segment;
+
+            for (const auto& obs : obstacle_snapshot_) {
+                // (The hybrid circle/box check logic is placed here)
+                if (obs.type == Obstacle::CIRCLE) {
+                    const double R = obs.dimensions.radius + inflation;
+                    const double R_sq = R * R;
+                    if (obs.is_dynamic) {
+                        const double global_time_at_sub_segment_start = global_time_at_segment_start + t_sub_start;
+                        const double delta_t = std::max(0.0, global_time_at_sub_segment_start - obs.last_update_time.seconds());
+                        const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+                        const Eigen::Vector2d p_rel_start = p_sub_start - p_o0;
+                        const Eigen::Vector2d v_rel = v_r_sub - obs.velocity;
+                        const double a = v_rel.dot(v_rel);
+                        const double b = 2.0 * p_rel_start.dot(v_rel);
+                        const double c = p_rel_start.dot(p_rel_start) - R_sq;
+                        if (std::abs(a) < 1e-9) { if (c <= 0) return obs; continue; }
+                        const double disc = b * b - 4 * a * c;
+                        if (disc >= 0) {
+                            const double t1 = (-b - std::sqrt(disc)) / (2.0 * a);
+                            const double t2 = (-b + std::sqrt(disc)) / (2.0 * a);
+                            if (std::max(0.0, t1) <= std::min(T_sub_segment, t2)) return obs;
+                        }
+                    } else {
+                            if (distanceSqrdPointToSegment(obs.position, p_sub_start, p_sub_end) <= R_sq) return obs;
+                    }
+                } else if (obs.type == Obstacle::BOX) {
+                    const double w = obs.dimensions.width + 2 * inflation;
+                    const double h = obs.dimensions.height + 2 * inflation;
+                    if (lineIntersectsRectangle(p_sub_start, p_sub_end, obs.position, w, h, obs.dimensions.rotation)) return obs;
+                    if (obs.is_dynamic) {
+                        const double global_time_at_sub_segment_start = global_time_at_segment_start + t_sub_start;
+                        const double delta_t = std::max(0.0, global_time_at_sub_segment_start - obs.last_update_time.seconds());
+                        const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+                        const int num_steps = 3; // Fewer steps for smaller sub-segments
+                        for (int k = 1; k <= num_steps; ++k) {
+                            double tau = (static_cast<double>(k) / num_steps) * T_sub_segment;
+                            if (pointIntersectsRectangle(p_sub_start + v_r_sub * tau, p_o0 + obs.velocity * tau, w, h, obs.dimensions.rotation)) return obs;
+                        }
+                    }
+                }
+            }
+            p_sub_start = p_sub_end;
+            t_sub_start = t_sub_end;
+        } else {
+            // =========================================================
+            // == CONSTANT VELOCITY MODEL (Already a straight line) ==
+            // =========================================================
+            const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
+            const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
+            const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
+
+            for (const auto& obs : obstacle_snapshot_) {
+                 if (obs.type == Obstacle::CIRCLE) {
+                    const double R = obs.dimensions.radius + inflation;
+                    const double R_sq = R * R;
+                    if (obs.is_dynamic) {
+                        const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+                        const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+                        const Eigen::Vector2d p_rel_start = p_r0 - p_o0;
+                        const Eigen::Vector2d v_rel = v_r - obs.velocity;
+                        const double a = v_rel.dot(v_rel);
+                        const double b = 2.0 * p_rel_start.dot(v_rel);
+                        const double c = p_rel_start.dot(p_rel_start) - R_sq;
+                        if (std::abs(a) < 1e-9) { if (c <= 0) return obs; continue; }
+                        const double disc = b * b - 4 * a * c;
+                        if (disc >= 0) {
+                            const double sqrt_disc = std::sqrt(disc);
+                            const double t1 = (-b - sqrt_disc) / (2.0 * a);
+                            const double t2 = (-b + sqrt_disc) / (2.0 * a);
+                            if (std::max(0.0, t1) <= std::min(T_segment, t2)) return obs;
+                        }
+                    } else {
+                        if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) return obs;
+                    }
+                } else if (obs.type == Obstacle::BOX) {
+                    const double w = obs.dimensions.width + 2 * inflation;
+                    const double h = obs.dimensions.height + 2 * inflation;
+                    if (lineIntersectsRectangle(p_r0, p_r1, obs.position, w, h, obs.dimensions.rotation)) return obs;
+                    if (obs.is_dynamic) {
+                        const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+                        const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+                        const int num_steps = 10;
+                        for (int k = 1; k <= num_steps; ++k) {
+                            double tau = (static_cast<double>(k) / num_steps) * T_segment;
+                            if (pointIntersectsRectangle(p_r0 + v_r * tau, p_o0 + obs.velocity * tau, w, h, obs.dimensions.rotation)) return obs;
+                        }
+                    }
+                }
+            }
+        }
+        
+        time_into_full_trajectory += T_segment;
+    }
+
+    return std::nullopt;
+}
+
+
+
+
 
 // FCL IMPLEMENTATION WITHOUT ANY SUBDIVISION FOR THRUSTER MODEL
-std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
+std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
     const Trajectory& trajectory,
     double global_start_time
 ) const {
@@ -1267,6 +1414,9 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
     // std::cout << "--- [FCL CHECK END] --- No collisions found.\n" << std::endl;
     return std::nullopt;
 }
+
+
+
 // // This is the primary function, now rewritten to use the Velocity Obstacle method.
 // // This is the new, corrected version of your collision checking function.
 // // It implements the segment-by-segment Velocity Obstacle check you proposed.
@@ -2009,12 +2159,8 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
         obstacle.name = name;
         obstacle.is_dynamic = is_moving;
 
-        // =================================================================
-        // =========== NEW FCL CACHE MANAGEMENT LOGIC ======================
-        // =================================================================
-        // After you've created your 'obstacle' struct instance, check the cache.
-        // We only need to cache objects that could potentially be checked (moving or static).
-        if (is_moving || is_static) {
+
+        if (use_fcl && (is_moving || is_static)) {
             // Check if this obstacle is new.
             if (fcl_cache_.find(name) == fcl_cache_.end()) {
                 // This is the FIRST time we've seen this obstacle.
@@ -2030,9 +2176,7 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
                 RCLCPP_INFO(rclcpp::get_logger("FCL_Cache"), "Cached new FCL object: %s", name.c_str());
             }
         }
-        // =================================================================
-        // ================== END OF FCL CACHE LOGIC =======================
-        // =================================================================
+
 
 
 

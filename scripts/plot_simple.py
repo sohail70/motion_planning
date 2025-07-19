@@ -257,8 +257,8 @@ def get_planner_info(filename):
 
 def aggregate_run_data(files):
     """
-    Loads all CSV files and aggregates them by planner configuration.
-    Returns a dictionary: {(planner, samples, factor): concatenated_dataframe}
+    Loads all CSV files and groups them by planner configuration.
+    Returns a dictionary: {(planner, samples, factor): [list_of_trial_dataframes]}
     """
     aggregated_data = {}
     print("--- Loading and Aggregating Data ---")
@@ -286,11 +286,9 @@ def aggregate_run_data(files):
             
         except Exception as e:
             print(f"Error processing {filename}: {e}")
-
-    # Concatenate the lists of dataframes into single dataframes
-    final_data = {key: pd.concat(dfs, ignore_index=True) for key, dfs in aggregated_data.items()}
-    print(f"Successfully aggregated data for {len(final_data)} configurations.")
-    return final_data
+    
+    print(f"Successfully aggregated data for {len(aggregated_data)} configurations.")
+    return aggregated_data
 
 def plot_statistical_distribution(aggregated_data):
     """
@@ -345,18 +343,18 @@ def plot_statistical_distribution(aggregated_data):
     print(f"\nStatistical distribution plot saved to '{plot_filename}'")
     plt.show()
 
-def plot_time_series_with_average(aggregated_data):
+def plot_time_series_with_average(trial_data):
     """
-    Generates a time-series plot comparing planner performance,
-    including a horizontal line for the average update time.
+    Generates a time-series plot comparing planner performance. It plots each trial
+    with low opacity and overlays a smoothed rolling median.
     """
     # Group data by sample and factor size for plotting
     plot_groups = {}
-    for (planner, samples, factor), df in aggregated_data.items():
+    for (planner, samples, factor), list_of_dfs in trial_data.items():
         group_key = (samples, factor)
         if group_key not in plot_groups:
             plot_groups[group_key] = {}
-        plot_groups[group_key][planner] = df
+        plot_groups[group_key][planner] = list_of_dfs
 
     if not plot_groups:
         print("No data to plot for time-series analysis.")
@@ -366,28 +364,39 @@ def plot_time_series_with_average(aggregated_data):
     fig, axes = plt.subplots(1, num_groups, figsize=(8 * num_groups, 7), sharey=True, squeeze=False)
     fig.suptitle("Time-Series of Planner Update Durations", fontsize=20, fontweight='bold')
 
-    for i, ((samples, factor), planners_data) in enumerate(sorted(plot_groups.items())):
+    for i, ((samples, factor), planners_trial_data) in enumerate(sorted(plot_groups.items())):
         ax = axes[0, i]
         max_y = 0
 
-        # Use a consistent color map
         colors = {'FMTX': 'green', 'RRTX': 'blue'}
         
-        # Sort planners to ensure consistent plotting order
-        for planner_name in sorted(planners_data.keys()):
-            df = planners_data[planner_name]
+        for planner_name in sorted(planners_trial_data.keys()):
+            list_of_dfs = planners_trial_data[planner_name]
             color = colors.get(planner_name, 'gray')
-            
-            if 'elapsed_s' in df.columns and 'duration_ms' in df.columns:
-                # Plot raw data as scatter points for clarity
-                ax.plot(df['elapsed_s'], df['duration_ms'], 'o', color=color, markersize=3, alpha=0.2, label=f'{planner_name} (Raw Data)')
 
-                # Calculate and plot the average as a horizontal line
-                mean_duration = df['duration_ms'].mean()
-                ax.axhline(y=mean_duration, color=color, linestyle='--', linewidth=2.5, label=f'{planner_name} Avg: {mean_duration:.2f} ms')
+            # 1. Plot individual trials with low opacity
+            first_trial = True
+            for trial_df in list_of_dfs:
+                label = f'{planner_name} (Trials)' if first_trial else None
+                trial_df_sorted = trial_df.sort_values('elapsed_s')
+                ax.plot(trial_df_sorted['elapsed_s'], trial_df_sorted['duration_ms'], '-', color=color, linewidth=0.5, alpha=0.15, label=label)
+                first_trial = False
+
+            # 2. Concatenate all trials to calculate and plot smoothed median and average
+            all_trials_df = pd.concat(list_of_dfs, ignore_index=True)
+            
+            # Plot a smoothed rolling median line on top
+            if not all_trials_df.empty:
+                all_trials_df_sorted = all_trials_df.sort_values('elapsed_s')
+                window_size = max(20, int(len(all_trials_df_sorted) * 0.05)) # 5% window, with a minimum size
+                rolling_median = all_trials_df_sorted['duration_ms'].rolling(window=window_size, center=True, min_periods=10).median()
+                ax.plot(all_trials_df_sorted['elapsed_s'], rolling_median, color=color, linestyle='-', linewidth=2.5, label=f'{planner_name} (Rolling Median)')
+            
+                # 3. Plot the overall average as a horizontal line
+                mean_duration = all_trials_df['duration_ms'].mean()
+                ax.axhline(y=mean_duration, color=color, linestyle='--', linewidth=2, label=f'{planner_name} Avg: {mean_duration:.2f} ms')
                 
-                # Use 98th percentile for a more robust y-axis limit that ignores extreme outliers
-                max_y = max(max_y, df['duration_ms'].quantile(0.98)) 
+                max_y = max(max_y, all_trials_df['duration_ms'].quantile(0.98))
         
         ax.set_title(f"{samples:,} Samples | Factor: {factor}", fontsize=14, fontweight='bold')
         ax.set_xlabel("Simulation Time (s)", fontsize=12)
@@ -395,7 +404,7 @@ def plot_time_series_with_average(aggregated_data):
             ax.set_ylabel("Update Duration (ms)", fontsize=12)
         ax.grid(True, which='major', linestyle='--', linewidth=0.7)
         ax.legend(loc='upper right', fontsize='medium')
-        ax.set_ylim(0, max_y * 1.15) # Set a common y-limit based on the data
+        ax.set_ylim(0, max_y * 1.15)
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plot_filename = "planner_timeseries_average_comparison.pdf"
@@ -463,7 +472,6 @@ def perform_statistical_analysis(aggregated_data):
 
 def main():
     """Main function to load data, generate plots, and run analysis."""
-    # The search path should point to the directory where your build files are.
     search_path = "../build/sim_*_timed.csv"
     files = sorted(glob.glob(search_path))
     
@@ -474,21 +482,23 @@ def main():
         print("  - sim_rrtx_5000samples_factor2.0_..._timed.csv")
         return
     
-    # 1. Load and aggregate all data from all runs
-    aggregated_data = aggregate_run_data(files)
+    # 1. Load and aggregate all data from all runs into lists of trials
+    trial_data = aggregate_run_data(files)
     
-    if not aggregated_data:
+    if not trial_data:
         print("No valid data could be aggregated. Exiting.")
         return
 
+    # Create a concatenated version for statistical functions that need a single DataFrame
+    concatenated_data = {key: pd.concat(dfs, ignore_index=True) for key, dfs in trial_data.items()}
+
     # 2. Generate plots
-    plot_statistical_distribution(aggregated_data)
-    plot_time_series_with_average(aggregated_data) # <-- Added this new plot
+    plot_statistical_distribution(concatenated_data)
+    plot_time_series_with_average(trial_data) # Pass the un-concatenated trial data here
     
     # 3. Perform and print statistical analysis
-    perform_statistical_analysis(aggregated_data)
+    perform_statistical_analysis(concatenated_data)
 
 if __name__ == "__main__":
-    # Set a professional plot style
     plt.style.use('seaborn-v0_8-whitegrid')
     main()

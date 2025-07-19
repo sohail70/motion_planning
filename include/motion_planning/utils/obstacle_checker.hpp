@@ -108,6 +108,7 @@ public:
     // New virtual function to check a whole path
     virtual bool isObstacleFree(const std::vector<Eigen::VectorXd>& path) const = 0;
     virtual std::optional<Obstacle> getCollidingObstacle( const Trajectory& trajectory, double start_node_cost) const = 0;
+    virtual std::optional<Obstacle> getCollidingObstacleFCL( const Trajectory& trajectory, double start_node_cost) const = 0;
     virtual bool isTrajectorySafe( const Trajectory& trajectory, double start_node_time) const = 0;
 
     // virtual void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) = 0;

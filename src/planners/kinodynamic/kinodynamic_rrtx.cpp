@@ -1320,31 +1320,31 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 /////////////
 
 
-    // // ==============================================================================
-    // // ================= CURRENT NODE VISUALIZATION CODE BLOCK ======================
-    // // ==============================================================================
-    // if (visualization_) {
-    //     // Create a vector to hold the 2D positions of the nodes near obstacles.
-    //     std::vector<Eigen::VectorXd> positions_to_visualize;
-    //     positions_to_visualize.reserve(current.size());
+    // ==============================================================================
+    // ================= CURRENT NODE VISUALIZATION CODE BLOCK ======================
+    // ==============================================================================
+    if (visualization_) {
+        // Create a vector to hold the 2D positions of the nodes near obstacles.
+        std::vector<Eigen::VectorXd> positions_to_visualize;
+        positions_to_visualize.reserve(current.size());
 
-    //     // Iterate through the indices of the nodes in the 'current' set.
-    //     for (int node_index : current) {
-    //         // Get the full state of the node from the tree.
-    //         const Eigen::VectorXd& state = tree_.at(node_index)->getStateValue();
-    //         // Extract the 2D spatial part (x, y) for visualization.
-    //         positions_to_visualize.push_back(state.head<2>());
-    //     }
+        // Iterate through the indices of the nodes in the 'current' set.
+        for (int node_index : current) {
+            // Get the full state of the node from the tree.
+            const Eigen::VectorXd& state = tree_.at(node_index)->getStateValue();
+            // Extract the 2D spatial part (x, y) for visualization.
+            positions_to_visualize.push_back(state.head<2>());
+        }
 
-    //     // Call the visualization function to draw these nodes in RViz.
-    //     // We use a bright cyan color and a unique namespace to distinguish them.
-    //     visualization_->visualizeNodes(positions_to_visualize, "map", 
-    //                                  {0.0f, 1.0f, 1.0f},  // Cyan color
-    //                                  "current_obstacle_nodes");
-    // }
-    // // ==============================================================================
-    // // ======================= END OF VISUALIZATION CODE BLOCK ======================
-    // // ==============================================================================   
+        // Call the visualization function to draw these nodes in RViz.
+        // We use a bright cyan color and a unique namespace to distinguish them.
+        visualization_->visualizeNodes(positions_to_visualize, "map", 
+                                     {0.0f, 1.0f, 1.0f},  // Cyan color
+                                     "current_obstacle_nodes");
+    }
+    // ==============================================================================
+    // ======================= END OF VISUALIZATION CODE BLOCK ======================
+    // ==============================================================================   
 
 ////////////
     bool force_repair = true;
