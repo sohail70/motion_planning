@@ -687,12 +687,12 @@ std::unordered_set<int> KinodynamicRRTX::findSamplesNearObstacles(
                     case 3: // (x, y, time)
                     case 4: // (x, y, theta, time)
                         {
-                            // // Translate future time into the planner's "time-to-go" frame
+                            // // // Translate future time into the planner's "time-to-go" frame
                             // double query_timestamp = robot_current_timestamp - delta_t;
                             // if (query_timestamp < 0) {
                             //     // std::cout<<"skipped" << query_timestamp<<"\n";
-                            //     query_timestamp = 0.0;
-                            //     // continue;
+                            //     // query_timestamp = 0.0;
+                            //     continue;
                             // } // Skip if predicted time is "after" the goal
 
                             
@@ -1224,7 +1224,72 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     max_length = delta;
     auto current = findSamplesNearObstacles(obstacles, max_length);
     // if (current == samples_in_obstacles_ && current.size()!=tree_.size()) return false; // Early exit if nothing has changed
+//////////////////////////////////////////////////////////////////
+    //   // --- STEP 2: NARROW PHASE (TIME HORIZON FILTER ONLY) ---
+    // // Iterate through the candidates and remove any that are not on the robot's
+    // // immediate future path (within a 3-second horizon). No collision checks are performed.
+    // std::cout<<"current before: "<<current.size()<<"\n";
+    // for (auto it = current.begin(); it != current.end(); /* manual increment */) {
+    //     auto node = tree_[*it].get();
+    //     auto parent = node->getParent();
 
+    //     // If a node has no parent or its trajectory is invalid, it's a high-priority
+    //     // node for repair, so we always keep it.
+    //     if (!parent || !node->getParentTrajectory().is_valid) {
+    //         ++it;
+    //         continue;
+    //     }
+
+    //     // Calculate when this node's edge would be traversed relative to the robot's current path.
+    //     const double node_time_to_goal = node->getTimeToGoal();
+    //     const double time_offset_from_robot = robot_current_time_to_goal_ - node_time_to_goal;
+
+    //     // The filter condition:
+    //     // KEEP the node only if its path is in the immediate future [0, 3] seconds away.
+    //     if (time_offset_from_robot >= 0.0 && time_offset_from_robot <= 3.0) {
+    //         ++it; // KEEP this node.
+    //     } else {
+    //         // REMOVE this node because it's either behind the robot or too far in the future.
+    //         it = current.erase(it);
+    //     }
+    // }
+    // std::cout<<"current after: "<<current.size()<<"\n";
+
+
+/////////////////////////geometry based filter based on robots current position!///////////////////////////
+
+    // --- STEP 2: IN-PLACE GEOMETRIC FILTER ---
+    // Now, filter the 'current' set directly. Remove any node that is not
+    // within a "local bubble" around the robot.
+    std::cout<<"current before: "<<current.size()<<"\n";
+    const double local_filter_radius = 20.0 ;
+    // local_filter_radius = (v_obs_max + v_robot_max) / loop_hz + obstacle_radius;  
+    //                // = 40/20 + 5 = 7 m
+    const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
+
+    for (auto it = current.begin(); it != current.end(); /* manual increment */) {
+        auto node = tree_[*it].get();
+        double dist_to_robot = (node->getStateValue().head<2>() - robot_pos_2d).norm();
+
+        // If the node is outside our local bubble, remove it from the set.
+        if (dist_to_robot > local_filter_radius) {
+            it = current.erase(it); // Erase and get iterator to the next element
+        } else {
+            ++it; // Node is relevant, move to the next element
+        }
+    }
+    std::cout<<"current after: "<<current.size()<<"\n";
+    // --- END OF FILTER ---
+
+
+    // /////////////STRESS TEST/////////////
+
+    // for (int i = 1; i < tree_.size(); ++i) {
+    //     current.insert(i);
+    // }
+
+    // std::cout<<"current real: "<<current.size()<<"\n";
+    // //////////////////////////////////////////////////////////////
 
     // Common code for finding added/removed samples
     std::vector<int> added, removed;
@@ -1282,7 +1347,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     // // ==============================================================================   
 
 ////////////
-    bool force_repair = false;
+    bool force_repair = true;
     // Heuristic: If the set of nodes near obstacles contains nearly every node in the tree,
     // we should force a full re-check to handle potential obstacle movement within this large set.
     // Using a threshold like 90% is safer than an exact '==' check.
@@ -1326,11 +1391,35 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         if (!removed.empty() || force_repair) 
             removeObstacle(prev);
         if (!added.empty() || force_repair) {
-            // auto start = std::chrono::high_resolution_clock::now();
             addNewObstacle(cur);
-            // auto end = std::chrono::high_resolution_clock::now();
-            // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            // std::cout << "Time taken for the addNew and propagate : " << duration.count() << " milliseconds\n";
+
+            // // ==============================================================================
+            // // ================= VCT NODE VISUALIZATION CODE BLOCK ======================
+            // // ==============================================================================
+            // if (visualization_) {
+            //     // Create a vector to hold the 2D positions of the nodes near obstacles.
+            //     std::vector<Eigen::VectorXd> positions_to_visualize;
+            //     positions_to_visualize.reserve(Vc_T_.size());
+
+            //     // Iterate through the indices of the nodes in the 'current' set.
+            //     for (int node_index : Vc_T_) {
+            //         // Get the full state of the node from the tree.
+            //         const Eigen::VectorXd& state = tree_.at(node_index)->getStateValue();
+            //         // Extract the 2D spatial part (x, y) for visualization.
+            //         positions_to_visualize.push_back(state.head<2>());
+            //     }
+
+            //     // Call the visualization function to draw these nodes in RViz.
+            //     // We use a bright cyan color and a unique namespace to distinguish them.
+            //     visualization_->visualizeNodes(positions_to_visualize, "map", 
+            //                                 {0.0f, 1.0f, 1.0f},  // Cyan color
+            //                                 "current_obstacle_nodes");
+            // }
+            // // ==============================================================================
+            // // ======================= END OF VISUALIZATION CODE BLOCK ======================
+            // // ============================================================================== 
+
+
             propagateDescendants();
             verifyQueue(tree_[vbot_index_].get());
         }
@@ -1630,6 +1719,230 @@ void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
     }
 }
 /////////////////////////////////////////////////////////////////////////////////////////
+
+// // With 3 seconds horizon filter!
+
+// void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
+//     // We need a stable time anchor for all checks in this cycle.
+//     int count = 0;
+//     const double t_now = clock_->now().seconds();
+//     // const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
+//     std::cout<<"added indices : "<<added_indices.size()<<"\n";
+//     for (int idx : added_indices) {
+//         RRTxNode* node = tree_[idx].get();
+//         bool node_itself_is_unusable = false;
+
+//         if (ignore_sample) {
+//             // In ignore_sample mode, if idx is in added_indices, we treat the node as unusable
+//             // and mark it for special handling (e.g., its edges will be invalidated based on this mark).
+//             samples_in_obstacles_.insert(idx);
+//             node_itself_is_unusable = true;
+//         } else {
+//             /*
+//                 In kinodynamic case since we are having time aware graph this optimization is not making sense and it might even add
+//                 more conflicting nodes that may not even is necessary.
+//             */
+//             // ignore_sample is false: explicitly check if the node's location is now in an obstacle.
+//             // if (!obs_checker_->isObstacleFree(node->getStateValue())) { // Check the node's point itself
+//             //     node_itself_is_unusable = true;
+//             // }
+//         }
+
+//         if (node_itself_is_unusable) {
+//             // Node is inside an obstacle (or treated as such via ignore_sample).
+//             // All its existing edges become invalid WITHOUT individual collision checks for these edges.
+//             for (auto& [u, edge] : node->outgoingEdges()) {
+//                 // Invalidate this edge (node -> u)
+//                 edge.distance = INFINITY;
+//                 // And its symmetric counterparts if your graph stores them this way
+//                 if (u->incomingEdges().count(node)) {
+//                     u->incomingEdges().at(node).distance = INFINITY;
+//                 }
+//                 if (u->outgoingEdges().count(node)) { // For u -> node
+//                     u->outgoingEdges().at(node).distance = INFINITY;
+//                 }
+//                 if (node->incomingEdges().count(u)) { // For u -> node (from node's perspective)
+//                     node->incomingEdges().at(u).distance = INFINITY;
+//                 }
+
+//                 // If this invalidated edge was a parent link, handle orphaning
+//                 if (u->getParent() == node) {
+//                     u->setParent(nullptr, INFINITY);
+//                     verifyOrphan(u);
+//                 }
+//                 // Note: if node->getParent() == u, this will be handled below
+//                 // when 'node' itself is orphaned.
+//             }
+//             // Also invalidate any incoming edges to 'node' not caught by iterating its outgoingEdges' symmetry
+//             // (This might be redundant if outgoingEdges and their symmetric pairs cover all connections)
+//             // For example, if edges are strictly directed and only stored one way initially.
+//             // However, the current symmetric updates in the loop above likely cover this.
+
+//             // Directly mark 'node' as unusable and orphan it.
+//             node->setCost(INFINITY); // Assuming setCost updates the main cost (g-value)
+//             node->setLMC(INFINITY);  // Assuming setLMC updates the lookahead-cost (rhs-value)
+            
+//             RRTxNode* old_parent = node->getParent();
+//             if (old_parent) {
+//                 // If 'node' had a parent, its link to that parent is now broken.
+//                 // The call to node->setParent below handles updating 'node'.
+//                 // We might need to ensure 'old_parent' updates its children list if applicable,
+//                 // though 'verifyOrphan(node)' and subsequent processing should handle graph consistency.
+//             }
+//             node->setParent(nullptr, INFINITY); // Sever parent link
+//             verifyOrphan(node); // Ensure 'node' itself is processed by the orphan logic
+
+//         } else {
+//             // Node itself is in free space, and ignore_sample is false.
+//             // Check its outgoing edges individually.
+//             for (auto& [u, edge] : node->outgoingEdges()) {
+//                 // We check the cached trajectory for the edge node -> u
+//                 const Trajectory& traj_node_to_u = edge.cached_trajectory;
+//                 bool is_unsafe = false;
+//                 // --- START OF MODIFICATION ---
+//                 const double time_offset = robot_current_time_to_goal_ - node->getTimeToGoal();
+
+//                 if (time_offset >= 0.0 && time_offset <= 3.0) {
+//                     const double global_edge_start_time = t_now + time_offset;
+//                     obs_check++;
+//                     if (!obs_checker_->isTrajectorySafe(traj_node_to_u, global_edge_start_time)) {
+//                         is_unsafe = true;
+//                     }
+//                 }
+//                 // If outside the horizon, 'is_unsafe' remains false, and the edge is not invalidated.
+//                 // --- END OF MODIFICATION --
+
+
+//                 // Calculate the global time this edge starts.
+//                 if (is_unsafe){
+//                     if (edge.distance != INFINITY) {
+//                         // This specific edge (node -> u) is now blocked.
+//                         count++;
+//                         edge.distance = INFINITY;
+//                         if (u->incomingEdges().count(node)) {
+//                             u->incomingEdges().at(node).distance = INFINITY;
+//                         }
+//                         if (u->outgoingEdges().count(node)) {
+//                             u->outgoingEdges().at(node).distance = INFINITY;
+//                         }
+//                         if (node->incomingEdges().count(u)) {
+//                             node->incomingEdges().at(u).distance = INFINITY;
+//                         }
+
+//                         // Handle parent relationships
+//                         if (u->getParent() == node) {
+//                             u->setParent(nullptr, INFINITY);
+//                             verifyOrphan(u);
+//                         }
+//                         if (node->getParent() == u) {
+//                             node->setParent(nullptr, INFINITY);
+//                             verifyOrphan(node);
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//     // std::cout<<"OBSOLETE: "<<count<<"\n";
+// }
+
+
+// void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
+//     const double t_now = clock_->now().seconds();
+//     // const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
+
+//     for (int idx : removed_indices) {
+//         RRTxNode* node = tree_[idx].get();
+//         bool node_was_in_ignored_obstacle_state = false;
+
+//         if (ignore_sample) {
+//             if (samples_in_obstacles_.count(idx)) {
+//                 samples_in_obstacles_.erase(idx); // Node is no longer "ignored as obstacle"
+//                 node_was_in_ignored_obstacle_state = true;
+//             }
+//         }
+
+//         // Determine if the node's location itself is now clear to decide if its edges *can* be restored.
+//         bool node_location_is_currently_free = obs_checker_->isObstacleFree(node->getStateValue());
+
+//         if ((ignore_sample && node_was_in_ignored_obstacle_state) || // Was ignored, now un-ignored
+//             (!ignore_sample && node_location_is_currently_free)) {   // Wasn't ignored, and its location is free
+            
+//             // Only attempt to restore edges if the node itself is considered potentially usable.
+//             // If !node_location_is_currently_free (and not ignore_sample), it means 'node' is *still*
+//             // in some *other* obstacle, so its edges should remain unusable/INFINITE.
+
+//             if (node_location_is_currently_free) { // Essential check for non-ignore_sample, good for ignore_sample too
+//                 for (auto& [u, edge] : node->outgoingEdges()) {
+//                     bool should_attempt_restore = false;
+//                     if (ignore_sample) {
+//                         // If node was un-ignored, and neighbor u is also not in an ignored state
+//                         if (node_was_in_ignored_obstacle_state && !samples_in_obstacles_.count(u->getIndex())) {
+//                             should_attempt_restore = true;
+//                         }
+//                     } else { // Not ignore_sample
+//                         if (edge.distance == INFINITY) { // Only consider edges that were previously blocked
+//                             should_attempt_restore = true;
+//                         }
+//                     }
+
+//                     if (should_attempt_restore) {
+//                         // Crucially, check if the edge (node->u) is *actually* free now from any obstacle
+//                         // Re-check the original trajectory for safety.
+//                         const Trajectory& original_traj = edge.cached_trajectory;
+//                         bool is_now_safe = true; // Assume safe by default
+//                         // --- START OF MODIFICATION ---
+//                         const double time_offset = robot_current_time_to_goal_ - node->getTimeToGoal();
+
+//                         if (time_offset >= 0.0 && time_offset <= 3.0) {
+//                             const double global_edge_start_time = t_now + time_offset;
+//                             obs_check++;
+//                             if (!obs_checker_->isTrajectorySafe(original_traj, global_edge_start_time)) {
+//                                 is_now_safe = false; // It's not safe, so we can't restore it.
+//                             }
+//                         }
+//                         // If outside the horizon, 'is_now_safe' remains true, allowing the edge to be restored.
+//                         // --- END OF MODIFICATION ---
+
+//                         if (is_now_safe) {
+//                             edge.distance = edge.distance_original;
+//                             if (u->incomingEdges().count(node)) u->incomingEdges().at(node).distance = edge.distance_original;
+//                             if (u->outgoingEdges().count(node)) u->outgoingEdges().at(node).distance = edge.distance_original;
+//                             if (node->incomingEdges().count(u)) node->incomingEdges().at(u).distance = edge.distance_original;
+//                             // If it's not free (e.g., blocked by another, different obstacle), its distance remains INFINITY or its current value.
+//                         }
+
+//                     }
+//                 }
+//             }
+            
+//             // After attempting to restore edges, update LMC and queue if inconsistent.
+//             // This should happen if the node itself became free and thus usable.
+//             updateLMC(node);
+//             if (node->getCost() != node->getLMC()) {
+//                 verifyQueue(node);
+//             }
+//         }
+//         // If the node's location is *still* not free (and not ignore_sample),
+//         // its LMC should remain Inf or be updated accordingly by updateLMC if all edges are Inf.
+//         // It might still need verifyQueue if its previous state was different.
+//         // However, the existing updateLMC/verifyQueue at the end of the outer loop in the original
+//         // code seems to cover general cases. The refined logic above tries to be more precise
+//         // about *when* to update LMC based on the node's own state.
+//         // For simplicity and safety, the original broader updateLMC/verifyQueue might be fine:
+//         // updateLMC(node);
+//         // if (node->getCost() != node->getLMC()) {
+//         //     verifyQueue(node);
+//         // }
+//         // This will work because if node_location_is_currently_free is false, updateLMC should ideally
+//         // result in node->LMC being INFINITY if all its edges are INFINITY.
+//     }
+// }
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////
 void KinodynamicRRTX::dumpTreeToCSV(const std::string& filename) const {
     std::ofstream fout(filename);
     if (!fout.is_open()) {

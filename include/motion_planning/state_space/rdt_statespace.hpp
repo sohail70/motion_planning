@@ -17,7 +17,7 @@ public:
      * @param max_speed The maximum speed of the robot in the Euclidean dimensions.
      * @param initial_capacity The initial number of states to allocate memory for.
      */
-    RDTStateSpace(int euclidean_dimension, double min_velocity, double max_velocity, double robot_velocity, int initial_capacity = 1000);
+    RDTStateSpace(int euclidean_dimension, double min_velocity, double max_velocity, double robot_velocity, int initial_capacity = 1000, unsigned int seed = 42);
 
     // --- Inherited methods that behave like EuclideanStateSpace ---
     std::shared_ptr<State> addState(const Eigen::VectorXd& value) override;

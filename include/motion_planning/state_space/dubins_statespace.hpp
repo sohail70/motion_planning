@@ -10,7 +10,7 @@
 class DubinsStateSpace : public StateSpace {
 public:
     // Constructor takes the vehicle's turning radius, a key parameter.
-    explicit DubinsStateSpace(double min_turning_radius, int dimension = 3);
+    explicit DubinsStateSpace(double min_turning_radius, int dimension = 3, unsigned int seed = 42);
     
     // The core steering function that calculates the Dubins path between two states.
     virtual Trajectory steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const override;

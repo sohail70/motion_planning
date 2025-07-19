@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include <random>
 
-RDTStateSpace::RDTStateSpace(int euclidean_dimension, double min_velocity, double max_velocity, double robot_velocity, int initial_capacity)
+RDTStateSpace::RDTStateSpace(int euclidean_dimension, double min_velocity, double max_velocity, double robot_velocity, int initial_capacity, unsigned int seed)
     // The total dimension is the number of spatial dimensions plus one for time.
     : StateSpace(euclidean_dimension + 1, initial_capacity),
       euclidean_dim_(euclidean_dimension),
@@ -11,7 +11,7 @@ RDTStateSpace::RDTStateSpace(int euclidean_dimension, double min_velocity, doubl
       robot_velocity_(robot_velocity)
 {
     
-    std::srand(42); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
+    std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
 
     // These weights are used in the distance() function for the KD-tree.
     // This helps balance the contribution of spatial distance vs. time difference.

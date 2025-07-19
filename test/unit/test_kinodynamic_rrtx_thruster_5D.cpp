@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
     int num_samples = 10;
     double factor = 1.5;
     unsigned int seed = 42;
-    int run_secs = 30;
+    int run_secs = 20;
 
 
     for(int i = 1; i < argc; ++i) {
@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
     manager_params.setParam("thruster_state_dimension", 5);
     manager_params.setParam("sim_frequency_hz", 50);  // Smoothness of arrow
     manager_params.setParam("vis_frequency_hz", 10);  // Obstacle visualization rate
-    manager_params.setParam("follow_path", false);
+    manager_params.setParam("follow_path", true);
 
     Params gazebo_params;
     gazebo_params.setParam("robot_model_name", "tugbot");
@@ -229,7 +229,7 @@ int main(int argc, char **argv) {
 
     // Create the thruster state space with max acceleration.
     double max_acceleration = 5.0; // m/s^2
-    auto statespace = std::make_shared<ThrusterSteerStateSpace>(dim, max_acceleration);
+    auto statespace = std::make_shared<ThrusterSteerStateSpace>(dim, max_acceleration, seed);
     
     // The ROS manager now uses the thruster-specific version.
     auto ros_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization, manager_params);
@@ -266,7 +266,7 @@ int main(int argc, char **argv) {
     rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
 
     executor.add_node(ros_manager);
-    executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
+    // executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
     std::thread executor_thread([&executor]() { executor.spin(); });
 
     // --- 7. Main Execution and Replanning Loop ---

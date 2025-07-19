@@ -24,7 +24,7 @@ public:
      * @param min_velocity The minimum forward velocity of the vehicle.
      * @param max_velocity The maximum forward velocity of the vehicle.
      */
-    DubinsTimeStateSpace(double min_turning_radius, double min_velocity, double max_velocity);
+    DubinsTimeStateSpace(double min_turning_radius, double min_velocity, double max_velocity, unsigned int seed = 42);
 
     ~DubinsTimeStateSpace() override = default;
 

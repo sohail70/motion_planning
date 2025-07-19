@@ -67,6 +67,8 @@ public:
 
     bool in_queue_;
     size_t heap_index_;  // Tracks position in the priority queue
+    int bad_count = 0;
+
 
 private:
     std::shared_ptr<State> state_;

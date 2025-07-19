@@ -946,221 +946,327 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 
 
 
+// // THE LAST PERFECT SOLUTION (WITHOUT FCL)
+// std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
+//     const Trajectory& trajectory,
+//     double global_start_time
+// ) const {
+//     /*
+//         I Guarantee that getAtomicSnapshot() is only called once before plan() so no race between getAtomicSnapshot() and getCollidingObstalce for obstalce_snapshots variable. Hence I can comment the following lock
+//         The lock in getAtomicSnapshot() is for the race between getAtomicSnapshot (Reader/Copier runs on my main planner thread.) and poseInfoCallback (Writer runs on the gazebo thread) and thats necessary
 
+//     */
+//     // std::lock_guard<std::mutex> lock(snapshot_mutex_);
+
+//     // auto start = std::chrono::steady_clock::now();
+
+
+//     // 1. Initial validation of the trajectory
+//     if (trajectory.path_points.size() < 2) {
+//         return std::nullopt;
+//     }
+
+//     // 2. Define helper lambdas to easily access parts of the state vector
+//     auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
+//     auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
+//     auto get_vxy = [](const Eigen::VectorXd& state) { return state.segment<2>(2); }; // For 5D states
+
+//     double time_into_full_trajectory = 0.0;
+//     const int state_dim = trajectory.path_points[0].size();
+
+//     // 3. Iterate over each segment of the trajectory
+//     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+//         const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
+//         const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
+
+//         const double T_segment = get_time(segment_start_state) - get_time(segment_end_state);
+//         if (T_segment <= 1e-9) continue;
+        
+//         const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
+
+//         // 4. Conditionally apply the correct physics model based on state dimension
+//         if (state_dim == 5) {
+//         // if (false) {
+//             // =======================================================
+//             // == ACCELERATION MODEL (5D): Subdivide the curved path ==
+//             // =======================================================
+//             const int num_subdivisions = 3; // A tunable parameter for accuracy vs. performance
+            
+//             // Calculate the constant acceleration for the entire segment
+//             const Eigen::Vector2d p_r0_seg = get_xy(segment_start_state);
+//             const Eigen::Vector2d v_r0_seg = get_vxy(segment_start_state);
+//             const Eigen::Vector2d v_r1_seg = get_vxy(segment_end_state);
+//             const Eigen::Vector2d a_r_seg = (v_r1_seg - v_r0_seg) / T_segment;
+            
+//             Eigen::Vector2d p_sub_start = p_r0_seg;
+//             double t_sub_start = 0.0;
+
+//             for (int j = 1; j <= num_subdivisions; ++j) {
+//                 // Calculate the state at the end of the current sub-segment using constant acceleration physics
+//                 double t_sub_end = (static_cast<double>(j) / num_subdivisions) * T_segment;
+//                 Eigen::Vector2d p_sub_end = p_r0_seg + v_r0_seg * t_sub_end + 0.5 * a_r_seg * t_sub_end * t_sub_end;
+                
+//                 // Now, perform the linear collision check on this small, accurate sub-segment
+//                 const double T_sub_segment = t_sub_end - t_sub_start;
+//                 const Eigen::Vector2d v_r_sub = (p_sub_end - p_sub_start) / T_sub_segment;
+
+//                 for (const auto& obs : obstacle_snapshot_) {
+//                     const double obs_radius = (obs.type == Obstacle::CIRCLE)
+//                                             ? obs.dimensions.radius
+//                                             : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
+//                     const double R = obs_radius + inflation;
+//                     const double R_sq = R * R;
+
+
+//                     // // --- OPTIMIZATION: BROAD-PHASE CHECK --- This Phase gives us Some performance boost but it makes the detection to be delayed a bit because it ignores detection after some distance
+//                     // // Calculate the maximum distance the obstacle could travel during this segment
+//                     // const double v_max_obs = 30.0; // A reasonable upper bound on any obstacle's speed
+//                     // const double max_obs_travel_dist = v_max_obs * T_segment;
+                    
+//                     // // The "danger zone" is the collision radius plus this travel distance
+//                     // const double danger_radius = R + max_obs_travel_dist;
+//                     // const double danger_radius_sq = danger_radius * danger_radius;
+
+//                     // // Get the geometric path of the robot segment (line or curve)
+//                     // const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
+//                     // const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
+                    
+//                     // // Check if the obstacle is geometrically too far to ever reach the path
+//                     // if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) > danger_radius_sq) {
+//                     //     continue; // Skip this obstacle; it's too far away
+//                     // }
+//                     // // --- END OF OPTIMIZATION ---
+
+
+
+
+//                     if (obs.is_dynamic) {
+//                         // Dynamic obstacle check for the sub-segment
+//                         const double global_time_at_sub_segment_start = global_time_at_segment_start + t_sub_start;
+//                         const double delta_t_extrapolation = std::max(0.0, global_time_at_sub_segment_start - obs.last_update_time.seconds());
+//                         const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
+                        
+//                         const Eigen::Vector2d p_relative_start = p_sub_start - p_o0;
+//                         const Eigen::Vector2d v_relative = v_r_sub - obs.velocity;
+                        
+//                         const double a = v_relative.dot(v_relative);
+//                         const double b = 2.0 * p_relative_start.dot(v_relative);
+//                         const double c = p_relative_start.dot(p_relative_start) - R_sq;
+
+//                         if (std::abs(a) < 1e-9) { 
+//                             if (c <= 0) return obs; // Initially overlapping
+//                             continue;
+//                         }
+
+//                         const double discriminant = b * b - 4 * a * c;
+//                         if (discriminant >= 0) {
+//                             const double sqrt_disc = std::sqrt(discriminant);
+//                             const double t1 = (-b - sqrt_disc) / (2.0 * a);
+//                             const double t2 = (-b + sqrt_disc) / (2.0 * a);
+//                             if (std::max(0.0, t1) <= std::min(T_sub_segment, t2)) {
+//                                 return obs; // Collision found
+//                             }
+//                         }
+//                     } else { 
+//                         // Static obstacle check for the sub-segment
+//                         if (distanceSqrdPointToSegment(obs.position, p_sub_start, p_sub_end) <= R_sq) {
+//                             return obs;
+//                         }
+//                     }
+//                 }
+//                 // Prepare for the next sub-segment
+//                 p_sub_start = p_sub_end;
+//                 t_sub_start = t_sub_end;
+//             }
+//         } else {
+//             // =========================================================
+//             // == CONSTANT VELOCITY MODEL (First-Order / Other Systems) ==
+//             // =========================================================
+//             const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
+//             const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
+//             const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
+
+//             for (const auto& obs : obstacle_snapshot_) {
+//                 const double obs_radius = (obs.type == Obstacle::CIRCLE)
+//                                         ? obs.dimensions.radius
+//                                         : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
+//                 const double R = obs_radius + inflation;
+//                 const double R_sq = R * R;
+
+//                 // // --- OPTIMIZATION: BROAD-PHASE CHECK ---
+//                 // // Calculate the maximum distance the obstacle could travel during this segment
+//                 // const double v_max_obs = 15.0; // A reasonable upper bound on any obstacle's speed
+//                 // const double max_obs_travel_dist = v_max_obs * T_segment;
+                
+//                 // // The "danger zone" is the collision radius plus this travel distance
+//                 // const double danger_radius = R + max_obs_travel_dist;
+//                 // const double danger_radius_sq = danger_radius * danger_radius;
+
+//                 // // Get the geometric path of the robot segment (line or curve)
+//                 // const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
+//                 // const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
+                
+//                 // // Check if the obstacle is geometrically too far to ever reach the path
+//                 // if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) > danger_radius_sq) {
+//                 //     continue; // Skip this obstacle; it's too far away
+//                 // }
+//                 // // --- END OF OPTIMIZATION ---
+
+
+
+//                 if (obs.is_dynamic) {
+//                     // Dynamic obstacle check for the whole linear segment
+//                     const double delta_t_extrapolation = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+//                     const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
+                    
+//                     const Eigen::Vector2d p_relative_start = p_r0 - p_o0;
+//                     const Eigen::Vector2d v_relative = v_r - obs.velocity;
+                    
+//                     const double a = v_relative.dot(v_relative);
+//                     const double b = 2.0 * p_relative_start.dot(v_relative);
+//                     const double c = p_relative_start.dot(p_relative_start) - R_sq;
+
+//                     if (std::abs(a) < 1e-9) { 
+//                         if (c <= 0) return obs;
+//                         continue;
+//                     }
+
+//                     const double discriminant = b * b - 4 * a * c;
+//                     if (discriminant >= 0) {
+//                         const double sqrt_disc = std::sqrt(discriminant);
+//                         const double t1 = (-b - sqrt_disc) / (2.0 * a);
+//                         const double t2 = (-b + sqrt_disc) / (2.0 * a);
+//                         if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
+//                             return obs;
+//                         }
+//                     }
+//                 } else {
+//                     // Static obstacle check for the whole linear segment
+//                     if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
+//                         return obs;
+//                     }
+//                 }
+//             }
+//         }
+        
+//         // Update the time offset for the next segment
+//         time_into_full_trajectory += T_segment;
+//     }
+//     // auto end = std::chrono::steady_clock::now();
+//     // auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+//     // std::cout << "time taken for the update : " << duration.count() << " nano-seconds\n";
+
+
+//     // 5. If the loop completes, no collisions were found
+//     return std::nullopt;
+// }
+
+
+// FCL IMPLEMENTATION WITHOUT ANY SUBDIVISION FOR THRUSTER MODEL
 std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
     const Trajectory& trajectory,
     double global_start_time
 ) const {
-    /*
-        I Guarantee that getAtomicSnapshot() is only called once before plan() so no race between getAtomicSnapshot() and getCollidingObstalce for obstalce_snapshots variable. Hence I can comment the following lock
-        The lock in getAtomicSnapshot() is for the race between getAtomicSnapshot (Reader/Copier runs on my main planner thread.) and poseInfoCallback (Writer runs on the gazebo thread) and thats necessary
-
-    */
-    // std::lock_guard<std::mutex> lock(snapshot_mutex_);
-
-    // auto start = std::chrono::steady_clock::now();
-
-
-    // 1. Initial validation of the trajectory
+    // 1. A trajectory needs at least two points to form a segment.
     if (trajectory.path_points.size() < 2) {
         return std::nullopt;
     }
 
-    // 2. Define helper lambdas to easily access parts of the state vector
+    // 2. Create the robot's collision geometry (a sphere representing the safety bubble).
+    auto robot_geom = std::make_shared<fcl::Sphered>(inflation);
+
+    // 3. Helper lambdas to get position and time from a state vector.
     auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
     auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
-    auto get_vxy = [](const Eigen::VectorXd& state) { return state.segment<2>(2); }; // For 5D states
 
-    double time_into_full_trajectory = 0.0;
-    const int state_dim = trajectory.path_points[0].size();
+    // // --- DEBUG: Print initial conditions for this check ---
+    // std::cout << std::fixed << std::setprecision(3);
+    // std::cout << "\n--- [FCL CHECK START] ---\n"
+    //           << "Robot Radius (inflation): " << inflation 
+    //           << ", Global Start Time: " << global_start_time
+    //           << ", Trajectory Points: " << trajectory.path_points.size() << std::endl;
 
-    // 3. Iterate over each segment of the trajectory
+    // --- 4. Loop through each LINEARIZED segment from the trajectory ---
     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
         const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
         const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
 
         const double T_segment = get_time(segment_start_state) - get_time(segment_end_state);
-        if (T_segment <= 1e-9) continue;
-        
-        const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
-
-        // 4. Conditionally apply the correct physics model based on state dimension
-        // if (state_dim == 5) {
-        if (false) {
-            // =======================================================
-            // == ACCELERATION MODEL (5D): Subdivide the curved path ==
-            // =======================================================
-            const int num_subdivisions = 3; // A tunable parameter for accuracy vs. performance
-            
-            // Calculate the constant acceleration for the entire segment
-            const Eigen::Vector2d p_r0_seg = get_xy(segment_start_state);
-            const Eigen::Vector2d v_r0_seg = get_vxy(segment_start_state);
-            const Eigen::Vector2d v_r1_seg = get_vxy(segment_end_state);
-            const Eigen::Vector2d a_r_seg = (v_r1_seg - v_r0_seg) / T_segment;
-            
-            Eigen::Vector2d p_sub_start = p_r0_seg;
-            double t_sub_start = 0.0;
-
-            for (int j = 1; j <= num_subdivisions; ++j) {
-                // Calculate the state at the end of the current sub-segment using constant acceleration physics
-                double t_sub_end = (static_cast<double>(j) / num_subdivisions) * T_segment;
-                Eigen::Vector2d p_sub_end = p_r0_seg + v_r0_seg * t_sub_end + 0.5 * a_r_seg * t_sub_end * t_sub_end;
-                
-                // Now, perform the linear collision check on this small, accurate sub-segment
-                const double T_sub_segment = t_sub_end - t_sub_start;
-                const Eigen::Vector2d v_r_sub = (p_sub_end - p_sub_start) / T_sub_segment;
-
-                for (const auto& obs : obstacle_snapshot_) {
-                    const double obs_radius = (obs.type == Obstacle::CIRCLE)
-                                            ? obs.dimensions.radius
-                                            : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
-                    const double R = obs_radius + inflation;
-                    const double R_sq = R * R;
-
-
-                    // // --- OPTIMIZATION: BROAD-PHASE CHECK --- This Phase gives us Some performance boost but it makes the detection to be delayed a bit because it ignores detection after some distance
-                    // // Calculate the maximum distance the obstacle could travel during this segment
-                    // const double v_max_obs = 30.0; // A reasonable upper bound on any obstacle's speed
-                    // const double max_obs_travel_dist = v_max_obs * T_segment;
-                    
-                    // // The "danger zone" is the collision radius plus this travel distance
-                    // const double danger_radius = R + max_obs_travel_dist;
-                    // const double danger_radius_sq = danger_radius * danger_radius;
-
-                    // // Get the geometric path of the robot segment (line or curve)
-                    // const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
-                    // const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
-                    
-                    // // Check if the obstacle is geometrically too far to ever reach the path
-                    // if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) > danger_radius_sq) {
-                    //     continue; // Skip this obstacle; it's too far away
-                    // }
-                    // // --- END OF OPTIMIZATION ---
-
-
-
-
-                    if (obs.is_dynamic) {
-                        // Dynamic obstacle check for the sub-segment
-                        const double global_time_at_sub_segment_start = global_time_at_segment_start + t_sub_start;
-                        const double delta_t_extrapolation = std::max(0.0, global_time_at_sub_segment_start - obs.last_update_time.seconds());
-                        const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
-                        
-                        const Eigen::Vector2d p_relative_start = p_sub_start - p_o0;
-                        const Eigen::Vector2d v_relative = v_r_sub - obs.velocity;
-                        
-                        const double a = v_relative.dot(v_relative);
-                        const double b = 2.0 * p_relative_start.dot(v_relative);
-                        const double c = p_relative_start.dot(p_relative_start) - R_sq;
-
-                        if (std::abs(a) < 1e-9) { 
-                            if (c <= 0) return obs; // Initially overlapping
-                            continue;
-                        }
-
-                        const double discriminant = b * b - 4 * a * c;
-                        if (discriminant >= 0) {
-                            const double sqrt_disc = std::sqrt(discriminant);
-                            const double t1 = (-b - sqrt_disc) / (2.0 * a);
-                            const double t2 = (-b + sqrt_disc) / (2.0 * a);
-                            if (std::max(0.0, t1) <= std::min(T_sub_segment, t2)) {
-                                return obs; // Collision found
-                            }
-                        }
-                    } else { 
-                        // Static obstacle check for the sub-segment
-                        if (distanceSqrdPointToSegment(obs.position, p_sub_start, p_sub_end) <= R_sq) {
-                            return obs;
-                        }
-                    }
-                }
-                // Prepare for the next sub-segment
-                p_sub_start = p_sub_end;
-                t_sub_start = t_sub_end;
-            }
-        } else {
-            // =========================================================
-            // == CONSTANT VELOCITY MODEL (First-Order / Other Systems) ==
-            // =========================================================
-            const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
-            const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
-            const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
-
-            for (const auto& obs : obstacle_snapshot_) {
-                const double obs_radius = (obs.type == Obstacle::CIRCLE)
-                                        ? obs.dimensions.radius
-                                        : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
-                const double R = obs_radius + inflation;
-                const double R_sq = R * R;
-
-                // // --- OPTIMIZATION: BROAD-PHASE CHECK ---
-                // // Calculate the maximum distance the obstacle could travel during this segment
-                // const double v_max_obs = 15.0; // A reasonable upper bound on any obstacle's speed
-                // const double max_obs_travel_dist = v_max_obs * T_segment;
-                
-                // // The "danger zone" is the collision radius plus this travel distance
-                // const double danger_radius = R + max_obs_travel_dist;
-                // const double danger_radius_sq = danger_radius * danger_radius;
-
-                // // Get the geometric path of the robot segment (line or curve)
-                // const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
-                // const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
-                
-                // // Check if the obstacle is geometrically too far to ever reach the path
-                // if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) > danger_radius_sq) {
-                //     continue; // Skip this obstacle; it's too far away
-                // }
-                // // --- END OF OPTIMIZATION ---
-
-
-
-                if (obs.is_dynamic) {
-                    // Dynamic obstacle check for the whole linear segment
-                    const double delta_t_extrapolation = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
-                    const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
-                    
-                    const Eigen::Vector2d p_relative_start = p_r0 - p_o0;
-                    const Eigen::Vector2d v_relative = v_r - obs.velocity;
-                    
-                    const double a = v_relative.dot(v_relative);
-                    const double b = 2.0 * p_relative_start.dot(v_relative);
-                    const double c = p_relative_start.dot(p_relative_start) - R_sq;
-
-                    if (std::abs(a) < 1e-9) { 
-                        if (c <= 0) return obs;
-                        continue;
-                    }
-
-                    const double discriminant = b * b - 4 * a * c;
-                    if (discriminant >= 0) {
-                        const double sqrt_disc = std::sqrt(discriminant);
-                        const double t1 = (-b - sqrt_disc) / (2.0 * a);
-                        const double t2 = (-b + sqrt_disc) / (2.0 * a);
-                        if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
-                            return obs;
-                        }
-                    }
-                } else {
-                    // Static obstacle check for the whole linear segment
-                    if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
-                        return obs;
-                    }
-                }
-            }
+        if (T_segment <= 1e-9) {
+            continue;
         }
         
-        // Update the time offset for the next segment
-        time_into_full_trajectory += T_segment;
+        const double t_arrival_predicted = global_start_time + get_time(trajectory.path_points.front());
+        const double global_time_at_segment_start = t_arrival_predicted - get_time(segment_start_state);
+
+        // // --- DEBUG: Print segment info ---
+        // std::cout << "  [Segment " << i << "] T_start: " << global_time_at_segment_start
+        //           << ", Duration: " << T_segment << "\n"
+        //           << "    Robot Start: (" << get_xy(segment_start_state).x() << ", " << get_xy(segment_start_state).y() << ")\n"
+        //           << "    Robot End:   (" << get_xy(segment_end_state).x() << ", " << get_xy(segment_end_state).y() << ")" << std::endl;
+
+        const fcl::Transform3d tf_robot_start(fcl::Translation3d(get_xy(segment_start_state).x(), get_xy(segment_start_state).y(), 0));
+        const fcl::Transform3d tf_robot_end(fcl::Translation3d(get_xy(segment_end_state).x(), get_xy(segment_end_state).y(), 0));
+
+        for (const auto& obs : obstacle_snapshot_) {
+            auto cache_it = fcl_cache_.find(obs.name);
+            if (cache_it == fcl_cache_.end()) {
+                continue;
+            }
+
+            const fcl::CollisionObjectd& obs_co = cache_it->second;
+            auto obs_geom_ptr = obs_co.collisionGeometry();
+            
+            // --- DEBUG: Print obstacle info ---
+            double obs_radius = 0.0;
+            if (obs.type == Obstacle::CIRCLE) obs_radius = obs.dimensions.radius;
+            else obs_radius = std::hypot(obs.dimensions.width/2.0, obs.dimensions.height/2.0);
+
+            // std::cout << "    -> Checking Obstacle '" << obs.name << "' (Radius: " << obs_radius << ")\n";
+
+            double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+            Eigen::Vector2d obs_pos_start = obs.position + obs.velocity * delta_t;
+            Eigen::Vector2d obs_pos_end = obs_pos_start + obs.velocity * T_segment;
+            
+            // // --- DEBUG: Print predicted positions ---
+            // std::cout << "      Obs Snapshot Pos: (" << obs.position.x() << ", " << obs.position.y() << ") at t=" << obs.last_update_time.seconds() << "\n"
+            //           << "      delta_t: " << delta_t << "\n"
+            //           << "      Obs Predicted Start: (" << obs_pos_start.x() << ", " << obs_pos_start.y() << ")\n"
+            //           << "      Obs Predicted End:   (" << obs_pos_end.x() << ", " << obs_pos_end.y() << ")" << std::endl;
+
+            fcl::Transform3d tf_obs_start_mutable = fcl::Transform3d::Identity();
+            tf_obs_start_mutable.translation() = fcl::Vector3d(obs_pos_start.x(), obs_pos_start.y(), 0);
+            tf_obs_start_mutable.linear() = Eigen::AngleAxisd(obs.dimensions.rotation, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+            const fcl::Transform3d tf_obs_start = tf_obs_start_mutable;
+
+            fcl::Transform3d tf_obs_end_mutable = tf_obs_start;
+            tf_obs_end_mutable.translation() = fcl::Vector3d(obs_pos_end.x(), obs_pos_end.y(), 0);
+            const fcl::Transform3d tf_obs_end = tf_obs_end_mutable;
+            
+            fcl::ContinuousCollisionRequestd request;
+            request.gjk_solver_type = fcl::GJKSolverType::GST_LIBCCD;
+            fcl::ContinuousCollisionResultd result;
+            
+            fcl::continuousCollide(robot_geom.get(), tf_robot_start, tf_robot_end,
+                                   obs_geom_ptr.get(), tf_obs_start, tf_obs_end, request, result);
+
+            if (result.is_collide) {
+                // // --- DEBUG: Announce collision ---
+                // std::cout << "      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+                //           << "      !!!!!! FCL RESULT: COLLISION DETECTED !!!!!!\n"
+                //           << "      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+                return obs;
+            } else {
+                // // --- DEBUG: Announce no collision ---
+                // std::cout << "      FCL RESULT: NO COLLISION" << std::endl;
+            }
+        }
     }
-    // auto end = std::chrono::steady_clock::now();
-    // auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-    // std::cout << "time taken for the update : " << duration.count() << " nano-seconds\n";
 
-
-    // 5. If the loop completes, no collisions were found
+    // --- DEBUG: Announce end of check ---
+    // std::cout << "--- [FCL CHECK END] --- No collisions found.\n" << std::endl;
     return std::nullopt;
 }
-
 // // This is the primary function, now rewritten to use the Velocity Obstacle method.
 // // This is the new, corrected version of your collision checking function.
 // // It implements the segment-by-segment Velocity Obstacle check you proposed.
@@ -1515,7 +1621,6 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
 
         // Create obstacle object
         Obstacle obstacle;
-        obstacle.is_dynamic = is_moving;
         if (is_cylinder) {
             obstacle.type = Obstacle::CIRCLE;
             double radius = (info_it != obstacle_info_.end()) ? info_it->second.radius : 5.0;
@@ -1534,6 +1639,8 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
             double yaw = calculateYawFromQuaternion(quat);
             obstacle = Obstacle(position, width, height, yaw, inflation, is_moving);
         }
+        obstacle.name = name;
+        obstacle.is_dynamic = is_moving;
 
         const bool within_range = !use_range || 
             (robot_position_ - position).norm() < sensor_range;
@@ -1655,7 +1762,187 @@ void GazeboObstacleChecker::lightweightPoseCallback(const gz::msgs::Pose_V& msg)
     new_pose_msg_available_ = true;
 }
 
-// The new processing function
+// // The new processing function 
+// void GazeboObstacleChecker::processLatestPoseInfo() {
+//     gz::msgs::Pose_V msg;
+//     {
+//         std::lock_guard<std::mutex> lock(snapshot_mutex_);
+//         if (!new_pose_msg_available_) {
+//             return; // No new message to process
+//         }
+//         msg = latest_pose_msg_; // the lock above is for this line because latest_pose_msg_ is shared resource. writer is lightWeightPoseCallback and and reader is the current function. in case read and write is happening at the same time then we get a crash if we do not use lock
+//         new_pose_msg_available_ = false; // Mark as consumed
+//     }
+
+//     obstacle_positions_.clear();
+//     ObstacleVector current_dynamic_obstacles;
+
+//     // Get the current simulation time from the stored clock
+//     rclcpp::Time now = clock_->now();
+
+//     // Update robot position
+//     for (int i = 0; i < msg.pose_size(); ++i) {
+//         const auto& pose = msg.pose(i);
+//         if (pose.name() == robot_model_name_) {
+//             robot_position_ = Eigen::Vector2d(pose.position().x(), pose.position().y());
+//             break;
+//         }
+//     }
+
+//     // Process obstacles
+//     for (int i = 0; i < msg.pose_size(); ++i) {
+//         const auto& pose = msg.pose(i);
+//         const std::string name = pose.name();
+//         Eigen::Vector2d position(pose.position().x(), pose.position().y());
+
+//         if (name == robot_model_name_) continue;
+
+//         bool is_cylinder = name.find("cylinder") != std::string::npos;
+//         bool is_box = name.find("box") != std::string::npos;
+//         bool is_static = name.find("static_") != std::string::npos;
+//         bool is_moving = name.find("moving_") != std::string::npos;
+
+//         if (!is_cylinder && !is_box) continue;
+
+//         auto info_it = obstacle_info_.find(name);
+
+//         // Create obstacle object
+//         Obstacle obstacle;
+//         if (is_cylinder) {
+//             obstacle.type = Obstacle::CIRCLE;
+//             double radius = (info_it != obstacle_info_.end()) ? info_it->second.radius : 5.0;
+//             obstacle = Obstacle(position, radius, inflation, is_moving);
+//         } else {
+//             obstacle.type = Obstacle::BOX;
+//             double width = (info_it != obstacle_info_.end()) ? info_it->second.width : 10.0;
+//             double height = (info_it != obstacle_info_.end()) ? info_it->second.height : 10.0;
+            
+//             Eigen::Vector4d quat(
+//                 pose.orientation().x(),
+//                 pose.orientation().y(),
+//                 pose.orientation().z(),
+//                 pose.orientation().w()
+//             );
+//             double yaw = calculateYawFromQuaternion(quat);
+//             obstacle = Obstacle(position, width, height, yaw, inflation, is_moving);
+//         }
+//         obstacle.is_dynamic = is_moving;
+
+//         const bool within_range = !use_range || 
+//             (robot_position_ - position).norm() < sensor_range;
+
+//         // Handle static obstacles
+//         if (is_static) {
+//             if (persistent_static_obstacles) {
+//                 auto map_it = static_obstacle_positions_.find(name);
+                
+//                 if (map_it == static_obstacle_positions_.end()) {
+//                     if (within_range) {
+//                         static_obstacle_positions_[name] = obstacle;
+//                     }
+//                 } else {
+//                     map_it->second.position = position;
+//                 }
+//             }
+            
+//             if (within_range) {
+//                 obstacle_positions_.push_back(obstacle);
+//             }
+//         }
+//         // Handle dynamic obstacles
+//         else if (is_moving && within_range) {
+//             // This is the new block that replaces finite difference with a Kalman Filter.
+//             if(estimation) {
+//                 auto filter_it = obstacle_filters_.find(name);
+//                 if (filter_it == obstacle_filters_.end()) {
+//                     // First time seeing this obstacle, initialize a new filter.
+                    
+//                     // --- ✅ 1. Use the Factory to create the filter ---
+//                     KalmanFilter new_filter = KalmanFilterFactory::createFilter(kf_model_type_);
+
+//                     // --- ✅ 2. Initialize the state with the correct size ---
+//                     int state_size = (kf_model_type_ == "cv") ? 4 : 6;
+//                     Eigen::VectorXd initial_state = Eigen::VectorXd::Zero(state_size);
+//                     initial_state.head<2>() << obstacle.position.x(), obstacle.position.y();
+//                     new_filter.init(initial_state);
+                    
+//                     filter_it = obstacle_filters_.emplace(name, new_filter).first;
+                    
+//                     obstacle.velocity.setZero();
+//                     obstacle.acceleration.setZero();
+
+//                 } else {
+//                     // This obstacle has an existing filter. Predict and Update.
+//                     double dt = (now - obstacle_filters_times_[name]).seconds();
+
+//                     // Prevent instability from tiny or zero dt
+//                     if (dt <= 1e-6) {
+//                         dt = 0.016; // Fallback to a reasonable timestep, e.g., ~60Hz
+//                     }
+
+//                     // 1. Predict step: Estimate where the filter thinks the obstacle should be.
+//                     filter_it->second.predict(dt);
+
+//                     // 2. Update step: Correct the prediction with the new measurement.
+//                     Eigen::VectorXd measurement(2);
+//                     measurement << obstacle.position.x(), obstacle.position.y();
+//                     filter_it->second.update(measurement);
+
+//                     // 3. Get the smoothed state from the filter to use in planning.
+//                     Eigen::VectorXd estimated_state = filter_it->second.getState();
+//                     obstacle.velocity << estimated_state(2), estimated_state(3);
+
+//                     if (kf_model_type_ == "cv") {
+//                         obstacle.acceleration.setZero();
+//                     } else { // For "ca" and "singer"
+//                         obstacle.acceleration << estimated_state(4), estimated_state(5);
+//                     }
+
+//                 }
+//                  // Store the timestamp of this update for the next iteration's dt calculation
+//                 obstacle_filters_times_[name] = now;
+//             }
+
+//             // Store the last update time on the obstacle object itself for the collision checker
+//             obstacle.last_update_time = now;
+//             current_dynamic_obstacles.push_back(obstacle);
+            
+//             // // --- DEBUG OUTPUT BLOCK ---
+//             // std::cout << std::fixed << std::setprecision(3);
+//             // std::cout << "--- Obstacle [" << name << "] at " << now.seconds() << "s ---\n"
+//             //           << "  Raw Position:      (" << position.x() << ", " << position.y() << ")\n"
+//             //           << "  Kalman Velocity:   (" << obstacle.velocity.x() << ", " << obstacle.velocity.y() << ")\n"
+//             //           << "  Kalman Accel:      (" << obstacle.acceleration.x() << ", " << obstacle.acceleration.y() << ")\n";
+//         }
+//     }
+
+//     // Add persistent static obstacles (even if currently out of range)
+//     if (persistent_static_obstacles) {
+//         for (const auto& [name, static_obs] : static_obstacle_positions_) {
+//             bool exists = std::any_of(
+//                 obstacle_positions_.begin(),
+//                 obstacle_positions_.end(),
+//                 [&](const Obstacle& o) {
+//                     return o.position == static_obs.position && 
+//                            o.type == static_obs.type;
+//                 }
+//             );
+            
+//             if (!exists) {
+//                 obstacle_positions_.push_back(static_obs);
+//             }
+//         }
+//     }
+
+//     // Add all processed dynamic obstacles to the main list
+//     obstacle_positions_.insert(obstacle_positions_.end(),
+//                              current_dynamic_obstacles.begin(),
+//                              current_dynamic_obstacles.end());
+// }
+
+
+
+// The new processing function 
 void GazeboObstacleChecker::processLatestPoseInfo() {
     gz::msgs::Pose_V msg;
     {
@@ -1701,7 +1988,6 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
 
         // Create obstacle object
         Obstacle obstacle;
-        obstacle.is_dynamic = is_moving;
         if (is_cylinder) {
             obstacle.type = Obstacle::CIRCLE;
             double radius = (info_it != obstacle_info_.end()) ? info_it->second.radius : 5.0;
@@ -1720,6 +2006,35 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
             double yaw = calculateYawFromQuaternion(quat);
             obstacle = Obstacle(position, width, height, yaw, inflation, is_moving);
         }
+        obstacle.name = name;
+        obstacle.is_dynamic = is_moving;
+
+        // =================================================================
+        // =========== NEW FCL CACHE MANAGEMENT LOGIC ======================
+        // =================================================================
+        // After you've created your 'obstacle' struct instance, check the cache.
+        // We only need to cache objects that could potentially be checked (moving or static).
+        if (is_moving || is_static) {
+            // Check if this obstacle is new.
+            if (fcl_cache_.find(name) == fcl_cache_.end()) {
+                // This is the FIRST time we've seen this obstacle.
+                // Create its FCL geometry and store it in the cache.
+                std::shared_ptr<fcl::CollisionGeometryd> geom;
+                if (obstacle.type == Obstacle::CIRCLE) {
+                    geom = std::make_shared<fcl::Cylinderd>(obstacle.dimensions.radius, 1.0);
+                } else { // BOX
+                    geom = std::make_shared<fcl::Boxd>(obstacle.dimensions.width, obstacle.dimensions.height, 1.0);
+                }
+                // Insert the newly created CollisionObject into our cache map.
+                fcl_cache_.emplace(name, fcl::CollisionObjectd(geom));
+                RCLCPP_INFO(rclcpp::get_logger("FCL_Cache"), "Cached new FCL object: %s", name.c_str());
+            }
+        }
+        // =================================================================
+        // ================== END OF FCL CACHE LOGIC =======================
+        // =================================================================
+
+
 
         const bool within_range = !use_range || 
             (robot_position_ - position).norm() < sensor_range;
@@ -1998,3 +2313,18 @@ bool GazeboObstacleChecker::pointIntersectsRectangle(const Eigen::Vector2d& poin
     return (std::abs(local_point.x()) <= width/2 && 
            std::abs(local_point.y()) <= height/2);
 }
+
+
+// fcl::CollisionObjectd GazeboObstacleChecker::createFCLObject(const Obstacle& obstacle) const {
+//     std::shared_ptr<fcl::CollisionGeometryd> geom;
+
+//     if (obstacle.type == Obstacle::CIRCLE) {
+//         // For circles, we use a cylinder in FCL with a small height.
+//         // FCL doesn't have a 2D circle, but a short cylinder is equivalent for 2D checks.
+//         geom = std::make_shared<fcl::Cylinderd>(obstacle.dimensions.radius, 1.0);
+//     } else { // BOX
+//         geom = std::make_shared<fcl::Boxd>(obstacle.dimensions.width, obstacle.dimensions.height, 1.0);
+//     }
+
+//     return fcl::CollisionObjectd(geom);
+// }

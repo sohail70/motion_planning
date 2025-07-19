@@ -4,12 +4,12 @@
 // Helper function from the base class file
 double normalizeAngle(double angle);
 
-DubinsTimeStateSpace::DubinsTimeStateSpace(double min_turning_radius, double min_velocity, double max_velocity)
-    : DubinsStateSpace(min_turning_radius, 4), // Call the base class constructor
+DubinsTimeStateSpace::DubinsTimeStateSpace(double min_turning_radius, double min_velocity, double max_velocity, unsigned int seed)
+    : DubinsStateSpace(min_turning_radius, 4, seed), // Call the base class constructor
       min_velocity_(min_velocity),
       max_velocity_(max_velocity) {
     
-    std::srand(42); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
+    std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
 
     // Set the dimension to 4 for this state space
     dimension_ = 4;

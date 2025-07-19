@@ -118,7 +118,7 @@ int main(int argc, char** argv)
     manager_params.setParam("sim_time_step", -0.04); // Time-to-go consumed per sim step
     manager_params.setParam("sim_frequency_hz", 50);  // Smoothness of arrow
     manager_params.setParam("vis_frequency_hz", 10);  // Obstacle visualization rate
-    manager_params.setParam("follow_path", false);
+    manager_params.setParam("follow_path", true);
 
     Params gazebo_params;
     gazebo_params.setParam("robot_model_name", "tugbot");
@@ -192,7 +192,7 @@ int main(int argc, char** argv)
     double robot_velocity = 10.0;
     // Create the single, consolidated R2TROSManager
     auto ros_manager = std::make_shared<R2TROS2Manager>(obstacle_checker, visualization, manager_params,robot_velocity, robot_initial_state);
-    auto statespace = std::make_shared<RDTStateSpace>(spatial_dim, min_velocity , max_velocity , robot_velocity, 30000);
+    auto statespace = std::make_shared<RDTStateSpace>(spatial_dim, min_velocity , max_velocity , robot_velocity, 30000, seed);
     auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicRRTX, statespace, problem_def, obstacle_checker);
     
     auto kinodynamic_planner = dynamic_cast<KinodynamicRRTX*>(planner.get());

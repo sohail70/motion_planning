@@ -30,6 +30,7 @@ struct Obstacle {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
 
+    std::string name;
     enum Type { CIRCLE, BOX };
     Type type;
     Eigen::Vector2d position;

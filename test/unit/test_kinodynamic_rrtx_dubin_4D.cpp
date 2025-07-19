@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
     manager_params.setParam("sim_time_step", -0.04); // Time-to-go consumed per sim step
     manager_params.setParam("sim_frequency_hz", 50);  // Smoothness of arrow
     manager_params.setParam("vis_frequency_hz", 10);  // Obstacle visualization rate
-    manager_params.setParam("follow_path", false);
+    manager_params.setParam("follow_path", true);
 
     Params gazebo_params;
     gazebo_params.setParam("robot_model_name", "tugbot");
@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
     double min_turning_radius = 2.0;
     double min_velocity = 1.0;
     double max_velocity = 10.0;
-    auto statespace = std::make_shared<DubinsTimeStateSpace>(min_turning_radius, min_velocity, max_velocity);
+    auto statespace = std::make_shared<DubinsTimeStateSpace>(min_turning_radius, min_velocity, max_velocity, seed);
 
     auto ros_manager = std::make_shared<DubinsROS2Manager>(obstacle_checker, visualization, manager_params, robot_initial_state);
     auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicRRTX, statespace, problem_def, obstacle_checker);

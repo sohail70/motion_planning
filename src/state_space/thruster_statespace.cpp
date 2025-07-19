@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include <iomanip> // For std::fixed, std::setprecision
 
-ThrusterSteerStateSpace::ThrusterSteerStateSpace(int dimension, double max_acceleration)
+ThrusterSteerStateSpace::ThrusterSteerStateSpace(int dimension, double max_acceleration, unsigned int seed)
     : StateSpace(dimension), max_acceleration_(max_acceleration) {
     // For 3D position and 3D velocity, plus time, dimension is 7.
     // Ensure dimension is 2*D_spatial + 1.
@@ -10,7 +10,7 @@ ThrusterSteerStateSpace::ThrusterSteerStateSpace(int dimension, double max_accel
         throw std::invalid_argument("ThrusterStateSpace dimension must be 2*D_spatial + 1 (e.g., 7 for 3D pos/vel/time).");
     }
 
-    std::srand(42); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
+    std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
     // Set up weights for KD-Tree distance, if desired. Otherwise, unit weights.
     // These weights would be for: [x,y,z,vx,vy,vz,t]
     weights_.resize(dimension_);

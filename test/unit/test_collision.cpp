@@ -1,4 +1,4 @@
-// ////////////////////////////////////R2T StateSpace Collision Test Using Discretized Simulation//////////////////////////////////////////////////////////////
+// // ////////////////////////////////////R2T StateSpace Collision Test Using Discretized Simulation//////////////////////////////////////////////////////////////
 // #include "rclcpp/rclcpp.hpp"
 // #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
 // #include "motion_planning/utils/rviz_visualization.hpp"
@@ -142,6 +142,34 @@
 //     resetAndPlaySimulation();
 //     RCLCPP_INFO(node->get_logger(), "Starting simulation and prediction loop...");
     
+
+//     // =====================================================================
+//     // ====================== THE CRITICAL FIX IS HERE =====================
+//     // =====================================================================
+//     // Wait for the first Gazebo message to arrive to ensure we have obstacles.
+//     RCLCPP_INFO(node->get_logger(), "Waiting for initial obstacle data from Gazebo...");
+//     size_t obstacle_count = 0;
+//     for (int i = 0; i < 50; ++i) { // Try for up to 5 seconds
+//         rclcpp::spin_some(node);
+//         auto snapshot = obstacle_checker->getAtomicSnapshot();
+//         obstacle_count = snapshot.obstacles.size();
+//         if (obstacle_count > 0) {
+//             RCLCPP_INFO(node->get_logger(), "Received data for %zu obstacles. Starting test.", obstacle_count);
+//             break;
+//         }
+//         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+//     }
+
+//     if (obstacle_count == 0) {
+//         RCLCPP_ERROR(node->get_logger(), "Timed out waiting for obstacle data from Gazebo. Aborting test.");
+//         rclcpp::shutdown();
+//         return EXIT_FAILURE;
+//     }
+//     // =====================================================================
+//     // ====================== END OF FIX ===================================
+//     // =====================================================================
+
+
 //     rclcpp::Rate loop_rate(20); 
 //     rclcpp::Clock::SharedPtr clock = node->get_clock();
 //     rclcpp::Time last_update_time = clock->now();
@@ -161,6 +189,7 @@
 //         remaining_trajectory.path_points.push_back(goal_node);
 //         remaining_trajectory.time_duration = current_robot_state(2); 
 
+//         auto snapshot = obstacle_checker->getAtomicSnapshot();
 //         bool is_safe = obstacle_checker->isTrajectorySafe(remaining_trajectory, current_time.seconds());
 
 //         // --- Visualize the result ---
@@ -183,7 +212,6 @@
 //         visualizer->visualizeEdges(remaining_path_edge, "map", trajectory_color_str, "remaining_trajectory");
 
 //         // Visualize obstacles
-//         auto snapshot = obstacle_checker->getAtomicSnapshot();
 //         std::vector<Eigen::VectorXd> cylinder_obstacles;
 //         std::vector<double> cylinder_radii;
 //         for (const auto& obs : snapshot.obstacles) {
@@ -438,6 +466,7 @@
         
 //         // Get the remaining part of the path for collision checking
 //         Trajectory remaining_trajectory = simulator.getRemainingTrajectory();
+//         auto snapshot = obstacle_checker->getAtomicSnapshot();
 
 //         // Check if the rest of the path is safe
 //         bool is_safe = obstacle_checker->isTrajectorySafe(remaining_trajectory, current_time.seconds());
@@ -463,7 +492,6 @@
 //         visualizer->visualizeEdges(remaining_path_edges, "map", trajectory_color_str, "remaining_trajectory");
 
 //         // Visualize obstacles
-//         auto snapshot = obstacle_checker->getAtomicSnapshot();
 //         std::vector<Eigen::VectorXd> cylinder_obstacles;
 //         std::vector<double> cylinder_radii;
 //         for (const auto& obs : snapshot.obstacles) {
@@ -670,6 +698,7 @@
 
 //         // Get the ANALYTICALLY-AWARE remaining trajectory
 //         Trajectory remaining_trajectory = simulator.getRemainingTrajectory();
+//         auto snapshot = obstacle_checker->getAtomicSnapshot();
 
 //         // Pass it to the collision checker
 //         std::optional<Obstacle> colliding_obs = obstacle_checker->getCollidingObstacle(remaining_trajectory, current_time.seconds());
@@ -697,7 +726,6 @@
 //         visualizer->visualizeEdges(remaining_path_edge, "map", trajectory_color_str, "remaining_trajectory");
 
 //         // Visualize obstacles
-//         auto snapshot = obstacle_checker->getAtomicSnapshot();
 //         std::vector<Eigen::VectorXd> cylinder_obstacles;
 //         std::vector<double> cylinder_radii;
 //         for (const auto& obs : snapshot.obstacles) {
@@ -955,6 +983,7 @@
 //         simulator.update(dt);
 //         Eigen::VectorXd current_robot_state = simulator.getCurrentState();
         
+//         auto snapshot = obstacle_checker->getAtomicSnapshot();
 //         // THIS IS THE CRITICAL CHANGE: Get the ANALYTICAL remaining trajectory
 //         Trajectory remaining_trajectory = simulator.getRemainingTrajectory();
 
@@ -1031,7 +1060,6 @@
 //         visualizer->visualizeEdges(remaining_path_edges, "map", trajectory_color_str, "remaining_trajectory");
 
 //         // Visualize obstacles
-//         auto snapshot = obstacle_checker->getAtomicSnapshot();
 //         std::vector<Eigen::VectorXd> cylinder_obstacles;
 //         std::vector<double> cylinder_radii;
 //         for (const auto& obs : snapshot.obstacles) {
@@ -1216,7 +1244,7 @@ int main(int argc, char** argv) {
     gazebo_params.setParam("world_name", "default");
     gazebo_params.setParam("use_range", false);
     gazebo_params.setParam("sensor_range", 20.0);
-    gazebo_params.setParam("inflation", 0.0); 
+    gazebo_params.setParam("inflation", 0.5); 
     gazebo_params.setParam("persistent_static_obstacles", true);
     gazebo_params.setParam("estimation", true);
     gazebo_params.setParam("kf_model_type", "cv");
@@ -1328,6 +1356,7 @@ int main(int argc, char** argv) {
         // Get the remaining part of the path for collision checking
         Trajectory remaining_trajectory = simulator.getRemainingTrajectory();
 
+        auto snapshot = obstacle_checker->getAtomicSnapshot();
         // Check if the rest of the path is safe
         bool is_safe = obstacle_checker->isTrajectorySafe(remaining_trajectory, current_time.seconds());
 
@@ -1368,7 +1397,6 @@ int main(int argc, char** argv) {
         visualizer->visualizeEdges(remaining_path_edges, "map", trajectory_color_str, "remaining_trajectory");
 
         // Visualize obstacles
-        auto snapshot = obstacle_checker->getAtomicSnapshot();
         std::vector<Eigen::VectorXd> cylinder_obstacles;
         std::vector<double> cylinder_radii;
         for (const auto& obs : snapshot.obstacles) {

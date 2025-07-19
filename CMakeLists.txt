@@ -34,12 +34,16 @@ find_package(tf2_ros REQUIRED)
 find_package(type_description_interfaces REQUIRED)
 find_package(nav2_msgs REQUIRED)  # Add this line
 find_package(rclcpp_action REQUIRED)  # Add this line
+# find_package(fcl REQUIRED)
+pkg_check_modules(FCL REQUIRED fcl)
+
 
 find_package(gz-transport13 REQUIRED)   # Gazebo transport
 find_package(gz-msgs10 REQUIRED)        # Gazebo messages
 find_package(Protobuf REQUIRED)         # Protocol Buffers
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZeroMQ REQUIRED libzmq)
+
 
 
 
@@ -58,6 +62,7 @@ include_directories(
   ${ZeroMQ_INCLUDE_DIRS}
   ${type_description_interfaces_INCLUDE_DIRS}
   ${visualization_msgs_INCLUDE_DIRS}
+  ${FCL_INCLUDE_DIRS} 
 )
 
 # Visualization Library (ROS2 dependent)
@@ -79,16 +84,16 @@ target_include_directories(kf PUBLIC include)
 target_link_libraries(kf PUBLIC Eigen3::Eigen)
 
 
-
 # Gazebo Obstacle Checker Library
 add_library(gz_obs src/utils/gazebo_obstacle_checker.cpp)
 target_precompile_headers(gz_obs PRIVATE include/motion_planning/pch.hpp)
-target_link_libraries(gz_obs
+target_link_libraries(gz_obs PUBLIC
   gz-transport13
   gz-msgs10
   ${Protobuf_LIBRARIES}
   ${ZeroMQ_LIBRARIES}
   kf
+  ${FCL_LIBRARIES}
 )
 
 

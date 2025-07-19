@@ -7,7 +7,7 @@
 #include <unsupported/Eigen/Polynomials>  // for PolynomialSolver
 #include "motion_planning/utils/kalman_filter.hpp"
 #include "motion_planning/utils/kalman_filter_factory.hpp"
-
+#include <fcl/fcl.h>
 
 class GazeboObstacleChecker : public ObstacleChecker {
 public:
@@ -372,4 +372,17 @@ private:
     std::unordered_map<std::string, ObstacleInfo> obstacle_info_;
 
     rclcpp::Clock::SharedPtr clock_;
+
+
+    // Maps an obstacle's unique name (from Gazebo) to its FCL representation.
+    mutable std::unordered_map<std::string, fcl::CollisionObjectd> fcl_cache_;
+
+    // /**
+    //  * @brief Creates an FCL collision object from our custom Obstacle struct.
+    //  * @param obstacle The obstacle to convert.
+    //  * @return A shared pointer to an FCL CollisionObject.
+    //  */
+    // fcl::CollisionObjectd createFCLObject(const Obstacle& obstacle) const;
+
+
 };

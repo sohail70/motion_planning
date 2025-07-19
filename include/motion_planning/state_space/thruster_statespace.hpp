@@ -17,7 +17,7 @@ public:
     // State is [x, y, z, vx, vy, vz, t] for 3D position and velocity
     // Dimension is typically 7 (3 pos + 3 vel + 1 time)
     // The control input 'u' is acceleration in this model (bang-bang control)
-    ThrusterSteerStateSpace(int dimension, double max_acceleration);
+    ThrusterSteerStateSpace(int dimension, double max_acceleration, unsigned int seed = 42);
 
     // Override StateSpace methods
     std::shared_ptr<State> addState(const Eigen::VectorXd& value) override;

@@ -14,11 +14,11 @@ double normalizeAngle(double a) {
     return a;
 }
 
-DubinsStateSpace::DubinsStateSpace(double min_turning_radius, int dimension)
+DubinsStateSpace::DubinsStateSpace(double min_turning_radius, int dimension, unsigned int seed)
     : StateSpace(dimension), // Pass the dimension through
       min_turning_radius_(min_turning_radius) {
 
-    std::srand(42); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
+    std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
     weights_.resize(3);
     weights_ << 1.0, 1.0, 0.4; // These weights are still for the 3D case
 }

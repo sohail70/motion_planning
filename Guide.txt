@@ -23,6 +23,10 @@ callgrind_annotate \
 
  callgrind_annotate   --inclusive=yes   --threshold=100.0   callgrind.out.fmtxR2T | grep -E '^[0-9,]+ '
 
+callgrind_annotate  callgrind.out.follow | grep "FMTX"
+
+
+FMT⋆ trades more graph/book‑keeping work and more nearest‑neighbor queries for fewer collision checks, whereas RRT⋆ does the opposite.
 
 
 gdb --args ./test_kinodynamic_fmtx_R2T --samples 500 --factor 2.0 --> then write run

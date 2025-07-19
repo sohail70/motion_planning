@@ -704,7 +704,6 @@ void KinodynamicFMTX::plan() {
                     const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
 
 
-
                     // The global start time for the edge x->y is based on the PURE time-to-goal
                     // double global_edge_start_time = t_arrival - min_time_for_x;
 
@@ -720,12 +719,24 @@ void KinodynamicFMTX::plan() {
                     //           << "---------------------------\n";
 
 
-                    // Perform the full predictive check with the CORRECT time context.
+                    // // Perform the full predictive check with the CORRECT time context.
                     bool obstacle_free = true;
                     // if(!prune)
                         obstacle_free = obs_checker_->isTrajectorySafe(*best_traj_for_x, global_edge_start_time);
                     // else if (!in_dynamic)
                     //     obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, global_edge_start_time);
+
+// // 2) only run full collision‐check if it lies in [0, TIME_CHECK_HORIZON]
+// if (time_offset_from_robot >= 0.0 && time_offset_from_robot <= 3.0) {
+//     double global_edge_start_time = t_now + time_offset_from_robot;
+//     obstacle_free =
+//         obs_checker_->isTrajectorySafe(*best_traj_for_x, global_edge_start_time);
+// } else {
+//     // either it's already “behind” the robot (negative), or too far in the future
+//     // assume safe for now and let it be checked later when you replan again
+//     obstacle_free = true;
+// }
+
 
                     // bool obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, t_now);
                     obs_check++;
@@ -1179,11 +1190,19 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
                     case 4: // (x, y, theta, time)
                         {
                             // // Translate future time into the planner's "time-to-go" frame
+                            /*
+                                robot passese thorugh some nodes but those nodes might become useful later in case robot needs to escape back so do not get tempted to some how removing them from the conflicting nodes
+
+                                why subtract delta t? It aligns the obstacle’s future positions with the robot’s future positions in the same time axis.
+
+
+                            */
+
                             // double query_timestamp = robot_current_timestamp - delta_t;
                             // if (query_timestamp < 0) {
                             //     // std::cout<<"skipped" << query_timestamp<<"\n";
-                            //     query_timestamp = 0.0;
-                            //     // continue;
+                            //     // query_timestamp = 0.0;
+                            //     continue;
                             // } // Skip if predicted time is "after" the goal
 
                             
@@ -1402,7 +1421,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     // // --- END OF NEW FILTERING LOGIC ---
     
 
-    //////////////////////////////////////////////////////////////////////////////////
+    // ///////////////////////////BETTER FILTERING///////////////////////////////////////////////////
 
     // // 'current' is the set of nodes from findSamplesNearObstacles
     // for (auto it = current.begin(); it != current.end(); /* no increment here */) {
@@ -1459,6 +1478,77 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     //     }
     // }
 
+    /////////////////////////////////////////////////
+
+    // // --- STEP 2: NARROW PHASE (TIME HORIZON FILTER ONLY) ---
+    // // Iterate through the candidates and remove any that are not on the robot's
+    // // immediate future path (within a 3-second horizon). No collision checks are performed.
+    // std::cout<<"current before: "<<current.size()<<"\n";
+    // for (auto it = current.begin(); it != current.end(); /* manual increment */) {
+    //     auto node = tree_[*it].get();
+    //     auto parent = node->getParent();
+
+    //     // If a node has no parent or its trajectory is invalid, it's a high-priority
+    //     // node for repair, so we always keep it.
+    //     if (!parent || !node->getParentTrajectory().is_valid) {
+    //         ++it;
+    //         continue;
+    //     }
+
+    //     // Calculate when this node's edge would be traversed relative to the robot's current path.
+    //     const double node_time_to_goal = node->getTimeToGoal();
+    //     const double time_offset_from_robot = robot_current_time_to_goal_ - node_time_to_goal;
+
+    //     // The filter condition:
+    //     // KEEP the node only if its path is in the immediate future [0, 3] seconds away.
+    //     if (time_offset_from_robot >= 0.0 && time_offset_from_robot <= 3.0) {
+    //         ++it; // KEEP this node.
+    //     } else {
+    //         // REMOVE this node because it's either behind the robot or too far in the future.
+    //         it = current.erase(it);
+    //     }
+    // }
+    // std::cout<<"current after: "<<current.size()<<"\n";
+
+/////////////////////////geometry based filter based on robots current position!///////////////////////////
+
+    // --- STEP 2: IN-PLACE GEOMETRIC FILTER ---
+    // Now, filter the 'current' set directly. Remove any node that is not
+    // within a "local bubble" around the robot.
+    std::cout<<"current before: "<<current.size()<<"\n";
+
+    const double local_filter_radius = 20.0;
+    // local_filter_radius = (v_obs_max + v_robot_max) / loop_hz + obstacle_radius;  
+    //                // = 40/20 + 5 = 7 m
+    const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
+
+    for (auto it = current.begin(); it != current.end(); /* manual increment */) {
+        auto node = tree_[*it].get();
+        double dist_to_robot = (node->getStateValue().head<2>() - robot_pos_2d).norm();
+
+        // If the node is outside our local bubble, remove it from the set.
+        if (dist_to_robot > local_filter_radius) {
+            it = current.erase(it); // Erase and get iterator to the next element
+        } else {
+            ++it; // Node is relevant, move to the next element
+        }
+    }
+    std::cout<<"current after: "<<current.size()<<"\n";
+    // --- END OF FILTER ---
+
+
+
+
+
+
+    // /////////////STRESS TEST/////////////
+
+    // for (int i = 1; i < tree_.size(); ++i) {
+    //     current.insert(i);
+    // }
+    // std::cout<<"current real: "<<current.size()<<"\n";
+
+
 
 //////////////////////////////////////////////////////
     // // ==============================================================================
@@ -1485,13 +1575,13 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     // }
     // // ==============================================================================
     // // ======================= END OF VISUALIZATION CODE BLOCK ======================
-    // ==============================================================================    
+    // // // ==============================================================================    
 
 
 
-    if (current == samples_in_obstacles_ && current.size()!=tree_.size()) return false; // Early exit if nothing has changed
+    // if (current == samples_in_obstacles_ && current.size()!=tree_.size()) return false; // Early exit if nothing has changed
 
-    bool force_repair = false;
+    bool force_repair = true;
     // Heuristic: If the set of nodes near obstacles contains nearly every node in the tree,
     // we should force a full re-check to handle potential obstacle movement within this large set.
     // Using a threshold like 90% is safer than an exact '==' check.
