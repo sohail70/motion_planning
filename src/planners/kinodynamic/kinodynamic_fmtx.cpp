@@ -84,7 +84,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
     std::cout << "Taking care of the samples: \n \n";
-    bool use_rrtx_saved_samples_ = true;
+    bool use_rrtx_saved_samples_ = false;
     if (use_rrtx_saved_samples_) {
         std::string filepath = "/home/sohail/motion_planning/build/rrtx_tree_nodes.csv";
                std::cout << "Loading nodes from file: " << filepath << "\n";
@@ -571,7 +571,7 @@ void KinodynamicFMTX::plan() {
     // int checks = 0;
     // int revisits = 0;
     int obs_check = 0;
-    // long long total_neighbor_iterations = 0; // The new, more accurate counter
+    // total_neighbor_iterations = 0; // The new, more accurate counter
 
     while (!v_open_heap_.empty() &&
            (partial_update ? (v_open_heap_.top().first < robot_node_->getCost() ||
@@ -643,6 +643,8 @@ void KinodynamicFMTX::plan() {
                 //     revisits++;
 
                 // } 
+
+                last_replan_metrics_.rewire_neighbor_searches += x->forwardNeighbors().size();
 
                 // total_neighbor_iterations += x->forwardNeighbors().size();
 
@@ -739,7 +741,8 @@ void KinodynamicFMTX::plan() {
 
 
                     // bool obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, t_now);
-                    obs_check++;
+                    // obs_check++;
+                    last_replan_metrics_.obstacle_checks++;
 
                     // // // /////////////////////////////////--------------
 
@@ -820,7 +823,7 @@ void KinodynamicFMTX::plan() {
     // std::cout<<"checks: "<<checks<<"\n";
     // std::cout<<"REVISITS: "<<revisits<<"\n";
     // std::cout << "TOTAL NEIGHBOR ITERATIONS: " << total_neighbor_iterations << "\n"; // <-- Print the new metric
-    std::cout<<"OBS CHECK: "<<obs_check<<"\n";
+    // std::cout<<"OBS CHECK: "<<obs_check<<"\n";
 
     auto end = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -1340,6 +1343,7 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> KinodynamicFMTX::fin
 */
 
 bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
+    last_replan_metrics_ = ReplanMetrics();
     in_dynamic = true;
 
     /*
@@ -1890,7 +1894,7 @@ void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_i
     if (added_indices.empty()) {
         return;
     }
-    std::cout << "added indices: " << added_indices.size() << "\n";
+    // std::cout << "added indices: " << added_indices.size() << "\n";
 
     // --- Step 1: Iteratively find all descendants (the orphan set) ---
     std::unordered_set<int> orphan_indices;
@@ -1950,6 +1954,8 @@ void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_i
         find_boundary(node->backwardNeighbors());
     }
 
+    last_replan_metrics_.orphaned_nodes = orphan_indices.size();
+
     // --- Step 3: Add the unique boundary nodes to the open heap ---
     for (FMTNode* neighbor_ptr : boundary_nodes_to_requeue) {
         // This check is still useful as a safeguard, though the set ensures uniqueness.
@@ -1959,7 +1965,7 @@ void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_i
         v_open_heap_.add(neighbor_ptr, neighbor_ptr->getCost() + h_value);
     }
 
-    std::cout << "orphans size: " << orphan_indices.size() << "\n";
+    // std::cout << "orphans size: " << orphan_indices.size() << "\n";
 }
 
 
@@ -2520,6 +2526,8 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         // The new node is significantly better. It's worth switching.
         robot_node_ = best_candidate_node;
         robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+        last_replan_metrics_.path_cost = best_candidate_bridge.cost + best_candidate_node->getCost();
+
     } else if (robot_node_) {
         // The new candidate is not significantly better, or none was found.
         // Stick with the old anchor node to maintain stability.
@@ -2527,15 +2535,19 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         Trajectory bridge_to_kept_anchor = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         if (bridge_to_kept_anchor.is_valid) {
              robot_current_time_to_goal_ = bridge_to_kept_anchor.time_duration + robot_node_->getTimeToGoal();
+            last_replan_metrics_.path_cost = bridge_to_kept_anchor.cost + robot_node_->getCost();
         }
     } else {
         // This case handles when there was no previous anchor OR no valid new anchor.
         // If we found a candidate but didn't switch, we still need to set it for the first time.
         robot_node_ = best_candidate_node; // This will be nullptr if none found.
         if (robot_node_) {
-             robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+            robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+            last_replan_metrics_.path_cost = best_candidate_bridge.cost + best_candidate_node->getCost();
         } else {
-             robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+            robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+            last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+
         }
     }
     // --- STABILIZATION FIX END ---

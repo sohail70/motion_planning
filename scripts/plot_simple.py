@@ -1,3 +1,5 @@
+# # analyze_metrics.py
+
 # import pandas as pd
 # import matplotlib.pyplot as plt
 # import glob
@@ -5,230 +7,281 @@
 # import re
 # import numpy as np
 # from scipy import stats
-# from matplotlib.ticker import AutoLocator, AutoMinorLocator
+# from matplotlib.ticker import EngFormatter
 
-# def get_planner_name(filename):
-#     """Enhanced to extract planner type AND sample count from filename"""
+# def get_planner_info(filename):
+#     """
+#     Extracts planner type, sample count, and factor from a filename.
+#     e.g., sim_rrtx_2000samples_20250720_225501_metrics.csv -> ('RRTX', 2000)
+#     """
 #     base = os.path.basename(filename)
     
-#     # Extract planner type
-#     if 'fmtx' in base.lower():
-#         planner = 'FMTx'
-#     elif 'rrtx' in base.lower():
-#         planner = 'RRTx'
-#     else:
-#         planner = os.path.splitext(base)[0]  # fallback
+#     # Use re.IGNORECASE for robustness
+#     planner_match = re.search(r'sim_(fmtx|rrtx)', base, re.IGNORECASE)
+#     samples_match = re.search(r'(\d+)samples', base, re.IGNORECASE)
     
-#     # Extract sample count (look for pattern like "1000samples")
-#     samples = "N/A"
-#     match = re.search(r'(\d+)samples', base.lower())
-#     if match:
-#         samples = match.group(1)
+#     planner = planner_match.group(1).upper() if planner_match else 'Unknown'
+#     samples = int(samples_match.group(1)) if samples_match else 0
     
-#     return planner, int(samples) if samples != "N/A" else 0
+#     return planner, samples
 
-# def plot_time_series_comparison(data_by_samples):
+# def aggregate_run_data(files):
 #     """
-#     Plot a time-series comparison with a smoothed moving average.
+#     Loads all metric CSV files and groups them by planner and sample count.
+#     Returns a dictionary: {(planner, samples): [list_of_trial_dataframes]}
 #     """
-#     sample_sizes = sorted(data_by_samples.keys())
-#     if not sample_sizes:
-#         print("No valid data found for time-series plot.")
-#         return
-        
-#     fig, axes = plt.subplots(2, 2, figsize=(15, 10), sharex=False, sharey=False)
-#     fig.suptitle("Planner Performance Over Time by Sample Count", fontsize=20, fontweight='bold')
+#     aggregated_data = {}
+#     print("--- Loading and Aggregating Data ---")
+#     required_columns = ['elapsed_s', 'duration_ms', 'path_cost', 'obstacle_checks', 'rewire_neighbor_searches', 'orphaned_nodes']
+    
+#     for filename in files:
+#         try:
+#             planner, samples = get_planner_info(filename)
+#             if samples == 0:
+#                 print(f"Warning: Could not determine sample count for {filename}. Skipping.")
+#                 continue
 
-#     for ax, samples in zip(axes.flat, sample_sizes):
-#         dfs = data_by_samples.get(samples, {})
-#         max_y = 0
-        
-#         for planner, df in dfs.items():
-#             if 'elapsed_s' in df.columns and 'duration_ms' in df.columns:
-#                 xs = df['elapsed_s']
-#                 ys = df['duration_ms']
-                
-#                 # Plot the raw, "ragged" data with some transparency
-#                 ax.plot(xs, ys, label=f"{planner} (Raw)", alpha=0.3)
-                
-#                 # Calculate and plot a smoothed moving average
-#                 window_size = max(1, len(ys) // 20) # Adjust window size for smoothness
-#                 ys_smooth = ys.rolling(window=window_size, center=True, min_periods=1).mean()
-#                 ax.plot(xs, ys_smooth, label=f"{planner} (Smoothed)", linewidth=2.5)
+#             df = pd.read_csv(filename)
+#             # Validate that all required columns are present
+#             if not all(col in df.columns for col in required_columns):
+#                 print(f"Skipping {filename}: missing one or more required columns.")
+#                 continue
+            
+#             # Remove rows where path_cost is infinite (no solution found yet) for cleaner stats
+#             df.replace([np.inf, -np.inf], np.nan, inplace=True)
+#             df.dropna(subset=['path_cost'], inplace=True)
+            
+#             config_key = (planner, samples)
+#             if config_key not in aggregated_data:
+#                 aggregated_data[config_key] = []
+            
+#             aggregated_data[config_key].append(df)
+            
+#         except Exception as e:
+#             print(f"Error processing {filename}: {e}")
+    
+#     print(f"Successfully aggregated data for {len(aggregated_data)} configurations across {len(files)} files.")
+#     return aggregated_data
 
-#                 max_y = max(max_y, ys.quantile(0.99)) # Use 99th percentile for better y-limit
-        
-#         ax.set_title(f"{samples:,} Samples", fontsize=14, fontweight='bold')
-#         ax.set_xlabel("Simulation Time (s)", fontsize=12)
-#         ax.set_ylabel("Update Duration (ms)", fontsize=12)
-#         ax.grid(True, which='both', linestyle='--', linewidth=0.5)
-#         ax.set_ylim(0, max_y * 1.15)
-#         ax.yaxis.set_major_locator(plt.MaxNLocator(nbins=8))
-#         ax.yaxis.set_minor_locator(AutoMinorLocator())
-#         ax.tick_params(axis='y', which='minor', length=3, color='gray')
-#         ax.legend(loc='upper left', fontsize='medium')
-
-#     # Handle empty subplots
-#     num_plots = len(sample_sizes)
-#     for i in range(num_plots, 4):
-#         axes.flat[i].set_visible(False)
-
-#     plt.tight_layout(pad=3.0, rect=[0, 0, 1, 0.96])
-#     plot_filename = "planner_timeseries_comparison.pdf"
-#     plt.savefig(plot_filename, format="pdf", bbox_inches="tight")
-#     print(f"\nTime-series plot saved to '{plot_filename}'")
-#     plt.show()
-
-# def plot_statistical_distribution(data_by_samples):
+# def plot_metric_distribution(aggregated_data, metric_col, title, y_label, use_log_scale=False):
 #     """
-#     Generate a box plot to compare the distribution of update times.
-#     This is often more insightful than a time-series plot for this kind of data.
+#     Generates a comparative box plot for a given metric.
 #     """
-#     sample_sizes = sorted(data_by_samples.keys())
-#     if not sample_sizes:
-#         print("No valid data found for statistical plot.")
+#     # Group data by sample count for plotting side-by-side
+#     plot_groups = {}
+#     for (planner, samples), df_list in aggregated_data.items():
+#         if samples not in plot_groups:
+#             plot_groups[samples] = {}
+#         # Concatenate all trials for this planner config into one series
+#         plot_groups[samples][planner] = pd.concat(df_list, ignore_index=True)[metric_col]
+
+#     if not plot_groups:
+#         print(f"No data to plot for metric '{metric_col}'.")
 #         return
 
-#     fig, axes = plt.subplots(1, len(sample_sizes), figsize=(5 * len(sample_sizes), 7), sharey=True)
-#     if len(sample_sizes) == 1: # Ensure axes is always iterable
-#         axes = [axes]
-        
-#     fig.suptitle("Statistical Distribution of Planner Update Times", fontsize=20, fontweight='bold')
+#     num_samples = len(plot_groups)
+    
+#     # === THE FIX IS HERE ===
+#     # Set sharey=False to allow each subplot to have its own y-axis range.
+#     fig, axes = plt.subplots(1, num_samples, figsize=(6 * num_samples, 7), sharey=False, squeeze=False)
+#     # =======================
 
-#     for ax, samples in zip(axes, sample_sizes):
-#         planners_data = data_by_samples.get(samples, {})
+#     fig.suptitle(title, fontsize=22, fontweight='bold')
+
+#     for i, (samples, planners_data) in enumerate(sorted(plot_groups.items())):
+#         ax = axes[0, i]
         
-#         plot_data = [df['duration_ms'] for df in planners_data.values()]
-#         labels = [name for name in planners_data.keys()]
+#         plot_data = []
+#         labels = []
+#         # Ensure consistent RRTx, FMTx order
+#         for planner_name in ['RRTX', 'FMTX']:
+#             if planner_name in planners_data:
+#                 plot_data.append(planners_data[planner_name].dropna()) # Drop NaNs for plotting
+#                 labels.append(planner_name)
+            
+#         if not plot_data:
+#             continue
+
+#         box = ax.boxplot(plot_data, labels=labels, patch_artist=True, showfliers=False, medianprops={'color':'#D95319', 'linewidth':2.5})
         
-#         box = ax.boxplot(plot_data, labels=labels, patch_artist=True, showfliers=False) # showfliers=False to hide outliers for clarity
-        
-#         colors = ['lightblue', 'lightgreen']
+#         colors = ['#0072BD', '#4DBEEE'] # Blue, Light Blue
 #         for patch, color in zip(box['boxes'], colors):
 #             patch.set_facecolor(color)
             
-#         ax.set_title(f"{samples:,} Samples", fontsize=14, fontweight='bold')
-#         ax.set_ylabel("Update Duration (ms)", fontsize=12)
-#         ax.grid(True, axis='y', linestyle='--', linewidth=0.5)
+#         ax.set_title(f"{samples:,} Samples", fontsize=16, fontweight='bold')
+#         ax.set_ylabel(y_label, fontsize=14) # Set label for each plot since scales differ
+#         ax.grid(True, which='major', axis='y', linestyle='--', linewidth=0.7)
+#         ax.yaxis.set_major_formatter(EngFormatter()) # Use engineering notation (e.g., 1k, 1M)
+        
+#         if use_log_scale:
+#             ax.set_yscale('symlog', linthresh=1) # Use symlog for data that might include zero
+#             # ax.set_yscale('log')
 
-#     plt.tight_layout(rect=[0, 0, 1, 0.95])
-#     plot_filename = "planner_statistical_comparison.pdf"
+#     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+#     plot_filename = f"comparison_{metric_col}.pdf"
 #     plt.savefig(plot_filename, format="pdf", bbox_inches="tight")
-#     print(f"Statistical distribution plot saved to '{plot_filename}'")
+#     print(f"-> Saved plot to '{plot_filename}'")
 #     plt.show()
 
+# def plot_time_series(trial_data, metric_col, title, y_label):
+#     """
+#     Generates a time-series plot with individual trials and a smoothed rolling median.
+#     """
+#     plot_groups = {}
+#     for (planner, samples), list_of_dfs in trial_data.items():
+#         if samples not in plot_groups:
+#             plot_groups[samples] = {}
+#         plot_groups[samples][planner] = list_of_dfs
 
-# def perform_all_statistical_analyses(all_data):
-#     """Compare all FMTx vs RRTx pairs with matching sample sizes"""
-#     sample_groups = {}
-#     for planner, samples, df in all_data:
-#         if samples not in sample_groups:
-#             sample_groups[samples] = {}
-#         sample_groups[samples][planner] = df
-    
-#     for samples, planners in sorted(sample_groups.items()):
-#         if len(planners) >= 2 and 'FMTx' in planners and 'RRTx' in planners:
-#             print(f"\n{'='*55}")
-#             print(f" STATISTICAL COMPARISON FOR {samples:,} SAMPLES")
-#             print(f"{'='*55}")
-            
-#             fmtx_data = ('FMTx', planners['FMTx'])
-#             rrtx_data = ('RRTx', planners['RRTx'])
-#             perform_statistical_analysis(fmtx_data, rrtx_data)
+#     if not plot_groups:
+#         print(f"No data to plot for time-series '{metric_col}'.")
+#         return
 
-# def perform_statistical_analysis(planner_a, planner_b):
-#     """Compare two planners statistically"""
-#     name_a, data_a = planner_a
-#     name_b, data_b = planner_b
-    
-#     durations_a = data_a['duration_ms']
-#     durations_b = data_b['duration_ms']
-    
-#     print(f"\n--- {name_a} vs {name_b} Performance ---")
-#     print(f"{'Metric':<15} {name_a:<12} {name_b:<12}")
-#     print("-" * 42)
-    
-#     stats_data = [
-#         ("Median", np.median),
-#         ("Mean", np.mean),
-#         ("Std Dev", np.std),
-#         ("95th %ile", lambda x: np.percentile(x, 95))
+#     num_samples = len(plot_groups)
+#     fig, axes = plt.subplots(1, num_samples, figsize=(8 * num_samples, 7), sharey=True, squeeze=False)
+#     fig.suptitle(title, fontsize=22, fontweight='bold')
+
+#     for i, (samples, planners_trial_data) in enumerate(sorted(plot_groups.items())):
+#         ax = axes[0, i]
+#         max_y = 0
+#         colors = {'FMTX': '#EDB120', 'RRTX': '#77AC30'} # Gold, Green
+
+#         for planner_name in sorted(planners_trial_data.keys()):
+#             list_of_dfs = planners_trial_data[planner_name]
+#             color = colors.get(planner_name, 'gray')
+
+#             # 1. Plot individual trials with low opacity
+#             for trial_df in list_of_dfs:
+#                 trial_df_sorted = trial_df.sort_values('elapsed_s')
+#                 ax.plot(trial_df_sorted['elapsed_s'], trial_df_sorted[metric_col], '-', color=color, linewidth=0.5, alpha=0.1)
+
+#             # 2. Plot a smoothed rolling median over all concatenated trials
+#             all_trials_df = pd.concat(list_of_dfs, ignore_index=True).sort_values('elapsed_s')
+#             if not all_trials_df.empty:
+#                 window_size = max(10, int(len(all_trials_df) * 0.05))
+#                 rolling_median = all_trials_df[metric_col].rolling(window=window_size, center=True, min_periods=5).median()
+#                 ax.plot(all_trials_df['elapsed_s'], rolling_median, color=color, linestyle='-', linewidth=3, label=f'{planner_name} (Median)')
+#                 max_y = max(max_y, all_trials_df[metric_col].quantile(0.99)) # Use 99th percentile for robust y-limit
+        
+#         ax.set_title(f"{samples:,} Samples", fontsize=16, fontweight='bold')
+#         ax.set_xlabel("Simulation Time (s)", fontsize=14)
+#         if i == 0:
+#             ax.set_ylabel(y_label, fontsize=14)
+#         ax.grid(True, which='major', linestyle='--', linewidth=0.7)
+#         ax.legend(loc='best', fontsize='large')
+#         if max_y > 0:
+#             ax.set_ylim(0, max_y * 1.1)
+
+#     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+#     plot_filename = f"timeseries_{metric_col}.pdf"
+#     plt.savefig(plot_filename, format="pdf", bbox_inches="tight")
+#     print(f"-> Saved plot to '{plot_filename}'")
+#     plt.show()
+
+# def perform_statistical_analysis(aggregated_data):
+#     """Performs and prints a detailed statistical analysis for each metric."""
+#     metrics_to_analyze = [
+#         ("Update Duration (ms)", "duration_ms", "ms"),
+#         ("Final Path Cost", "path_cost", ""),
+#         ("Time to Goal", "time_to_goal", "s"),
+#         ("Obstacle Checks", "obstacle_checks", "checks"),
+#         ("Rewire Searches", "rewire_neighbor_searches", "searches"),
+#         ("Orphaned Nodes", "orphaned_nodes", "nodes")
 #     ]
     
-#     for stat_name, func in stats_data:
-#         val_a = f"{func(durations_a):.2f} ms"
-#         val_b = f"{func(durations_b):.2f} ms"
-#         print(f"{stat_name:<15} {val_a:<12} {val_b:<12}")
-    
-#     try:
-#         stat, p = stats.mannwhitneyu(durations_a, durations_b, alternative='two-sided')
-#         print(f"\nStatistical Test (Mann-Whitney U):")
-#         print(f"  - U-statistic = {stat:.1f}, p-value = {p:.6f}")
-#         if p < 0.001:
-#             print("  - Result: STRONG evidence of a significant difference (p < 0.001)")
-#         elif p < 0.05:
-#             print("  - Result: Evidence of a significant difference (p < 0.05)")
-#         else:
-#             print("  - Result: No significant difference detected (p >= 0.05)")
+#     # Group data by sample count
+#     analysis_groups = {}
+#     for (planner, samples), df_list in aggregated_data.items():
+#         if samples not in analysis_groups:
+#             analysis_groups[samples] = {}
+#         analysis_groups[samples][planner] = pd.concat(df_list, ignore_index=True)
+
+#     for samples, planners_data in sorted(analysis_groups.items()):
+#         print(f"\n{'='*70}")
+#         print(f" STATISTICAL ANALYSIS: {samples:,} SAMPLES")
+#         print(f"{'='*70}")
         
-#         median_a = np.median(durations_a)
-#         median_b = np.median(durations_b)
-#         if median_a > 0 and median_b > 0:
-#             if median_a < median_b:
-#                 ratio = median_b / median_a
-#                 print(f"\n  - Speed Ratio: {name_a} is {ratio:.2f}x faster than {name_b} (based on median)")
+#         if 'FMTX' not in planners_data or 'RRTX' not in planners_data:
+#             print("Skipping analysis, missing data for one or more planners.")
+#             continue
+        
+#         df_fmtx = planners_data['FMTX']
+#         df_rrtx = planners_data['RRTX']
+
+#         for name, col, unit in metrics_to_analyze:
+#             print(f"\n--- Metric: {name} ---\n")
+#             print(f"{'Statistic':<15} {'FMTx':<20} {'RRTx':<20}")
+#             print("-" * 55)
+            
+#             data_fmtx = df_fmtx[col].dropna()
+#             data_rrtx = df_rrtx[col].dropna()
+
+#             if data_fmtx.empty or data_rrtx.empty:
+#                 print("Not enough data for comparison.")
+#                 continue
+
+#             stats_to_run = [("Mean", np.mean), ("Median", np.median), ("Std Dev", np.std), ("95th %ile", lambda x: np.percentile(x, 95))]
+#             for stat_name, func in stats_to_run:
+#                 val_a = f"{func(data_fmtx):.2f} {unit}"
+#                 val_b = f"{func(data_rrtx):.2f} {unit}"
+#                 print(f"{stat_name:<15} {val_a:<20} {val_b:<20}")
+
+#             # Mann-Whitney U test (non-parametric, good for non-normal data)
+#             stat, p = stats.mannwhitneyu(data_fmtx, data_rrtx, alternative='two-sided')
+#             print(f"\n  Mann-Whitney U-test p-value: {p:.4g}")
+#             if p < 0.05:
+#                 median_fmtx = np.median(data_fmtx)
+#                 median_rrtx = np.median(data_rrtx)
+#                 winner = "FMTx" if median_fmtx < median_rrtx else "RRTx"
+#                 print(f"  Conclusion: Statistically significant difference found ( favoring {winner}).")
 #             else:
-#                 ratio = median_a / median_b
-#                 print(f"\n  - Speed Ratio: {name_b} is {ratio:.2f}x faster than {name_a} (based on median)")
-#     except ValueError as e:
-#         print(f"\nCould not perform statistical test: {e}")
+#                 print("  Conclusion: No statistically significant difference detected.")
+#             print("-" * 55)
+
 
 # def main():
-#     search_path = "../build/sim_*_*.csv"
+#     """Main function to load data, generate plots, and run analysis."""
+#     # The script should be run from the parent directory of 'build'
+#     search_path = "../build/sim_*_metrics.csv"
 #     files = sorted(glob.glob(search_path))
     
 #     if not files:
-#         print(f"No data files found in '{os.path.abspath('../build/')}'")
-#         print("Please ensure your C++ application is saving CSV files with names like:")
-#         print("  - sim_fmtx_5000samples_..._timed.csv")
-#         print("  - sim_rrtx_10000samples_..._timed.csv")
+#         print(f"Error: No data files found matching '{os.path.abspath(search_path)}'")
+#         print("Please ensure your C++ benchmarks have been run and saved CSV files.")
 #         return
     
-#     print(f"Found {len(files)} log files to analyze.")
+#     # 1. Load and aggregate all data from all trial runs
+#     trial_data = aggregate_run_data(files)
+#     if not trial_data:
+#         print("No valid data could be aggregated. Exiting.")
+#         return
+
+#     # 2. Generate plots
+#     print("\n--- Generating Plots ---")
     
-#     # --- Data Loading and Grouping ---
-#     all_data = []
-#     data_by_samples = {}
-#     for filename in files:
-#         try:
-#             planner, samples = get_planner_name(filename)
-#             df = pd.read_csv(filename)
-#             if 'duration_ms' not in df.columns:
-#                 print(f"Skipping {filename}: missing 'duration_ms' column.")
-#                 continue
-#             all_data.append((planner, samples, df))
-#             data_by_samples.setdefault(samples, {})[planner] = df
-#         except Exception as e:
-#             print(f"Error processing {filename}: {e}")
-            
-#     # --- Generate Visualizations and Analysis ---
-#     plot_time_series_comparison(data_by_samples)
-#     plot_statistical_distribution(data_by_samples)
-#     perform_all_statistical_analyses(all_data)
+#     # Plot distributions for all key metrics
+#     plot_metric_distribution(trial_data, 'duration_ms', "Planner Update Time Distribution", "Update Duration (ms)", use_log_scale=True)
+#     plot_metric_distribution(trial_data, 'path_cost', "Final Path Cost Distribution", "Path Cost")
+#     plot_metric_distribution(trial_data, 'obstacle_checks', "Obstacle Check Distribution", "Collision Checks per Replan", use_log_scale=True)
+#     plot_metric_distribution(trial_data, 'rewire_neighbor_searches', "Rewire Search Distribution", "Rewire Searches per Replan", use_log_scale=True)
+#     plot_metric_distribution(trial_data, 'orphaned_nodes', "Orphaned Node Distribution", "Orphaned Nodes per Replan", use_log_scale=True)
+    
+#     # Plot time-series for efficiency and solution quality
+#     plot_time_series(trial_data, 'duration_ms', "Planner Update Time Over Simulation", "Update Duration (ms)")
+#     plot_time_series(trial_data, 'path_cost', "Path Cost Over Simulation", "Path Cost")
+
+#     # 3. Perform and print statistical analysis
+#     perform_statistical_analysis(trial_data)
 
 # if __name__ == "__main__":
+#     plt.style.use('seaborn-v0_8-whitegrid')
 #     main()
 
 
 
 
+############################################################
 
-
-
-
-
-
-#####################################################################
 import pandas as pd
 import matplotlib.pyplot as plt
 import glob
@@ -236,268 +289,279 @@ import os
 import re
 import numpy as np
 from scipy import stats
-from matplotlib.ticker import AutoLocator, AutoMinorLocator
+from matplotlib.ticker import EngFormatter
 
 def get_planner_info(filename):
     """
-    Extracts planner type, sample count, and factor from a filename.
-    Example: sim_rrtx_5000samples_factor2.0_..._timed.csv -> ('RRTx', 5000, 2.0)
+    Extracts planner type and sample count from a filename.
     """
     base = os.path.basename(filename)
+    planner_match = re.search(r'sim_(fmtx|rrtx)', base, re.IGNORECASE)
+    samples_match = re.search(r'(\d+)samples', base, re.IGNORECASE)
     
-    planner_match = re.search(r'sim_(fmtx|rrtx)', base.lower())
-    samples_match = re.search(r'(\d+)samples', base.lower())
-    factor_match = re.search(r'factor([\d\.]+)', base.lower()) # Updated to capture float
-
     planner = planner_match.group(1).upper() if planner_match else 'Unknown'
     samples = int(samples_match.group(1)) if samples_match else 0
-    factor = float(factor_match.group(1)) if factor_match else 0.0
     
-    return planner, samples, factor
+    return planner, samples
 
 def aggregate_run_data(files):
     """
-    Loads all CSV files and groups them by planner configuration.
-    Returns a dictionary: {(planner, samples, factor): [list_of_trial_dataframes]}
+    Loads all metric CSV files and groups them by planner and sample count.
+    Returns a dictionary: {(planner, samples): [list_of_trial_dataframes]}
     """
     aggregated_data = {}
     print("--- Loading and Aggregating Data ---")
+    required_columns = ['elapsed_s', 'duration_ms', 'path_cost', 'obstacle_checks', 'rewire_neighbor_searches', 'orphaned_nodes']
+    
     for filename in files:
         try:
-            planner, samples, factor = get_planner_info(filename)
-            if samples == 0:
-                print(f"Warning: Could not determine sample count for {filename}. Skipping.")
-                continue
+            planner, samples = get_planner_info(filename)
+            if samples == 0: continue
 
             df = pd.read_csv(filename)
-            if 'duration_ms' not in df.columns:
-                print(f"Skipping {filename}: missing 'duration_ms' column.")
+            if not all(col in df.columns for col in required_columns):
+                print(f"Skipping {filename}: missing one or more required columns.")
                 continue
             
-            # Create a unique key for each experimental setup
-            config_key = (planner, samples, factor)
+            df.replace([np.inf, -np.inf], np.nan, inplace=True)
+            df.dropna(subset=['path_cost'], inplace=True)
             
-            # If this is the first file for this config, create a new list
+            config_key = (planner, samples)
             if config_key not in aggregated_data:
                 aggregated_data[config_key] = []
             
-            # Append the dataframe to the list for this config
             aggregated_data[config_key].append(df)
             
         except Exception as e:
             print(f"Error processing {filename}: {e}")
     
-    print(f"Successfully aggregated data for {len(aggregated_data)} configurations.")
+    print(f"Successfully aggregated data for {len(aggregated_data)} configurations across {len(files)} files.")
     return aggregated_data
 
-def plot_statistical_distribution(aggregated_data):
+def plot_metric_distribution(aggregated_data, metric_col, title, y_label):
     """
-    Generates a box plot to compare the distribution of update times for each configuration.
+    Generates a comparative box plot for a given metric.
     """
-    # Group data by sample and factor size for plotting
     plot_groups = {}
-    for (planner, samples, factor), df in aggregated_data.items():
-        group_key = (samples, factor)
-        if group_key not in plot_groups:
-            plot_groups[group_key] = {}
-        plot_groups[group_key][planner] = df['duration_ms']
+    for (planner, samples), df_list in aggregated_data.items():
+        if samples not in plot_groups: plot_groups[samples] = {}
+        plot_groups[samples][planner] = pd.concat(df_list, ignore_index=True)[metric_col]
 
-    if not plot_groups:
-        print("No data to plot for statistical distribution.")
-        return
+    if not plot_groups: return
 
-    num_groups = len(plot_groups)
-    fig, axes = plt.subplots(1, num_groups, figsize=(6 * num_groups, 8), sharey=True, squeeze=False)
-    fig.suptitle("Statistical Distribution of Planner Update Times", fontsize=20, fontweight='bold')
+    num_samples = len(plot_groups)
+    fig, axes = plt.subplots(1, num_samples, figsize=(6 * num_samples, 7), sharey=False, squeeze=False)
+    fig.suptitle(title, fontsize=22, fontweight='bold')
 
-    for i, ((samples, factor), planners_data) in enumerate(sorted(plot_groups.items())):
+    for i, (samples, planners_data) in enumerate(sorted(plot_groups.items())):
         ax = axes[0, i]
-        
-        plot_data = []
-        labels = []
-        # Ensure consistent order for plotting
-        if 'RRTX' in planners_data:
-            plot_data.append(planners_data['RRTX'])
-            labels.append('RRTx')
-        if 'FMTX' in planners_data:
-            plot_data.append(planners_data['FMTX'])
-            labels.append('FMTx')
-            
-        if not plot_data:
-            continue
+        plot_data, labels = [], []
+        # Fixed order for consistent coloring
+        for planner_name in ['RRTX', 'FMTX']:
+            if planner_name in planners_data:
+                plot_data.append(planners_data[planner_name].dropna())
+                labels.append(planner_name)
+        if not plot_data: continue
 
-        box = ax.boxplot(plot_data, labels=labels, patch_artist=True, showfliers=False, medianprops={'color':'red', 'linewidth':2})
+        box = ax.boxplot(plot_data, labels=labels, patch_artist=True, showfliers=False, medianprops={'color':'#A2142F', 'linewidth':2.5})
         
-        colors = ['lightblue', 'lightgreen']
+        # === COLOR CORRECTION ===
+        # RRTx (Red), FMTx (Blue)
+        colors = ['#d62728', '#1f77b4'] 
         for patch, color in zip(box['boxes'], colors):
             patch.set_facecolor(color)
             
-        ax.set_title(f"{samples:,} Samples | Factor: {factor}", fontsize=14, fontweight='bold')
-        if i == 0:
-            ax.set_ylabel("Update Duration (ms)", fontsize=12)
-        ax.grid(True, axis='y', linestyle='--', linewidth=0.5)
-
+        ax.set_title(f"{samples:,} Samples", fontsize=16, fontweight='bold')
+        ax.set_ylabel(y_label, fontsize=14)
+        ax.grid(True, which='major', axis='y', linestyle='--', linewidth=0.7)
+        ax.yaxis.set_major_formatter(EngFormatter())
+        
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plot_filename = "planner_statistical_comparison.pdf"
+    plot_filename = f"comparison_{metric_col}.pdf"
     plt.savefig(plot_filename, format="pdf", bbox_inches="tight")
-    print(f"\nStatistical distribution plot saved to '{plot_filename}'")
+    print(f"-> Saved Box Plot to '{plot_filename}'")
     plt.show()
 
-def plot_time_series_with_average(trial_data):
+def plot_ecdf(aggregated_data, metric_col, title, x_label):
     """
-    Generates a time-series plot comparing planner performance. It plots each trial
-    with low opacity and overlays a smoothed rolling median.
+    Generates a comparative Empirical Cumulative Distribution Function (ECDF) plot.
     """
-    # Group data by sample and factor size for plotting
     plot_groups = {}
-    for (planner, samples, factor), list_of_dfs in trial_data.items():
-        group_key = (samples, factor)
-        if group_key not in plot_groups:
-            plot_groups[group_key] = {}
-        plot_groups[group_key][planner] = list_of_dfs
+    for (planner, samples), df_list in aggregated_data.items():
+        if samples not in plot_groups: plot_groups[samples] = {}
+        plot_groups[samples][planner] = pd.concat(df_list, ignore_index=True)[metric_col]
 
-    if not plot_groups:
-        print("No data to plot for time-series analysis.")
-        return
+    if not plot_groups: return
 
-    num_groups = len(plot_groups)
-    fig, axes = plt.subplots(1, num_groups, figsize=(8 * num_groups, 7), sharey=True, squeeze=False)
-    fig.suptitle("Time-Series of Planner Update Durations", fontsize=20, fontweight='bold')
+    num_samples = len(plot_groups)
+    fig, axes = plt.subplots(1, num_samples, figsize=(8 * num_samples, 6), sharey=True, squeeze=False)
+    fig.suptitle(title, fontsize=22, fontweight='bold')
+    
+    # === COLOR CORRECTION ===
+    colors = {'FMTX': '#1f77b4', 'RRTX': '#d62728'} # Blue, Red
 
-    for i, ((samples, factor), planners_trial_data) in enumerate(sorted(plot_groups.items())):
+    for i, (samples, planners_data) in enumerate(sorted(plot_groups.items())):
+        ax = axes[0, i]
+        
+        for planner_name in sorted(planners_data.keys()):
+            data = planners_data[planner_name].dropna()
+            if data.empty: continue
+            
+            x_sorted = np.sort(data)
+            y_ecdf = np.arange(1, len(x_sorted) + 1) / len(x_sorted)
+            ax.plot(x_sorted, y_ecdf, linestyle='-', linewidth=2.5, color=colors.get(planner_name, 'gray'), label=planner_name)
+
+        ax.set_title(f"{samples:,} Samples", fontsize=16, fontweight='bold')
+        ax.set_xlabel(x_label, fontsize=14)
+        if i == 0: ax.set_ylabel("Proportion of Replans", fontsize=14)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+        ax.legend(loc='best', fontsize='large')
+        ax.set_xscale('log')
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plot_filename = f"ecdf_{metric_col}.pdf"
+    plt.savefig(plot_filename, format="pdf", bbox_inches="tight")
+    print(f"-> Saved ECDF Plot to '{plot_filename}'")
+    plt.show()
+
+def plot_time_series(trial_data, metric_col, title, y_label):
+    """
+    Generates a time-series plot with individual trials and a smoothed rolling median.
+    """
+    plot_groups = {}
+    for (planner, samples), list_of_dfs in trial_data.items():
+        if samples not in plot_groups: plot_groups[samples] = {}
+        plot_groups[samples][planner] = list_of_dfs
+
+    if not plot_groups: return
+
+    num_samples = len(plot_groups)
+    fig, axes = plt.subplots(1, num_samples, figsize=(8 * num_samples, 7), sharey=False, squeeze=False)
+    fig.suptitle(title, fontsize=22, fontweight='bold')
+    
+    # === COLOR CORRECTION ===
+    colors = {'FMTX': '#1f77b4', 'RRTX': '#d62728'} # Blue, Red
+
+    for i, (samples, planners_trial_data) in enumerate(sorted(plot_groups.items())):
         ax = axes[0, i]
         max_y = 0
 
-        colors = {'FMTX': 'green', 'RRTX': 'blue'}
-        
         for planner_name in sorted(planners_trial_data.keys()):
             list_of_dfs = planners_trial_data[planner_name]
             color = colors.get(planner_name, 'gray')
 
-            # 1. Plot individual trials with low opacity
-            first_trial = True
+            # Plot individual trials with low opacity
             for trial_df in list_of_dfs:
-                label = f'{planner_name} (Trials)' if first_trial else None
                 trial_df_sorted = trial_df.sort_values('elapsed_s')
-                ax.plot(trial_df_sorted['elapsed_s'], trial_df_sorted['duration_ms'], '-', color=color, linewidth=0.5, alpha=0.15, label=label)
-                first_trial = False
+                ax.plot(trial_df_sorted['elapsed_s'], trial_df_sorted[metric_col], '-', color=color, linewidth=0.5, alpha=0.1)
 
-            # 2. Concatenate all trials to calculate and plot smoothed median and average
-            all_trials_df = pd.concat(list_of_dfs, ignore_index=True)
-            
-            # Plot a smoothed rolling median line on top
+            # Plot a smoothed rolling median over all concatenated trials
+            all_trials_df = pd.concat(list_of_dfs, ignore_index=True).sort_values('elapsed_s')
             if not all_trials_df.empty:
-                all_trials_df_sorted = all_trials_df.sort_values('elapsed_s')
-                window_size = max(20, int(len(all_trials_df_sorted) * 0.05)) # 5% window, with a minimum size
-                rolling_median = all_trials_df_sorted['duration_ms'].rolling(window=window_size, center=True, min_periods=10).median()
-                ax.plot(all_trials_df_sorted['elapsed_s'], rolling_median, color=color, linestyle='-', linewidth=2.5, label=f'{planner_name} (Rolling Median)')
-            
-                # 3. Plot the overall average as a horizontal line
-                mean_duration = all_trials_df['duration_ms'].mean()
-                ax.axhline(y=mean_duration, color=color, linestyle='--', linewidth=2, label=f'{planner_name} Avg: {mean_duration:.2f} ms')
-                
-                max_y = max(max_y, all_trials_df['duration_ms'].quantile(0.98))
+                window_size = max(10, int(len(all_trials_df) * 0.05))
+                rolling_median = all_trials_df[metric_col].rolling(window=window_size, center=True, min_periods=5).median()
+                ax.plot(all_trials_df['elapsed_s'], rolling_median, color=color, linestyle='-', linewidth=3, label=f'{planner_name} (Median)')
+                if not all_trials_df[metric_col].empty:
+                    max_y = max(max_y, all_trials_df[metric_col].quantile(0.99))
         
-        ax.set_title(f"{samples:,} Samples | Factor: {factor}", fontsize=14, fontweight='bold')
-        ax.set_xlabel("Simulation Time (s)", fontsize=12)
-        if i == 0:
-            ax.set_ylabel("Update Duration (ms)", fontsize=12)
+        ax.set_title(f"{samples:,} Samples", fontsize=16, fontweight='bold')
+        ax.set_xlabel("Simulation Time (s)", fontsize=14)
+        ax.set_ylabel(y_label, fontsize=14)
         ax.grid(True, which='major', linestyle='--', linewidth=0.7)
-        ax.legend(loc='upper right', fontsize='medium')
-        ax.set_ylim(0, max_y * 1.15)
+        ax.legend(loc='best', fontsize='large')
+        if max_y > 0:
+            ax.set_ylim(0, max_y * 1.1)
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plot_filename = "planner_timeseries_average_comparison.pdf"
+    plot_filename = f"timeseries_{metric_col}.pdf"
     plt.savefig(plot_filename, format="pdf", bbox_inches="tight")
-    print(f"\nTime-series plot with averages saved to '{plot_filename}'")
+    print(f"-> Saved Time-Series Plot to '{plot_filename}'")
     plt.show()
 
 def perform_statistical_analysis(aggregated_data):
-    """Performs and prints statistical analysis for each configuration."""
-    plot_groups = {}
-    for (planner, samples, factor), df in aggregated_data.items():
-        group_key = (samples, factor)
-        if group_key not in plot_groups:
-            plot_groups[group_key] = {}
-        plot_groups[group_key][planner] = df['duration_ms']
+    """
+    Performs and prints a detailed statistical analysis for each metric.
+    """
+    metrics_to_analyze = [
+        ("Update Duration (ms)", "duration_ms", "ms"),
+        ("Final Path Cost", "path_cost", ""),
+        ("Time to Goal", "time_to_goal", "s"),
+        ("Obstacle Checks", "obstacle_checks", "checks"),
+        ("Rewire Searches", "rewire_neighbor_searches", "searches"),
+        ("Orphaned Nodes", "orphaned_nodes", "nodes")
+    ]
+    
+    analysis_groups = {}
+    for (planner, samples), df_list in aggregated_data.items():
+        if samples not in analysis_groups: analysis_groups[samples] = {}
+        analysis_groups[samples][planner] = pd.concat(df_list, ignore_index=True)
 
-    for (samples, factor), planners_data in sorted(plot_groups.items()):
-        if 'FMTX' in planners_data and 'RRTX' in planners_data:
-            print(f"\n{'='*60}")
-            print(f" STATISTICAL COMPARISON: {samples:,} SAMPLES | FACTOR: {factor}")
-            print(f"{'='*60}")
+    for samples, planners_data in sorted(analysis_groups.items()):
+        print(f"\n{'='*70}")
+        print(f" STATISTICAL ANALYSIS: {samples:,} SAMPLES")
+        print(f"{'='*70}")
+        
+        if 'FMTX' not in planners_data or 'RRTX' not in planners_data:
+            print("Skipping analysis, missing data for one or more planners.")
+            continue
+        
+        df_fmtx = planners_data['FMTX']
+        df_rrtx = planners_data['RRTX']
+
+        for name, col, unit in metrics_to_analyze:
+            print(f"\n--- Metric: {name} ---\n")
+            print(f"{'Statistic':<15} {'FMTx':<20} {'RRTx':<20}")
+            print("-" * 55)
             
-            durations_a = planners_data['FMTX']
-            durations_b = planners_data['RRTX']
-            
-            print(f"{'Metric':<15} {'FMTx':<15} {'RRTx':<15}")
-            print("-" * 47)
-            
-            stats_to_run = [
-                ("Median", np.median),
-                ("Mean", np.mean),
-                ("Std Dev", np.std),
-                ("95th %ile", lambda x: np.percentile(x, 95)),
-                ("Max", np.max)
-            ]
-            
+            data_fmtx = df_fmtx[col].dropna()
+            data_rrtx = df_rrtx[col].dropna()
+
+            if data_fmtx.empty or data_rrtx.empty:
+                print("Not enough data for comparison.")
+                continue
+
+            stats_to_run = [("Mean", np.mean), ("Median", np.median), ("Std Dev", np.std), ("95th %ile", lambda x: np.percentile(x, 95))]
             for stat_name, func in stats_to_run:
-                val_a = f"{func(durations_a):.2f} ms"
-                val_b = f"{func(durations_b):.2f} ms"
-                print(f"{stat_name:<15} {val_a:<15} {val_b:<15}")
-            
-            try:
-                # Mann-Whitney U test is robust for non-normal distributions
-                stat, p = stats.mannwhitneyu(durations_a, durations_b, alternative='two-sided')
-                print(f"\nStatistical Test (Mann-Whitney U):")
-                print(f"  - U-statistic = {stat:.1f}, p-value = {p:.6f}")
-                if p < 0.001:
-                    print("  - Result: STRONG evidence of a significant difference.")
-                elif p < 0.05:
-                    print("  - Result: Evidence of a significant difference.")
-                else:
-                    print("  - Result: No significant difference detected.")
-                
-                median_a = np.median(durations_a)
-                median_b = np.median(durations_b)
-                if median_a > 1e-6 and median_b > 1e-6:
-                    if median_a < median_b:
-                        ratio = median_b / median_a
-                        print(f"  - Conclusion: FMTx is ~{ratio:.2f}x faster than RRTx (based on median).")
-                    else:
-                        ratio = median_a / median_b
-                        print(f"  - Conclusion: RRTx is ~{ratio:.2f}x faster than FMTx (based on median).")
-            except ValueError as e:
-                print(f"\nCould not perform statistical test: {e}")
+                val_a = f"{func(data_fmtx):.2f} {unit}"
+                val_b = f"{func(data_rrtx):.2f} {unit}"
+                print(f"{stat_name:<15} {val_a:<20} {val_b:<20}")
+
+            stat, p = stats.mannwhitneyu(data_fmtx, data_rrtx, alternative='two-sided')
+            print(f"\n  Mann-Whitney U-test p-value: {p:.4g}")
+            if p < 0.05:
+                median_fmtx = np.median(data_fmtx)
+                median_rrtx = np.median(data_rrtx)
+                winner = "FMTx" if median_fmtx < median_rrtx else "RRTx"
+                print(f"  Conclusion: Statistically significant difference found (favoring {winner}).")
+            else:
+                print("  Conclusion: No statistically significant difference detected.")
+            print("-" * 55)
 
 def main():
-    """Main function to load data, generate plots, and run analysis."""
-    search_path = "../build/sim_*_timed.csv"
+    """Main function to load data, generate all plots, and run analysis."""
+    search_path = "../build/sim_*_metrics.csv"
     files = sorted(glob.glob(search_path))
     
     if not files:
-        print(f"Error: No data files found matching the pattern in '{os.path.abspath('../build/')}'")
-        print("Please ensure your C++ application is running and saving CSV files with names like:")
-        print("  - sim_fmtx_5000samples_factor2.0_..._timed.csv")
-        print("  - sim_rrtx_5000samples_factor2.0_..._timed.csv")
+        print(f"Error: No data files found matching '{os.path.abspath(search_path)}'")
         return
     
-    # 1. Load and aggregate all data from all runs into lists of trials
     trial_data = aggregate_run_data(files)
-    
-    if not trial_data:
-        print("No valid data could be aggregated. Exiting.")
-        return
+    if not trial_data: return
 
-    # Create a concatenated version for statistical functions that need a single DataFrame
-    concatenated_data = {key: pd.concat(dfs, ignore_index=True) for key, dfs in trial_data.items()}
-
-    # 2. Generate plots
-    plot_statistical_distribution(concatenated_data)
-    plot_time_series_with_average(trial_data) # Pass the un-concatenated trial data here
+    print("\n--- Generating Plots ---")
     
-    # 3. Perform and print statistical analysis
-    perform_statistical_analysis(concatenated_data)
+    plot_metric_distribution(trial_data, 'duration_ms', "Planner Update Time Distribution", "Update Duration (ms)")
+    plot_metric_distribution(trial_data, 'path_cost', "Final Path Cost Distribution", "Path Cost")
+    
+    plot_ecdf(trial_data, 'obstacle_checks', "ECDF of Obstacle Checks", "Number of Obstacle Checks (log scale)")
+    plot_ecdf(trial_data, 'rewire_neighbor_searches', "ECDF of Rewire Searches", "Number of Rewire Searches (log scale)")
+    plot_ecdf(trial_data, 'orphaned_nodes', "ECDF of Orphaned Nodes", "Number of Orphaned Nodes (log scale)")
+    
+    plot_time_series(trial_data, 'duration_ms', "Planner Update Time Over Simulation", "Update Duration (ms)")
+    plot_time_series(trial_data, 'path_cost', "Path Cost Over Simulation", "Path Cost")
+    
+    perform_statistical_analysis(trial_data)
 
 if __name__ == "__main__":
     plt.style.use('seaborn-v0_8-whitegrid')

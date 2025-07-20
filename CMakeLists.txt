@@ -8,8 +8,8 @@ set(CMAKE_BUILD_TYPE Release)
 
 
 # Override the default Release flags to include debug info for profiling
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -g -fno-omit-frame-pointer")
-set(CMAKE_C_FLAGS_RELEASE   "-O3 -g -fno-omit-frame-pointer")
+# set(CMAKE_CXX_FLAGS_RELEASE "-O2 -g -fno-omit-frame-pointer")
+# set(CMAKE_C_FLAGS_RELEASE   "-O2 -g -fno-omit-frame-pointer")
 
 # # AddressSanitizer for debugging heap corruption
 # if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")

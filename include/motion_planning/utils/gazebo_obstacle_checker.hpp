@@ -47,6 +47,7 @@ bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory,
      */
     std::optional<Obstacle> getCollidingObstacle(const Trajectory& trajectory, double start_node_cost) const override;
     std::optional<Obstacle> getCollidingObstacleFCL(const Trajectory& trajectory, double start_node_cost) const override;
+    bool sweptBoxIntersection( const Eigen::Vector2d& p_r0, const Eigen::Vector2d& v_r, const Eigen::Vector2d& p_o0, const Eigen::Vector2d& v_o, double w, double h, double T_segment, double rotation, bool consider_rotation) const;
     
     /**
      * @brief [NEW & CORRECTED] Performs a full time-aware collision check for a trajectory.

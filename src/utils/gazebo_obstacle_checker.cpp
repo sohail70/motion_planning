@@ -354,6 +354,77 @@ bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
 
 
 
+/**
+ * @brief Performs a continuous, analytical collision check for a moving point (robot) against a moving box (obstacle).
+ * It can handle both non-rotating (AABB) and rotated (OBB) boxes.
+ *
+ * @param p_r0 The robot's initial position for the segment.
+ * @param v_r The robot's constant velocity for the segment.
+ * @param p_o0 The obstacle's initial position for the segment.
+ * @param v_o The obstacle's constant velocity for the segment.
+ * @param w The full width of the obstacle box.
+ * @param h The full height of the obstacle box.
+ * @param T_segment The duration of the time interval to check.
+ * @param rotation The rotation of the obstacle in radians.
+ * @param consider_rotation If true, performs a more expensive OBB check. If false (default), performs a faster AABB check.
+ * @return True if a collision occurs within the interval [0, T_segment], false otherwise.
+ */
+bool GazeboObstacleChecker::sweptBoxIntersection(
+    const Eigen::Vector2d& p_r0, const Eigen::Vector2d& v_r,
+    const Eigen::Vector2d& p_o0, const Eigen::Vector2d& v_o,
+    double w, double h, double T_segment,
+    double rotation, bool consider_rotation) const
+{
+    // 1. Calculate relative motion. The problem becomes a moving point vs. a stationary box.
+    const Eigen::Vector2d v_rel = v_r - v_o;
+    const Eigen::Vector2d p_rel_start = p_r0 - p_o0;
+
+    Eigen::Vector2d p_local_start = p_rel_start;
+    Eigen::Vector2d v_local = v_rel;
+
+    // If rotation needs to be considered, transform into the box's local frame.
+    if (consider_rotation) {
+        Eigen::Rotation2Dd rot(-rotation);
+        p_local_start = rot * p_rel_start;
+        v_local = rot * v_rel;
+    }
+
+    // 2. Perform a slab-based (ray-AABB) intersection test in the box's (potentially rotated) frame.
+    double t_near = 0.0;
+    double t_far = T_segment;
+    const double half_w = w / 2.0;
+    const double half_h = h / 2.0;
+
+    for (int i = 0; i < 2; ++i) { // Iterate over x and y axes
+        const double slab_min = (i == 0) ? -half_w : -half_h;
+        const double slab_max = (i == 0) ?  half_w :  half_h;
+
+        if (std::abs(v_local[i]) < 1e-9) {
+            // Ray is parallel to the slab. If it's outside the slab, no collision is possible.
+            if (p_local_start[i] < slab_min || p_local_start[i] > slab_max) {
+                return false;
+            }
+        } else {
+            // Calculate intersection times with the slab planes.
+            double t1 = (slab_min - p_local_start[i]) / v_local[i];
+            double t2 = (slab_max - p_local_start[i]) / v_local[i];
+
+            if (t1 > t2) std::swap(t1, t2); // Ensure t1 is the earlier time
+
+            t_near = std::max(t_near, t1);
+            t_far = std::min(t_far, t2);
+
+            if (t_near > t_far) {
+                return false;
+            }
+        }
+    }
+    return t_near <= T_segment;
+}
+
+
+
+
 
 
 bool GazeboObstacleChecker::isTrajectorySafe(
@@ -950,7 +1021,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 
 
 
-// // THE LAST PERFECT SOLUTION (WITHOUT FCL)
+// // THE LAST PERFECT SOLUTION (WITHOUT FCL and only for circle obstalces)
 // std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
 //     const Trajectory& trajectory,
 //     double global_start_time
@@ -1165,6 +1236,9 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //     return std::nullopt;
 // }
 
+
+
+
 std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
     const Trajectory& trajectory,
     double global_start_time
@@ -1190,36 +1264,27 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
         const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
         
         if (state_dim == 5) {
-            // =======================================================
-            // == ACCELERATION MODEL (5D): Approximate the CURVED path ==
-            // =======================================================
-            const int num_subdivisions = 3; // Use 2 or 3 for a good balance of accuracy and speed
-            
+            // =================================================================
+            // == ACCELERATION MODEL (5D): Approximate the CURVED path as one line ==
+            // =================================================================
             const Eigen::Vector2d p_r0_seg = get_xy(segment_start_state);
             const Eigen::Vector2d v_r0_seg = get_vxy(segment_start_state);
             const Eigen::Vector2d v_r1_seg = get_vxy(segment_end_state);
             const Eigen::Vector2d a_r_seg = (v_r1_seg - v_r0_seg) / T_segment;
             
-            Eigen::Vector2d p_sub_start = p_r0_seg;
-            double t_sub_start = 0.0;
-            double t_sub_end = T_segment;
-            Eigen::Vector2d p_sub_end = p_r0_seg + v_r0_seg * t_sub_end + 0.5 * a_r_seg * t_sub_end * t_sub_end;
-            
-            // Perform a linear check on this small, straight-line approximation of the curve
-            const double T_sub_segment = t_sub_end - t_sub_start;
-            const Eigen::Vector2d v_r_sub = (p_sub_end - p_sub_start) / T_sub_segment;
+            // Calculate the end point of the curved segment and the average velocity
+            const Eigen::Vector2d p_r1_seg = p_r0_seg + v_r0_seg * T_segment + 0.5 * a_r_seg * T_segment * T_segment;
+            const Eigen::Vector2d v_r_seg = (p_r1_seg - p_r0_seg) / T_segment;
 
             for (const auto& obs : obstacle_snapshot_) {
-                // (The hybrid circle/box check logic is placed here)
                 if (obs.type == Obstacle::CIRCLE) {
                     const double R = obs.dimensions.radius + inflation;
                     const double R_sq = R * R;
                     if (obs.is_dynamic) {
-                        const double global_time_at_sub_segment_start = global_time_at_segment_start + t_sub_start;
-                        const double delta_t = std::max(0.0, global_time_at_sub_segment_start - obs.last_update_time.seconds());
+                        const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
                         const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
-                        const Eigen::Vector2d p_rel_start = p_sub_start - p_o0;
-                        const Eigen::Vector2d v_rel = v_r_sub - obs.velocity;
+                        const Eigen::Vector2d p_rel_start = p_r0_seg - p_o0;
+                        const Eigen::Vector2d v_rel = v_r_seg - obs.velocity;
                         const double a = v_rel.dot(v_rel);
                         const double b = 2.0 * p_rel_start.dot(v_rel);
                         const double c = p_rel_start.dot(p_rel_start) - R_sq;
@@ -1228,29 +1293,26 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
                         if (disc >= 0) {
                             const double t1 = (-b - std::sqrt(disc)) / (2.0 * a);
                             const double t2 = (-b + std::sqrt(disc)) / (2.0 * a);
-                            if (std::max(0.0, t1) <= std::min(T_sub_segment, t2)) return obs;
+                            if (std::max(0.0, t1) <= std::min(T_segment, t2)) return obs;
                         }
                     } else {
-                            if (distanceSqrdPointToSegment(obs.position, p_sub_start, p_sub_end) <= R_sq) return obs;
+                        if (distanceSqrdPointToSegment(obs.position, p_r0_seg, p_r1_seg) <= R_sq) return obs;
                     }
                 } else if (obs.type == Obstacle::BOX) {
                     const double w = obs.dimensions.width + 2 * inflation;
                     const double h = obs.dimensions.height + 2 * inflation;
-                    if (lineIntersectsRectangle(p_sub_start, p_sub_end, obs.position, w, h, obs.dimensions.rotation)) return obs;
                     if (obs.is_dynamic) {
-                        const double global_time_at_sub_segment_start = global_time_at_segment_start + t_sub_start;
-                        const double delta_t = std::max(0.0, global_time_at_sub_segment_start - obs.last_update_time.seconds());
+                        const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
                         const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
-                        const int num_steps = 3; // Fewer steps for smaller sub-segments
-                        for (int k = 1; k <= num_steps; ++k) {
-                            double tau = (static_cast<double>(k) / num_steps) * T_sub_segment;
-                            if (pointIntersectsRectangle(p_sub_start + v_r_sub * tau, p_o0 + obs.velocity * tau, w, h, obs.dimensions.rotation)) return obs;
+                        // Since boxes don't rotate, we can call with 'consider_rotation' as false for max performance.
+                        if (sweptBoxIntersection(p_r0_seg, v_r_seg, p_o0, obs.velocity, w, h, T_segment, obs.dimensions.rotation, false)) {
+                            return obs;
                         }
+                    } else {
+                         if (lineIntersectsRectangle(p_r0_seg, p_r1_seg, obs.position, w, h, obs.dimensions.rotation)) return obs;
                     }
                 }
             }
-            p_sub_start = p_sub_end;
-            t_sub_start = t_sub_end;
         } else {
             // =========================================================
             // == CONSTANT VELOCITY MODEL (Already a straight line) ==
@@ -1285,15 +1347,15 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
                 } else if (obs.type == Obstacle::BOX) {
                     const double w = obs.dimensions.width + 2 * inflation;
                     const double h = obs.dimensions.height + 2 * inflation;
-                    if (lineIntersectsRectangle(p_r0, p_r1, obs.position, w, h, obs.dimensions.rotation)) return obs;
                     if (obs.is_dynamic) {
                         const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
                         const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
-                        const int num_steps = 10;
-                        for (int k = 1; k <= num_steps; ++k) {
-                            double tau = (static_cast<double>(k) / num_steps) * T_segment;
-                            if (pointIntersectsRectangle(p_r0 + v_r * tau, p_o0 + obs.velocity * tau, w, h, obs.dimensions.rotation)) return obs;
+                        // Since boxes don't rotate, we can call with 'consider_rotation' as false for max performance.
+                        if (sweptBoxIntersection(p_r0, v_r, p_o0, obs.velocity, w, h, T_segment, obs.dimensions.rotation, false)) {
+                            return obs;
                         }
+                    } else {
+                        if (lineIntersectsRectangle(p_r0, p_r1, obs.position, w, h, obs.dimensions.rotation)) return obs;
                     }
                 }
             }
@@ -1309,7 +1371,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
 
 
 
-// FCL IMPLEMENTATION WITHOUT ANY SUBDIVISION FOR THRUSTER MODEL
+// FCL IMPLEMENTATION --> for general purpose collision check with any mesh --> its pretty demanding!
 std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
     const Trajectory& trajectory,
     double global_start_time

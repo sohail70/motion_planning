@@ -151,6 +151,17 @@ class KinodynamicFMTX : public Planner {
             void setClock(rclcpp::Clock::SharedPtr clock);
 
 
+            struct ReplanMetrics {
+                long long rewire_neighbor_searches = 0;
+                int obstacle_checks = 0;
+                int orphaned_nodes = 0;
+                double path_cost = 0.0;
+            };
+
+            const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
+            double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
+
+
  private:
             std::shared_ptr<State> start_;
             std::shared_ptr<State> goal_;
@@ -218,8 +229,9 @@ class KinodynamicFMTX : public Planner {
 
             FMTNode* robot_anchor_node_ = nullptr;          // ✅ ADD: Stores the best node to connect to.
             Trajectory robot_bridge_trajectory_;    // ✅ ADD: Stores the path from the robot to the anchor.
-
             
+
+            ReplanMetrics last_replan_metrics_; 
 
 };
 

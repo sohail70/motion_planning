@@ -16,11 +16,16 @@
 
 
 
-// NEW: Define the states for our state machine
-enum class RobotState {
-    EXECUTING_MAIN_PATH,
-    HOVERING_AND_REPLANNING,
-    CRITICAL_FAILURE // A state for when no safe moves are possible
+
+
+struct LogEntry {
+    double elapsed_s = 0.0;
+    double duration_ms = 0.0;
+    double time_to_goal = 0.0;
+    double path_cost = 0.0;
+    int obstacle_checks = 0;
+    long long rewire_neighbor_searches = 0;
+    int orphaned_nodes = 0;
 };
 
 
@@ -161,8 +166,8 @@ int main(int argc, char** argv) {
     auto sim_clock = vis_node->get_clock();
 
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
-    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box.sdf");
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
@@ -230,6 +235,7 @@ int main(int argc, char** argv) {
     std::vector<double> sim_durations;
     std::vector<std::tuple<double, double>> sim_duration_2;
 
+    std::vector<LogEntry> log_data;
 
     bool limited = true; 
     if (manager_params.getParam<bool>("follow_path"))
@@ -302,6 +308,12 @@ int main(int argc, char** argv) {
         double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
         sim_duration_2.emplace_back(elapsed_s, duration_ms);
 
+        /////-----
+        LogEntry entry;
+        entry.elapsed_s = std::chrono::duration<double>(start - global_start).count();
+        entry.duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
+        /////-----
+        
 
         // if (needs_replan) {
             // Get the robot's current state to plan FROM.
@@ -315,7 +327,17 @@ int main(int argc, char** argv) {
             Eigen::VectorXd fresh_robot_state = ros_manager->getCurrentSimulatedState();
             kinodynamic_planner->setRobotState(fresh_robot_state);
             auto new_executable_path = kinodynamic_planner->getPathPositions();
+            /////------ 
+            const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
+            entry.obstacle_checks = metrics.obstacle_checks;
+            entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
+            entry.orphaned_nodes = metrics.orphaned_nodes;
+            entry.path_cost = metrics.path_cost;
+            entry.time_to_goal = kinodynamic_planner->getRobotTimeToGo();
             
+            log_data.push_back(entry);
+            /////--------
+
             // *** CORRECTED LOGIC TO HANDLE FAILURE ***
             if (new_executable_path.empty()) {
                 // FAILURE CASE: The planner could not find a valid path from the robot's current state.
@@ -351,65 +373,36 @@ int main(int argc, char** argv) {
     // Stop profiling
     CALLGRIND_STOP_INSTRUMENTATION;
 
-
-    const bool SAVE_TIMED_DATA = true; // Set to false to save raw durations
-    int num_of_samples_ = planner_params.getParam<int>("num_of_samples");
-
-
-    std::time_t now_time = std::time(nullptr); 
+    // *** NEW: REPLACE CSV SAVING LOGIC ***
+    int num_of_samples_val = planner_params.getParam<int>("num_of_samples");
+    std::time_t now_time = std::time(nullptr);
     std::tm* local_tm = std::localtime(&now_time);
-
-    int day    = local_tm->tm_mday;
-    int month  = local_tm->tm_mon + 1;
-    int year   = local_tm->tm_year + 1900;
-    int hour   = local_tm->tm_hour;
-    int minute = local_tm->tm_min;
-    int second = local_tm->tm_sec;
-
-    // Create base filename with timestamp
-    std::string planner_type = "rrtx";
-    std::string base_filename = "sim_" + planner_type + "_" +
-        std::to_string(num_of_samples_) + "samples_" + 
-        std::to_string(day) + "_" +
-        std::to_string(month) + "_" +
-        std::to_string(year) + "_" +
-        std::to_string(hour) + "_" +
-        std::to_string(minute) + "_" +
-        std::to_string(second);
-
-    if (SAVE_TIMED_DATA) {
-        // Save timed data (elapsed_s, duration_ms)
-        std::string filename = base_filename + "_timed.csv";
-        std::cout << "Writing timed durations to: " << filename << std::endl;
-
-        std::ofstream out(filename);
-        if (!out.is_open()) {
-            std::cerr << "Error: failed to open " << filename << std::endl;
-            return 1;
-        }
-
-        out << "elapsed_s,duration_ms\n"; // CSV header
-        for (const auto& [elapsed, duration] : sim_duration_2) {
-            out << elapsed << "," << duration << "\n";
-        }
-        out.close();
-    } else {
-        // Save raw durations (legacy format)
-        std::string filename = base_filename + "_raw.csv";
-        std::cout << "Writing raw durations to: " << filename << std::endl;
-
-        std::ofstream out(filename);
-        if (!out.is_open()) {
-            std::cerr << "Error: failed to open " << filename << std::endl;
-            return 1;
-        }
-
-        for (const auto& d : sim_durations) {
-            out << d << "\n";
-        }
-        out.close();
+    char time_buf[80];
+    strftime(time_buf, sizeof(time_buf), "%Y%m%d_%H%M%S", local_tm);
+    
+    std::string filename = "sim_rrtx_" + std::to_string(num_of_samples_val) +
+                           "samples_" + time_buf + "_metrics.csv";
+    
+    std::cout << "Writing replan metrics to: " << filename << std::endl;
+    
+    std::ofstream out(filename);
+    if (!out.is_open()) {
+        std::cerr << "Error: failed to open " << filename << std::endl;
+        return 1;
     }
-
+    
+    out << "elapsed_s,duration_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes\n";
+    
+    for (const auto& log_item : log_data) {
+        out << log_item.elapsed_s << ","
+            << log_item.duration_ms << ","
+            << log_item.time_to_goal << ","
+            << log_item.path_cost << ","
+            << log_item.obstacle_checks << ","
+            << log_item.rewire_neighbor_searches << ","
+            << log_item.orphaned_nodes << "\n";
+    }
+    out.close();
     std::cout << "Done writing CSV.\n";
 
 

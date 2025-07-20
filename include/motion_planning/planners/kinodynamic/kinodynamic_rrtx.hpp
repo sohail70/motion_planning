@@ -50,6 +50,18 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     bool arePathsSimilar(const std::vector<Eigen::VectorXd>& path_a, const std::vector<Eigen::VectorXd>& path_b, double tolerance) const;
 
     void dumpTreeToCSV(const std::string& filename) const;
+
+
+    struct ReplanMetrics {
+        long long rewire_neighbor_searches = 0;
+        int obstacle_checks = 0;
+        int orphaned_nodes = 0;
+        double path_cost = 0.0;
+    };
+
+    const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
+    double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
+
  private:
     // Core data structures
     std::vector<std::shared_ptr<RRTxNode>> tree_;
@@ -143,5 +155,6 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     
     int obs_check = 0;
 
+    ReplanMetrics last_replan_metrics_; 
 
 };

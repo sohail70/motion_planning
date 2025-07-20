@@ -521,6 +521,7 @@ void KinodynamicRRTX::rewireNeighbors(RRTxNode* v) {
         //     std::cout<<edge.distance <<"\n";
         if (u == v->getParent() ) continue;
 
+        last_replan_metrics_.rewire_neighbor_searches++;
 
         const double candidate_lmc = v->getLMC() + edge.distance;
         if (u->getLMC() > candidate_lmc) {
@@ -768,7 +769,7 @@ void KinodynamicRRTX::updateLMC(RRTxNode* v) {
 
 
         if (Vc_T_.count(u->getIndex()) || edge.distance == INFINITY) continue;
-
+        last_replan_metrics_.rewire_neighbor_searches++;
         const double candidate_lmc = u->getLMC() + edge.distance;
         if (candidate_lmc < min_lmc) {
             min_lmc = candidate_lmc;
@@ -985,8 +986,10 @@ void KinodynamicRRTX::propagateDescendants() {
         node->setTimeToGoal(std::numeric_limits<double>::infinity());
         node->setParent(nullptr, Trajectory{});
     }
-    std::cout<<"orphans size"<<Vc_T_.size()<<"\n";
 
+    last_replan_metrics_.orphaned_nodes = Vc_T_.size();
+
+    std::cout<<"orphans size"<<Vc_T_.size()<<"\n";
 
     Vc_T_.clear();
 }
@@ -1211,8 +1214,11 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::smoothPath(const std::vector<Eigen
 
 
 void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
+    last_replan_metrics_ = ReplanMetrics();
+
     update_obstacle = true;
     obs_check = 0;
+
 
     // // Common initialization
     // if (edge_length_[max_length_edge_ind] != max_length) {
@@ -1607,7 +1613,10 @@ void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
                 
                 // Calculate the global time this edge starts.
                 const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
-                if (edge.distance != INFINITY) obs_check++;
+                if (edge.distance != INFINITY) {
+                    obs_check++;
+                    last_replan_metrics_.obstacle_checks++;
+                }
                 if (edge.distance != INFINITY &&
                     !obs_checker_->isTrajectorySafe(traj_node_to_u, global_edge_start_time)) {
                     // This specific edge (node -> u) is now blocked.
@@ -1685,6 +1694,7 @@ void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
                         const Trajectory& original_traj = edge.cached_trajectory;
                         const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
                         obs_check++;
+                        last_replan_metrics_.obstacle_checks++;
                         if (obs_checker_->isTrajectorySafe(original_traj, global_edge_start_time)) {
                             edge.distance = edge.distance_original;
                             if (u->incomingEdges().count(node)) u->incomingEdges().at(node).distance = edge.distance_original;
@@ -2052,22 +2062,29 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         // The new node is significantly better. It's worth switching.
         vbot_node_ = best_candidate_node;
         robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+        last_replan_metrics_.path_cost = best_candidate_bridge.cost + best_candidate_node->getCost();
+
     } else if (vbot_node_) {
         // The new candidate is not significantly better, or none was found.
         // Stick with the old anchor node to maintain stability.
         // We still need to recalculate the time-to-go in case the tree costs updated.
         Trajectory bridge_to_kept_anchor = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
         if (bridge_to_kept_anchor.is_valid) {
-             robot_current_time_to_goal_ = bridge_to_kept_anchor.time_duration + vbot_node_->getTimeToGoal();
+            robot_current_time_to_goal_ = bridge_to_kept_anchor.time_duration + vbot_node_->getTimeToGoal();
+            last_replan_metrics_.path_cost = bridge_to_kept_anchor.cost + vbot_node_->getCost();
         }
     } else {
         // This case handles when there was no previous anchor OR no valid new anchor.
         // If we found a candidate but didn't switch, we still need to set it for the first time.
         vbot_node_ = best_candidate_node; // This will be nullptr if none found.
         if (vbot_node_) {
-             robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+            robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+            last_replan_metrics_.path_cost = best_candidate_bridge.cost + best_candidate_node->getCost();
+
         } else {
-             robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+            robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+            last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+
         }
     }
     // --- STABILIZATION FIX END ---
