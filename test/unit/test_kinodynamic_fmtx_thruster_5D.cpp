@@ -205,6 +205,7 @@ int main(int argc, char **argv) {
 
     planner_params.setParam("precache_neighbors", true);
     planner_params.setParam("kd_dim", 3); // 2 or 3 for only 2nd order thruster and 4 incase you do 3rd order [x, y, z, vx, vy, vz, time]
+    planner_params.setParam("use_knn", true);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////
     // --- 3. Object Initialization ---

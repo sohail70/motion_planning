@@ -159,6 +159,7 @@ int main(int argc, char** argv) {
     planner_params.setParam("prune", false);
     planner_params.setParam("precache_neighbors", true);
     planner_params.setParam("kd_dim", 4); // 2 or 3 or 4 only dubin
+    planner_params.setParam("use_knn", true);
 
     // --- 3. Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("fmtx_dubins_visualizer",

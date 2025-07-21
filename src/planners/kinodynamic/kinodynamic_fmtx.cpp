@@ -26,7 +26,7 @@ void KinodynamicFMTX::clearPlannerState() {
     // samples_in_obstacles_.clear();
     edge_length_.clear();
     max_length_edge_ind = -1;
-    max_length = -std::numeric_limits<double>::infinity();
+    max_length_ = -std::numeric_limits<double>::infinity();
     root_state_index_ = -1;
     robot_state_index_ = -1;
 
@@ -50,6 +50,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     use_kdtree = params.getParam<bool>("use_kdtree");
     kd_dim = params.getParam<int>("kd_dim",2);
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
+    use_knn = params.getParam<bool>("use_knn", false);
 
 
 
@@ -84,7 +85,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
     std::cout << "Taking care of the samples: \n \n";
-    bool use_rrtx_saved_samples_ = false;
+    bool use_rrtx_saved_samples_ = true;
     if (use_rrtx_saved_samples_) {
         std::string filepath = "/home/sohail/motion_planning/build/rrtx_tree_nodes.csv";
                std::cout << "Loading nodes from file: " << filepath << "\n";
@@ -212,21 +213,40 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
     ///////////////////Neighborhood Radius////////////////////////////////
-    int d = statespace_->getDimension();
-    // mu = std::pow(problem_->getUpperBound()[0] - problem_->getLowerBound()[0] , 2);
-    Eigen::VectorXd range = upper_bounds_ - lower_bounds_;
-    double mu = range.prod(); // .prod() computes the product of all coefficients
-    std::cout<<"mu "<<mu<<"\n";
-    zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
-    // gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
-    gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
-
-
-    
-    factor = params.getParam<double>("factor");
-    std::cout<<"factor: "<<factor<<"\n";
-    neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
-    // // neighborhood_radius_ = 15.0;
+    /*
+        One thing i notices in R2T case Specifically is the neighbor serach that happens in plan function is alot! well thats what fmt* is about as opposed to rrt*
+        on the other hand it gives us an advantage on number of obstacle checks. 
+        In R2T since the possiblities of connections are much more than dubins or thrusters then these big number of loops could take a hit since we also do not filter the 
+        conflicting nodes (findSamplesNearObstalces function) with isTrajectorySafe, which ofcourse we can as a feature but its not inherent from fmt core logics!
+        so we can utilize the knn approach to put a theoretical cap on the number of neighbors! another thing to mention is that maybe when you use rrtx samples in fmtx
+        the number of neighbors get a bit biased toward the root! (because thats how rrt star's saturate works) and maybe if we use the natural fmt star based connection 
+        this problem can be avoided. but all in all knn is a nice tool in our arsenal which rrtx doesn't seem to have. for instance the whole cullNeighbor Idea
+        works based on Neighborhood radius.
+        So all in all the TOTAL_NEIGHBOR_ITERATIONS is expected to reduce when we use knn
+    */
+    if (use_knn) {
+        int d = statespace_->getDimension();
+        // Practical k-NN parameter from the FMT* paper's experiments 
+        double k0_fmt_star_practical = std::pow(2.0, d) * (M_E / d);
+        k_neighbors_ = static_cast<int>(std::ceil(k0_fmt_star_practical * std::log(statespace_->getNumStates())));
+        // // Standard k-NN parameter for RRT*
+        // double k0_rrt_star = M_E * (1.0 + 1.0 / d);
+        // k_neighbors_ = static_cast<int>(std::ceil(k0_rrt_star * std::log(statespace_->getNumStates())));
+        std::cout << "k-NN formula. k = " << k_neighbors_ << "\n";
+    } else {
+        int d = statespace_->getDimension();
+        // mu = std::pow(problem_->getUpperBound()[0] - problem_->getLowerBound()[0] , 2);
+        Eigen::VectorXd range = upper_bounds_ - lower_bounds_;
+        double mu = range.prod(); // .prod() computes the product of all coefficients
+        std::cout<<"mu "<<mu<<"\n";
+        zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
+        // gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
+        gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+        factor = params.getParam<double>("factor");
+        std::cout<<"factor: "<<factor<<"\n";
+        neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
+        // // neighborhood_radius_ = 15.0;
+    }
 
 //     ////////////////////////////////////////////////////////////////////////
 // // 1) State dims & controllability indices
@@ -567,12 +587,12 @@ void KinodynamicFMTX::plan() {
     // ---> END OF NEW LOGIC <---
     //
 
-    // std::unordered_map<FMTNode*, bool> costUpdated;
+    std::unordered_map<FMTNode*, bool> costUpdated;
     // int checks = 0;
-    // int revisits = 0;
+    int revisits = 0;
     int obs_check = 0;
     // total_neighbor_iterations = 0; // The new, more accurate counter
-
+    std::cout<<"ROBOT COST: " <<robot_node_->getCost()<<"\n";
     while (!v_open_heap_.empty() &&
            (partial_update ? (v_open_heap_.top().first < robot_node_->getCost() ||
                                robot_node_->getCost() == INFINITY || robot_node_->in_queue_ == true) : true)) {
@@ -635,14 +655,14 @@ void KinodynamicFMTX::plan() {
             //    It proves x's current cost is suboptimal and justifies the more expensive search that follows.
             if (x->getCost() > cost_via_z) {
                 // checks++;
-                // if (costUpdated[x]) {
-                //     // std::cout<<"Node " << x->getIndex() 
-                //     //     << " is about to be updated a second time! "
-                //     //     "previous cost = " << x->getCost() << "\n";
+                if (costUpdated[x]) {
+                    // std::cout<<"Node " << x->getIndex() 
+                    //     << " is about to be updated a second time! "
+                    //     "previous cost = " << x->getCost() << "\n";
                     
-                //     revisits++;
+                    revisits++;
 
-                // } 
+                } 
 
                 last_replan_metrics_.rewire_neighbor_searches += x->forwardNeighbors().size();
 
@@ -787,7 +807,7 @@ void KinodynamicFMTX::plan() {
                     
 
                     if (obstacle_free) {
-                        // costUpdated[x] = true;   // mark “done once”
+                        costUpdated[x] = true;   // mark “done once”
 
                         // // The connection is valid and locally optimal. Update the tree and priority queue.
                         // std::cout<<"-------\n";
@@ -821,9 +841,10 @@ void KinodynamicFMTX::plan() {
 
     } // End of while loop
     // std::cout<<"checks: "<<checks<<"\n";
-    // std::cout<<"REVISITS: "<<revisits<<"\n";
-    // std::cout << "TOTAL NEIGHBOR ITERATIONS: " << total_neighbor_iterations << "\n"; // <-- Print the new metric
-    // std::cout<<"OBS CHECK: "<<obs_check<<"\n";
+    if (revisits>0)
+        std::cout<<"REVISITS: "<<revisits<<"\n";
+    std::cout << "TOTAL NEIGHBOR ITERATIONS: " << last_replan_metrics_.rewire_neighbor_searches << "\n"; // <-- Print the new metric
+    std::cout<<"OBS CHECK: "<< last_replan_metrics_.obstacle_checks<<"\n";
 
     auto end = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -892,37 +913,49 @@ void KinodynamicFMTX::plan() {
 void KinodynamicFMTX::near(int node_index) {
     auto node = tree_[node_index].get();
     if (node->neighbors_cached_) return;
-    auto candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim), neighborhood_radius_);
+
+    std::vector<size_t> candidate_indices;
+
+    // --- Unified Logic: Choose which search to perform ---
+    if (use_knn) {
+        if (k_neighbors_ > 0) {
+            candidate_indices = kdtree_->knnSearch(node->getStateValue().head(kd_dim), k_neighbors_);
+        }
+    } else {
+        if (neighborhood_radius_ > 0) {
+            candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim), neighborhood_radius_);
+        }
+    }
+
+    // --- Common Connection Logic ---
     for (int idx : candidate_indices) {
         if (idx == node_index) continue;
         FMTNode* neighbor = tree_[idx].get();
 
-        // Test FORWARD connection: node -> neighbor
+        // Test FORWARD connection
         Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
-        if (traj_forward.is_valid && traj_forward.cost < neighborhood_radius_) {
-        // if (traj_forward.is_valid ) { // I think we already doing radiusSeach (even though d is an approximation on d_pi) so no need for traj cost <= rn check
-        // if (traj_forward.is_valid) {
-            // If we can go from node to neighbor:
-            // - neighbor is in node's forward set
-            // - node is in neighbor's backward set
-            
-            // FIX: Use brace initialization {} instead of parentheses ()
+        
+        bool is_forward_valid = traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_);
+        
+        if (is_forward_valid) {
             node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, false, traj_forward, true};
             neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, false, traj_forward, true};
+            
+            // --- UPDATE MAX LENGTH ---
+            max_length_ = std::max(max_length_, traj_forward.cost);
         }
 
-        // Test BACKWARD connection: neighbor -> node
+        // Test BACKWARD connection
         Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-
-        if (traj_backward.is_valid && traj_backward.cost < neighborhood_radius_) {
-        // if (traj_backward.is_valid ) {
-            // If we can go from neighbor to node:
-            // - node is in neighbor's backward set
-            // - neighbor is in node's forward set
-            
-            // FIX: Use brace initialization {} instead of parentheses ()
+        
+        bool is_backward_valid = traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_);
+        
+        if (is_backward_valid) {
             node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, false, traj_backward, true};
             neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, false, traj_backward, true};
+
+            // --- UPDATE MAX LENGTH ---
+            max_length_ = std::max(max_length_, traj_backward.cost);
         }
     }
     node->neighbors_cached_ = true;
@@ -1356,7 +1389,9 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         mind that in kinodynamic case this is not the case i guess unless you put some constraint that the cost of the traj is not more that neighborhood radius
     
     */
-    max_length =  neighborhood_radius_; // At first Static plan we don't have max_length --> either do this or do a static plan
+    // max_length =  neighborhood_radius_; // At first Static plan we don't have max_length --> either do this or do a static plan
+    max_length_ = (max_length_ > 1e-6) ? max_length_ : neighborhood_radius_;
+ 
     // if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
     // {
     //     auto max_it = std::max_element(edge_length_.begin() , edge_length_.end() ,[](const std::pair<int, double>& a , const std::pair<int, double>& b){
@@ -1367,7 +1402,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     //     // std::cout<<max_it->first << "  " << max_it->second <<" \n"; 
     // }
 
-    auto current = findSamplesNearObstacles(obstacles, max_length);
+    auto current = findSamplesNearObstacles(obstacles, max_length_);
     // auto [current, direct] = findSamplesNearObstaclesDual(obstacles, max_length);
 
 
@@ -1521,7 +1556,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     // within a "local bubble" around the robot.
     std::cout<<"current before: "<<current.size()<<"\n";
 
-    const double local_filter_radius = 20.0;
+    const double local_filter_radius = use_knn ? 20.0 : neighborhood_radius_;
     // local_filter_radius = (v_obs_max + v_robot_max) / loop_hz + obstacle_radius;  
     //                // = 40/20 + 5 = 7 m
     const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
@@ -2482,7 +2517,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     Trajectory best_candidate_bridge;
     Trajectory current_bridge;
     double best_candidate_cost = std::numeric_limits<double>::infinity();
-    double current_search_radius = neighborhood_radius_;
+    double current_search_radius = (use_knn) ? max_length_ : neighborhood_radius_;
     const int max_attempts = 4;
     const double radius_multiplier = 1.2;
 
@@ -3060,52 +3095,59 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::smoothPath(const std::vector<Eigen
 
 // Edge + Nodes
 void KinodynamicFMTX::visualizeTree() {
-    // Using a more appropriate name since the edges are straight lines.
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-    
     if (!tree_.empty()) {
         edges.reserve(tree_.size());
     }
+    
     std::vector<Eigen::VectorXd> tree_nodes;
+    tree_nodes.reserve(tree_.size());
 
-    // --- NEW VARIABLE TO COUNT CONNECTED NODES ---
+    // --- Variables for statistics ---
+    long long total_forward_neighbors = 0;
+    size_t max_forward_neighbors = 0;
     int connected_nodes_count = 0;
-
-    // Iterate through all nodes in the tree.
+    
     for (const auto& node_ptr : tree_) {
         FMTNode* child_node = node_ptr.get();
         FMTNode* parent_node = child_node->getParent();
 
-        // --- COUNTING LOGIC ---
-        // A node is considered "connected" if its cost is not INFINITY.
-        // Dangling nodes that were never reached from the root will have infinite cost.
-        if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
-            connected_nodes_count++;
-        }
-
-        // --- Original visualization logic ---
         tree_nodes.push_back(node_ptr->getStateValue());
 
-        // If a node has a parent, it forms a valid edge in the tree.
+        if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
+            connected_nodes_count++;
+            size_t current_neighbors = child_node->forwardNeighbors().size();
+            total_forward_neighbors += current_neighbors;
+            if (current_neighbors > max_forward_neighbors) {
+                max_forward_neighbors = current_neighbors;
+            }
+        }
+
         if (parent_node) {
-            // Add a single, straight-line edge from the parent's state to the child's state.
             edges.emplace_back(parent_node->getStateValue(), child_node->getStateValue());
         }
     }
 
-    // --- PRINT THE COUNTS ---
-    std::cout << "[FMTX INFO] Total nodes available: " << tree_.size()
-              << " | Nodes connected to graph: " << connected_nodes_count << std::endl;
-
-
-    // Visualize all nodes that were sampled/loaded
+    double average_neighbors = (connected_nodes_count > 0) 
+                             ? static_cast<double>(total_forward_neighbors) / connected_nodes_count 
+                             : 0.0;
+    
+    // === THIS IS THE PRINT STATEMENT YOU ARE ASKING ABOUT ===
+    // It includes the total and connected node counts.
+    std::cout << "[FMTX INFO] Total nodes: " << tree_.size()
+              << " | Connected: " << connected_nodes_count
+              << " | Max Neighbors: " << max_forward_neighbors
+              << " | Avg Neighbors: " << std::fixed << std::setprecision(2) << average_neighbors << std::endl;
+    
+    // // === VISUALIZATION CALLS ===
     // visualization_->visualizeNodes(tree_nodes, "map", 
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
-    // Visualize the edges forming the connected tree
     visualization_->visualizeEdges(edges, "map");
 }
+
+
 
 // // Edge + Nodes + Time Of Arrival
 // void KinodynamicFMTX::visualizeTree() {

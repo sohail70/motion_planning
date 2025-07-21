@@ -185,7 +185,7 @@ class KinodynamicFMTX : public Planner {
 
             std::unordered_map<int , double> edge_length_;
             int max_length_edge_ind = -1;
-            double max_length = -std::numeric_limits<double>::infinity();
+            double max_length_ = -std::numeric_limits<double>::infinity();
 
             int checks = 0;
 
@@ -196,6 +196,7 @@ class KinodynamicFMTX : public Planner {
             int robot_state_index_;
             bool use_kdtree;
             double neighborhood_radius_;
+            int k_neighbors_;
             bool obs_cache = false;
             bool partial_plot = false;
             bool use_heuristic = false;
@@ -203,6 +204,7 @@ class KinodynamicFMTX : public Planner {
             bool ignore_sample;
             bool prune;
             bool neighbor_precache = false;
+            bool use_knn = false;
 
             bool in_dynamic = false;
 

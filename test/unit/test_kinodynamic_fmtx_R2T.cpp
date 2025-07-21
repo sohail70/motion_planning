@@ -164,7 +164,7 @@ int main(int argc, char** argv)
     planner_params.setParam("ignore_sample", false);
     planner_params.setParam("prune", false);
     planner_params.setParam("kd_dim", 3); // 2 or 3 only for R2T
-
+    planner_params.setParam("use_knn", true);
     planner_params.setParam("precache_neighbors", true);
     // --- 3. Object Initialization ---
     // A single node is shared for visualization purposes
