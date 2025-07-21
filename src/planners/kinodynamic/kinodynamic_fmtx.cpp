@@ -85,7 +85,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
     std::cout << "Taking care of the samples: \n \n";
-    bool use_rrtx_saved_samples_ = true;
+    bool use_rrtx_saved_samples_ = false;
     if (use_rrtx_saved_samples_) {
         std::string filepath = "/home/sohail/motion_planning/build/rrtx_tree_nodes.csv";
                std::cout << "Loading nodes from file: " << filepath << "\n";
@@ -226,12 +226,13 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     */
     if (use_knn) {
         int d = statespace_->getDimension();
+        factor = params.getParam<double>("factor");
         // Practical k-NN parameter from the FMT* paper's experiments 
         double k0_fmt_star_practical = std::pow(2.0, d) * (M_E / d);
-        k_neighbors_ = static_cast<int>(std::ceil(k0_fmt_star_practical * std::log(statespace_->getNumStates())));
-        // // Standard k-NN parameter for RRT*
+        k_neighbors_ = static_cast<int>(std::ceil(factor * k0_fmt_star_practical * std::log(statespace_->getNumStates())));
+        // // // Standard k-NN parameter for RRT*
         // double k0_rrt_star = M_E * (1.0 + 1.0 / d);
-        // k_neighbors_ = static_cast<int>(std::ceil(k0_rrt_star * std::log(statespace_->getNumStates())));
+        // k_neighbors_ = static_cast<int>(std::ceil(factor * k0_rrt_star * std::log(statespace_->getNumStates())));
         std::cout << "k-NN formula. k = " << k_neighbors_ << "\n";
     } else {
         int d = statespace_->getDimension();
@@ -240,8 +241,8 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
         double mu = range.prod(); // .prod() computes the product of all coefficients
         std::cout<<"mu "<<mu<<"\n";
         zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
-        // gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
-        gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+        gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
+        // gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
         factor = params.getParam<double>("factor");
         std::cout<<"factor: "<<factor<<"\n";
         neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
