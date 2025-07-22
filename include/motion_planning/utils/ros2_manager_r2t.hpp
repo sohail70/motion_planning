@@ -114,6 +114,10 @@ public:
         return current_interpolated_state_;
     }
 
+    int getCollisionCount() const {
+        return collision_count_.load();
+    }
+
 
 private:
     std::shared_ptr<ObstacleChecker> obstacle_checker_;
@@ -130,6 +134,9 @@ private:
     // NEW MEMBER VARIABLE: to store the latest interpolated state
     Eigen::VectorXd current_interpolated_state_;
     double robot_velocity_; 
+
+    std::atomic<int> collision_count_{0};
+    bool is_in_collision_state_{false};
 
     void visualizationLoop() {
         if (!obstacle_checker_ || !visualizer_) return;
@@ -336,6 +343,25 @@ private:
         }
         
         current_interpolated_state_ = current_robot_state;
+        // =================================================================
+        // =========== SIMPLIFIED: COLLISION COUNTING LOGIC ================
+        // =================================================================
+        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+        if (gazebo_checker) {
+            Eigen::Vector2d current_pos = current_robot_state.head<2>();
+            double current_yaw = last_known_theta_;
+            
+            // Call the single, unified collision check function
+            bool is_colliding_now = gazebo_checker->checkRobotCollision(current_pos, current_yaw);
+
+            if (is_colliding_now && !is_in_collision_state_) {
+                collision_count_++;
+                RCLCPP_FATAL(this->get_logger(), "COLLISION DETECTED! Total Failures: %d", collision_count_.load());
+            }
+            is_in_collision_state_ = is_colliding_now;
+        }
+        ////////////////////////////////////////////////////////////////////
+
 
         Eigen::Vector3d robot_pos_3d(current_robot_state(0), current_robot_state(1), 0.0);
         

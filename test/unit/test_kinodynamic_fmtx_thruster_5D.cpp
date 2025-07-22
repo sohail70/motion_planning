@@ -160,7 +160,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("use_range", false); 
     gazebo_params.setParam("sensor_range", 20.0);
     gazebo_params.setParam("estimation", true);
-    gazebo_params.setParam("inflation", 0.5); 
+    gazebo_params.setParam("inflation", 0.8); // A larger inflation makes the robot fatter to the planner, which might prevent it from finding paths through narrow gaps.
     gazebo_params.setParam("persistent_static_obstacles", false);
     gazebo_params.setParam("fcl", false);
 
@@ -205,7 +205,7 @@ int main(int argc, char **argv) {
 
     planner_params.setParam("precache_neighbors", true);
     planner_params.setParam("kd_dim", 3); // 2 or 3 for only 2nd order thruster and 4 incase you do 3rd order [x, y, z, vx, vy, vz, time]
-    planner_params.setParam("use_knn", true);
+    planner_params.setParam("use_knn", false);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////
     // --- 3. Object Initialization ---
@@ -447,6 +447,10 @@ int main(int argc, char **argv) {
     }
     // Stop profiling
     CALLGRIND_STOP_INSTRUMENTATION;
+
+    const int final_collision_count = ros_manager->getCollisionCount();
+    RCLCPP_FATAL(vis_node->get_logger(), "SIMULATION COMPLETE. TOTAL DETECTED COLLISIONS: %d", final_collision_count);
+
 
     // Get timestamp for a unique filename
     std::time_t now_time = std::time(nullptr);

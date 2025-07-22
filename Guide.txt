@@ -656,3 +656,24 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 58.                c(x) ← new_cost
 59.                if x ∈ V_open: UpdatePriority(V_open, x)
 60.                else: V_open.insert(x)
+
+
+
+
+The isTrajectorySafe function is working as intended and is correctly using the 0.5 inflation during planning. The issue you're seeing is not a bug in that function, but rather a fundamental challenge of planning in an environment with moving obstacles.
+
+The collisions happen in the small gap between what the planner predicted would be safe and what actually happens when the robot executes the path a fraction of a second later.
+
+The Core Reason: Planning vs. Reality
+Planning Time: When isTrajectorySafe is called inside the plan() function, it looks at a potential path segment. It predicts where all dynamic obstacles will be at the future time that the robot would traverse that segment. It then checks if the robot's 0.5m inflated radius will collide with any obstacle's inflated radius at that future time. If it finds a path where all segments are "safe" according to these predictions, it returns that path.
+
+Execution Time: A few milliseconds later, the simulationLoop begins to move your robot along that "safe" path. However, in those few milliseconds, the real dynamic obstacles may have moved slightly differently than the planner's Kalman Filter predicted. This small prediction error can be enough to erode the 0.5m safety buffer, causing the robot's true physical footprint to collide with an obstacle's true footprint.
+
+Key Factors Causing This Discrepancy
+Dynamic Obstacle Prediction Error: The Kalman Filter provides a best guess based on an object's past movement, but it cannot perfectly predict the future. If an obstacle suddenly changes direction or speed, the prediction will be wrong. Your 0.5m inflation is your budget to absorb this prediction error. A collision means the prediction error was larger than your 0.5m budget on that frame.
+
+The "Bridge Trajectory": The planner computes an optimal path between nodes in its graph. However, your robot's continuous real-time position is almost never perfectly on one of those nodes. A "bridge" trajectory is created on-the-fly to connect your robot's current position to the nearest "safe" node on the planned path. While this bridge is also checked for safety, it is generated after the main plan is optimized and is the most vulnerable part of the path to changes in the environment.
+
+Replanning Latency: There is a very short delay between the moment an obstacle invalidates the current path and the moment a new path is computed and sent to the simulation. During this latency, the robot continues to follow the old, now-unsafe path, which can lead to a collision.
+
+In summary, you are seeing the safety margin get "used up" by the unpredictability of the dynamic world. The planner is correctly avoiding paths it knows will be unsafe, but it cannot have perfect knowledge of the future.

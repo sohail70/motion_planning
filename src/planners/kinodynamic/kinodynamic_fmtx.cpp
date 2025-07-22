@@ -85,7 +85,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
     std::cout << "Taking care of the samples: \n \n";
-    bool use_rrtx_saved_samples_ = false;
+    bool use_rrtx_saved_samples_ = true;
     if (use_rrtx_saved_samples_) {
         std::string filepath = "/home/sohail/motion_planning/build/rrtx_tree_nodes.csv";
                std::cout << "Loading nodes from file: " << filepath << "\n";
@@ -1392,6 +1392,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     */
     // max_length =  neighborhood_radius_; // At first Static plan we don't have max_length --> either do this or do a static plan
     max_length_ = (max_length_ > 1e-6) ? max_length_ : neighborhood_radius_;
+    std::cout<<"max length: "<<max_length_<<"\n";
  
     // if (edge_length_[max_length_edge_ind] != max_length) // This condition also triggeres the first calculation os It's okay
     // {
@@ -1557,7 +1558,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     // within a "local bubble" around the robot.
     std::cout<<"current before: "<<current.size()<<"\n";
 
-    const double local_filter_radius = use_knn ? 20.0 : neighborhood_radius_;
+    const double local_filter_radius = use_knn ? 30.0 : neighborhood_radius_;
     // local_filter_radius = (v_obs_max + v_robot_max) / loop_hz + obstacle_radius;  
     //                // = 40/20 + 5 = 7 m
     const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
@@ -2518,7 +2519,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     Trajectory best_candidate_bridge;
     Trajectory current_bridge;
     double best_candidate_cost = std::numeric_limits<double>::infinity();
-    double current_search_radius = (use_knn) ? max_length_ : neighborhood_radius_;
+    double current_search_radius = (use_knn) ? 30.0 : neighborhood_radius_;
     const int max_attempts = 4;
     const double radius_multiplier = 1.2;
 

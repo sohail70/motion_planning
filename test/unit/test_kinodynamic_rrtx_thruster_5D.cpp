@@ -160,7 +160,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("use_range", false); 
     gazebo_params.setParam("sensor_range", 20.0);
     gazebo_params.setParam("estimation", true);
-    gazebo_params.setParam("inflation", 0.5); 
+    gazebo_params.setParam("inflation", 0.8); 
     gazebo_params.setParam("persistent_static_obstacles", false);
     gazebo_params.setParam("fcl", false);
 
@@ -383,6 +383,9 @@ int main(int argc, char **argv) {
     }
     // Stop profiling
     CALLGRIND_STOP_INSTRUMENTATION;
+
+    const int final_collision_count = ros_manager->getCollisionCount();
+    RCLCPP_FATAL(vis_node->get_logger(), "SIMULATION COMPLETE. TOTAL DETECTED COLLISIONS: %d", final_collision_count);
 
     // *** NEW: REPLACE CSV SAVING LOGIC ***
     int num_of_samples_val = planner_params.getParam<int>("num_of_samples");

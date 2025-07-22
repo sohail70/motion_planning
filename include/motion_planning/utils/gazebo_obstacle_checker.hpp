@@ -282,6 +282,10 @@ double distanceSqrdPointToArc(
 
 
     void processLatestPoseInfo();
+
+    bool checkRobotCollision(const Eigen::Vector2d& position, double yaw) const;
+
+
 private:
     void poseInfoCallback(const gz::msgs::Pose_V& msg);
     bool new_pose_msg_available_;
@@ -357,8 +361,15 @@ private:
     std::string kf_model_type_;
     /////////////////////////////////////////////////////////////////////////
 
+    std::string footprint_type_;
+    double robot_radius_; // Only used for circular footprint
+    std::vector<Eigen::Vector2d> rectangular_footprint_; // Only used for rectangular footprint
+
+    bool checkCircularCollisionHelper(const Eigen::Vector2d& robot_position, double robot_radius) const;
+    bool checkRectangularCollisionHelper(const Eigen::Vector2d& position, double yaw) const;
 
     
+
 
     
 

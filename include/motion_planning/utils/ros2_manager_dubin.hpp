@@ -138,6 +138,9 @@ void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
     }
 
 
+    int getCollisionCount() const {
+        return collision_count_.load();
+    }
 
     
 private:
@@ -153,6 +156,10 @@ private:
     double simulation_time_step_;
     bool is_path_set_;
     Eigen::VectorXd current_interpolated_state_;
+
+    std::atomic<int> collision_count_{0};
+    bool is_in_collision_state_{false};
+
 
     // Methods...
     double normalizeAngle(double angle) {
@@ -268,6 +275,29 @@ private:
         }
 
         current_interpolated_state_ = new_state;
+        // =================================================================
+        // =========== CORRECTED: COLLISION COUNTING LOGIC =================
+        // =================================================================
+        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+        if (gazebo_checker) {
+            Eigen::Vector2d current_pos = new_state.head<2>();
+            
+            // --- FIX: Get the yaw from the Dubins state vector (x, y, theta, t) ---
+            double current_yaw = new_state(2);
+            
+            // Call the single, unified collision check function
+            bool is_colliding_now = gazebo_checker->checkRobotCollision(current_pos, current_yaw);
+
+            if (is_colliding_now && !is_in_collision_state_) {
+                collision_count_++;
+                RCLCPP_FATAL(this->get_logger(), "COLLISION DETECTED! Total Failures: %d", collision_count_.load());
+            }
+            is_in_collision_state_ = is_colliding_now;
+        }
+        // =================================================================
+
+
+
         Eigen::Vector3d robot_pos_3d(new_state(0), new_state(1), 0.0);
         Eigen::Quaterniond q(Eigen::AngleAxisd(new_state(2), Eigen::Vector3d::UnitZ()));
         Eigen::VectorXd orientation_quat(4);

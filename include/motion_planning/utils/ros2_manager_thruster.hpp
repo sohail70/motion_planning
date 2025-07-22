@@ -123,6 +123,11 @@ public:
         return current_interpolated_state_;
     }
 
+    int getCollisionCount() const {
+        return collision_count_.load();
+    }
+
+
 private:
     std::shared_ptr<ObstacleChecker> obstacle_checker_;
     std::shared_ptr<RVizVisualization> visualizer_;
@@ -136,6 +141,9 @@ private:
     double simulation_time_step_; // Negative for backward-in-time simulation
     bool is_path_set_;
     Eigen::VectorXd current_interpolated_state_;
+
+    std::atomic<int> collision_count_{0};
+    bool is_in_collision_state_{false};
 
 
     void visualizationLoop() {
@@ -258,6 +266,33 @@ private:
                 current_interpolated_state_ = current_path_.back();
             }
         }
+
+        // =================================================================
+        // =========== CORRECTED: COLLISION COUNTING LOGIC =================
+        // =================================================================
+        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+        if (gazebo_checker) {
+            // --- FIX: Use the correct state variable ---
+            Eigen::Vector2d current_pos = getSpatialPosition(current_interpolated_state_);
+
+            // --- FIX: Calculate current yaw from the velocity vector ---
+            Eigen::VectorXd current_vel = getSpatialVelocity(current_interpolated_state_);
+            double current_yaw = 0.0; // Default yaw if stationary
+            if (current_vel.norm() > 1e-3) {
+                current_yaw = std::atan2(current_vel[1], current_vel[0]);
+            }
+            
+            // Call the unified collision check function
+            bool is_colliding_now = gazebo_checker->checkRobotCollision(current_pos, current_yaw);
+
+            if (is_colliding_now && !is_in_collision_state_) {
+                collision_count_++;
+                RCLCPP_FATAL(this->get_logger(), "COLLISION DETECTED! Total Failures: %d", collision_count_.load());
+            }
+            is_in_collision_state_ = is_colliding_now;
+        }
+        // =================================================================
+
         
         // --- Visualization ---
         Eigen::VectorXd new_pos = getSpatialPosition(current_interpolated_state_);

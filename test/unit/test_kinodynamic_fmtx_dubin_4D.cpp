@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
     planner_params.setParam("prune", false);
     planner_params.setParam("precache_neighbors", true);
     planner_params.setParam("kd_dim", 4); // 2 or 3 or 4 only dubin
-    planner_params.setParam("use_knn", true);
+    planner_params.setParam("use_knn", false);
 
     // --- 3. Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("fmtx_dubins_visualizer",
@@ -427,6 +427,11 @@ int main(int argc, char** argv) {
     }
     // Stop profiling
     CALLGRIND_STOP_INSTRUMENTATION;
+
+
+    const int final_collision_count = ros_manager->getCollisionCount();
+    RCLCPP_FATAL(vis_node->get_logger(), "SIMULATION COMPLETE. TOTAL DETECTED COLLISIONS: %d", final_collision_count);
+
 
     // Get timestamp for a unique filename
     std::time_t now_time = std::time(nullptr);

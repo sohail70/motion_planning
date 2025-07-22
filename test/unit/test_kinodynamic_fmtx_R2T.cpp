@@ -146,8 +146,16 @@ int main(int argc, char** argv)
     // This value is CRITICAL. If it's 0.0, your robot has no size.
     // Set it to a value representing your robot's radius + a safety margin.
     // For example, if your robot is 1 meter wide, a radius of 0.5m + a buffer of 1m = 1.5.
-    gazebo_params.setParam("inflation", 0.5); // <-- VERIFY THIS IS A REASONABLE, NON-ZERO VALUE
+    gazebo_params.setParam("inflation", 0.5); //
     gazebo_params.setParam("persistent_static_obstacles", false);
+
+
+    // gazebo_params.setParam("collision_check_footprint", "rectangular"); // Options: "circular", "rectangular"
+    // // [NEW] Define the rectangular footprint points as a string
+    // // This will only be used if the above parameter is "rectangular"
+    // gazebo_params.setParam("rectangular_footprint_points", "0.6 0.4  0.6 -0.4  -0.6 -0.4  -0.6 0.4");
+
+
 
 
 
@@ -164,7 +172,7 @@ int main(int argc, char** argv)
     planner_params.setParam("ignore_sample", false);
     planner_params.setParam("prune", false);
     planner_params.setParam("kd_dim", 3); // 2 or 3 only for R2T
-    planner_params.setParam("use_knn", true); // In FMTX you get more connection using knn than radial due to obvious reasons!(having steer constraints!)
+    planner_params.setParam("use_knn", false); // In FMTX you get more connection using knn than radial due to obvious reasons!(having steer constraints!)
     planner_params.setParam("precache_neighbors", true);
     // --- 3. Object Initialization ---
     // A single node is shared for visualization purposes
@@ -417,6 +425,10 @@ int main(int argc, char** argv)
     }
     // Stop profiling
     CALLGRIND_STOP_INSTRUMENTATION;
+
+    const int final_collision_count = ros_manager->getCollisionCount();
+    RCLCPP_FATAL(vis_node->get_logger(), "SIMULATION COMPLETE. TOTAL DETECTED COLLISIONS: %d", final_collision_count);
+
 
     // while (g_running && rclcpp::ok())
     // {

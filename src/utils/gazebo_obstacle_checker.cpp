@@ -27,6 +27,30 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
     }
     
 
+    footprint_type_ = params.getParam<std::string>("collision_check_footprint", "circular");
+    RCLCPP_INFO(rclcpp::get_logger("ObstacleChecker"), "Using '%s' footprint for collision detection.", footprint_type_.c_str());
+
+    if (footprint_type_ == "rectangular") {
+        if (params.hasParam("rectangular_footprint_points")) {
+            std::vector<double> points = params.getParam<std::vector<double>>("rectangular_footprint_points");
+            if (points.size() % 2 != 0) {
+                throw std::runtime_error("Rectangular footprint points must be in pairs (x1 y1 x2 y2 ...).");
+            }
+            // Convert the flat vector of doubles into a vector of 2D points
+            for (size_t i = 0; i < points.size(); i += 2) {
+                rectangular_footprint_.emplace_back(points[i], points[i+1]);
+            }
+        } else {
+            throw std::runtime_error("Footprint type is 'rectangular' but 'rectangular_footprint_points' parameter was not provided.");
+        }
+    } else { // "circular" is the default
+        // robot_radius_ = params.getParam<double>("inflation", 0.5);
+        robot_radius_ = 0.0;
+    }
+
+
+
+
     std::string topic = "/world/" + world_name_ + "/pose/info";
     // if (!gz_node_.Subscribe(topic, &GazeboObstacleChecker::poseInfoCallback, this)) {
     //     std::cerr << "Failed to subscribe to Gazebo topic: " << topic << std::endl;
@@ -2534,3 +2558,48 @@ bool GazeboObstacleChecker::pointIntersectsRectangle(const Eigen::Vector2d& poin
 
 //     return fcl::CollisionObjectd(geom);
 // }
+
+
+
+// Implementation of the unified public function
+bool GazeboObstacleChecker::checkRobotCollision(const Eigen::Vector2d& position, double yaw) const {
+    if (footprint_type_ == "rectangular") {
+        return checkRectangularCollisionHelper(position, yaw);
+    } else { // "circular" or default
+        return checkCircularCollisionHelper(position, robot_radius_);
+    }
+}
+
+// Helper for rectangular checks now uses its member variable
+bool GazeboObstacleChecker::checkRectangularCollisionHelper(const Eigen::Vector2d& position, double yaw) const {
+    const Eigen::Rotation2Dd rot(yaw);
+    for(const auto& local_point : rectangular_footprint_) { // Uses member variable
+        Eigen::Vector2d world_point = position + rot * local_point;
+        for(const auto& obstacle : obstacle_snapshot_) {
+            if(obstacle.type == Obstacle::CIRCLE) {
+                if((world_point - obstacle.position).norm() <= obstacle.dimensions.radius) return true;
+            } else { // BOX
+                if(pointIntersectsRectangle(world_point, obstacle.position,
+                                           obstacle.dimensions.width, obstacle.dimensions.height, obstacle.dimensions.rotation)) return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Helper for circular checks (no change in logic, just making it private)
+bool GazeboObstacleChecker::checkCircularCollisionHelper(const Eigen::Vector2d& robot_position, double robot_radius) const {
+    for (const auto& obstacle : obstacle_snapshot_) {
+        if (obstacle.type == Obstacle::CIRCLE) {
+            double required_dist = robot_radius + obstacle.dimensions.radius;
+            if ((robot_position - obstacle.position).norm() <= required_dist) return true;
+        } else { // BOX
+            Eigen::Rotation2Dd rot(-obstacle.dimensions.rotation);
+            Eigen::Vector2d local_circle_pos = rot * (robot_position - obstacle.position);
+            double closest_x = std::max(-obstacle.dimensions.width / 2.0, std::min(local_circle_pos.x(), obstacle.dimensions.width / 2.0));
+            double closest_y = std::max(-obstacle.dimensions.height / 2.0, std::min(local_circle_pos.y(), obstacle.dimensions.height / 2.0));
+            if ((local_circle_pos - Eigen::Vector2d(closest_x, closest_y)).norm() <= robot_radius) return true;
+        }
+    }
+    return false;
+}

@@ -9,6 +9,7 @@ find_package(gz-plugin2 REQUIRED)
 # Define the source file for your plugin
 add_library(MoverPlugin SHARED gz_move.cc)
 add_library(MoverPluginC SHARED gz_move_constant.cc)
+add_library(MoverPluginCR SHARED gz_move_constant_random.cc)
 add_library(CirclePlugin SHARED gz_circle.cc)
 add_library(PathFollowerPlugin SHARED path_follow.cc)
 add_library(TeleportPlugin SHARED teleport.cc)
@@ -24,6 +25,13 @@ target_link_libraries(MoverPluginC
     gz-math7::gz-math7
     gz-plugin2::loader
 )
+
+target_link_libraries(MoverPluginCR
+    gz-sim8::core
+    gz-math7::gz-math7
+    gz-plugin2::loader
+)
+
 target_link_libraries(CirclePlugin
     gz-sim8::core
     gz-math7::gz-math7
@@ -46,6 +54,9 @@ install(TARGETS MoverPlugin
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 install(TARGETS MoverPluginC
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+install(TARGETS MoverPluginCR
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 install(TARGETS CirclePlugin
