@@ -227,9 +227,9 @@ int main(int argc, char **argv) {
 
 
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
-    // problem_def->setStart(start_position); //Root of the tree
+    problem_def->setStart(start_position); //Root of the tree
     // problem_def->setStart(Eigen::VectorXd::Zero(dim));
-    problem_def->setStart(Eigen::VectorXd::Ones(dim) * -50);
+    // problem_def->setStart(Eigen::VectorXd::Ones(dim) * -50);
     problem_def->setGoal(Eigen::VectorXd::Ones(dim) * 50); // where the robot starts!
     problem_def->setBounds(-50, 50);
 
@@ -357,7 +357,7 @@ int main(int argc, char **argv) {
         ////////// VISUALIZE /////
         // dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
         // dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-        dynamic_cast<RRTX*>(planner.get())->visualizeTree();
+        // dynamic_cast<RRTX*>(planner.get())->visualizeTree();
 
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();

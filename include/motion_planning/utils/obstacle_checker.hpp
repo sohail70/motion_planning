@@ -107,9 +107,18 @@ public:
     virtual bool isObstacleFree(const Eigen::VectorXd& point) const = 0;
     // New virtual function to check a whole path
     virtual bool isObstacleFree(const std::vector<Eigen::VectorXd>& path) const = 0;
+
+    virtual bool isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& start, const Eigen::VectorXd& end, const Obstacle& obs) const = 0;
+    virtual bool isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& point, const Obstacle& obs) const = 0;
+
+    
     virtual std::optional<Obstacle> getCollidingObstacle( const Trajectory& trajectory, double start_node_cost) const = 0;
     virtual std::optional<Obstacle> getCollidingObstacleFCL( const Trajectory& trajectory, double start_node_cost) const = 0;
+    virtual std::optional<Obstacle> getCollidingObstacleBullet( const Trajectory& trajectory, double start_node_cost) const = 0;
+
     virtual bool isTrajectorySafe( const Trajectory& trajectory, double start_node_time) const = 0;
+    
+    virtual bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, double global_start_time, const Obstacle& obstacle) const = 0;
 
     // virtual void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) = 0;
     virtual ObstacleVector getObstacles() const = 0;

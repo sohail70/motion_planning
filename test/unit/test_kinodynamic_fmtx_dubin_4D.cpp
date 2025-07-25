@@ -135,6 +135,7 @@ int main(int argc, char** argv) {
     gazebo_params.setParam("estimation", true);
     gazebo_params.setParam("kf_model_type", "cv");
     gazebo_params.setParam("fcl", false);
+    gazebo_params.setParam("bullet", false);
 
     // gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
     // This value is CRITICAL. If it's 0.0, your robot has no size.

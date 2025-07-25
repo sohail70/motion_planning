@@ -160,9 +160,10 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("use_range", false); 
     gazebo_params.setParam("sensor_range", 20.0);
     gazebo_params.setParam("estimation", true);
-    gazebo_params.setParam("inflation", 0.8); 
+    gazebo_params.setParam("inflation", 0.5); 
     gazebo_params.setParam("persistent_static_obstacles", false);
     gazebo_params.setParam("fcl", false);
+    gazebo_params.setParam("bullet", false);
 
     Params planner_params;
     planner_params.setParam("num_of_samples", num_samples);

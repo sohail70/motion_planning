@@ -101,7 +101,8 @@
 //     gazebo_params.setParam("persistent_static_obstacles", true);
 //     gazebo_params.setParam("estimation", true);
 //     gazebo_params.setParam("kf_model_type", "cv");
-
+    // gazebo_params.setParam("fcl", false);
+    // gazebo_params.setParam("bullet", false);
 //     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_4_obs.sdf");
 //     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
 
@@ -424,6 +425,8 @@
 //     gazebo_params.setParam("persistent_static_obstacles", true);
 //     gazebo_params.setParam("estimation", true);
 //     gazebo_params.setParam("kf_model_type", "cv");
+    // gazebo_params.setParam("fcl", false);
+    // gazebo_params.setParam("bullet", false);
 
 //     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_4_obs.sdf");
 //     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
@@ -719,6 +722,8 @@ int main(int argc, char** argv) {
     gazebo_params.setParam("persistent_static_obstacles", true);
     gazebo_params.setParam("estimation", true);
     gazebo_params.setParam("kf_model_type", "cv");
+    gazebo_params.setParam("fcl", false);
+    gazebo_params.setParam("bullet", true);
     
     auto obstacle_info = parseSdfObstacles("dynamic_world_1_obs.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);

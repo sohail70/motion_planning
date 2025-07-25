@@ -9,6 +9,17 @@
 #include "motion_planning/utils/kalman_filter_factory.hpp"
 #include <fcl/fcl.h>
 
+
+
+
+#include "btBulletDynamicsCommon.h"
+#include "BulletCollision/CollisionShapes/btSphereShape.h"
+#include "BulletCollision/CollisionShapes/btBoxShape.h"
+#include "BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
+#include "BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
+#include "BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
+
+
 class GazeboObstacleChecker : public ObstacleChecker {
 public:
 
@@ -25,9 +36,15 @@ public:
 
     bool isObstacleFree(const std::vector<Eigen::VectorXd>& path) const override;
 
+    bool isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& start, const Eigen::VectorXd& end, const Obstacle& obs) const override;
+    bool isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& point, const Obstacle& obs) const override;
+
+
+
+
 bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, 
                                            double global_start_time, 
-                                           const Obstacle& obstacle) const;
+                                           const Obstacle& obstacle) const override;
 
 
     bool isInVelocityObstacle(
@@ -47,6 +64,8 @@ bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory,
      */
     std::optional<Obstacle> getCollidingObstacle(const Trajectory& trajectory, double start_node_cost) const override;
     std::optional<Obstacle> getCollidingObstacleFCL(const Trajectory& trajectory, double start_node_cost) const override;
+    std::optional<Obstacle> getCollidingObstacleBullet(const Trajectory& trajectory, double start_node_cost) const override;
+
     bool sweptBoxIntersection( const Eigen::Vector2d& p_r0, const Eigen::Vector2d& v_r, const Eigen::Vector2d& p_o0, const Eigen::Vector2d& v_o, double w, double h, double T_segment, double rotation, bool consider_rotation) const;
     
     /**
@@ -332,6 +351,7 @@ private:
     bool persistent_static_obstacles;
     bool estimation;
     bool use_fcl;
+    bool use_bullet;
 
 
     std::unordered_map<std::string, Obstacle> static_obstacle_positions_;
@@ -397,6 +417,18 @@ private:
     //  * @return A shared pointer to an FCL CollisionObject.
     //  */
     // fcl::CollisionObjectd createFCLObject(const Obstacle& obstacle) const;
+
+
+    // --- Bullet Physics Members ---
+    // These are mutable to allow for lazy initialization inside a const method.
+    mutable std::unique_ptr<btDefaultCollisionConfiguration> bullet_collision_config_;
+    mutable std::unique_ptr<btCollisionDispatcher> bullet_dispatcher_;
+    mutable std::unique_ptr<btBroadphaseInterface> bullet_broadphase_;
+    mutable std::unique_ptr<btCollisionWorld> bullet_world_;
+
+    mutable std::unordered_map<std::string, std::unique_ptr<btConvexShape>> bullet_shape_cache_;
+
+
 
 
 };

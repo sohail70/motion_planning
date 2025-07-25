@@ -37,12 +37,14 @@ find_package(rclcpp_action REQUIRED)  # Add this line
 # find_package(fcl REQUIRED)
 pkg_check_modules(FCL REQUIRED fcl)
 
+find_package(Bullet REQUIRED)
 
 find_package(gz-transport13 REQUIRED)   # Gazebo transport
 find_package(gz-msgs10 REQUIRED)        # Gazebo messages
 find_package(Protobuf REQUIRED)         # Protocol Buffers
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZeroMQ REQUIRED libzmq)
+
 
 
 
@@ -63,6 +65,7 @@ include_directories(
   ${type_description_interfaces_INCLUDE_DIRS}
   ${visualization_msgs_INCLUDE_DIRS}
   ${FCL_INCLUDE_DIRS} 
+  ${BULLET_INCLUDE_DIRS}
 )
 
 # Visualization Library (ROS2 dependent)
@@ -94,6 +97,7 @@ target_link_libraries(gz_obs PUBLIC
   ${ZeroMQ_LIBRARIES}
   kf
   ${FCL_LIBRARIES}
+  ${BULLET_LIBRARIES}
 )
 
 

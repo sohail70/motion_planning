@@ -157,4 +157,11 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
 
     ReplanMetrics last_replan_metrics_; 
 
+
+    std::unordered_map<std::string, Obstacle> previous_obstacles_;
+
+
+    mutable std::unordered_map<int, std::vector<Obstacle>> node_to_threats_map_;
+
+
 };

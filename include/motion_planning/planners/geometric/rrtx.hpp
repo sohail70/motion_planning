@@ -119,6 +119,12 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     std::vector<Eigen::VectorXd> interpolatePath(const std::vector<Eigen::VectorXd>& path,
                                                int num_intermediates) const;
 
+    std::unordered_map<std::string, Obstacle> previous_obstacles_;
+
+
+    mutable std::unordered_map<int, std::vector<Obstacle>> node_to_threats_map_;
+    int obs_check_ = 0;
+
 
 
 

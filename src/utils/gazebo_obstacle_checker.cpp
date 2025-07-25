@@ -18,6 +18,7 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
     estimation = params.getParam<bool>("estimation");
     kf_model_type_ = params.getParam<std::string>("kf_model_type", "cv");
     use_fcl = params.getParam<bool>("fcl", false);
+    use_bullet = params.getParam<bool>("bullet", false);
     // Subscribe to the robot pose topic
     std::string robot_pose_topic = "/model/" + robot_model_name_ + "/tf";
     if (!gz_node_.Subscribe(robot_pose_topic, &GazeboObstacleChecker::robotPoseCallback, this)) {
@@ -118,6 +119,53 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const E
         }
     }
     return true;
+}
+
+bool GazeboObstacleChecker::isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& start, const Eigen::VectorXd& end, const Obstacle& obs) const {
+    const Eigen::Vector2d start2d = start.head<2>();
+    const Eigen::Vector2d end2d = end.head<2>();
+    const double inflated = obs.inflation;
+    const Eigen::Vector2d& center = obs.position;
+    
+    if (obs.type == Obstacle::CIRCLE) {
+        const double radius = obs.dimensions.radius + inflated;
+        if (lineIntersectsCircle(start2d, end2d, center, radius)) {
+            return false; // Collision
+        }
+    } else { // BOX
+        const double width = obs.dimensions.width + 2 * inflated;
+        const double height = obs.dimensions.height + 2 * inflated;
+        const double rotation = obs.dimensions.rotation;
+        if (lineIntersectsRectangle(start2d, end2d, center, width, height, rotation)) {
+            return false; // Collision
+        }
+    }
+    
+    return true; // No collision with this specific obstacle
+}
+
+bool GazeboObstacleChecker::isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& point, const Obstacle& obs) const {
+    const Eigen::Vector2d point2d = point.head<2>();
+    const double inflated = obs.inflation;
+    const Eigen::Vector2d& center = obs.position;
+
+    if (obs.type == Obstacle::CIRCLE) {
+        const double radius = obs.dimensions.radius + inflated;
+        // Re-using the existing point-circle intersection helper
+        if (pointIntersectsCircle(point2d, center, radius)) {
+            return false; // Collision
+        }
+    } else { // BOX
+        const double width = obs.dimensions.width + 2 * inflated;
+        const double height = obs.dimensions.height + 2 * inflated;
+        const double rotation = obs.dimensions.rotation;
+        // Re-using the existing point-rectangle intersection helper
+        if (pointIntersectsRectangle(point2d, center, width, height, rotation)) {
+            return false; // Collision
+        }
+    }
+
+    return true; // No collision with this specific obstacle
 }
 
 bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
@@ -308,75 +356,86 @@ bool GazeboObstacleChecker::check_arc_line_collision(
 
 
 // In gazebo_obstacle_checker.cpp
-
 bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
     const Trajectory& trajectory,
     double global_start_time,
-    const Obstacle& obs // Note: we now take a single obstacle
+    const Obstacle& obs
 ) const {
     if (trajectory.path_points.size() < 2) return true;
 
-    // Get the dimension of the state once. Time is always the last element.
     const int time_dim_idx = trajectory.path_points[0].size() - 1;
-
     double time_into_full_trajectory = 0.0;
-    
+
     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
         const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
         const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
-
-        // ✅ CORRECTED: Access last element by index, not with .back()
         const double T_segment = segment_start_state(time_dim_idx) - segment_end_state(time_dim_idx);
         
         if (T_segment <= 1e-9) continue;
 
-        // ✅ CORRECTED: Use the correct start time for the segment
         const double time_at_segment_start = global_start_time + time_into_full_trajectory;
-        
         const Eigen::Vector2d p_r0 = segment_start_state.head<2>();
         const Eigen::Vector2d p_r1 = segment_end_state.head<2>();
         const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
 
-        const double R = obs.dimensions.radius + inflation;
-        const double R_sq = R * R;
+        // ======================= MODIFICATION START =======================
+        if (obs.type == Obstacle::CIRCLE) {
+            const double R = obs.dimensions.radius + inflation;
+            const double R_sq = R * R;
 
-        if (obs.is_dynamic) {
-            const double delta_t = std::max(0.0, time_at_segment_start - obs.last_update_time.seconds());
-            const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
-            const Eigen::Vector2d p_rel_start = p_r0 - p_o0;
-            const Eigen::Vector2d v_rel = v_r - obs.velocity;
-            
-            const double a = v_rel.dot(v_rel);
-            const double b = 2.0 * p_rel_start.dot(v_rel);
-            const double c = p_rel_start.dot(p_rel_start) - R_sq;
+            if (obs.is_dynamic) {
+                const double delta_t = std::max(0.0, time_at_segment_start - obs.last_update_time.seconds());
+                const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+                const Eigen::Vector2d p_rel_start = p_r0 - p_o0;
+                const Eigen::Vector2d v_rel = v_r - obs.velocity;
+                
+                const double a = v_rel.dot(v_rel);
+                const double b = 2.0 * p_rel_start.dot(v_rel);
+                const double c = p_rel_start.dot(p_rel_start) - R_sq;
 
-            if (std::abs(a) < 1e-9) { 
-                if (c <= 0) return false; // Collision
-                continue;
-            }
-
-            const double discriminant = b * b - 4 * a * c;
-            if (discriminant >= 0) {
-                const double sqrt_disc = std::sqrt(discriminant);
-                const double t1 = (-b - sqrt_disc) / (2.0 * a);
-                // Check if the valid collision interval overlaps with the segment's duration
-                if (t1 >= 0 && t1 <= T_segment) {
-                    return false; // Collision
+                if (std::abs(a) < 1e-9) { 
+                    if (c <= 0) return false;
+                } else {
+                    const double discriminant = b * b - 4 * a * c;
+                    if (discriminant >= 0) {
+                        const double t1 = (-b - std::sqrt(discriminant)) / (2.0 * a);
+                        const double t2 = (-b + std::sqrt(discriminant)) / (2.0 * a);
+                        if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
+                            return false; // Collision interval overlaps with segment duration
+                        }
+                    }
+                }
+            } else { // Static Circle
+                if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
+                    return false;
                 }
             }
-        } else {
-            if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
-                return false; // Collision
+        } else if (obs.type == Obstacle::BOX) {
+            // Apply inflation to width and height for box checks
+            const double w = obs.dimensions.width + 2 * inflation;
+            const double h = obs.dimensions.height + 2 * inflation;
+
+            if (obs.is_dynamic) {
+                const double delta_t = std::max(0.0, time_at_segment_start - obs.last_update_time.seconds());
+                const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+                
+                // Use the swept-volume test for a moving box
+                if (sweptBoxIntersection(p_r0, v_r, p_o0, obs.velocity, w, h, T_segment, obs.dimensions.rotation, false)) {
+                    return false;
+                }
+            } else { // Static Box
+                if (lineIntersectsRectangle(p_r0, p_r1, obs.position, w, h, obs.dimensions.rotation)) {
+                    return false;
+                }
             }
         }
+        // ======================== MODIFICATION END ========================
         
         time_into_full_trajectory += T_segment;
     }
 
-    return true; // No collision found with this specific obstacle
+    return true; // No collision found
 }
-
-
 
 /**
  * @brief Performs a continuous, analytical collision check for a moving point (robot) against a moving box (obstacle).
@@ -459,6 +518,8 @@ bool GazeboObstacleChecker::isTrajectorySafe(
     // return isObstacleFree(trajectory.path_points.at(0),trajectory.path_points.at(1));
     if (use_fcl)
         return !getCollidingObstacleFCL(trajectory, global_edge_start_time).has_value();
+    else if (use_bullet)
+        return !getCollidingObstacleBullet(trajectory, global_edge_start_time).has_value();
     else
         return !getCollidingObstacle(trajectory, global_edge_start_time).has_value();
 }
@@ -1502,6 +1563,261 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
 }
 
 
+// // Bullet with world object being process in the function it self!
+// std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
+//     const Trajectory& trajectory,
+//     double global_start_time
+// ) const {
+//     // 1. --- Initial Setup & Validation ---
+//     if (trajectory.path_points.size() < 2) {
+//         return std::nullopt;
+//     }
+
+//     // Lazy initialization of the Bullet world. This ensures it's only created once.
+//     if (!bullet_world_) {
+//         bullet_collision_config_ = std::make_unique<btDefaultCollisionConfiguration>();
+//         bullet_dispatcher_ = std::make_unique<btCollisionDispatcher>(bullet_collision_config_.get());
+//         bullet_broadphase_ = std::make_unique<btDbvtBroadphase>();
+//         bullet_world_ = std::make_unique<btCollisionWorld>(
+//             bullet_dispatcher_.get(), bullet_broadphase_.get(), bullet_collision_config_.get()
+//         );
+//     }
+
+//     // Helper lambdas for cleaner code
+//     auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
+//     auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
+//     auto get_vxy = [](const Eigen::VectorXd& state) { return state.segment<2>(2); };
+//     auto to_btVector3 = [](const Eigen::Vector2d& vec) { return btVector3(vec.x(), vec.y(), 0); };
+
+//     double time_into_full_trajectory = 0.0;
+//     const int state_dim = trajectory.path_points[0].size();
+
+//     // The robot is represented as a sphere with the inflation radius for all checks.
+//     btSphereShape robot_shape(inflation);
+
+//     // 2. --- Iterate Through Trajectory Segments ---
+//     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+//         const Eigen::VectorXd& start_state = trajectory.path_points[i];
+//         const Eigen::VectorXd& end_state = trajectory.path_points[i + 1];
+
+//         const double T_segment = get_time(start_state) - get_time(end_state);
+//         if (T_segment <= 1e-9) continue;
+
+//         const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
+
+//         // Calculate robot's start and end positions for this segment
+//         Eigen::Vector2d p_r0, p_r1;
+//         if (state_dim == 5) { // 5D state space (x, y, vx, vy, t) - accounts for acceleration
+//             const Eigen::Vector2d v_r0 = get_vxy(start_state);
+//             const Eigen::Vector2d v_r1 = get_vxy(end_state);
+//             const Eigen::Vector2d a_r = (v_r1 - v_r0) / T_segment;
+//             p_r0 = get_xy(start_state);
+//             p_r1 = p_r0 + v_r0 * T_segment + 0.5 * a_r * T_segment * T_segment;
+//         } else { // 3D or 4D state space (constant velocity)
+//             p_r0 = get_xy(start_state);
+//             p_r1 = get_xy(end_state);
+//         }
+
+//         // Define robot's start and end transforms
+//         btTransform robot_tf_start, robot_tf_end;
+//         robot_tf_start.setIdentity();
+//         robot_tf_start.setOrigin(to_btVector3(p_r0));
+//         robot_tf_end.setIdentity();
+//         robot_tf_end.setOrigin(to_btVector3(p_r1));
+
+//         // 3. --- Check Against Each Obstacle ---
+//         for (const auto& obs : obstacle_snapshot_) {
+//             // Create the obstacle's collision shape
+//             std::unique_ptr<btConvexShape> obs_shape;
+//             if (obs.type == Obstacle::BOX) {
+//                 obs_shape = std::make_unique<btBoxShape>(btVector3(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0, 1.0));
+//             } else { // CIRCLE
+//                 obs_shape = std::make_unique<btSphereShape>(obs.dimensions.radius);
+//             }
+
+//             // Predict the obstacle's start and end transforms for the segment
+//             btTransform obs_tf_start, obs_tf_end;
+//             obs_tf_start.setIdentity();
+//             obs_tf_end.setIdentity();
+
+//             Eigen::Vector2d obs_pos_start = obs.position;
+//             if (obs.is_dynamic) {
+//                 double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+//                 obs_pos_start = obs.position + obs.velocity * delta_t;
+//                 Eigen::Vector2d obs_pos_end = obs_pos_start + obs.velocity * T_segment;
+//                 obs_tf_end.setOrigin(to_btVector3(obs_pos_end));
+//             } else {
+//                 obs_tf_end.setOrigin(to_btVector3(obs_pos_start)); // Static obstacle doesn't move
+//             }
+//             obs_tf_start.setOrigin(to_btVector3(obs_pos_start));
+            
+//             // Apply rotation for boxes
+//             if(obs.type == Obstacle::BOX) {
+//                 btQuaternion q;
+//                 q.setEuler(obs.dimensions.rotation, 0, 0); // Assuming yaw is the rotation axis
+//                 obs_tf_start.setRotation(q);
+//                 obs_tf_end.setRotation(q); // Assuming non-rotating obstacles
+//             }
+
+//             // 4. --- Perform Relative Motion Sweep Test (THE CORE FIX) ---
+
+//             // a. Create a temporary collision object for the obstacle and add it to the world
+//             btCollisionObject obs_co;
+//             obs_co.setCollisionShape(obs_shape.get());
+//             obs_co.setWorldTransform(obs_tf_start);
+//             bullet_world_->addCollisionObject(&obs_co);
+
+//             // b. Calculate the robot's end transform *relative* to the obstacle's motion
+//             btTransform robot_tf_end_relative = robot_tf_end;
+//             btVector3 obstacle_displacement = obs_tf_end.getOrigin() - obs_tf_start.getOrigin();
+//             robot_tf_end_relative.getOrigin() -= obstacle_displacement;
+
+//             // c. Setup the callback and perform the sweep test with the correct 5 arguments
+//             btCollisionWorld::ClosestConvexResultCallback result_callback(btVector3(0,0,0), btVector3(0,0,0));
+            
+//             bullet_world_->convexSweepTest(
+//                 &robot_shape,
+//                 robot_tf_start,
+//                 robot_tf_end_relative, // Use the modified relative transform
+//                 result_callback,
+//                 bullet_world_->getDispatchInfo().m_allowedCcdPenetration
+//             );
+
+//             // d. IMPORTANT: Clean up by removing the temporary object from the world
+//             bullet_world_->removeCollisionObject(&obs_co);
+
+//             if (result_callback.hasHit()) {
+//                 return obs; // Collision detected
+//             }
+//         }
+//         time_into_full_trajectory += T_segment;
+//     }
+
+//     return std::nullopt; // No collision found
+// }
+
+
+std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
+    const Trajectory& trajectory,
+    double global_start_time
+) const {
+    // 1. --- Initial Setup & Validation ---
+    if (trajectory.path_points.size() < 2) {
+        return std::nullopt;
+    }
+
+    // Lazy initialization of the Bullet world.
+    if (!bullet_world_) {
+        bullet_collision_config_ = std::make_unique<btDefaultCollisionConfiguration>();
+        bullet_dispatcher_ = std::make_unique<btCollisionDispatcher>(bullet_collision_config_.get());
+        bullet_broadphase_ = std::make_unique<btDbvtBroadphase>();
+        bullet_world_ = std::make_unique<btCollisionWorld>(
+            bullet_dispatcher_.get(), bullet_broadphase_.get(), bullet_collision_config_.get()
+        );
+    }
+
+    // Helper lambdas for cleaner code
+    auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
+    auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
+    auto get_vxy = [](const Eigen::VectorXd& state) { return state.segment<2>(2); };
+    auto to_btVector3 = [](const Eigen::Vector2d& vec) { return btVector3(vec.x(), vec.y(), 0); };
+
+    double time_into_full_trajectory = 0.0;
+    const int state_dim = trajectory.path_points[0].size();
+    btSphereShape robot_shape(inflation);
+
+    // OPTIMIZATION: Create the callback object once and reuse it.
+    btCollisionWorld::ClosestConvexResultCallback result_callback(btVector3(0,0,0), btVector3(0,0,0));
+
+    // 2. --- Iterate Through Trajectory Segments ---
+    for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+        const Eigen::VectorXd& start_state = trajectory.path_points[i];
+        const Eigen::VectorXd& end_state = trajectory.path_points[i + 1];
+
+        const double T_segment = get_time(start_state) - get_time(end_state);
+        if (T_segment <= 1e-9) continue;
+
+        const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
+
+        // Calculate robot's start and end positions for this segment
+        Eigen::Vector2d p_r0, p_r1;
+        if (state_dim == 5) { // 5D state space
+            const Eigen::Vector2d v_r0 = get_vxy(start_state);
+            const Eigen::Vector2d v_r1 = get_vxy(end_state);
+            const Eigen::Vector2d a_r = (v_r1 - v_r0) / T_segment;
+            p_r0 = get_xy(start_state);
+            p_r1 = p_r0 + v_r0 * T_segment + 0.5 * a_r * T_segment * T_segment;
+        } else { // 3D/4D state space
+            p_r0 = get_xy(start_state);
+            p_r1 = get_xy(end_state);
+        }
+
+        btTransform robot_tf_start, robot_tf_end;
+        robot_tf_start.setIdentity();
+        robot_tf_start.setOrigin(to_btVector3(p_r0));
+        robot_tf_end.setIdentity();
+        robot_tf_end.setOrigin(to_btVector3(p_r1));
+
+        // 3. --- Check Against Each Obstacle ---
+        for (const auto& obs : obstacle_snapshot_) {
+            // OPTIMIZATION: Get the pre-cached shape instead of creating a new one.
+            auto shape_it = bullet_shape_cache_.find(obs.name);
+            if (shape_it == bullet_shape_cache_.end()) continue; // Shape not found
+            btConvexShape* obs_shape = shape_it->second.get();
+
+            // Predict the obstacle's start and end transforms
+            btTransform obs_tf_start, obs_tf_end;
+            obs_tf_start.setIdentity();
+            obs_tf_end.setIdentity();
+
+            Eigen::Vector2d obs_pos_start = obs.position;
+            if (obs.is_dynamic) {
+                double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+                obs_pos_start = obs.position + obs.velocity * delta_t;
+                Eigen::Vector2d obs_pos_end = obs_pos_start + obs.velocity * T_segment;
+                obs_tf_end.setOrigin(to_btVector3(obs_pos_end));
+            } else {
+                obs_tf_end.setOrigin(to_btVector3(obs_pos_start));
+            }
+            obs_tf_start.setOrigin(to_btVector3(obs_pos_start));
+            
+            if(obs.type == Obstacle::BOX) {
+                btQuaternion q;
+                q.setEuler(obs.dimensions.rotation, 0, 0);
+                obs_tf_start.setRotation(q);
+                obs_tf_end.setRotation(q);
+            }
+
+            // Create a temporary collision object on the stack
+            btCollisionObject obs_co;
+            obs_co.setCollisionShape(obs_shape);
+            obs_co.setWorldTransform(obs_tf_start);
+            bullet_world_->addCollisionObject(&obs_co);
+
+            btTransform robot_tf_end_relative = robot_tf_end;
+            btVector3 obstacle_displacement = obs_tf_end.getOrigin() - obs_tf_start.getOrigin();
+            robot_tf_end_relative.getOrigin() -= obstacle_displacement;
+
+            // OPTIMIZATION: Reset the state of the reused callback object.
+            result_callback.m_closestHitFraction = 1.0f;
+            // ✅ THE FIX IS HERE: Use the correct member name 'm_hitCollisionObject'.
+            result_callback.m_hitCollisionObject = nullptr;
+            
+            bullet_world_->convexSweepTest(&robot_shape, robot_tf_start, robot_tf_end_relative, result_callback, 0.0f);
+
+            bullet_world_->removeCollisionObject(&obs_co);
+
+            if (result_callback.hasHit()) {
+                return obs;
+            }
+        }
+        time_into_full_trajectory += T_segment;
+    }
+
+    return std::nullopt;
+}
+
+
 
 // // This is the primary function, now rewritten to use the Velocity Obstacle method.
 // // This is the new, corrected version of your collision checking function.
@@ -2376,6 +2692,40 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
     obstacle_positions_.insert(obstacle_positions_.end(),
                              current_dynamic_obstacles.begin(),
                              current_dynamic_obstacles.end());
+
+
+    if (use_bullet) {
+        // Use a set to track which obstacles are currently active in the scene
+        std::unordered_set<std::string> active_obstacle_names;
+
+        // --- UPDATE/CREATE LOOP ---
+        // Iterate through the latest snapshot of all obstacles
+        for (const auto& obs : obstacle_positions_) {
+            active_obstacle_names.insert(obs.name);
+
+            // If the obstacle is new, create and cache its shape.
+            if (bullet_shape_cache_.find(obs.name) == bullet_shape_cache_.end()) {
+                if (obs.type == Obstacle::BOX) {
+                    bullet_shape_cache_[obs.name] = std::make_unique<btBoxShape>(btVector3(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0, 1.0));
+                } else { // CIRCLE
+                    bullet_shape_cache_[obs.name] = std::make_unique<btSphereShape>(obs.dimensions.radius);
+                }
+            }
+        }
+
+        // --- CLEANUP LOOP ---
+        // Iterate through the cache and remove shapes for obstacles that are no longer active.
+        for (auto it = bullet_shape_cache_.begin(); it != bullet_shape_cache_.end(); ) {
+            if (active_obstacle_names.find(it->first) == active_obstacle_names.end()) {
+                // This obstacle has disappeared. Erase its shape from the cache.
+                // The unique_ptr will automatically handle memory deallocation.
+                it = bullet_shape_cache_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
 }
 
 
