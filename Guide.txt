@@ -76,6 +76,11 @@ gz sim -s dynamic_world.sdf
 for f in sim_rrtx_*.csv; do
   mv -- "$f" "2_0_30_$f"
 done
+
+for f in sim_rrtx_*.csv; do
+  mv -- "$f" "1_5_20_$f"
+done
+
 for f in sim_rrtx_*.csv; do
   mv -- "$f" "1_0_30_$f"
 done

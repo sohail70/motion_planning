@@ -205,6 +205,7 @@ void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     upper_bound_ = problem_->getUpperBound()[0];
     use_kdtree = params.getParam<bool>("use_kdtree");
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
+    mode = params.getParam<int>("mode" , 1);
     if (use_kdtree == true && kdtree_type == "NanoFlann")
         kdtree_ = std::make_shared<NanoFlann>(statespace_->getDimension());
     else
@@ -528,7 +529,6 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
     const ObstacleVector& obstacles, double max_length) {
     node_to_threats_map_.clear();
     std::unordered_map<int, std::unordered_set<std::string>> node_added_threats;
-
     std::unordered_set<int> conflicting_samples;
         
     for (const auto& obstacle : obstacles) {
@@ -568,11 +568,13 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
 
         auto sample_indices = kdtree_->radiusSearch(obstacle.position, search_radius);
         conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
-        for (int idx : sample_indices) {
-            // ✅ Only add the obstacle if it hasn't been added to this node's threat list yet.
-            if (node_added_threats[idx].find(obstacle.name) == node_added_threats[idx].end()) {
-                node_to_threats_map_[idx].push_back(obstacle);
-                node_added_threats[idx].insert(obstacle.name);
+        if (mode == 3){
+            for (int idx : sample_indices) {
+                // ✅ Only add the obstacle if it hasn't been added to this node's threat list yet.
+                if (node_added_threats[idx].find(obstacle.name) == node_added_threats[idx].end()) {
+                    node_to_threats_map_[idx].push_back(obstacle);
+                    node_added_threats[idx].insert(obstacle.name);
+                }
             }
         }
 
@@ -941,83 +943,202 @@ std::vector<Eigen::VectorXd> RRTX::smoothPath(const std::vector<Eigen::VectorXd>
 
 // Node Centric update with a map of which conflicting node associates with which obstalce!
 void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
-    update_obstacle = true;
+    if (mode == 1 || mode == 3) {
+        update_obstacle = true;
 
-    // Common initialization
-    if (edge_length_[max_length_edge_ind] != max_length) {
-        auto max_it = std::max_element(edge_length_.begin(), edge_length_.end(),
-            [](const auto& a, const auto& b) { return a.second < b.second; });
-        max_length = max_it->second;
-        max_length_edge_ind = max_it->first;
-    }
-    auto current = findSamplesNearObstacles(obstacles, max_length);
-    // if (current == samples_in_obstacles_) return; // Early exit if nothing has changed
-
-    // Common code for finding added/removed samples
-    std::vector<int> added, removed;
-    for (int sample : current) {
-        if (!samples_in_obstacles_.count(sample)) added.push_back(sample);
-    }
-    for (int sample : samples_in_obstacles_) {
-        if (!current.count(sample)) removed.push_back(sample);
-    }
-
-    std::vector<int> cur, prev;
-    for(int c: current)
-        cur.push_back(c);
-
-    for(int p: samples_in_obstacles_)
-        prev.push_back(p);
-
-    // // // Visualization
-    // std::vector<Eigen::VectorXd> positions4;
-    // std::string color_str = "0.0,0.0,1.0"; // Blue color
-    // for (int r : removed){
-    //     Eigen::VectorXd vec(2);
-    //     vec << tree_.at(r)->getStateValue();
-    //     positions4.push_back(vec);
-    // }
-    // visualization_->visualizeNodes(positions4,"map",color_str);
-
-
-
-
-    if (ignore_sample) {
-        // Version 1: Track samples on obstacles without explicit checks
-
-        // I update here because in removeObstalce i need to avoid samples that are still on obstalces
-        samples_in_obstacles_ = current;
-        
-        if (!added.empty()) {
-            addNewObstacle(added);
-            propagateDescendants();
-            verifyQueue(tree_[vbot_index_].get());
+        // Common initialization
+        if (edge_length_[max_length_edge_ind] != max_length) {
+            auto max_it = std::max_element(edge_length_.begin(), edge_length_.end(),
+                [](const auto& a, const auto& b) { return a.second < b.second; });
+            max_length = max_it->second;
+            max_length_edge_ind = max_it->first;
         }
-        if (!removed.empty()) {
-            removeObstacle(removed);
-        }
-    } else {
-        // Version 2: Use explicit obstacle checks
-        samples_in_obstacles_ = current; // doesn't matter to update here or after the functions because we alread filled prev with samples_in_obstacles
-        /*
-            we use removed and added for the condtions but we use prev and cur as the input
-            prev is the whole samples previously on the obstalces --> we use prev because we need prev in remove obstacle
-            cur is all the current samples on the obstalces
-            as opposed to added removed which we use in the version 1 ---> the version one is much faster and we can use it because we ignore sample in obstalces in remove obstalce function
-            so in version one we only send what is added wrt to the previous one! --> the obstalce mayb only moved a little bit and only a fraction of samples has been added or removed wrt to previous iteration
-            this simplificatin only works if you ignore samples in obstalce in remove obstalce function of version 1 or else we might connect some nodes and think we are okay but the next cycle added/removed wouldn't 
-            cover the obstacly part.
-        */
+        auto current = findSamplesNearObstacles(obstacles, max_length);
+        // if (current == samples_in_obstacles_) return; // Early exit if nothing has changed
 
-        if (!removed.empty()) removeObstacle(prev);
-        if (!added.empty()) {
-            addNewObstacle(cur);
-            propagateDescendants();
-            verifyQueue(tree_[vbot_index_].get());
+        // Common code for finding added/removed samples
+        std::vector<int> added, removed;
+        for (int sample : current) {
+            if (!samples_in_obstacles_.count(sample)) added.push_back(sample);
         }
+        for (int sample : samples_in_obstacles_) {
+            if (!current.count(sample)) removed.push_back(sample);
+        }
+
+        std::vector<int> cur, prev;
+        for(int c: current)
+            cur.push_back(c);
+
+        for(int p: samples_in_obstacles_)
+            prev.push_back(p);
+
+        // // // Visualization
+        // std::vector<Eigen::VectorXd> positions4;
+        // std::string color_str = "0.0,0.0,1.0"; // Blue color
+        // for (int r : removed){
+        //     Eigen::VectorXd vec(2);
+        //     vec << tree_.at(r)->getStateValue();
+        //     positions4.push_back(vec);
+        // }
+        // visualization_->visualizeNodes(positions4,"map",color_str);
+
+
+
+
+        if (ignore_sample) {
+            // Version 1: Track samples on obstacles without explicit checks
+
+            // I update here because in removeObstalce i need to avoid samples that are still on obstalces
+            samples_in_obstacles_ = current;
+            
+            if (!added.empty()) {
+                addNewObstacle(added);
+                propagateDescendants();
+                verifyQueue(tree_[vbot_index_].get());
+            }
+            if (!removed.empty()) {
+                removeObstacle(removed);
+            }
+        } else {
+            // Version 2: Use explicit obstacle checks
+            samples_in_obstacles_ = current; // doesn't matter to update here or after the functions because we alread filled prev with samples_in_obstacles
+            /*
+                we use removed and added for the condtions but we use prev and cur as the input
+                prev is the whole samples previously on the obstalces --> we use prev because we need prev in remove obstacle
+                cur is all the current samples on the obstalces
+                as opposed to added removed which we use in the version 1 ---> the version one is much faster and we can use it because we ignore sample in obstalces in remove obstalce function
+                so in version one we only send what is added wrt to the previous one! --> the obstalce mayb only moved a little bit and only a fraction of samples has been added or removed wrt to previous iteration
+                this simplificatin only works if you ignore samples in obstalce in remove obstalce function of version 1 or else we might connect some nodes and think we are okay but the next cycle added/removed wouldn't 
+                cover the obstacly part.
+            */
+
+            if (!removed.empty()) removeObstacle(prev);
+            if (!added.empty()) {
+                addNewObstacle(cur);
+                propagateDescendants();
+                verifyQueue(tree_[vbot_index_].get());
+            }
+        }
+        reduceInconsistency();
+    } else if (mode == 2) { // Fully Obstalce Centric Approach
+        update_obstacle = true;
+
+        // Common initialization
+        if (edge_length_[max_length_edge_ind] != max_length) {
+            auto max_it = std::max_element(edge_length_.begin(), edge_length_.end(),
+                [](const auto& a, const auto& b) { return a.second < b.second; });
+            max_length = max_it->second;
+            max_length_edge_ind = max_it->first;
+        }
+
+        std::unordered_map<std::string, Obstacle> current_obstacles;
+        for(const auto& obs : obstacles) {
+            current_obstacles[obs.name] = obs;
+        }
+
+        // ==============================================================================
+        // PASS 1: RE-VALIDATION (The "Remove" Effect)
+        // ==============================================================================
+        for (const auto& [name, old_obs] : previous_obstacles_) {
+            double search_radius;
+            if (old_obs.type == Obstacle::CIRCLE) {
+                search_radius = old_obs.dimensions.radius + old_obs.inflation;
+            } else { // BOX
+                search_radius = std::sqrt( std::pow(old_obs.dimensions.width/2, 2) + std::pow(old_obs.dimensions.height/2, 2)) + old_obs.inflation;
+            }
+            search_radius = std::sqrt( std::pow(search_radius, 2) + std::pow(max_length / 2.0, 2));
+            auto previously_affected_indices = kdtree_->radiusSearch(old_obs.position, search_radius);
+
+            for (int idx : previously_affected_indices) {
+                RRTxNode* node = tree_[idx].get();
+                for (auto& [u, edge] : node->outgoingEdges()) {
+                    if (edge.distance == INFINITY) {
+                        // isObstacleFree checks against ALL obstacles in the new snapshot.
+                        if (obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue())) {
+                            // Restore the edge and all its symmetric counterparts.
+                            edge.distance = edge.distance_original;
+                            if (u->incomingEdges().count(node)) u->incomingEdges().at(node).distance = edge.distance_original;
+                            if (u->outgoingEdges().count(node)) u->outgoingEdges().at(node).distance = edge.distance_original;
+                            if (node->incomingEdges().count(u)) node->incomingEdges().at(u).distance = edge.distance_original;
+                        }
+                    }
+                }
+                updateLMC(node);
+                if (node->getCost() != node->getLMC()) {
+                    verifyQueue(node);
+                }
+            }
+        }
+
+        // ==============================================================================
+        // PASS 2: INVALIDATION (The "Add" Effect)
+        // ==============================================================================
+        for (const auto& [name, current_obs] : current_obstacles) {
+            double search_radius;
+            if (current_obs.type == Obstacle::CIRCLE) {
+                search_radius = current_obs.dimensions.radius + current_obs.inflation;
+            } else { // BOX
+                search_radius = std::sqrt( std::pow(current_obs.dimensions.width/2, 2) + std::pow(current_obs.dimensions.height/2, 2)) + current_obs.inflation;
+            }
+            search_radius = std::sqrt( std::pow(search_radius, 2) + std::pow(max_length / 2.0, 2));
+            auto currently_affected_indices = kdtree_->radiusSearch(current_obs.position, search_radius);
+
+            for (int idx : currently_affected_indices) {
+                RRTxNode* node = tree_[idx].get();
+
+                // // --- OPTIMIZATION START: The "Node Invalidation" Shortcut --- --> IT MADE IT WORSE PERFORMANCE WISE!
+                // // First, check if the node's point itself is now inside the obstacle.
+                // if (!obs_checker_->isObstacleFreeAgainstSingleObstacle(node->getStateValue(), current_obs)) {
+                //     // The node is unusable. All its edges must be invalidated.
+                //     for (auto& [neighbor, edge] : node->outgoingEdges()) {
+                //          edge.distance = INFINITY;
+                //          if (neighbor->incomingEdges().count(node)) neighbor->incomingEdges().at(node).distance = INFINITY;
+                //          if (neighbor->outgoingEdges().count(node)) neighbor->outgoingEdges().at(node).distance = INFINITY;
+                //          if (node->incomingEdges().count(neighbor)) node->incomingEdges().at(neighbor).distance = INFINITY;
+                //     }
+                //     // Since the node is invalid, it and its children must be orphaned and reconsidered.
+                //     verifyOrphan(node);
+                //     continue; // Skip to the next affected node; no need to check edges individually.
+                // }
+                // // --- OPTIMIZATION END ---
+
+                // If the node point is clear, proceed to check its edges.
+                for (auto& [neighbor, edge] : node->outgoingEdges()) {
+                    if (edge.distance == INFINITY) continue;
+
+                    // Check the edge against only the current obstacle for efficiency.
+                    if (!obs_checker_->isObstacleFreeAgainstSingleObstacle(node->getStateValue(), neighbor->getStateValue(), current_obs)) {
+                        // Invalidate the edge
+                        edge.distance = INFINITY; 
+                        
+                        // Invalidate all symmetric representations of this edge for graph consistency.
+                        if (neighbor->incomingEdges().count(node)) neighbor->incomingEdges().at(node).distance = INFINITY;
+                        if (neighbor->outgoingEdges().count(node)) neighbor->outgoingEdges().at(node).distance = INFINITY;
+                        if (node->incomingEdges().count(neighbor)) node->incomingEdges().at(neighbor).distance = INFINITY;
+
+                        // If the invalidated edge was part of the shortest-path tree, handle orphaning.
+                        if (neighbor->getParent() == node) {
+                            verifyOrphan(neighbor);
+                        }
+                        if (node->getParent() == neighbor) {
+                            verifyOrphan(node);
+                        }
+                    }
+                }
+            }
+        }
+
+        // ==============================================================================
+        // PASS 3: FINALIZE
+        // ==============================================================================
+        propagateDescendants();
+        if (vbot_node_) {
+            verifyQueue(vbot_node_);
+        }
+        reduceInconsistency();
+
+        previous_obstacles_ = current_obstacles;
     }
-
-    reduceInconsistency();
 }
 
 // // OLD addNewObstalce
@@ -1107,128 +1228,6 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //////////////////////////////////////////////////////////////////////////////
 
 
-// // Fully Obstacle Centric update
-// void RRTX::updateObstacleSamples(const ObstacleVector& new_obstacle_snapshot) {
-//     update_obstacle = true;
-
-//     // Common initialization
-//     if (edge_length_[max_length_edge_ind] != max_length) {
-//         auto max_it = std::max_element(edge_length_.begin(), edge_length_.end(),
-//             [](const auto& a, const auto& b) { return a.second < b.second; });
-//         max_length = max_it->second;
-//         max_length_edge_ind = max_it->first;
-//     }
-
-//     std::unordered_map<std::string, Obstacle> current_obstacles;
-//     for(const auto& obs : new_obstacle_snapshot) {
-//         current_obstacles[obs.name] = obs;
-//     }
-
-//     // ==============================================================================
-//     // PASS 1: RE-VALIDATION (The "Remove" Effect)
-//     // ==============================================================================
-//     for (const auto& [name, old_obs] : previous_obstacles_) {
-//         double search_radius;
-//         if (old_obs.type == Obstacle::CIRCLE) {
-//             search_radius = old_obs.dimensions.radius + old_obs.inflation;
-//         } else { // BOX
-//             search_radius = std::sqrt( std::pow(old_obs.dimensions.width/2, 2) + std::pow(old_obs.dimensions.height/2, 2)) + old_obs.inflation;
-//         }
-//         search_radius = std::sqrt( std::pow(search_radius, 2) + std::pow(max_length / 2.0, 2));
-//         auto previously_affected_indices = kdtree_->radiusSearch(old_obs.position, search_radius);
-
-//         for (int idx : previously_affected_indices) {
-//             RRTxNode* node = tree_[idx].get();
-//             for (auto& [u, edge] : node->outgoingEdges()) {
-//                 if (edge.distance == INFINITY) {
-//                     // isObstacleFree checks against ALL obstacles in the new snapshot.
-//                     if (obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue())) {
-//                         // Restore the edge and all its symmetric counterparts.
-//                         edge.distance = edge.distance_original;
-//                         if (u->incomingEdges().count(node)) u->incomingEdges().at(node).distance = edge.distance_original;
-//                         if (u->outgoingEdges().count(node)) u->outgoingEdges().at(node).distance = edge.distance_original;
-//                         if (node->incomingEdges().count(u)) node->incomingEdges().at(u).distance = edge.distance_original;
-//                     }
-//                 }
-//             }
-//             updateLMC(node);
-//             if (node->getCost() != node->getLMC()) {
-//                 verifyQueue(node);
-//             }
-//         }
-//     }
-
-//     // ==============================================================================
-//     // PASS 2: INVALIDATION (The "Add" Effect)
-//     // ==============================================================================
-//     for (const auto& [name, current_obs] : current_obstacles) {
-//         double search_radius;
-//         if (current_obs.type == Obstacle::CIRCLE) {
-//             search_radius = current_obs.dimensions.radius + current_obs.inflation;
-//         } else { // BOX
-//             search_radius = std::sqrt( std::pow(current_obs.dimensions.width/2, 2) + std::pow(current_obs.dimensions.height/2, 2)) + current_obs.inflation;
-//         }
-//         search_radius = std::sqrt( std::pow(search_radius, 2) + std::pow(max_length / 2.0, 2));
-//         auto currently_affected_indices = kdtree_->radiusSearch(current_obs.position, search_radius);
-
-//         for (int idx : currently_affected_indices) {
-//             RRTxNode* node = tree_[idx].get();
-
-//             // // --- OPTIMIZATION START: The "Node Invalidation" Shortcut --- --> IT MADE IT WORSE PERFORMANCE WISE!
-//             // // First, check if the node's point itself is now inside the obstacle.
-//             // if (!obs_checker_->isObstacleFreeAgainstSingleObstacle(node->getStateValue(), current_obs)) {
-//             //     // The node is unusable. All its edges must be invalidated.
-//             //     for (auto& [neighbor, edge] : node->outgoingEdges()) {
-//             //          edge.distance = INFINITY;
-//             //          if (neighbor->incomingEdges().count(node)) neighbor->incomingEdges().at(node).distance = INFINITY;
-//             //          if (neighbor->outgoingEdges().count(node)) neighbor->outgoingEdges().at(node).distance = INFINITY;
-//             //          if (node->incomingEdges().count(neighbor)) node->incomingEdges().at(neighbor).distance = INFINITY;
-//             //     }
-//             //     // Since the node is invalid, it and its children must be orphaned and reconsidered.
-//             //     verifyOrphan(node);
-//             //     continue; // Skip to the next affected node; no need to check edges individually.
-//             // }
-//             // // --- OPTIMIZATION END ---
-
-//             // If the node point is clear, proceed to check its edges.
-//             for (auto& [neighbor, edge] : node->outgoingEdges()) {
-//                 if (edge.distance == INFINITY) continue;
-
-//                 // Check the edge against only the current obstacle for efficiency.
-//                 if (!obs_checker_->isObstacleFreeAgainstSingleObstacle(node->getStateValue(), neighbor->getStateValue(), current_obs)) {
-//                     // Invalidate the edge
-//                     edge.distance = INFINITY; 
-                    
-//                     // Invalidate all symmetric representations of this edge for graph consistency.
-//                     if (neighbor->incomingEdges().count(node)) neighbor->incomingEdges().at(node).distance = INFINITY;
-//                     if (neighbor->outgoingEdges().count(node)) neighbor->outgoingEdges().at(node).distance = INFINITY;
-//                     if (node->incomingEdges().count(neighbor)) node->incomingEdges().at(neighbor).distance = INFINITY;
-
-//                     // If the invalidated edge was part of the shortest-path tree, handle orphaning.
-//                     if (neighbor->getParent() == node) {
-//                         verifyOrphan(neighbor);
-//                     }
-//                     if (node->getParent() == neighbor) {
-//                         verifyOrphan(node);
-//                     }
-//                 }
-//             }
-//         }
-//     }
-
-//     // ==============================================================================
-//     // PASS 3: FINALIZE
-//     // ==============================================================================
-//     propagateDescendants();
-//     if (vbot_node_) {
-//         verifyQueue(vbot_node_);
-//     }
-//     reduceInconsistency();
-
-//     previous_obstacles_ = current_obstacles;
-// }
-
-
 
 
 /*
@@ -1240,171 +1239,171 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 */
 // // not optimized
 
-// void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
-//     for (int idx : added_indices) {
-//         RRTxNode* node = tree_[idx].get();
-//         bool node_itself_is_unusable = false;
-
-//         if (ignore_sample) {
-//             // In ignore_sample mode, if idx is in added_indices, we treat the node as unusable
-//             // and mark it for special handling (e.g., its edges will be invalidated based on this mark).
-//             samples_in_obstacles_.insert(idx);
-//             node_itself_is_unusable = true;
-//         } else {
-//             // ignore_sample is false: explicitly check if the node's location is now in an obstacle.
-//             if (!obs_checker_->isObstacleFree(node->getStateValue())) { // Check the node's point itself
-//                 node_itself_is_unusable = true;
-//             }
-//         }
-
-//         if (node_itself_is_unusable) {
-//             // Node is inside an obstacle (or treated as such via ignore_sample).
-//             // All its existing edges become invalid WITHOUT individual collision checks for these edges.
-//             for (auto& [u, edge] : node->outgoingEdges()) {
-//                 // Invalidate this edge (node -> u)
-//                 edge.distance = INFINITY;
-//                 // And its symmetric counterparts if your graph stores them this way
-//                 if (u->incomingEdges().count(node)) {
-//                     u->incomingEdges().at(node).distance = INFINITY;
-//                 }
-//                 if (u->outgoingEdges().count(node)) { // For u -> node
-//                     u->outgoingEdges().at(node).distance = INFINITY;
-//                 }
-//                 if (node->incomingEdges().count(u)) { // For u -> node (from node's perspective)
-//                     node->incomingEdges().at(u).distance = INFINITY;
-//                 }
-
-//                 // If this invalidated edge was a parent link, handle orphaning
-//                 if (u->getParent() == node) {
-//                     u->setParent(nullptr, INFINITY);
-//                     verifyOrphan(u);
-//                 }
-//                 // Note: if node->getParent() == u, this will be handled below
-//                 // when 'node' itself is orphaned.
-//             }
-//             // Also invalidate any incoming edges to 'node' not caught by iterating its outgoingEdges' symmetry
-//             // (This might be redundant if outgoingEdges and their symmetric pairs cover all connections)
-//             // For example, if edges are strictly directed and only stored one way initially.
-//             // However, the current symmetric updates in the loop above likely cover this.
-
-//             // Directly mark 'node' as unusable and orphan it.
-//             node->setCost(INFINITY); // Assuming setCost updates the main cost (g-value)
-//             node->setLMC(INFINITY);  // Assuming setLMC updates the lookahead-cost (rhs-value)
-            
-//             RRTxNode* old_parent = node->getParent();
-//             if (old_parent) {
-//                 // If 'node' had a parent, its link to that parent is now broken.
-//                 // The call to node->setParent below handles updating 'node'.
-//                 // We might need to ensure 'old_parent' updates its children list if applicable,
-//                 // though 'verifyOrphan(node)' and subsequent processing should handle graph consistency.
-//             }
-//             node->setParent(nullptr, INFINITY); // Sever parent link
-//             verifyOrphan(node); // Ensure 'node' itself is processed by the orphan logic
-
-//         } else {
-//             // Node itself is in free space, and ignore_sample is false.
-//             // Check its outgoing edges individually.
-//             for (auto& [u, edge] : node->outgoingEdges()) {
-//                 if (edge.distance != INFINITY &&
-//                     !obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue())) {
-//                     // This specific edge (node -> u) is now blocked.
-//                     edge.distance = INFINITY;
-//                     if (u->incomingEdges().count(node)) {
-//                         u->incomingEdges().at(node).distance = INFINITY;
-//                     }
-//                     if (u->outgoingEdges().count(node)) {
-//                         u->outgoingEdges().at(node).distance = INFINITY;
-//                     }
-//                     if (node->incomingEdges().count(u)) {
-//                         node->incomingEdges().at(u).distance = INFINITY;
-//                     }
-
-//                     // Handle parent relationships
-//                     if (u->getParent() == node) {
-//                         u->setParent(nullptr, INFINITY);
-//                         verifyOrphan(u);
-//                     }
-//                     if (node->getParent() == u) {
-//                         node->setParent(nullptr, INFINITY);
-//                         verifyOrphan(node);
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
-
-
-// This version re-introduces your critical node-in-obstacle check.
 void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
-    for (int idx : added_indices) {
-        RRTxNode* node = tree_[idx].get();
-        
-        auto it = node_to_threats_map_.find(idx);
-        if (it == node_to_threats_map_.end()) continue;
-        const auto& threats = it->second;
+    if(mode == 1){
+        for (int idx : added_indices) {
+            RRTxNode* node = tree_[idx].get();
+            bool node_itself_is_unusable = false;
 
-        // ✅ 1. First, check if the node's position itself is invalid.
-        bool node_is_unusable = false;
-        for (const auto& obs : threats) {
-            if (!obs_checker_->isObstacleFreeAgainstSingleObstacle(node->getStateValue(), node->getStateValue(), obs)) {
-                node_is_unusable = true;
-                break;
-            }
-        }
-
-        // ✅ 2. If the node is unusable, take the fast path: invalidate all its edges and orphan it.
-        if (node_is_unusable) {
-            // Invalidate all outgoing edges
-            for (auto& [neighbor, edge] : node->outgoingEdges()) {
-                edge.distance = INFINITY;
-                if (neighbor->incomingEdges().count(node)) {
-                    neighbor->incomingEdges().at(node).distance = INFINITY;
+            if (ignore_sample) {
+                // In ignore_sample mode, if idx is in added_indices, we treat the node as unusable
+                // and mark it for special handling (e.g., its edges will be invalidated based on this mark).
+                samples_in_obstacles_.insert(idx);
+                node_itself_is_unusable = true;
+            } else {
+                // ignore_sample is false: explicitly check if the node's location is now in an obstacle.
+                if (!obs_checker_->isObstacleFree(node->getStateValue())) { // Check the node's point itself
+                    node_itself_is_unusable = true;
                 }
             }
-            // Invalidate all incoming edges (for completeness)
-            for (auto& [neighbor, edge] : node->incomingEdges()) {
-                edge.distance = INFINITY;
-                if (neighbor->outgoingEdges().count(node)) {
-                    neighbor->outgoingEdges().at(node).distance = INFINITY;
+
+            if (node_itself_is_unusable) {
+                // Node is inside an obstacle (or treated as such via ignore_sample).
+                // All its existing edges become invalid WITHOUT individual collision checks for these edges.
+                for (auto& [u, edge] : node->outgoingEdges()) {
+                    // Invalidate this edge (node -> u)
+                    edge.distance = INFINITY;
+                    // And its symmetric counterparts if your graph stores them this way
+                    if (u->incomingEdges().count(node)) {
+                        u->incomingEdges().at(node).distance = INFINITY;
+                    }
+                    if (u->outgoingEdges().count(node)) { // For u -> node
+                        u->outgoingEdges().at(node).distance = INFINITY;
+                    }
+                    if (node->incomingEdges().count(u)) { // For u -> node (from node's perspective)
+                        node->incomingEdges().at(u).distance = INFINITY;
+                    }
+
+                    // If this invalidated edge was a parent link, handle orphaning
+                    if (u->getParent() == node) {
+                        u->setParent(nullptr, INFINITY);
+                        verifyOrphan(u);
+                    }
+                    // Note: if node->getParent() == u, this will be handled below
+                    // when 'node' itself is orphaned.
+                }
+                // Also invalidate any incoming edges to 'node' not caught by iterating its outgoingEdges' symmetry
+                // (This might be redundant if outgoingEdges and their symmetric pairs cover all connections)
+                // For example, if edges are strictly directed and only stored one way initially.
+                // However, the current symmetric updates in the loop above likely cover this.
+
+                // Directly mark 'node' as unusable and orphan it.
+                node->setCost(INFINITY); // Assuming setCost updates the main cost (g-value)
+                node->setLMC(INFINITY);  // Assuming setLMC updates the lookahead-cost (rhs-value)
+                
+                RRTxNode* old_parent = node->getParent();
+                if (old_parent) {
+                    // If 'node' had a parent, its link to that parent is now broken.
+                    // The call to node->setParent below handles updating 'node'.
+                    // We might need to ensure 'old_parent' updates its children list if applicable,
+                    // though 'verifyOrphan(node)' and subsequent processing should handle graph consistency.
+                }
+                node->setParent(nullptr, INFINITY); // Sever parent link
+                verifyOrphan(node); // Ensure 'node' itself is processed by the orphan logic
+
+            } else {
+                // Node itself is in free space, and ignore_sample is false.
+                // Check its outgoing edges individually.
+                for (auto& [u, edge] : node->outgoingEdges()) {
+                    if (edge.distance != INFINITY &&
+                        !obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue())) {
+                        // This specific edge (node -> u) is now blocked.
+                        edge.distance = INFINITY;
+                        if (u->incomingEdges().count(node)) {
+                            u->incomingEdges().at(node).distance = INFINITY;
+                        }
+                        if (u->outgoingEdges().count(node)) {
+                            u->outgoingEdges().at(node).distance = INFINITY;
+                        }
+                        if (node->incomingEdges().count(u)) {
+                            node->incomingEdges().at(u).distance = INFINITY;
+                        }
+
+                        // Handle parent relationships
+                        if (u->getParent() == node) {
+                            u->setParent(nullptr, INFINITY);
+                            verifyOrphan(u);
+                        }
+                        if (node->getParent() == u) {
+                            node->setParent(nullptr, INFINITY);
+                            verifyOrphan(node);
+                        }
+                    }
                 }
             }
-            verifyOrphan(node);
-            continue; // Skip the per-edge checks below
         }
-
-        // ✅ 3. If the node is valid, proceed with the original per-edge checks.
-        for (auto& [neighbor, edge] : node->outgoingEdges()) {
-            if (edge.distance == INFINITY) continue;
+    }
+    else if (mode == 3) { // Using node cnetric approach with a map to associate nodes to obstalces for speicifc collision check!
+        for (int idx : added_indices) {
+            RRTxNode* node = tree_[idx].get();
             
-            bool becomes_invalid = false;
+            auto it = node_to_threats_map_.find(idx);
+            if (it == node_to_threats_map_.end()) continue;
+            const auto& threats = it->second;
+
+            // ✅ 1. First, check if the node's position itself is invalid.
+            bool node_is_unusable = false;
             for (const auto& obs : threats) {
-                if (!obs_checker_->isObstacleFreeAgainstSingleObstacle(node->getStateValue(), neighbor->getStateValue(), obs)) {
-                    becomes_invalid = true;
+                if (!obs_checker_->isObstacleFreeAgainstSingleObstacle(node->getStateValue(), node->getStateValue(), obs)) {
+                    node_is_unusable = true;
                     break;
                 }
             }
 
-            if (becomes_invalid) {
-                edge.distance = INFINITY;
-                if (neighbor->incomingEdges().count(node)) {
-                    neighbor->incomingEdges().at(node).distance = INFINITY;
+            // 2. If the node is unusable, take the fast path: invalidate all its edges and orphan it.
+            if (node_is_unusable) {
+                // Invalidate all outgoing edges
+                for (auto& [neighbor, edge] : node->outgoingEdges()) {
+                    edge.distance = INFINITY;
+                    if (neighbor->incomingEdges().count(node)) {
+                        neighbor->incomingEdges().at(node).distance = INFINITY;
+                    }
                 }
-                //////////ARE THESE NECESSARY?/////////
-                if (neighbor->outgoingEdges().count(node)) {
-                    neighbor->outgoingEdges().at(node).distance = INFINITY;
+                // Invalidate all incoming edges (for completeness)
+                for (auto& [neighbor, edge] : node->incomingEdges()) {
+                    edge.distance = INFINITY;
+                    if (neighbor->outgoingEdges().count(node)) {
+                        neighbor->outgoingEdges().at(node).distance = INFINITY;
+                    }
                 }
-                if (node->incomingEdges().count(neighbor)) {
-                    node->incomingEdges().at(neighbor).distance = INFINITY;
-                }
-                //////////////////////////////////////
+                verifyOrphan(node);
+                continue; // Skip the per-edge checks below
+            }
 
-                if (neighbor->getParent() == node) verifyOrphan(neighbor);
-                if (node->getParent() == neighbor) verifyOrphan(node);
+            // ✅ 3. If the node is valid, proceed with the original per-edge checks.
+            for (auto& [neighbor, edge] : node->outgoingEdges()) {
+                if (edge.distance == INFINITY) continue;
+                
+                bool becomes_invalid = false;
+                for (const auto& obs : threats) {
+                    if (!obs_checker_->isObstacleFreeAgainstSingleObstacle(node->getStateValue(), neighbor->getStateValue(), obs)) {
+                        becomes_invalid = true;
+                        break;
+                    }
+                }
+
+                if (becomes_invalid) {
+                    edge.distance = INFINITY;
+                    if (neighbor->incomingEdges().count(node)) {
+                        neighbor->incomingEdges().at(node).distance = INFINITY;
+                    }
+                    //////////ARE THESE NECESSARY?/////////
+                    if (neighbor->outgoingEdges().count(node)) {
+                        neighbor->outgoingEdges().at(node).distance = INFINITY;
+                    }
+                    if (node->incomingEdges().count(neighbor)) {
+                        node->incomingEdges().at(neighbor).distance = INFINITY;
+                    }
+                    //////////////////////////////////////
+
+                    if (neighbor->getParent() == node) verifyOrphan(neighbor);
+                    if (node->getParent() == neighbor) verifyOrphan(node);
+                }
             }
         }
     }
 }
+
 
 
 

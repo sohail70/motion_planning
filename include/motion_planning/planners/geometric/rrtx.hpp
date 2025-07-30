@@ -124,6 +124,7 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
 
     mutable std::unordered_map<int, std::vector<Obstacle>> node_to_threats_map_;
     int obs_check_ = 0;
+    int mode;
 
 
 

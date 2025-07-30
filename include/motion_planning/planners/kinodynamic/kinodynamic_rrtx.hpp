@@ -154,6 +154,7 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
 
     
     int obs_check = 0;
+    int mode;
 
     ReplanMetrics last_replan_metrics_; 
 

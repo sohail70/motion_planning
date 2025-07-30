@@ -60,8 +60,8 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
     marker.id = 0;
     marker.type = visualization_msgs::msg::Marker::POINTS;
     marker.action = visualization_msgs::msg::Marker::ADD;
-    marker.scale.x = 0.3; // Point width
-    marker.scale.y = 0.3; // Point height
+    marker.scale.x = 0.8; // Point width
+    marker.scale.y = 0.8; // Point height
     // marker.lifetime = rclcpp::Duration(1, 0);  // 1 second visibility
     // marker.lifetime = rclcpp::Duration::from_seconds(0.2);  // Keep for 0.2 seconds
 
