@@ -188,7 +188,7 @@ class KinodynamicFMTX : public Planner {
             double max_length_ = -std::numeric_limits<double>::infinity();
 
             int checks = 0;
-
+            int mode;
             int num_of_samples_;
             Eigen::VectorXd lower_bounds_;
             Eigen::VectorXd upper_bounds_;
@@ -234,6 +234,21 @@ class KinodynamicFMTX : public Planner {
             
 
             ReplanMetrics last_replan_metrics_; 
+            std::unordered_map<std::string, Obstacle> previous_obstacles_;
+            // std::unordered_set<std::string> previous_obstacle_names_; // SAFE: Stores only names, prevents memory corruption
+
+            // // ✅ ADD THIS TYPE DEFINITION
+            // using ObstacleMap = std::unordered_map<
+            //     std::string,
+            //     Obstacle,
+            //     std::hash<std::string>,
+            //     std::equal_to<std::string>,
+            //     Eigen::aligned_allocator<std::pair<const std::string, Obstacle>>
+            // >;
+
+            // // ✅ CHANGE THE MEMBER VARIABLE TO USE THE NEW TYPE
+            // ObstacleMap previous_obstacles_;
+
 
 };
 

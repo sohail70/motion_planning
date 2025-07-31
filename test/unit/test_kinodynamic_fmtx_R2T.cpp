@@ -175,6 +175,7 @@ int main(int argc, char** argv)
     planner_params.setParam("kd_dim", 3); // 2 or 3 only for R2T
     planner_params.setParam("use_knn", false); // In FMTX you get more connection using knn than radial due to obvious reasons!(having steer constraints!)
     planner_params.setParam("precache_neighbors", true);
+    planner_params.setParam("mode", 1); //1: prune false 2: prune true
     // --- 3. Object Initialization ---
     // A single node is shared for visualization purposes
     auto vis_node = std::make_shared<rclcpp::Node>("fmtx_visualizer",

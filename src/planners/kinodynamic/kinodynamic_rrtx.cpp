@@ -182,7 +182,7 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
     upper_bounds_ = problem_->getUpperBound();
     use_kdtree = params.getParam<bool>("use_kdtree");
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
-    mode = params.getParam<int>("mode");
+    mode = params.getParam<int>("mode", 2); // Obstacle centric is default for rrtx
 
     kd_dim = params.getParam<int>("kd_dim",2);
 
@@ -587,9 +587,9 @@ void KinodynamicRRTX::reduceInconsistency() {
         // }
         // // ======================= END OF BLOCK =======================
 
-        if (visualization_) {
-            processed_nodes_positions.push_back(node->getStateValue().head<2>());
-        }
+        // if (visualization_) {
+        //     processed_nodes_positions.push_back(node->getStateValue().head<2>());
+        // }
 
 
 
@@ -606,18 +606,18 @@ void KinodynamicRRTX::reduceInconsistency() {
     }
 
 
-    // 3. After the loop, visualize all processed nodes at once
-    if (visualization_ && !processed_nodes_positions.empty()) {
-        // Visualize the robot's anchor node in yellow for context
-        if (vbot_node_) {
-            std::vector<Eigen::VectorXd> robot_anchor_pos;
-            robot_anchor_pos.push_back(vbot_node_->getStateValue().head<2>());
-            visualization_->visualizeNodes(robot_anchor_pos, "map", {1.0f, 1.0f, 0.0f}, "robot_anchor_node");
-        }
+    // // 3. After the loop, visualize all processed nodes at once
+    // if (visualization_ && !processed_nodes_positions.empty()) {
+    //     // Visualize the robot's anchor node in yellow for context
+    //     if (vbot_node_) {
+    //         std::vector<Eigen::VectorXd> robot_anchor_pos;
+    //         robot_anchor_pos.push_back(vbot_node_->getStateValue().head<2>());
+    //         visualization_->visualizeNodes(robot_anchor_pos, "map", {1.0f, 1.0f, 0.0f}, "robot_anchor_node");
+    //     }
 
-        // Visualize all nodes that were processed in this update cycle in magenta
-        visualization_->visualizeNodes(processed_nodes_positions, "map", {1.0f, 0.0f, 1.0f}, "processed_nodes");
-    }
+    //     // Visualize all nodes that were processed in this update cycle in magenta
+    //     visualization_->visualizeNodes(processed_nodes_positions, "map", {1.0f, 0.0f, 1.0f}, "processed_nodes");
+    // }
 
 
 }
@@ -1555,6 +1555,11 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     else if (mode == 2) { // Fully Obstalce Centric Approach
         last_replan_metrics_ = ReplanMetrics();
 
+        // // For visualizatin purposes
+        // std::vector<Eigen::VectorXd> filtered_repair_positions;
+        // std::vector<Eigen::VectorXd> filtered_invalidation_positions;
+
+
         std::unordered_map<std::string, Obstacle> current_obstacles;
         for(const auto& obs : obstacles) {
             current_obstacles[obs.name] = obs;
@@ -1625,6 +1630,11 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                 }
             }
             // ======================= END OF BLOCK =======================
+            // if (visualization_) {
+            //     for (int idx : previously_affected_indices) {
+            //         filtered_repair_positions.push_back(tree_[idx]->getStateValue().head<2>());
+            //     }
+            // }
 
 
             // --- FIX: Add full symmetric edge restoration logic ---
@@ -1719,6 +1729,13 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
             }
             // --- END: LOCAL BUBBLE FILTER ---
 
+            // if (visualization_) {
+            //     for (int idx : currently_affected_indices) {
+            //         filtered_invalidation_positions.push_back(tree_[idx]->getStateValue().head<2>());
+            //     }
+            // }
+
+
             // Narrow-phase: Check edges of the now-filtered nodes against ONLY this one obstacle.
             for (int idx : currently_affected_indices) {
                 RRTxNode* node = tree_[idx].get();
@@ -1747,6 +1764,20 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                 }
             }
         }
+
+
+        // if (visualization_) {
+        //     // Visualize all nodes considered for REPAIR in blue
+        //     visualization_->visualizeNodes(filtered_repair_positions, "map",
+        //                                  {0.0f, 0.5f, 1.0f}, // Blue color
+        //                                  "filtered_repair_nodes");
+            
+        //     // Visualize all nodes considered for INVALIDATION in cyan
+        //     visualization_->visualizeNodes(filtered_invalidation_positions, "map",
+        //                                      {0.0f, 1.0f, 1.0f}, // Cyan color
+        //                                      "filtered_invalidation_nodes");
+        // }
+
 
         // ==============================================================================
         // PASS 3: FINALIZE
@@ -1940,7 +1971,7 @@ void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
                     const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
                     if (edge.distance != INFINITY) {
                         obs_check++;
-                        last_replan_metrics_.obstacle_checks++;
+                        last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 10;
                     }
                     if (edge.distance != INFINITY &&
                         !obs_checker_->isTrajectorySafe(traj_node_to_u, global_edge_start_time)) {

@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
     planner_params.setParam("ignore_sample", false);
     planner_params.setParam("prune", false);
     planner_params.setParam("kd_dim", 4); // 2 or 3 or 4 only dubin
-    planner_params.setParam("mode", 2); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
+    planner_params.setParam("mode", 1); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
 
 
     // --- 3. Object Initialization ---
