@@ -16,13 +16,13 @@ using namespace gz;
 using namespace sim;
 using namespace systems;
 
-class MoverPluginC : public System,
+class MoverPluginCR : public System,
                      public ISystemConfigure,
                      public ISystemPreUpdate
 {
 public:
-    MoverPluginC() = default;
-    ~MoverPluginC() override = default;
+    MoverPluginCR() = default;
+    ~MoverPluginCR() override = default;
 
     void Configure(const Entity &_entity,
                    const std::shared_ptr<const sdf::Element> &_sdf,
@@ -31,14 +31,14 @@ public:
     {
         // Parse required link name
         if (!_sdf->HasElement("link_name")) {
-            gzerr << "MoverPluginC: Missing required parameter <link_name>\n";
+            gzerr << "MoverPluginCR: Missing required parameter <link_name>\n";
             return;
         }
         std::string linkName = _sdf->Get<std::string>("link_name");
 
         Model model(_entity);
         if (!model.Valid(_ecm)) {
-            gzerr << "MoverPluginC must be attached to a model entity.\n";
+            gzerr << "MoverPluginCR must be attached to a model entity.\n";
             return;
         }
 
@@ -88,7 +88,7 @@ public:
         }
         this->dis = std::uniform_real_distribution<>(-M_PI, M_PI);
 
-        gzmsg << "MoverPluginC (Random Bounded Mode) configured for link '" << linkName
+        gzmsg << "MoverPluginCR (Random Bounded Mode) configured for link '" << linkName
               << "': amplitude=" << this->amplitude
               << ", velocity=" << this->velocity
               << ", bounds=[" << this->min_bounds.X() << ", " << this->max_bounds.X() << "]"
@@ -200,11 +200,11 @@ private:
 
 // Register the plugin
 GZ_ADD_PLUGIN(
-    MoverPluginC,
+    MoverPluginCR,
     System,
-    MoverPluginC::ISystemConfigure,
-    MoverPluginC::ISystemPreUpdate
+    MoverPluginCR::ISystemConfigure,
+    MoverPluginCR::ISystemPreUpdate
 )
 
 // Optional: Alias for ease of use
-GZ_ADD_PLUGIN_ALIAS(MoverPluginC, "gz::sim::systems::MoverPluginC")
+GZ_ADD_PLUGIN_ALIAS(MoverPluginCR, "gz::sim::systems::MoverPluginCR")

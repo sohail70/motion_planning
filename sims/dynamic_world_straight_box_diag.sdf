@@ -1,0 +1,341 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+  
+<physics type="ode">
+    <max_step_size>0.01</max_step_size>
+    <real_time_update_rate>60</real_time_update_rate>
+</physics>  
+  
+    <!-- Add a ground plane with a lighter color -->
+<model name="ground_plane">
+  <static>true</static>
+  <link name="link">
+    <collision name="collision">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+      <size>100 100</size>
+        </plane>
+      </geometry>
+      <!-- Disable collisions with kinematic objects -->
+      <surface>
+        <contact>
+          <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+        </contact>
+      </surface>
+    </collision>
+    <visual name="visual">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+          <size>100 100</size>
+        </plane>
+      </geometry>
+      <material>
+        <ambient>0.6 0.6 0.6 1</ambient>
+        <diffuse>0.6 0.6 0.6 1</diffuse>
+      </material>
+    </visual>
+  </link>
+</model>
+
+
+
+
+
+<model name="moving_box_1">
+<pose>-55.0 30.0 0 0 0 0</pose>
+    <link name="moving_link">
+  
+    <visual name="visual">
+      <geometry>
+	<box><size>8.0 8.0 1.0</size></box>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPluginCR" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginCR.so">
+        <link_name>moving_link</link_name>
+        <direction>1 0 0</direction>  <!-- Move along x-axis -->
+        <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
+        <speed>25.0</speed>            <!-- 2 rad/s -->
+        <use_fixed_seed>true</use_fixed_seed>
+    	<fixed_seed_value>123456789</fixed_seed_value> 
+        <turnaround_threshold>0.5</turnaround_threshold>
+    </plugin>
+</model>
+
+
+
+
+<model name="moving_box_2">
+<pose>-55.0 15.0 0 0 0 0</pose>
+    <link name="moving_link">
+  
+    <visual name="visual">
+      <geometry>
+	<box><size>8.0 8.0 1.0</size></box>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPluginCR" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginCR.so">
+        <link_name>moving_link</link_name>
+        <direction>1 0 0</direction>  <!-- Move along x-axis -->
+        <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
+        <speed>25.0</speed>            <!-- 2 rad/s -->
+        <use_fixed_seed>true</use_fixed_seed>
+    	<fixed_seed_value>123456789</fixed_seed_value> 
+        <turnaround_threshold>0.5</turnaround_threshold>
+    </plugin>
+</model>
+
+
+<model name="moving_box_3">
+<pose>-55.0 0.0 0 0 0 0</pose>
+    <link name="moving_link">
+  
+    <visual name="visual">
+      <geometry>
+	<box><size>8.0 8.0 1.0</size></box>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPluginCR" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginCR.so">
+        <link_name>moving_link</link_name>
+        <direction>1 0 0</direction>  <!-- Move along x-axis -->
+        <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
+        <speed>25.0</speed>            <!-- 2 rad/s -->
+        <use_fixed_seed>true</use_fixed_seed>
+    	<fixed_seed_value>123456789</fixed_seed_value> 
+        <turnaround_threshold>0.5</turnaround_threshold>
+    </plugin>
+</model>
+
+
+
+
+<model name="moving_box_4">
+<pose>-55.0 -15 0 0 0 0</pose>
+    <link name="moving_link">
+  
+    <visual name="visual">
+      <geometry>
+	<box><size>8.0 8.0 1.0</size></box>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPluginCR" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginCR.so">
+        <link_name>moving_link</link_name>
+        <direction>1 0 0</direction>  <!-- Move along x-axis -->
+        <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
+        <speed>25.0</speed>            <!-- 2 rad/s -->
+        <use_fixed_seed>true</use_fixed_seed>
+    	<fixed_seed_value>123456789</fixed_seed_value> 
+        <turnaround_threshold>0.5</turnaround_threshold>
+    </plugin>
+</model>
+
+
+
+
+<model name="moving_box_5">
+<pose>-55.0 -30 0 0 0 0</pose>
+    <link name="moving_link">
+  
+    <visual name="visual">
+      <geometry>
+	<box><size>8.0 8.0 1.0</size></box>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPluginCR" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginCR.so">
+        <link_name>moving_link</link_name>
+        <direction>1 0 0</direction>  <!-- Move along x-axis -->
+        <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
+        <speed>25.0</speed>            <!-- 2 rad/s -->
+        <use_fixed_seed>true</use_fixed_seed>
+    	<fixed_seed_value>123456789</fixed_seed_value> 
+        <turnaround_threshold>0.5</turnaround_threshold>
+    </plugin>
+</model>
+
+
+
+
+<model name="moving_box_6">
+<pose>-30.0 -55.0 0 0 0 0</pose>
+    <link name="moving_link">
+  
+    <visual name="visual">
+      <geometry>
+	<box><size>8.0 8.0 1.0</size></box>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPluginCR" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginCR.so">
+        <link_name>moving_link</link_name>
+        <direction>0 1 0</direction>  <!-- Move along x-axis -->
+        <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
+        <speed>25.0</speed>            <!-- 2 rad/s -->
+        <use_fixed_seed>true</use_fixed_seed>
+    	<fixed_seed_value>123456789</fixed_seed_value> 
+        <turnaround_threshold>0.5</turnaround_threshold>
+    </plugin>
+</model>
+
+
+
+
+<model name="moving_box_7">
+<pose>-15.0 -55.0 0 0 0 0</pose>
+    <link name="moving_link">
+  
+    <visual name="visual">
+      <geometry>
+	<box><size>8.0 8.0 1.0</size></box>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPluginCR" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginCR.so">
+        <link_name>moving_link</link_name>
+        <direction>0 1 0</direction>  <!-- Move along x-axis -->
+        <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
+        <speed>25.0</speed>            <!-- 2 rad/s -->
+        <use_fixed_seed>true</use_fixed_seed>
+    	<fixed_seed_value>123456789</fixed_seed_value> 
+        <turnaround_threshold>0.5</turnaround_threshold>
+    </plugin>
+</model>
+
+
+<model name="moving_box_8">
+<pose>0.0 -55.0 0 0 0 0</pose>
+    <link name="moving_link">
+  
+    <visual name="visual">
+      <geometry>
+	<box><size>8.0 8.0 1.0</size></box>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPluginCR" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginCR.so">
+        <link_name>moving_link</link_name>
+        <direction>0 1 0</direction>  <!-- Move along x-axis -->
+        <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
+        <speed>25.0</speed>            <!-- 2 rad/s -->
+        <use_fixed_seed>true</use_fixed_seed>
+    	<fixed_seed_value>123456789</fixed_seed_value> 
+        <turnaround_threshold>0.5</turnaround_threshold>
+    </plugin>
+</model>
+
+
+
+
+<model name="moving_box_9">
+<pose>15.0 -55 0 0 0 0</pose>
+    <link name="moving_link">
+  
+    <visual name="visual">
+      <geometry>
+	<box><size>8.0 8.0 1.0</size></box>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPluginCR" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginCR.so">
+        <link_name>moving_link</link_name>
+        <direction>0 1 0</direction>  <!-- Move along x-axis -->
+        <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
+        <speed>25.0</speed>            <!-- 2 rad/s -->
+        <use_fixed_seed>true</use_fixed_seed>
+    	<fixed_seed_value>123456789</fixed_seed_value> 
+        <turnaround_threshold>0.5</turnaround_threshold>
+    </plugin>
+</model>
+
+
+
+
+<model name="moving_box_10">
+<pose>30.0 -55 0 0 0 0</pose>
+    <link name="moving_link">
+  
+    <visual name="visual">
+      <geometry>
+	<box><size>8.0 8.0 1.0</size></box>
+      </geometry>
+      <material>
+        <ambient>0 0 1 1</ambient>
+      </material>
+    </visual>
+    </link>
+
+    <plugin name="MoverPluginCR" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginCR.so">
+        <link_name>moving_link</link_name>
+        <direction>0 1 0</direction>  <!-- Move along x-axis -->
+        <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
+        <speed>25.0</speed>            <!-- 2 rad/s -->
+        <use_fixed_seed>true</use_fixed_seed>
+    	<fixed_seed_value>123456789</fixed_seed_value> 
+        <turnaround_threshold>0.5</turnaround_threshold>
+    </plugin>
+</model>
+
+
+<!--****** -->
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+
+<!-- 
+  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+    <speed>0.8</speed>
+    <interpolation_step>0.3</interpolation_step>
+  </plugin> -->
+
+
+    </include>
+
+  </world>
+</sdf>
+
+
+
+
