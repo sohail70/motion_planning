@@ -46,6 +46,20 @@ struct pair_hash {
     }
 };
 
+struct TupleHasher {
+    size_t operator()(const std::tuple<int, int, int>& k) const {
+        // A simple way to combine hashes
+        return std::hash<int>()(std::get<0>(k)) ^
+               std::hash<int>()(std::get<1>(k)) ^
+               std::hash<int>()(std::get<2>(k));
+    }
+};
+
+struct TupleComparator {
+    bool operator()(const std::tuple<int, int, int>& a, const std::tuple<int, int, int>& b) const {
+        return a < b;  // relies on std::tuple's built-in lexicographic comparison
+    }
+};
 
 
 

@@ -250,5 +250,16 @@ class KinodynamicFMTX : public Planner {
             // ObstacleMap previous_obstacles_;
 
 
+            // std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache_;
+            // std::unordered_map<std::tuple<int, int, int>, bool, TupleHasher> obstacle_check_cache_;
+            std::map<std::tuple<int, int, int>, bool, TupleComparator> obstacle_check_cache_;
+            /*
+                Coarse Resolution (e.g., 1.0s): Fewer cache entries, more cache hits. Faster, but less accurate if obstacles move quickly.
+                Fine Resolution (e.g., 0.05s): More cache entries, fewer cache hits (more misses). Slower, but more temporally accurate.
+            */
+            double time_resolution_; // seconds
+
+
+
 };
 

@@ -305,7 +305,7 @@ void FMTX::plan() {
 
                 // checks++;
 
-                bool obstacle_free;
+                // bool obstacle_free;
                 // // Create a key for the cache
                 // if (obs_cache == true) {
                 //     // Create a key for the cache
@@ -326,53 +326,80 @@ void FMTX::plan() {
                 //     obstacle_free = obs_checker_->isObstacleFree(x->getStateValue() , best_neighbor_node->getStateValue());
                 // }
 
+
+                ////////////////////2nd approach////////////////
          
-                bool perform_check = false;
-                if (in_dynamic == false) { // Initial static planning phase
-                    perform_check = true;
-                } else { // Dynamic update phase
-                    /*
-                        Prune false means we are not using the rrtx like explicit obstacle check in the handle add and remove obstacle  
-                        and delay that to plan() function which i don't think its good because obstalce check is only necessary in obstalce
-                        surrounding and we can rely on distance inf and cost propagation or else we have to obstalce check the whole orphaned region which is aligned with 
-                        fmt philosiphy and frankly has a better time compleixity!
-                        for example for one obstalce:
-                            RRTX --> O(nodes with edge on obstlace * log(n)) --> log(n) is for average number of neighbors in sampling based planning! ---> worst would be O(n log(n))
-                            FMTX ---> O(orphan nodes) ---> worse would be O(n) obstacle checks
-                    */
+                // bool obstacle_free;
+                // bool perform_check = false;
+                // if (in_dynamic == false) { // Initial static planning phase
+                //     perform_check = true;
+                // } else { // Dynamic update phase
+                //     /*
+                //         Prune false means we are not using the rrtx like explicit obstacle check in the handle add and remove obstacle  
+                //         and delay that to plan() function which i don't think its good because obstalce check is only necessary in obstalce
+                //         surrounding and we can rely on distance inf and cost propagation or else we have to obstalce check the whole orphaned region which is aligned with 
+                //         fmt philosiphy and frankly has a better time compleixity!
+                //         for example for one obstalce:
+                //             RRTX --> O(nodes with edge on obstlace * log(n)) --> log(n) is for average number of neighbors in sampling based planning! ---> worst would be O(n log(n))
+                //             FMTX ---> O(orphan nodes) ---> worse would be O(n) obstacle checks
+                //     */
 
-                    if (prune == false) { // If not pruning, we must check dynamically
-                        perform_check = true;
-                    } else {
-                        // If pruning is enabled during dynamic updates,
-                        // assume edges made invalid by obstacles were already handled (e.g., cost set to INF).
-                        // So, any edge considered here that doesn't have an INF cost is presumed free.
-                        obstacle_free = true; // Relies on prior pruning
-                    }
-                }
+                //     if (prune == false) { // If not pruning, we must check dynamically
+                //         perform_check = true;
+                //     } else {
+                //         // If pruning is enabled during dynamic updates,
+                //         // assume edges made invalid by obstacles were already handled (e.g., cost set to INF).
+                //         // So, any edge considered here that doesn't have an INF cost is presumed free.
+                //         obstacle_free = true; // Relies on prior pruning
+                //     }
+                // }
 
-                if (perform_check) {
-                    if (obs_cache == true) {
-                        // Ensure indices are valid before creating a key
-                        int current_x_index = x->getIndex(); // Assuming x is always valid
-                        int best_neighbor_node_index = best_neighbor_node->getIndex();
+                // if (perform_check) {
+                //     if (obs_cache == true) {
+                //         // Ensure indices are valid before creating a key
+                //         int current_x_index = x->getIndex(); // Assuming x is always valid
+                //         int best_neighbor_node_index = best_neighbor_node->getIndex();
 
-                        // Standardize key creation
-                        auto edge_key = (best_neighbor_node_index < current_x_index) ? 
-                                        std::make_pair(best_neighbor_node_index, current_x_index) : 
-                                        std::make_pair(current_x_index, best_neighbor_node_index);
+                //         // Standardize key creation
+                //         auto edge_key = (best_neighbor_node_index < current_x_index) ? 
+                //                         std::make_pair(best_neighbor_node_index, current_x_index) : 
+                //                         std::make_pair(current_x_index, best_neighbor_node_index);
 
-                        auto cache_it = obstacle_check_cache.find(edge_key);
-                        if (cache_it != obstacle_check_cache.end()) {
-                            obstacle_free = cache_it->second;
-                            cached++;
+                //         auto cache_it = obstacle_check_cache.find(edge_key);
+                //         if (cache_it != obstacle_check_cache.end()) {
+                //             obstacle_free = cache_it->second;
+                //             cached++;
+                //         } else {
+                //             obstacle_free = obs_checker_->isObstacleFree(x->getStateValue(), best_neighbor_node->getStateValue());
+                //             obstacle_check_cache[edge_key] = obstacle_free;
+                //             uncached++;
+                //         }
+                //     } else { // No obstacle caching
+                //         obstacle_free = obs_checker_->isObstacleFree(x->getStateValue(), best_neighbor_node->getStateValue());
+                //     }
+                // }
+                //////////////////////////// cleaner approach////////////////
+                bool skip_check = (in_dynamic && prune);
+                bool obstacle_free = true;
+
+                if (!skip_check) {
+                    if (obs_cache) {
+                        auto i = x->getIndex(), j = best_neighbor_node->getIndex();
+                        auto key = i<j ? std::make_pair(i,j) : std::make_pair(j,i);
+                        auto it  = obstacle_check_cache.find(key);
+                        if (it!=obstacle_check_cache.end()) {
+                        obstacle_free = it->second;
+                        ++cached;
                         } else {
-                            obstacle_free = obs_checker_->isObstacleFree(x->getStateValue(), best_neighbor_node->getStateValue());
-                            obstacle_check_cache[edge_key] = obstacle_free;
-                            uncached++;
+                        obstacle_free = obs_checker_->isObstacleFree(
+                            x->getStateValue(), best_neighbor_node->getStateValue());
+                        obstacle_check_cache[key] = obstacle_free;
+                        ++uncached;
                         }
-                    } else { // No obstacle caching
-                        obstacle_free = obs_checker_->isObstacleFree(x->getStateValue(), best_neighbor_node->getStateValue());
+                    } else {
+                        obstacle_free = obs_checker_->isObstacleFree(
+                            x->getStateValue(), best_neighbor_node->getStateValue());
+                        ++uncached;
                     }
                 }
 

@@ -1095,7 +1095,7 @@ void KinodynamicRRTX::propagateDescendants() {
 
     last_replan_metrics_.orphaned_nodes = Vc_T_.size();
 
-    std::cout<<"orphans size"<<Vc_T_.size()<<"\n";
+    // std::cout<<"orphans size"<<Vc_T_.size()<<"\n";
 
     Vc_T_.clear();
 }
@@ -1160,7 +1160,7 @@ void KinodynamicRRTX::visualizeTree() {
         }
     }
     
-    std::cout<<"Tree Size: "<< tree_nodes.size()<<"\n";
+    // std::cout<<"Tree Size: "<< tree_nodes.size()<<"\n";
 
     // visualization_->visualizeNodes(tree_nodes, "map", 
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Red for tree
@@ -1374,7 +1374,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         // --- STEP 2: IN-PLACE GEOMETRIC FILTER ---
         // Now, filter the 'current' set directly. Remove any node that is not
         // within a "local bubble" around the robot.
-        std::cout<<"current before: "<<current.size()<<"\n";
+        // std::cout<<"current before: "<<current.size()<<"\n";
         const double local_filter_radius = neighborhood_radius_;
         // local_filter_radius = (v_obs_max + v_robot_max) / loop_hz + obstacle_radius;  
         //                // = 40/20 + 5 = 7 m
@@ -1392,7 +1392,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                 ++it; // Node is relevant, move to the next element
             }
         }
-        std::cout<<"current after: "<<current.size()<<"\n";
+        // std::cout<<"current after: "<<current.size()<<"\n";
         // --- END OF FILTER ---
 
         // for (auto& n : node_to_threats_map_)
@@ -1550,7 +1550,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         //     std::cout << "time taken for the plan rrtx : " << duration.count() 
         //             << " milliseconds\n";
         // }
-        std::cout<<"OBS CHECK: "<<obs_check<<"\n";
+        // std::cout<<"OBS CHECK: "<<obs_check<<"\n";
     }
     else if (mode == 2) { // Fully Obstalce Centric Approach
         last_replan_metrics_ = ReplanMetrics();
@@ -1578,44 +1578,70 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         // PASS 1: RE-VALIDATION (The "Remove" Effect)
         // ==============================================================================
         for (const auto& [name, old_obs] : previous_obstacles_) {
-            // Broad-phase: Find nodes that were near the obstacle's OLD position.
+            // Broad-phase: Use PREDICTIVE search to find nodes near the obstacle's PREVIOUS path.
+            std::unordered_set<int> previously_affected_indices;
+            const double PREDICTION_HORIZON_SECONDS = 3.0;
+            const int num_intermediate_steps = 10;
 
-            // --- FIX: Correct search radius calculation ---
+            // --- Calculate search radius ---
             double obstacle_footprint_radius;
             if (old_obs.type == Obstacle::CIRCLE) {
                 obstacle_footprint_radius = old_obs.dimensions.radius + old_obs.inflation;
             } else { // BOX
                 obstacle_footprint_radius = std::hypot(old_obs.dimensions.width / 2.0, old_obs.dimensions.height / 2.0) + old_obs.inflation;
             }
-            // Use the heuristic that accounts for edge length to find potentially affected edges.
             double search_radius = std::sqrt(std::pow(obstacle_footprint_radius, 2) + std::pow(delta / 2.0, 2));
-            const double robot_current_heading = robot_continuous_state_(2); // Get current theta
 
-            Eigen::VectorXd query_point(kd_dim);
-            switch (kd_dim) {
-                case 2: // (x, y)
-                    query_point = old_obs.position.head<2>();
-                    break;
-                case 3: // (x, y, time)
-                    query_point << old_obs.position.head<2>(), robot_current_timestamp;
-                    break;
-                case 4: // (x, y, theta, time)
-                    // Correctly build the 4D query point using the robot's current heading
-                    query_point << old_obs.position.head<2>(), robot_current_heading, robot_current_timestamp;
-                    break;
-                default:
-                    continue; // Skip unsupported dimensions
+            // --- Predictive search logic ---
+            // If the old obstacle was dynamic, search along its previous trajectory.
+            if (old_obs.is_dynamic && old_obs.velocity.norm() > 1e-6) {
+                for (int i = 0; i <= num_intermediate_steps; ++i) {
+                    double delta_t = (static_cast<double>(i) / num_intermediate_steps) * PREDICTION_HORIZON_SECONDS;
+                    Eigen::Vector2d predicted_pos_2d = old_obs.position + old_obs.velocity * delta_t;
+
+                    Eigen::VectorXd query_point(kd_dim);
+                    const double robot_current_heading = robot_continuous_state_(2);
+                    switch (kd_dim) {
+                        case 2:
+                            query_point = predicted_pos_2d;
+                            break;
+                        case 3:
+                            query_point << predicted_pos_2d, robot_current_timestamp;
+                            break;
+                        case 4:
+                            query_point << predicted_pos_2d, robot_current_heading, robot_current_timestamp;
+                            break;
+                        default:
+                            continue;
+                    }
+                    auto indices_at_t = kdtree_->radiusSearch(query_point, search_radius);
+                    previously_affected_indices.insert(indices_at_t.begin(), indices_at_t.end());
+                }
+            } else {
+                 // For static obstacles, a single search at their position is correct.
+                Eigen::VectorXd query_point(kd_dim);
+                const double robot_current_heading = robot_continuous_state_(2);
+                 switch (kd_dim) {
+                    case 2:
+                        query_point = old_obs.position.head<2>();
+                        break;
+                    case 3:
+                        query_point << old_obs.position.head<2>(), robot_current_timestamp;
+                        break;
+                    case 4:
+                        query_point << old_obs.position.head<2>(), robot_current_heading, robot_current_timestamp;
+                        break;
+                    default:
+                        continue;
+                }
+                auto indices = kdtree_->radiusSearch(query_point, search_radius);
+                previously_affected_indices.insert(indices.begin(), indices.end());
             }
-            auto previously_affected_indices_unfiltered = kdtree_->radiusSearch(query_point, search_radius);
+
             // ==========================================================
             // =========== INSERT THE BUBBLE FILTER BLOCK HERE ============
+            // (The existing bubble filter logic remains unchanged)
             // ==========================================================
-            // Convert to a std::unordered_set to allow for efficient erasing while iterating.
-            std::unordered_set<int> previously_affected_indices(
-                previously_affected_indices_unfiltered.begin(), 
-                previously_affected_indices_unfiltered.end()
-            );
-
             const double local_filter_radius = neighborhood_radius_;
             const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
 
@@ -1624,11 +1650,12 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                 double dist_to_robot = (node->getStateValue().head<2>() - robot_pos_2d).norm();
 
                 if (dist_to_robot > local_filter_radius) {
-                    it = previously_affected_indices.erase(it); // Erase and get iterator to the next element
+                    it = previously_affected_indices.erase(it);
                 } else {
-                    ++it; // Node is relevant, move to the next element
+                    ++it;
                 }
             }
+
             // ======================= END OF BLOCK =======================
             // if (visualization_) {
             //     for (int idx : previously_affected_indices) {
@@ -1895,7 +1922,7 @@ void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
         int count = 0;
         const double t_now = clock_->now().seconds();
         const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
-        std::cout<<"added indices : "<<added_indices.size()<<"\n";
+        // std::cout<<"added indices : "<<added_indices.size()<<"\n";
         for (int idx : added_indices) {
             RRTxNode* node = tree_[idx].get();
             bool node_itself_is_unusable = false;
@@ -1971,7 +1998,7 @@ void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
                     const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
                     if (edge.distance != INFINITY) {
                         obs_check++;
-                        last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 10;
+                        last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
                     }
                     if (edge.distance != INFINITY &&
                         !obs_checker_->isTrajectorySafe(traj_node_to_u, global_edge_start_time)) {
@@ -2092,7 +2119,7 @@ void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
                         const Trajectory& original_traj = edge.cached_trajectory;
                         const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
                         obs_check++;
-                        last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 30;
+                        last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
                         if (obs_checker_->isTrajectorySafe(original_traj, global_edge_start_time)) {
                             edge.distance = edge.distance_original;
                             if (u->incomingEdges().count(node)) u->incomingEdges().at(node).distance = edge.distance_original;
@@ -2408,6 +2435,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
             cost_of_current_path = bridge_to_current_anchor.cost + vbot_node_->getCost();
         }
     }
+
     // --- STABILIZATION FIX END ---
 
     // 2. Search for the best *potential* anchor node in the neighborhood.
@@ -2417,8 +2445,8 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     Trajectory current_bridge;
     double best_candidate_cost = std::numeric_limits<double>::infinity();
     double current_search_radius = neighborhood_radius_;
-    const int max_attempts = 4;
-    const double radius_multiplier = 1.2;
+    const int max_attempts = 5;
+    const double radius_multiplier = 1.5;
 
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
         auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head(kd_dim), current_search_radius);

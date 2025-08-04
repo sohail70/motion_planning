@@ -26,6 +26,7 @@ struct LogEntry {
     int obstacle_checks = 0;
     long long rewire_neighbor_searches = 0;
     int orphaned_nodes = 0;
+    int collision_count = 0;
 };
 
 
@@ -158,7 +159,7 @@ int main(int argc, char** argv) {
     planner_params.setParam("ignore_sample", false);
     planner_params.setParam("prune", false);
     planner_params.setParam("kd_dim", 4); // 2 or 3 or 4 only dubin
-    planner_params.setParam("mode", 1); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
+    planner_params.setParam("mode", 2); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
 
 
     // --- 3. Object Initialization ---
@@ -168,7 +169,8 @@ int main(int argc, char** argv) {
     auto sim_clock = vis_node->get_clock();
 
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
@@ -231,7 +233,7 @@ int main(int argc, char** argv) {
     // --- 7. Main Execution and Replanning Loop ---
     resetAndPlaySimulation();
     RCLCPP_INFO(vis_node->get_logger(), "Starting execution and monitoring loop. Press Ctrl+C to exit.");
-    const double goal_tolerance = 2.0;
+    const double goal_tolerance = 3.0;
     rclcpp::Rate loop_rate(20);
 
     std::vector<double> sim_durations;
@@ -378,6 +380,9 @@ int main(int argc, char** argv) {
     const int final_collision_count = ros_manager->getCollisionCount();
     RCLCPP_FATAL(vis_node->get_logger(), "SIMULATION COMPLETE. TOTAL DETECTED COLLISIONS: %d", final_collision_count);
 
+    for (auto& entry : log_data) {
+        entry.collision_count = final_collision_count;
+    }
 
 
     // *** NEW: REPLACE CSV SAVING LOGIC ***
@@ -398,7 +403,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     
-    out << "elapsed_s,duration_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes\n";
+    out << "elapsed_s,duration_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes,collision_count\n";
     
     for (const auto& log_item : log_data) {
         out << log_item.elapsed_s << ","
@@ -407,7 +412,8 @@ int main(int argc, char** argv) {
             << log_item.path_cost << ","
             << log_item.obstacle_checks << ","
             << log_item.rewire_neighbor_searches << ","
-            << log_item.orphaned_nodes << "\n";
+            << log_item.orphaned_nodes << ","
+            << log_item.collision_count << "\n";
     }
     out.close();
     std::cout << "Done writing CSV.\n";

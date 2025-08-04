@@ -1023,14 +1023,14 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     } else if (mode == 2) { // Fully Obstalce Centric Approach
         update_obstacle = true;
 
-        // Common initialization
-        if (edge_length_[max_length_edge_ind] != max_length) {
-            auto max_it = std::max_element(edge_length_.begin(), edge_length_.end(),
-                [](const auto& a, const auto& b) { return a.second < b.second; });
-            max_length = max_it->second;
-            max_length_edge_ind = max_it->first;
-        }
-
+        // // Common initialization
+        // if (edge_length_[max_length_edge_ind] != max_length) {
+        //     auto max_it = std::max_element(edge_length_.begin(), edge_length_.end(),
+        //         [](const auto& a, const auto& b) { return a.second < b.second; });
+        //     max_length = max_it->second;
+        //     max_length_edge_ind = max_it->first;
+        // }
+        max_length = delta;
         std::unordered_map<std::string, Obstacle> current_obstacles;
         for(const auto& obs : obstacles) {
             current_obstacles[obs.name] = obs;

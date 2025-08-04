@@ -1347,8 +1347,14 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
         if (T_segment <= 1e-9) continue;
         
         const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
-        
+        /*
+            Because the time duration (T_segment) of this sub-segment is so small, two things are true:
+            The tiny curved path is almost indistinguishable from a straight line.
+            The change in velocity over this tiny interval is almost zero.
+            So maybe its faster to always use the else part!
+        */ 
         if (state_dim == 5) {
+        // if (false) {
             // =================================================================
             // == ACCELERATION MODEL (5D): Approximate the CURVED path as one line ==
             // =================================================================

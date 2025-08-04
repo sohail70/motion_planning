@@ -189,7 +189,7 @@ int main(int argc, char **argv) {
     planner_params.setParam("partial_update", true); // update the tree cost of the robot or not
     planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update
     planner_params.setParam("static_obs_presence", false); // to not process static obstalces twice because obstacle checker keeps sending all the obstalces! i geuss the persisten_static_obstalces needs to be true always
-    planner_params.setParam("mode", 1); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
+    planner_params.setParam("mode", 2); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
 
 
 
@@ -358,7 +358,7 @@ int main(int argc, char **argv) {
         ////////// VISUALIZE /////
         // dynamic_cast<RRTX*>(planner.get())->visualizePath(dynamic_cast<RRTX*>(planner.get())->getPathIndex());
         // dynamic_cast<RRTX*>(planner.get())->visualizeSmoothedPath(shortest_path_);
-        dynamic_cast<RRTX*>(planner.get())->visualizeTree();
+        // dynamic_cast<RRTX*>(planner.get())->visualizeTree();
 
         rclcpp::spin_some(ros2_manager);
         loop_rate.sleep();

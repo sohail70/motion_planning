@@ -694,7 +694,84 @@ ThrusterSteerStateSpace::NDSteeringResult ThrusterSteerStateSpace::steeringND(
 
 
 
-// Implements Julia's fineGrain
+// // Implements fineGrain
+// std::tuple<Eigen::VectorXd, Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd>
+// ThrusterSteerStateSpace::fineGrain(const Eigen::VectorXd& Time_raw, const Eigen::MatrixXd& A_raw,
+//                                    const Eigen::MatrixXd& V_raw, const Eigen::MatrixXd& X_raw, double dt_res) const {
+    
+//     int D_spatial = X_raw.cols();
+//     int num_raw_points = Time_raw.size();
+//     const double EPS = 1e-9;
+
+//     // Determine total number of points required after fine-graining
+//     int total_fine_points = 0;
+//     for (int i = 0; i < num_raw_points - 1; ++i) {
+//         double segment_duration = Time_raw[i+1] - Time_raw[i];
+//         total_fine_points += static_cast<int>(std::ceil(segment_duration / dt_res));
+//     }
+//     total_fine_points += 1; // Add for the very last point
+
+//     // Use a vector to collect points, then convert to Eigen::VectorXd/MatrixXd
+//     // This avoids excessive resizing of Eigen matrices
+//     std::vector<double> fine_Time_vec;
+//     std::vector<Eigen::VectorXd> fine_X_vec;
+//     std::vector<Eigen::VectorXd> fine_V_vec;
+//     std::vector<Eigen::VectorXd> fine_A_vec;
+
+//     fine_Time_vec.reserve(total_fine_points);
+//     fine_X_vec.reserve(total_fine_points);
+//     fine_V_vec.reserve(total_fine_points);
+//     fine_A_vec.reserve(total_fine_points);
+
+//     for (int i = 0; i < num_raw_points - 1; ++i) {
+//         double t_segment_start = Time_raw[i];
+//         double t_segment_end = Time_raw[i+1];
+//         Eigen::VectorXd x_segment_start = X_raw.row(i).transpose();
+//         Eigen::VectorXd v_segment_start = V_raw.row(i).transpose();
+//         Eigen::VectorXd a_segment = A_raw.row(i).transpose(); // Accel applies over this interval
+
+//         fine_Time_vec.push_back(t_segment_start);
+//         fine_X_vec.push_back(x_segment_start);
+//         fine_V_vec.push_back(v_segment_start);
+//         fine_A_vec.push_back(a_segment);
+
+//         for (double t_interp = t_segment_start + dt_res; t_interp < t_segment_end - EPS; t_interp += dt_res) {
+//             double dt = t_interp - t_segment_start;
+            
+//             fine_Time_vec.push_back(t_interp);
+//             // fine_X_vec.push_back(x_segment_start + v_segment_start * dt + 0.5 * a_segment.array() * dt * dt);
+//             fine_X_vec.push_back(x_segment_start + v_segment_start * dt + (0.5 * a_segment.array() * dt * dt).matrix());
+
+//             // fine_V_vec.push_back(v_segment_start + a_segment * dt);
+//             fine_V_vec.push_back(v_segment_start + (a_segment.array() * dt).matrix()); // Changed a_segment * dt to (a_segment.array() * dt).matrix()
+
+//             fine_A_vec.push_back(a_segment);
+//         }
+//     }
+
+//     // Add the very last raw point
+//     fine_Time_vec.push_back(Time_raw[num_raw_points - 1]);
+//     fine_X_vec.push_back(X_raw.row(num_raw_points - 1).transpose());
+//     fine_V_vec.push_back(V_raw.row(num_raw_points - 1).transpose());
+//     fine_A_vec.push_back(Eigen::VectorXd::Zero(D_spatial)); // Last accel is not defined by segment, set to zero or appropriate.
+
+
+//     // Convert std::vector to Eigen::VectorXd/MatrixXd
+//     Eigen::VectorXd Time_fine_out = Eigen::VectorXd::Map(fine_Time_vec.data(), fine_Time_vec.size());
+//     Eigen::MatrixXd X_fine_out(fine_X_vec.size(), D_spatial);
+//     Eigen::MatrixXd V_fine_out(fine_V_vec.size(), D_spatial);
+//     Eigen::MatrixXd A_fine_out(fine_A_vec.size(), D_spatial);
+
+//     for (size_t i = 0; i < fine_X_vec.size(); ++i) {
+//         X_fine_out.row(i) = fine_X_vec[i].transpose();
+//         V_fine_out.row(i) = fine_V_vec[i].transpose();
+//         A_fine_out.row(i) = fine_A_vec[i].transpose();
+//     }
+
+//     return std::make_tuple(Time_fine_out, A_fine_out, V_fine_out, X_fine_out);
+// }
+
+
 std::tuple<Eigen::VectorXd, Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd>
 ThrusterSteerStateSpace::fineGrain(const Eigen::VectorXd& Time_raw, const Eigen::MatrixXd& A_raw,
                                    const Eigen::MatrixXd& V_raw, const Eigen::MatrixXd& X_raw, double dt_res) const {
@@ -703,73 +780,79 @@ ThrusterSteerStateSpace::fineGrain(const Eigen::VectorXd& Time_raw, const Eigen:
     int num_raw_points = Time_raw.size();
     const double EPS = 1e-9;
 
-    // Determine total number of points required after fine-graining
-    int total_fine_points = 0;
-    for (int i = 0; i < num_raw_points - 1; ++i) {
-        double segment_duration = Time_raw[i+1] - Time_raw[i];
-        total_fine_points += static_cast<int>(std::ceil(segment_duration / dt_res));
+    // Handle edge cases: no data to process or invalid time step.
+    if (num_raw_points < 2 || dt_res <= 0) {
+        return std::make_tuple(Time_raw, A_raw, V_raw, X_raw);
     }
-    total_fine_points += 1; // Add for the very last point
 
-    // Use a vector to collect points, then convert to Eigen::VectorXd/MatrixXd
-    // This avoids excessive resizing of Eigen matrices
+    // Use std::vector for efficient dynamic resizing.
     std::vector<double> fine_Time_vec;
     std::vector<Eigen::VectorXd> fine_X_vec;
     std::vector<Eigen::VectorXd> fine_V_vec;
-    std::vector<Eigen::VectorXd> fine_A_vec;
 
-    fine_Time_vec.reserve(total_fine_points);
-    fine_X_vec.reserve(total_fine_points);
-    fine_V_vec.reserve(total_fine_points);
-    fine_A_vec.reserve(total_fine_points);
+    // Reserve memory with a reasonable estimate to reduce reallocations.
+    fine_Time_vec.reserve(static_cast<size_t>((Time_raw.tail<1>()(0) - Time_raw.head<1>()(0)) / dt_res) + num_raw_points);
+    fine_X_vec.reserve(fine_Time_vec.capacity());
+    fine_V_vec.reserve(fine_Time_vec.capacity());
 
+    // Always add the initial state.
+    fine_Time_vec.push_back(Time_raw(0));
+    fine_X_vec.push_back(X_raw.row(0));
+    fine_V_vec.push_back(V_raw.row(0));
+
+    // Iterate through each raw segment (from point i to i+1).
     for (int i = 0; i < num_raw_points - 1; ++i) {
-        double t_segment_start = Time_raw[i];
-        double t_segment_end = Time_raw[i+1];
-        Eigen::VectorXd x_segment_start = X_raw.row(i).transpose();
-        Eigen::VectorXd v_segment_start = V_raw.row(i).transpose();
-        Eigen::VectorXd a_segment = A_raw.row(i).transpose(); // Accel applies over this interval
+        double t_segment_start = Time_raw(i);
+        double t_segment_end = Time_raw(i+1);
+        Eigen::VectorXd x_segment_start = X_raw.row(i);
+        Eigen::VectorXd v_segment_start = V_raw.row(i);
+        Eigen::VectorXd a_segment = A_raw.row(i);
 
-        fine_Time_vec.push_back(t_segment_start);
-        fine_X_vec.push_back(x_segment_start);
-        fine_V_vec.push_back(v_segment_start);
-        fine_A_vec.push_back(a_segment);
-
-        for (double t_interp = t_segment_start + dt_res; t_interp < t_segment_end - EPS; t_interp += dt_res) {
-            double dt = t_interp - t_segment_start;
+        // Generate interpolated points within the current segment.
+        double next_t_interp = t_segment_start + dt_res;
+        while (next_t_interp < t_segment_end - EPS) {
+            double dt = next_t_interp - t_segment_start;
             
-            fine_Time_vec.push_back(t_interp);
-            // fine_X_vec.push_back(x_segment_start + v_segment_start * dt + 0.5 * a_segment.array() * dt * dt);
+            fine_Time_vec.push_back(next_t_interp);
             fine_X_vec.push_back(x_segment_start + v_segment_start * dt + (0.5 * a_segment.array() * dt * dt).matrix());
-
-            // fine_V_vec.push_back(v_segment_start + a_segment * dt);
-            fine_V_vec.push_back(v_segment_start + (a_segment.array() * dt).matrix()); // Changed a_segment * dt to (a_segment.array() * dt).matrix()
-
-            fine_A_vec.push_back(a_segment);
+            fine_V_vec.push_back(v_segment_start + (a_segment.array() * dt).matrix());
+            
+            next_t_interp += dt_res;
         }
+
+        // Always add the exact endpoint of the segment to prevent floating-point drift.
+        fine_Time_vec.push_back(t_segment_end);
+        fine_X_vec.push_back(X_raw.row(i + 1));
+        fine_V_vec.push_back(V_raw.row(i + 1));
     }
 
-    // Add the very last raw point
-    fine_Time_vec.push_back(Time_raw[num_raw_points - 1]);
-    fine_X_vec.push_back(X_raw.row(num_raw_points - 1).transpose());
-    fine_V_vec.push_back(V_raw.row(num_raw_points - 1).transpose());
-    fine_A_vec.push_back(Eigen::VectorXd::Zero(D_spatial)); // Last accel is not defined by segment, set to zero or appropriate.
+    // --- Convert vectors to final Eigen matrices ---
+    long num_fine_points = fine_Time_vec.size();
+    Eigen::VectorXd Time_fine_out(num_fine_points);
+    Eigen::MatrixXd X_fine_out(num_fine_points, D_spatial);
+    Eigen::MatrixXd V_fine_out(num_fine_points, D_spatial);
+    // The acceleration matrix has one fewer row than the state matrices.
+    Eigen::MatrixXd A_fine_out(num_fine_points - 1, D_spatial);
 
+    for (long i = 0; i < num_fine_points; ++i) {
+        Time_fine_out(i) = fine_Time_vec[i];
+        X_fine_out.row(i) = fine_X_vec[i];
+        V_fine_out.row(i) = fine_V_vec[i];
+    }
 
-    // Convert std::vector to Eigen::VectorXd/MatrixXd
-    Eigen::VectorXd Time_fine_out = Eigen::VectorXd::Map(fine_Time_vec.data(), fine_Time_vec.size());
-    Eigen::MatrixXd X_fine_out(fine_X_vec.size(), D_spatial);
-    Eigen::MatrixXd V_fine_out(fine_V_vec.size(), D_spatial);
-    Eigen::MatrixXd A_fine_out(fine_A_vec.size(), D_spatial);
-
-    for (size_t i = 0; i < fine_X_vec.size(); ++i) {
-        X_fine_out.row(i) = fine_X_vec[i].transpose();
-        V_fine_out.row(i) = fine_V_vec[i].transpose();
-        A_fine_out.row(i) = fine_A_vec[i].transpose();
+    // Re-calculate the constant acceleration for each new, smaller segment.
+    for (long i = 0; i < num_fine_points - 1; ++i) {
+        double dt = Time_fine_out(i + 1) - Time_fine_out(i);
+        if (dt > EPS) {
+            A_fine_out.row(i) = (V_fine_out.row(i + 1) - V_fine_out.row(i)) / dt;
+        } else {
+            A_fine_out.row(i) = Eigen::VectorXd::Zero(D_spatial);
+        }
     }
 
     return std::make_tuple(Time_fine_out, A_fine_out, V_fine_out, X_fine_out);
 }
+
 
 // Main steer function to find optimal trajectory between two full states
 /*
@@ -818,10 +901,12 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
     traj_out.geometric_distance = getGeometricDistance(nd_result);
 
 
-    // 3. Discretize the resulting trajectory
-    double discretization_step = 0.5;
-    auto [fine_Time_local, fine_A, fine_V, fine_X] = 
-        fineGrain(nd_result.Time, nd_result.A, nd_result.V, nd_result.X, discretization_step);
+    // // 3. Discretize the resulting trajectory
+    // double discretization_step = 1.5;
+    // auto [fine_Time_local, fine_A, fine_V, fine_X] = fineGrain(nd_result.Time, nd_result.A, nd_result.V, nd_result.X, discretization_step);
+
+    double time_resolution = 0.2; // seconds
+    auto [fine_Time_local, fine_A, fine_V, fine_X] = fineGrain(nd_result.Time, nd_result.A, nd_result.V, nd_result.X, time_resolution);
 
     long num_points = fine_Time_local.size();
     if (num_points == 0) return traj_out;

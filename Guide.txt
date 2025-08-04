@@ -78,7 +78,7 @@ for f in sim_rrtx_*.csv; do
 done
 
 for f in sim_rrtx_*.csv; do
-  mv -- "$f" "1_5_20_$f"
+  mv -- "$f" "2_0_10_$f"
 done
 
 for f in sim_rrtx_*.csv; do

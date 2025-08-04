@@ -281,7 +281,6 @@
 
 
 ############################################################
-
 import pandas as pd
 import matplotlib.pyplot as plt
 import glob
@@ -307,24 +306,25 @@ def get_planner_info(filename):
 def aggregate_run_data(files):
     """
     Loads all metric CSV files and groups them by planner and sample count.
-    Returns a dictionary: {(planner, samples): [list_of_trial_dataframes]}
+    This version is more robust and does not require all columns to be present.
     """
     aggregated_data = {}
     print("--- Loading and Aggregating Data ---")
-    required_columns = ['elapsed_s', 'duration_ms', 'path_cost', 'obstacle_checks', 'rewire_neighbor_searches', 'orphaned_nodes']
     
     for filename in files:
         try:
             planner, samples = get_planner_info(filename)
             if samples == 0: continue
 
-            df = pd.read_csv(filename)
-            if not all(col in df.columns for col in required_columns):
-                print(f"Skipping {filename}: missing one or more required columns.")
-                continue
+            # Load the CSV, skipping commented lines
+            df = pd.read_csv(filename, comment='#')
             
+            # Basic check for an empty dataframe
+            if df.empty:
+                print(f"Skipping empty file: {filename}")
+                continue
+
             df.replace([np.inf, -np.inf], np.nan, inplace=True)
-            df.dropna(subset=['path_cost'], inplace=True)
             
             config_key = (planner, samples)
             if config_key not in aggregated_data:
@@ -338,16 +338,65 @@ def aggregate_run_data(files):
     print(f"Successfully aggregated data for {len(aggregated_data)} configurations across {len(files)} files.")
     return aggregated_data
 
+def analyze_and_print_collisions(aggregated_data):
+    """
+    Analyzes and prints the collision statistics for each configuration.
+    Safely skips if the 'collision_count' column is missing.
+    """
+    print(f"\n{'='*70}")
+    print(" COLLISION ANALYSIS")
+    print(f"{'='*70}")
+
+    analysis_groups = {}
+    for (planner, samples), df_list in aggregated_data.items():
+        if samples not in analysis_groups:
+            analysis_groups[samples] = {}
+        analysis_groups[samples][planner] = df_list
+
+    for samples, planners_data in sorted(analysis_groups.items()):
+        print(f"\n--- Configuration: {samples:,} Samples ---")
+        print(f"{'Planner':<15} {'Avg Collisions':<20} {'Std Dev':<20} {'Total Trials':<15}")
+        print("-" * 70)
+
+        for planner_name, df_list in sorted(planners_data.items()):
+            # Check if 'collision_count' column exists in the dataframes
+            valid_dfs = [df for df in df_list if 'collision_count' in df.columns and not df.empty]
+            
+            if not valid_dfs:
+                print(f"{planner_name:<15} {'(No collision data)':<20}")
+                continue
+
+            collision_counts = [df['collision_count'].iloc[0] for df in valid_dfs]
+
+            if not collision_counts:
+                print(f"{planner_name:<15} {'No data':<20} {'No data':<20} {0:<15}")
+                continue
+
+            mean_collisions = np.mean(collision_counts)
+            std_collisions = np.std(collision_counts)
+            num_trials = len(collision_counts)
+            
+            print(f"{planner_name:<15} {mean_collisions:<20.2f} {std_collisions:<20.2f} {num_trials:<15}")
+    print(f"{'='*70}")
+
+
 def plot_metric_distribution(aggregated_data, metric_col, title, y_label):
     """
     Generates a comparative box plot for a given metric.
     """
     plot_groups = {}
     for (planner, samples), df_list in aggregated_data.items():
+        # Filter for dataframes that contain the metric column
+        valid_dfs = [df for df in df_list if metric_col in df.columns]
+        if not valid_dfs:
+            continue
+        
         if samples not in plot_groups: plot_groups[samples] = {}
-        plot_groups[samples][planner] = pd.concat(df_list, ignore_index=True)[metric_col]
+        plot_groups[samples][planner] = pd.concat(valid_dfs, ignore_index=True)[metric_col]
 
-    if not plot_groups: return
+    if not plot_groups: 
+        print(f"Skipping plot '{title}': No data found for metric '{metric_col}'.")
+        return
 
     num_samples = len(plot_groups)
     fig, axes = plt.subplots(1, num_samples, figsize=(6 * num_samples, 7), sharey=False, squeeze=False)
@@ -356,7 +405,6 @@ def plot_metric_distribution(aggregated_data, metric_col, title, y_label):
     for i, (samples, planners_data) in enumerate(sorted(plot_groups.items())):
         ax = axes[0, i]
         plot_data, labels = [], []
-        # Fixed order for consistent coloring
         for planner_name in ['RRTX', 'FMTX']:
             if planner_name in planners_data:
                 plot_data.append(planners_data[planner_name].dropna())
@@ -365,8 +413,6 @@ def plot_metric_distribution(aggregated_data, metric_col, title, y_label):
 
         box = ax.boxplot(plot_data, labels=labels, patch_artist=True, showfliers=False, medianprops={'color':'#A2142F', 'linewidth':2.5})
         
-        # === COLOR CORRECTION ===
-        # RRTx (Red), FMTx (Blue)
         colors = ['#d62728', '#1f77b4'] 
         for patch, color in zip(box['boxes'], colors):
             patch.set_facecolor(color)
@@ -388,17 +434,21 @@ def plot_ecdf(aggregated_data, metric_col, title, x_label):
     """
     plot_groups = {}
     for (planner, samples), df_list in aggregated_data.items():
+        valid_dfs = [df for df in df_list if metric_col in df.columns]
+        if not valid_dfs:
+            continue
         if samples not in plot_groups: plot_groups[samples] = {}
-        plot_groups[samples][planner] = pd.concat(df_list, ignore_index=True)[metric_col]
+        plot_groups[samples][planner] = pd.concat(valid_dfs, ignore_index=True)[metric_col]
 
-    if not plot_groups: return
+    if not plot_groups:
+        print(f"Skipping plot '{title}': No data found for metric '{metric_col}'.")
+        return
 
     num_samples = len(plot_groups)
     fig, axes = plt.subplots(1, num_samples, figsize=(8 * num_samples, 6), sharey=True, squeeze=False)
     fig.suptitle(title, fontsize=22, fontweight='bold')
     
-    # === COLOR CORRECTION ===
-    colors = {'FMTX': '#1f77b4', 'RRTX': '#d62728'} # Blue, Red
+    colors = {'FMTX': '#1f77b4', 'RRTX': '#d62728'} 
 
     for i, (samples, planners_data) in enumerate(sorted(plot_groups.items())):
         ax = axes[0, i]
@@ -430,17 +480,21 @@ def plot_time_series(trial_data, metric_col, title, y_label):
     """
     plot_groups = {}
     for (planner, samples), list_of_dfs in trial_data.items():
+        valid_dfs = [df for df in list_of_dfs if metric_col in df.columns and 'elapsed_s' in df.columns]
+        if not valid_dfs:
+            continue
         if samples not in plot_groups: plot_groups[samples] = {}
-        plot_groups[samples][planner] = list_of_dfs
+        plot_groups[samples][planner] = valid_dfs
 
-    if not plot_groups: return
+    if not plot_groups:
+        print(f"Skipping plot '{title}': No data found for metric '{metric_col}'.")
+        return
 
     num_samples = len(plot_groups)
     fig, axes = plt.subplots(1, num_samples, figsize=(8 * num_samples, 7), sharey=False, squeeze=False)
     fig.suptitle(title, fontsize=22, fontweight='bold')
     
-    # === COLOR CORRECTION ===
-    colors = {'FMTX': '#1f77b4', 'RRTX': '#d62728'} # Blue, Red
+    colors = {'FMTX': '#1f77b4', 'RRTX': '#d62728'}
 
     for i, (samples, planners_trial_data) in enumerate(sorted(plot_groups.items())):
         ax = axes[0, i]
@@ -450,12 +504,10 @@ def plot_time_series(trial_data, metric_col, title, y_label):
             list_of_dfs = planners_trial_data[planner_name]
             color = colors.get(planner_name, 'gray')
 
-            # Plot individual trials with low opacity
             for trial_df in list_of_dfs:
                 trial_df_sorted = trial_df.sort_values('elapsed_s')
                 ax.plot(trial_df_sorted['elapsed_s'], trial_df_sorted[metric_col], '-', color=color, linewidth=0.5, alpha=0.1)
 
-            # Plot a smoothed rolling median over all concatenated trials
             all_trials_df = pd.concat(list_of_dfs, ignore_index=True).sort_values('elapsed_s')
             if not all_trials_df.empty:
                 window_size = max(10, int(len(all_trials_df) * 0.05))
@@ -509,6 +561,11 @@ def perform_statistical_analysis(aggregated_data):
         df_rrtx = planners_data['RRTX']
 
         for name, col, unit in metrics_to_analyze:
+            # Check if the column exists in BOTH dataframes before proceeding
+            if col not in df_fmtx.columns or col not in df_rrtx.columns:
+                print(f"\n--- Skipping Metric: {name} (column not found) ---")
+                continue
+
             print(f"\n--- Metric: {name} ---\n")
             print(f"{'Statistic':<15} {'FMTx':<20} {'RRTx':<20}")
             print("-" * 55)
@@ -547,7 +604,11 @@ def main():
         return
     
     trial_data = aggregate_run_data(files)
-    if not trial_data: return
+    if not trial_data: 
+        print("No data was successfully loaded. Exiting.")
+        return
+
+    analyze_and_print_collisions(trial_data)
 
     print("\n--- Generating Plots ---")
     
