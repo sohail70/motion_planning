@@ -87,7 +87,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
     std::cout << "Taking care of the samples: \n \n";
-    bool use_rrtx_saved_samples_ = true;
+    bool use_rrtx_saved_samples_ = false;
     if (use_rrtx_saved_samples_) {
         std::string filepath = "/home/sohail/motion_planning/build/rrtx_tree_nodes.csv";
                std::cout << "Loading nodes from file: " << filepath << "\n";
@@ -1265,6 +1265,7 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
             std::pow(obstacle_radius, 2) +
             std::pow(max_length / 2.0, 2)
         );
+        // double edge_heuristic_radius = obstacle_radius + max_length;
 
         // --- Handle DYNAMIC Obstacles ---
         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
