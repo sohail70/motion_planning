@@ -19,3 +19,7 @@
 <p align="center">
   <img src="./Thruster_S2000_C2_5_I0_5.gif" alt="Thruster_S2000_C2_5_I0_5">
 </p>
+
+<p align="center">
+  <img src="./Thruster_S1000_C3_0_I0_5.gif" alt="Thruster_S1000_C3_0_I0_5">
+</p>
