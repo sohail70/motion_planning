@@ -286,7 +286,7 @@ int main(int argc, char **argv) {
     rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
 
     executor.add_node(ros_manager);
-    executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
+    // executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
     std::thread executor_thread([&executor]() { executor.spin(); });
 
     // --- 7. Main Execution and Replanning Loop ---

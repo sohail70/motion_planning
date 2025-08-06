@@ -1265,7 +1265,7 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
             std::pow(obstacle_radius, 2) +
             std::pow(max_length / 2.0, 2)
         );
-        // double edge_heuristic_radius = obstacle_radius + max_length;
+        // double edge_heuristic_radius = obstacle_radius + max_length + obstacle.inflation;
 
         // --- Handle DYNAMIC Obstacles ---
         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
