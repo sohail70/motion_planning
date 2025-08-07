@@ -1,7 +1,7 @@
 # motion_planning
 
 <p align="center">
-  <img src="./Geometric_S10000_C1_5_I2_0.gif" alt="Geometric_S10000_C1_5_I2_0">
+  <img src="./Geometric_S10000_C1_5_I0.gif" alt="Geometric_S10000_C1_5_I0">
 </p>
 
 <p align="center">
