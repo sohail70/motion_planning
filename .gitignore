@@ -1,3 +1,5 @@
 build/
 .vscode/
 backup/
+src/obsolete/
+include/motion_planning/obsolete/
