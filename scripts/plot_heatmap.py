@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns # Used for creating the heatmaps
 
 # --- Configuration ---
-FMTX_DIR = "../build/new/new_names/full_fmtx" # USER: Verify this path
-RRTX_DIR = "../build/new/new_names/full_rrtx" # USER: Verify this path 
+FMTX_DIR = "../build/new/new_names/full_fmtx"
+RRTX_DIR = "../build/new/new_names/full_rrtx"
 OUTPUT_FIGURES_DIR = "./figures_summary_heatmap"
 
 # --- Data Loading and Processing Functions ---
@@ -64,15 +64,15 @@ def load_all_data(fmtx_data_dir, rrtx_data_dir):
 
 def calculate_summary_metrics_from_trials(df_list):
     """
-    FIXED: Calculates statistics based on per-trial medians, matching the table logic.
+    Calculates statistics based on per-trial medians, matching the table logic.
     """
-    # 1. Get the median replanning time for each of the 30 trials.
+    #  Get the median replanning time for each of the 30 trials.
     per_trial_medians = [df['duration_ms'].median() for df in df_list if not df.empty]
 
     if not per_trial_medians:
         return {'median': np.nan, 'std': np.nan}
         
-    # 2. The final metrics are stats of this list of per-trial medians.
+    # The final metrics are stats of this list of per-trial medians.
     return {
         'median': np.median(per_trial_medians), 
         'std': np.std(per_trial_medians)
@@ -149,7 +149,7 @@ def main():
     pivot_df = summary_df.pivot_table(
         index=['samples', 'C', 'obstacles'],
         columns='planner',
-        # FIXED: Use the correct column name 'median'
+        # Use the correct column name 'median'
         values='median' 
     ).reset_index()
 

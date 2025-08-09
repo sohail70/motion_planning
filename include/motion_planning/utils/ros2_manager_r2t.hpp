@@ -1,4 +1,4 @@
-// r2t_ros_manager.hpp
+// Copyright 2025 Soheil E.nia
 
 #pragma once
 
@@ -21,7 +21,7 @@ public:
         std::shared_ptr<RVizVisualization> visualizer,
         const Params& params,
         double robot_velocity,
-        const Eigen::VectorXd& initial_sim_state) // NEW: Pass in the initial state
+        const Eigen::VectorXd& initial_sim_state) // Pass in the initial state
         : Node("r2t_ros_manager", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)})),
           obstacle_checker_(obstacle_checker),
           visualizer_(visualizer),
@@ -29,7 +29,7 @@ public:
           last_known_theta_(0.0),
            robot_velocity_(robot_velocity) 
     {
-        // --- FIX: Initialize the simulation state immediately in the constructor ---
+        // --- Initialize the simulation state immediately in the constructor ---
         if (initial_sim_state.size() != 3) {
             throw std::runtime_error("R2TROS2Manager: Initial state must be 3D.");
         }
@@ -62,7 +62,7 @@ public:
     //         return;
     //     }
         
-    //     // --- FIX: The path from the planner is now trusted to be in the correct forward order. ---
+    //     // --- The path from the planner is now trusted to be in the correct forward order. ---
     //     // --- REMOVE the std::reverse call. ---
     //     current_path_ = new_path_from_main;
         
@@ -87,7 +87,7 @@ public:
         // Always update the path to the latest one from the planner.
         current_path_ = new_path_from_main;
         
-        // CRITICAL FIX: If this is the FIRST time a path is being set,
+        // If this is the FIRST time a path is being set,
         // we must initialize the simulation time to the start of that path.
         if (!is_path_set_) {
             // The first point in the path holds the starting state and time-to-go.
@@ -153,7 +153,7 @@ private:
         std::vector<Eigen::VectorXd> cylinder_positions;
         std::vector<double> cylinder_radii;
         
-        // ✅ Create the specific data structure your visualizeCube function needs
+        //  Create the specific data structure your visualizeCube function needs
         std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_data_for_viz;
 
         std::vector<Eigen::Vector2d> dynamic_obstacle_positions;
@@ -167,7 +167,7 @@ private:
                 cylinder_positions.push_back(pos);
                 cylinder_radii.push_back(obstacle.dimensions.radius);
             } else if (obstacle.type == Obstacle::BOX) {
-                // ✅ Populate the vector of tuples directly
+                // Populate the vector of tuples directly
                 box_data_for_viz.emplace_back(
                     obstacle.position,
                     obstacle.dimensions.width,
@@ -187,7 +187,7 @@ private:
             visualizer_->visualizeCylinder(cylinder_positions, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "cylinder_obstacles");
         }
         if (!box_data_for_viz.empty()) {
-            // ✅ Call your actual visualizeCube function with the correct data structure
+            // Call your actual visualizeCube function with the correct data structure
             visualizer_->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
         }
         if (!dynamic_obstacle_positions.empty()) {
@@ -465,7 +465,6 @@ private:
     
 //     current_interpolated_state_ = current_robot_state;
 
-//     // Visualization logic (remains the same)...
 //     Eigen::Vector3d robot_pos_3d(current_robot_state(0), current_robot_state(1), 0.0);
 //     Eigen::Vector2d direction_vector = state_after.head<2>() - state_before.head<2>();
 //     if (direction_vector.norm() > 1e-6) {

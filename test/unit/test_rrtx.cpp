@@ -1,6 +1,5 @@
 // Copyright 2025 Soheil E.nia
 
-
 #include "motion_planning/state_space/euclidean_statespace.hpp"
 #include "motion_planning/planners/planner_factory.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
@@ -9,15 +8,11 @@
 #include "motion_planning/utils/ros2_manager.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
 #include <valgrind/callgrind.h>
-
-
-
 #include <gz/transport/Node.hh>
 #include <gz/msgs/world_control.pb.h>
-#include <gz/msgs/server_control.pb.h>  // Often contains Boolean definition
-#include <gz/msgs/boolean.pb.h>  // For Boolean response
+#include <gz/msgs/server_control.pb.h>
+#include <gz/msgs/boolean.pb.h>
 
-// 2. Corrected simulation control function
 void resetAndPlaySimulation()
 {
     // Create Gazebo transport node
@@ -73,11 +68,6 @@ void resetAndPlaySimulation()
 
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
-    //////////////////////////////////////////////////////////////////////////////////////////////////
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////
-    // ─────────────────────────────────────────────────────────────────────────────
-    // 1) Parse your flags
     int num_samples = 10000;
     double factor = 2.0;
     unsigned int seed = 42;
@@ -104,21 +94,12 @@ int main(int argc, char **argv) {
         }
     }
 
-    // 2) Seed RNG
     std::srand(seed);
     std::cout << "[INFO] seed=" << seed
                 << ", samples=" << num_samples
                 << ", factor=" << factor
                 << ", duration=" << run_secs << "s\n";
 
-    // ─────────────────────────────────────────────────────────────────────────────
-
-
-
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Params for Pure-Pursuit Controller
     Params controller_params;
     controller_params.setParam("kp_angular", 1.2);
@@ -136,7 +117,6 @@ int main(int argc, char **argv) {
 
 
     Params DWA;
-    // ========== Core motion limits ==========
     DWA.setParam("max_speed",         3.0);   // Robot can go up to 3 m/s
     DWA.setParam("min_speed",        -2.0);   // Allow reversing if needed
     DWA.setParam("max_yawrate",       0.8);   // Turn rate up to 1.5 rad/s
@@ -145,17 +125,13 @@ int main(int argc, char **argv) {
     DWA.setParam("max_dyawrate",      1.0);   // Angular acceleration limit
     DWA.setParam("robot_radius",      0.3);
 
-    // ========== Sampling and horizon ==========
     DWA.setParam("dt",               0.1);    // Simulation time step in DWA
     DWA.setParam("predict_time",     5.0);    // 2s horizon for quick re-planning
     int sim_steps_ = (int)(DWA.getParam<double>("predict_time") / DWA.getParam<double>("dt"));
     // -> 2.0 / 0.1 = 20 steps
     DWA.setParam("sim_steps", sim_steps_);
-
     DWA.setParam("speed_resolution",  0.1);
     DWA.setParam("yawrate_resolution",0.1);
-
-    // ========== Cost weights ==========
     DWA.setParam("obstacle_cost_gain",  3.0); // Higher => more aggressive obstacle avoidance
     DWA.setParam("speed_cost_gain",     1.0); // Medium => encourages higher speed, but not crazy
     DWA.setParam("goal_cost_gain",      1.0); // Balanced
@@ -293,9 +269,8 @@ int main(int argc, char **argv) {
     auto global_start = std::chrono::steady_clock::now();
 
     // Suppose you have a boolean that decides if we want a 20s limit
-    bool limited = true;  // or read from params, or pass as an argument
+    bool limited = true;
 
-    // Capture the "start" time if we plan to limit the loop
     auto start_time = std::chrono::steady_clock::now();
     auto time_limit = std::chrono::seconds(run_secs);
 
@@ -308,7 +283,6 @@ int main(int argc, char **argv) {
 
     while (rclcpp::ok()) {
 
-        // 1) If we are limiting to 20s, check if we've exceeded that
         if (limited) {
             auto now = std::chrono::steady_clock::now();
             if (now - start_time > time_limit) {
@@ -334,7 +308,7 @@ int main(int argc, char **argv) {
         auto snapshot = obstacle_checker->getAtomicSnapshot();
         auto& obstacles = snapshot.obstacles;
         auto& robot = snapshot.robot_position;
-        dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot); // UNCOMMENT THIS LATER!
+        dynamic_cast<RRTX*>(planner.get())->setRobotIndex(robot);
 
         ////////// PLAN //////////
         auto start = std::chrono::steady_clock::now();
@@ -345,7 +319,7 @@ int main(int argc, char **argv) {
             std::cout << "Time taken by update loop: " << duration.count() << " milliseconds\n";
         sim_durations.push_back(duration.count());
 
-        // New metrics (elapsed_s, duration_ms)
+        // metrics (elapsed_s, duration_ms)
         double elapsed_s = std::chrono::duration<double>(start - global_start).count();
         double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
         sim_duration_2.emplace_back(elapsed_s, duration_ms);
@@ -382,7 +356,6 @@ int main(int argc, char **argv) {
         int minute = local_tm->tm_min;
         int second = local_tm->tm_sec;
 
-        // Create base filename with timestamp
         std::string planner_type = "rrtx";
         std::string base_filename = "sim_" + planner_type + "_" +
             std::to_string(num_of_samples_) + "samples_" + 
@@ -394,7 +367,6 @@ int main(int argc, char **argv) {
             std::to_string(second);
 
         if (SAVE_TIMED_DATA) {
-            // Save timed data (elapsed_s, duration_ms)
             std::string filename = base_filename + "_timed.csv";
             std::cout << "Writing timed durations to: " << filename << std::endl;
 
@@ -410,7 +382,6 @@ int main(int argc, char **argv) {
             }
             out.close();
         } else {
-            // Save raw durations (legacy format)
             std::string filename = base_filename + "_raw.csv";
             std::cout << "Writing raw durations to: " << filename << std::endl;
 
@@ -425,14 +396,7 @@ int main(int argc, char **argv) {
             }
             out.close();
         }
-
         std::cout << "Done writing CSV.\n";
     }
-
-
-
-
-  
     rclcpp::shutdown();
-
 }

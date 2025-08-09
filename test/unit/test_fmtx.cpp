@@ -36,6 +36,7 @@
  * OBSERVATION MATH EXTENSION: I think the ignore sample approach is good if you use inflation it pretty much covers that --> maybe a simple formula to find how much minimum inflation is needed to activate ignore sample approach (which should be also dependant on the number of samples)
  * 
  * INSIGHT: What would negative edge weight in dijkstra mean here?  
+ * The above TODO's are mostly done
  */
 
 #include "motion_planning/state_space/euclidean_statespace.hpp"
@@ -59,10 +60,9 @@
 
 #include <gz/transport/Node.hh>
 #include <gz/msgs/world_control.pb.h>
-#include <gz/msgs/server_control.pb.h>  // Often contains Boolean definition
-#include <gz/msgs/boolean.pb.h>  // For Boolean response
+#include <gz/msgs/server_control.pb.h>
+#include <gz/msgs/boolean.pb.h>
 
-// 2. Corrected simulation control function
 void resetAndPlaySimulation()
 {
     // Create Gazebo transport node
@@ -123,7 +123,7 @@ void resetAndPlaySimulation()
 
 
 
-std::atomic<bool> running{true}; // Flag to control the infinite loop
+std::atomic<bool> running{true};
 pid_t child_pid = -1;
 
 void runRosGzBridge() {
@@ -215,14 +215,12 @@ int main(int argc, char **argv) {
         }
     }
 
-    // 2) Seed RNG
     std::srand(seed);
     std::cout << "[INFO] seed=" << seed
                 << ", samples=" << num_samples
                 << ", factor=" << factor
                 << ", duration=" << run_secs << "s\n";
 
-    // ─────────────────────────────────────────────────────────────────────────────
 
 
 
@@ -245,7 +243,6 @@ int main(int argc, char **argv) {
 
 
     Params DWA;
-    // ========== Core motion limits ==========
     DWA.setParam("max_speed",         3.0);   // Robot can go up to 3 m/s
     DWA.setParam("min_speed",        -1.0);   // Allow reversing if needed
     DWA.setParam("max_yawrate",       0.8);   // Turn rate up to 1.5 rad/s
@@ -254,7 +251,6 @@ int main(int argc, char **argv) {
     DWA.setParam("max_dyawrate",      2.0);   // Angular acceleration limit
     DWA.setParam("robot_radius",      0.3);
 
-    // ========== Sampling and horizon ==========
     DWA.setParam("dt",               0.1);    // Simulation time step in DWA
     DWA.setParam("predict_time",     5.0);    // 2s horizon for quick re-planning
     int sim_steps_ = (int)(DWA.getParam<double>("predict_time") / DWA.getParam<double>("dt"));
@@ -264,7 +260,6 @@ int main(int argc, char **argv) {
     DWA.setParam("speed_resolution",  0.1);
     DWA.setParam("yawrate_resolution",0.1);
 
-    // ========== Cost weights ==========
     DWA.setParam("obstacle_cost_gain",  5.0); // Higher => more aggressive obstacle avoidance
     DWA.setParam("speed_cost_gain",     0.3); // Medium => encourages higher speed, but not crazy
     DWA.setParam("goal_cost_gain",      3.0); // Balanced

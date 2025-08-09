@@ -3,11 +3,9 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import time # For timing
+import time 
 
-# +-------------------------------------------------+
-# |           Function Definitions Here             |
-# +-------------------------------------------------+
+
 
 def load_graph_from_csv(filename: str) -> tuple[nx.DiGraph | None, int | None, int]:
     """
@@ -128,7 +126,7 @@ def analyze_graph_similarity(graph1, graph2, tolerance=1e-7, calculate_detailed_
         print("One or both graphs are empty or could not be loaded. Cannot perform similarity analysis.")
         return False # Indicate isomorphism check failed or N/A
 
-    # 1. Isomorphism Check (structure and node coordinates)
+    # Isomorphism Check (structure and node coordinates)
     print("Checking for perfect isomorphism (structure & node coordinates)...")
     is_isomorphic_with_coords = nx.is_isomorphic(
         graph1, graph2, 
@@ -142,7 +140,7 @@ def analyze_graph_similarity(graph1, graph2, tolerance=1e-7, calculate_detailed_
     else:
         print("Result: Graphs are NOT perfectly isomorphic (considering structure and node coordinates).")
 
-        # 2. Basic Count Differences
+        # Basic Count Differences
         nodes1, nodes2 = graph1.number_of_nodes(), graph2.number_of_nodes()
         edges1, edges2 = graph1.number_of_edges(), graph2.number_of_edges()
         print(f"\nNode Counts: G1={nodes1}, G2={nodes2} (Difference: {abs(nodes1 - nodes2)})")
@@ -151,7 +149,7 @@ def analyze_graph_similarity(graph1, graph2, tolerance=1e-7, calculate_detailed_
         if calculate_detailed_scores:
             print("\nCalculating detailed similarity scores (this may take time)...")
             
-            # 3. Node Coordinate Overlap Score
+            # Node Coordinate Overlap Score
             coords_list1_with_ids = {node_id: data['coords'] for node_id, data in graph1.nodes(data=True) if data.get('coords') is not None}
             coords_list2_with_ids = {node_id: data['coords'] for node_id, data in graph2.nodes(data=True) if data.get('coords') is not None}
 
@@ -184,7 +182,7 @@ def analyze_graph_similarity(graph1, graph2, tolerance=1e-7, calculate_detailed_
                 print(f"      {score2:.2f}% of G2 nodes have a coordinate match in G1.")
                 print(f"      Average Coordinate Overlap: {((score1 + score2) / 2):.2f}%")
 
-                # 4. Parent Agreement Score (using g1_to_g2_coord_matches)
+                # Parent Agreement Score (using g1_to_g2_coord_matches)
                 print("  Calculating Parent Agreement Score...")
                 parent_agreements = 0
                 nodes_with_parents_and_match_in_g1 = 0
@@ -288,9 +286,7 @@ def plot_overlaid_graphs(file1: str, file2: str, graph1: nx.DiGraph, graph2: nx.
             print(f"Error saving plot to '{output_filename}': {e}")
     plt.show()
 
-# +-------------------------------------------------+
-# | Main script execution (entry point)             |
-# +-------------------------------------------------+
+
 if __name__ == "__main__":
     file_path1 = "../build/tree_run_rrtx.csv"
     file_path2 = "../build/tree_run_fmtx.csv"

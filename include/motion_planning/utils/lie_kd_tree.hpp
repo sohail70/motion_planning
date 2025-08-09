@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #pragma once
 
 #include "motion_planning/state_space/dubins_time_statespace.hpp"
@@ -11,65 +13,50 @@
 struct LieNode;
 
 /**
- * @class LieSplittingKDTree
- * @brief A k-d tree tailored for nonholonomic systems using Lie splitting.
+ * LieSplittingKDTree
+ * A k-d tree tailored for nonholonomic systems using Lie splitting.
  */
 class LieSplittingKDTree: public KDTree {
 public:
     /**
-     * @brief Constructs the Lie-splitting k-d tree.
-     * @param dimension The state space dimension (e.g., 4 for DubinsTime).
+     * Constructs the Lie-splitting k-d tree.
+     * dimension The state space dimension (e.g., 4 for DubinsTime).
      */
     explicit LieSplittingKDTree(int dimension, std::shared_ptr<StateSpace> space);
 
     /**
-     * @brief Destructor to clean up the tree nodes.
+     * Destructor to clean up the tree nodes.
      */
     ~LieSplittingKDTree();
 
     /**
-     * @brief Adds a single point to the tree incrementally.
-     * @param stateValue The state vector to add.
+     * Adds a single point to the tree incrementally.
+     * stateValue The state vector to add.
      */
     void addPoint(const Eigen::VectorXd& stateValue) override;
 
     /**
-     * @brief Finds the k nearest neighbors to a query state.
-     * @param query The query state vector (x, y, theta, time).
-     * @param k The number of neighbors to find.
-     * @param space The DubinsTimeStateSpace, used to compute true path costs.
-     * @return A vector of indices corresponding to the nearest neighbors.
+     * Finds the k nearest neighbors to a query state.
+     * return A vector of indices corresponding to the nearest neighbors.
      */
     std::vector<size_t> knnSearch(const Eigen::VectorXd& query, int k) const override;
 
     /**
-     * @brief Finds all neighbors within a given geometric radius of a query state. 
-     * @param query The query state vector.
-     * @param radius The search radius (based on geometric path length).
-     * @param space The state space used to compute true distances.
-     * @return A vector of indices of points found within the radius.
+     * Finds all neighbors within a given geometric radius of a query state. 
+     * A vector of indices of points found within the radius.
      */
     std::vector<size_t> radiusSearch(const Eigen::VectorXd& query, double radius) const override;
 
     /**
-     * @brief Finds neighbors within two different radii simultaneously.
-     * @param query The query state vector.
-     * @param radius1 The larger search radius. Pruning is based on this radius.
-     * @param radius2 The smaller search radius. Must be less than or equal to radius1.
-     * @param space The state space used to compute true distances.
-     * @return A pair of vectors: the first contains indices within radius1, the second within radius2.
+     * Finds neighbors within two different radii simultaneously.
+     * return A pair of vectors: the first contains indices within radius1, the second within radius2.
      */
     std::pair<std::vector<size_t>, std::vector<size_t>> radiusSearchDual(const Eigen::VectorXd& query, double radius1, double radius2) const override;
 
 
-    /**
-     * @brief Clears all data from the tree.
-     */
+
     void clear() override;
 
-    /**
-     * @brief Returns the total number of points in the tree.
-     */
     size_t size() const override;
 
     // USELESS FOR NOW

@@ -121,7 +121,6 @@ int main(int argc, char **argv) {
 
 
     Params DWA;
-    // ========== Core motion limits ==========
     DWA.setParam("max_speed",         3.0);   // Robot can go up to 3 m/s
     DWA.setParam("min_speed",        -1.0);   // Allow reversing if needed
     DWA.setParam("max_yawrate",       0.8);   // Turn rate up to 1.5 rad/s
@@ -130,7 +129,6 @@ int main(int argc, char **argv) {
     DWA.setParam("max_dyawrate",      2.0);   // Angular acceleration limit
     DWA.setParam("robot_radius",      0.3);
 
-    // ========== Sampling and horizon ==========
     DWA.setParam("dt",               0.1);    // Simulation time step in DWA
     DWA.setParam("predict_time",     5.0);    // 2s horizon for quick re-planning
     int sim_steps_ = (int)(DWA.getParam<double>("predict_time") / DWA.getParam<double>("dt"));
@@ -140,7 +138,6 @@ int main(int argc, char **argv) {
     DWA.setParam("speed_resolution",  0.1);
     DWA.setParam("yawrate_resolution",0.1);
 
-    // ========== Cost weights ==========
     DWA.setParam("obstacle_cost_gain",  5.0); // Higher => more aggressive obstacle avoidance
     DWA.setParam("speed_cost_gain",     0.3); // Medium => encourages higher speed, but not crazy
     DWA.setParam("goal_cost_gain",      3.0); // Balanced

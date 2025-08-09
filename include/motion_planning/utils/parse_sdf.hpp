@@ -1,3 +1,6 @@
+// Copyright 2025 Soheil E.nia
+
+
 // #include "motion_planning/pch.hpp"
 #include <unordered_map>
 #include <tinyxml2.h>

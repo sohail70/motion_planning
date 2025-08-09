@@ -1,13 +1,10 @@
+// Copyright 2025 Soheil E.nia
 #pragma once
 
 #include "motion_planning/state_space/state.hpp"
 #include "motion_planning/pch.hpp"
 #include "motion_planning/ds/edge_info.hpp"
 #include <memory>
-
-
-
-
 
 class IFMTNode : public std::enable_shared_from_this<IFMTNode> {
 public:

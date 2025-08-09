@@ -1,4 +1,5 @@
-// params.hpp
+// Copyright 2025 Soheil E.nia
+
 #pragma once
 
 #include <unordered_map>

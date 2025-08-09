@@ -1,5 +1,6 @@
-#ifndef THRUSTER_STEER_STATE_SPACE_HPP
-#define THRUSTER_STEER_STATE_SPACE_HPP
+// Copyright 2025 Soheil E.nia
+
+#pragma once
 
 #include "motion_planning/state_space/statespace.hpp"
 #include "motion_planning/state_space/euclidean_state.hpp" // Re-use EuclideanState for state values
@@ -34,11 +35,11 @@ public:
     // to:   [x, y, z, vx, vy, vz, t_end]
     Trajectory steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const override;
 
-    // Helper for 1D steering (Julia's steering_1D)
+    // Helper for 1D steering 
     // Returns [t1, t2, a1, a2, v_coast] or NaNs if no solution
     Eigen::VectorXd steering1D(double x_start, double x_end, double v_start, double v_end, double t_start, double t_end, double a_max) const;
 
-    // Helper for ND steering (Julia's steering_ND)
+    // Helper for ND steering 
     // Returns tuple: {success, Time, X, V, A}
     struct NDSteeringResult {
         bool success;
@@ -51,7 +52,7 @@ public:
                                 const Eigen::VectorXd& v_start, const Eigen::VectorXd& v_end,
                                 double t_start, double t_end, const Eigen::VectorXd& a_max_vec) const;
 
-    // Helper for fine-graining the trajectory (Julia's fineGrain)
+    // Helper for fine-graining the trajectory
     std::tuple<Eigen::VectorXd, Eigen::MatrixXd, Eigen::MatrixXd, Eigen::MatrixXd>
     fineGrain(const Eigen::VectorXd& Time_raw, const Eigen::MatrixXd& A_raw,
               const Eigen::MatrixXd& V_raw, const Eigen::MatrixXd& X_raw, double dt_res) const;
@@ -72,5 +73,3 @@ private:
 
 
 };
-
-#endif // THRUSTER_STEER_STATE_SPACE_HPP

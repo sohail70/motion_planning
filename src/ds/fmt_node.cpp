@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include"motion_planning/ds/fmt_node.hpp"
 #include "motion_planning/ds/fmt_node.hpp"
 

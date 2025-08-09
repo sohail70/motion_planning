@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/planners/kinodynamic/kinodynamic_rrtx.hpp"
 
 KinodynamicRRTX::KinodynamicRRTX(std::shared_ptr<StateSpace> statespace, 
@@ -47,16 +49,15 @@ std::vector<int> KinodynamicRRTX::getPathIndex() const {
 }
 
 
-// This function should be part of the KinodynamicRRTX class
 std::vector<Eigen::VectorXd> KinodynamicRRTX::getPathPositions() const {
-    // 1. Check if the planner has a valid anchor point for the robot.
+    // Check if the planner has a valid anchor point for the robot.
     if (!vbot_node_ || vbot_node_->getCost() == INFINITY) {
         RCLCPP_ERROR(rclcpp::get_logger("RRTX_Path_Assembly"),
                      "Robot has no valid anchor node in the tree. Cannot build path.");
         return {}; // Return empty path
     }
 
-    // 2. Generate the "bridge" trajectory from the robot's continuous state
+    // Generate the "bridge" trajectory from the robot's continuous state
     //    to the anchor node on the fly.
     Trajectory bridge_traj = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
 
@@ -66,10 +67,10 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::getPathPositions() const {
         return {};
     }
 
-    // 3. Start the final path with this bridge trajectory.
+    // Start the final path with this bridge trajectory.
     std::vector<Eigen::VectorXd> final_executable_path = bridge_traj.path_points;
 
-    // 4. Traverse the rest of the tree from the anchor node using parent pointers.
+    // Traverse the rest of the tree from the anchor node using parent pointers.
     RRTxNode* child = vbot_node_;
     RRTxNode* parent = child->getParent();
 
@@ -229,23 +230,23 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
         // kdtree_->addPoints(statespace_->getSamplesCopy());
         // kdtree_->buildTree();
 
-        // 1. Get the full 3D (or 4D) samples from the state space.
+        // Get the full 3D (or 4D) samples from the state space.
         Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
 
-        // 2. Define how many spatial dimensions you have.
+        // Define how many spatial dimensions you have.
         //    This makes the code robust for future changes (e.g., to 3D space).
         //    Assuming (x, y, time), the spatial dimension is 2.
         int spatial_dimension = kd_dim; // For (x, y)
         // For a future Dubins (x, y, theta, time) planner, this would still be 2.
 
-        // 3. Use .leftCols() to create a new matrix with only the spatial data.
+        // Use .leftCols() to create a new matrix with only the spatial data.
         //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
         Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(spatial_dimension).eval();
         
-        // 4. Pass the 2D spatial matrix to the KD-tree.
+        // Pass the 2D spatial matrix to the KD-tree.
         kdtree_->addPoints(spatial_samples_only);
         
-        // 5. Build the tree all at once after we fill the data.
+        // Build the tree all at once after we fill the data.
         kdtree_->buildTree();
     }
 
@@ -558,9 +559,7 @@ void KinodynamicRRTX::reduceInconsistency() {
         RRTxNode* node = top_element.second;  // .second instead of .node
         // node->in_queue_ = false;
 
-        // ==========================================================
-        // // =========== INSERT THIS DEBUG BLOCK HERE =================
-        // // ==========================================================
+
         // if (vbot_node_) { // Check if vbot_node is valid
         //     RCLCPP_INFO(rclcpp::get_logger("RRTX_Debug"),
         //                 "Processing Node %d (key: %.2f) | Robot Anchor Node %d (cost: %.2f, lmc: %.2f)",
@@ -570,10 +569,7 @@ void KinodynamicRRTX::reduceInconsistency() {
         //                 vbot_node_->getCost(),
         //                 vbot_node_->getLMC());
         // }
-        // // ======================= END OF BLOCK =======================
-        // // ==============================================================
-        // // =========== INSERT THIS VISUALIZATION BLOCK HERE =============
-        // // ==============================================================
+
         // if (visualization_ && vbot_node_) {
         //     // // Visualize the robot's anchor node in yellow
         //     // std::vector<Eigen::VectorXd> robot_anchor_pos;
@@ -585,7 +581,6 @@ void KinodynamicRRTX::reduceInconsistency() {
         //     processing_node_pos.push_back(node->getStateValue().head<2>());
         //     visualization_->visualizeNodes(processing_node_pos, "map", {1.0f, 0.0f, 1.0f}, "processing_node");
         // }
-        // // ======================= END OF BLOCK =======================
 
         // if (visualization_) {
         //     processed_nodes_positions.push_back(node->getStateValue().head<2>());
@@ -606,7 +601,7 @@ void KinodynamicRRTX::reduceInconsistency() {
     }
 
 
-    // // 3. After the loop, visualize all processed nodes at once
+    // // After the loop, visualize all processed nodes at once
     // if (visualization_ && !processed_nodes_positions.empty()) {
     //     // Visualize the robot's anchor node in yellow for context
     //     if (vbot_node_) {
@@ -699,13 +694,13 @@ std::unordered_set<int> KinodynamicRRTX::findSamplesNearObstacles(
 
     std::unordered_set<int> conflicting_samples;
 
-    // 1. Ensure the robot's state is valid before proceeding.
+    // Ensure the robot's state is valid before proceeding.
     if (robot_continuous_state_.size() == 0) {
         RCLCPP_WARN(rclcpp::get_logger("Planner_Obstacle_Update"), "Robot state not set. Skipping obstacle update.");
         return conflicting_samples;
     }
 
-    // 2. Get the necessary information from the current state and k-d tree.
+    // Get the necessary information from the current state and k-d tree.
     const double robot_current_heading = (kd_dim == 4) ? robot_continuous_state_(2) : 0.0;
     const double robot_current_timestamp = (kd_dim >= 3) ? robot_continuous_state_(kd_dim - 1) : 0.0;
 
@@ -1017,9 +1012,7 @@ void KinodynamicRRTX::propagateDescendants() {
         }
     }
 
-    // // ==========================================================
-    // // =========== INSERT THIS VISUALIZATION BLOCK HERE ===========
-    // // ==========================================================
+
     // if (visualization_ && !Vc_T_.empty()) {
     //     // Create a vector to hold the 2D positions of the orphaned nodes.
     //     std::vector<Eigen::VectorXd> orphan_positions;
@@ -1039,13 +1032,11 @@ void KinodynamicRRTX::propagateDescendants() {
     //                                  {1.0f, 0.0f, 0.0f},  // Red color
     //                                  "orphaned_nodes");
     // }
-    // // ==========================================================
-    // // ======================= END OF BLOCK =======================
-    // // ==========================================================
 
 
 
-    // Step 2: Invalidate costs for neighbors of affected nodes
+
+    // Invalidate costs for neighbors of affected nodes
     for (int idx : Vc_T_) {
         if (idx < 0 || idx >= tree_.size()) continue;
         auto node = tree_[idx].get();
@@ -1082,7 +1073,7 @@ void KinodynamicRRTX::propagateDescendants() {
         }
     }
 
-    // Step 3: Reset orphaned nodes using new parent API
+    // Reset orphaned nodes using new parent API
     for (int idx : Vc_T_) {
         if (idx < 0 || idx >= tree_.size()) continue;
         auto node = tree_[idx].get();
@@ -1371,7 +1362,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
     /////////////////////////geometry based filter based on robots current position!///////////////////////////
 
-        // --- STEP 2: IN-PLACE GEOMETRIC FILTER ---
+        // --- IN-PLACE GEOMETRIC FILTER ---
         // Now, filter the 'current' set directly. Remove any node that is not
         // within a "local bubble" around the robot.
         // std::cout<<"current before: "<<current.size()<<"\n";
@@ -1439,9 +1430,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     /////////////
 
 
-        // // ==============================================================================
-        // // ================= CURRENT NODE VISUALIZATION CODE BLOCK ======================
-        // // ==============================================================================
+        // // CURRENT NODE VISUALIZATION CODE BLOCK
         // if (visualization_) {
         //     // Create a vector to hold the 2D positions of the nodes near obstacles.
         //     std::vector<Eigen::VectorXd> positions_to_visualize;
@@ -1461,9 +1450,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         //                                  {0.0f, 1.0f, 1.0f},  // Cyan color
         //                                  "current_obstacle_nodes");
         // }
-        // // ==============================================================================
-        // // ======================= END OF VISUALIZATION CODE BLOCK ======================
-        // // ==============================================================================   
+        // //  END OF VISUALIZATION CODE BLOCK
 
     ////////////
         bool force_repair = true;
@@ -1512,9 +1499,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
             if (!added.empty() || force_repair) {
                 addNewObstacle(cur);
 
-                // // ==============================================================================
-                // // ================= VCT NODE VISUALIZATION CODE BLOCK ======================
-                // // ==============================================================================
+                // // VCT NODE VISUALIZATION CODE BLOCK 
                 // if (visualization_) {
                 //     // Create a vector to hold the 2D positions of the nodes near obstacles.
                 //     std::vector<Eigen::VectorXd> positions_to_visualize;
@@ -1534,9 +1519,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                 //                                 {0.0f, 1.0f, 1.0f},  // Cyan color
                 //                                 "current_obstacle_nodes");
                 // }
-                // // ==============================================================================
-                // // ======================= END OF VISUALIZATION CODE BLOCK ======================
-                // // ============================================================================== 
+                // //  END OF VISUALIZATION CODE BLOCK 
 
 
                 propagateDescendants();
@@ -1574,9 +1557,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         }
         const double robot_current_timestamp = (kd_dim >= 3) ? robot_continuous_state_(kd_dim - 1) : 0.0;
 
-        // ==============================================================================
         // PASS 1: RE-VALIDATION (The "Remove" Effect)
-        // ==============================================================================
         for (const auto& [name, old_obs] : previous_obstacles_) {
             // Broad-phase: Use PREDICTIVE search to find nodes near the obstacle's PREVIOUS path.
             std::unordered_set<int> previously_affected_indices;
@@ -1638,10 +1619,8 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                 previously_affected_indices.insert(indices.begin(), indices.end());
             }
 
-            // ==========================================================
-            // =========== INSERT THE BUBBLE FILTER BLOCK HERE ============
+            //  THE BUBBLE FILTER BLOCK 
             // (The existing bubble filter logic remains unchanged)
-            // ==========================================================
             const double local_filter_radius = neighborhood_radius_;
             const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
 
@@ -1656,7 +1635,6 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                 }
             }
 
-            // ======================= END OF BLOCK =======================
             // if (visualization_) {
             //     for (int idx : previously_affected_indices) {
             //         filtered_repair_positions.push_back(tree_[idx]->getStateValue().head<2>());
@@ -1664,7 +1642,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
             // }
 
 
-            // --- FIX: Add full symmetric edge restoration logic ---
+            // --- Add full symmetric edge restoration logic ---
             for (int idx : previously_affected_indices) {
                 RRTxNode* node = tree_[idx].get();
                 for (auto& [neighbor, edge] : node->outgoingEdges()) {
@@ -1699,9 +1677,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
             }
         }
 
-        // ==============================================================================
         // PASS 2: INVALIDATION (The "Add" Effect)
-        // ==============================================================================
         for (const auto& [name, current_obs] : current_obstacles) {
             // Broad-phase: Use PREDICTIVE search to find nodes near the obstacle's FUTURE path.
             std::unordered_set<int> currently_affected_indices;
@@ -1740,7 +1716,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                 auto indices_at_t = kdtree_->radiusSearch(query_point, search_radius);
                 currently_affected_indices.insert(indices_at_t.begin(), indices_at_t.end());
             }
-            // --- START: LOCAL BUBBLE FILTER ---
+            // --- LOCAL BUBBLE FILTER ---
             const double local_filter_radius = neighborhood_radius_;
             const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
 
@@ -1754,7 +1730,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                     ++it;
                 }
             }
-            // --- END: LOCAL BUBBLE FILTER ---
+            // --- LOCAL BUBBLE FILTER ---
 
             // if (visualization_) {
             //     for (int idx : currently_affected_indices) {
@@ -1806,9 +1782,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         // }
 
 
-        // ==============================================================================
         // PASS 3: FINALIZE
-        // ==============================================================================
         propagateDescendants();
         if (vbot_node_) {
             verifyQueue(vbot_node_);
@@ -2049,7 +2023,7 @@ void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
                 bool becomes_invalid = false;
                 const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
 
-                // CRITICAL OPTIMIZATION: Check the edge against ONLY its specific threats.
+                // Check the edge against ONLY its specific threats.
                 for (const auto& obs : threats) {
                     last_replan_metrics_.obstacle_checks++;
                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, global_edge_start_time, obs)) {
@@ -2138,19 +2112,6 @@ void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
                 verifyQueue(node);
             }
         }
-        // If the node's location is *still* not free (and not ignore_sample),
-        // its LMC should remain Inf or be updated accordingly by updateLMC if all edges are Inf.
-        // It might still need verifyQueue if its previous state was different.
-        // However, the existing updateLMC/verifyQueue at the end of the outer loop in the original
-        // code seems to cover general cases. The refined logic above tries to be more precise
-        // about *when* to update LMC based on the node's own state.
-        // For simplicity and safety, the original broader updateLMC/verifyQueue might be fine:
-        // updateLMC(node);
-        // if (node->getCost() != node->getLMC()) {
-        //     verifyQueue(node);
-        // }
-        // This will work because if node_location_is_currently_free is false, updateLMC should ideally
-        // result in node->LMC being INFINITY if all its edges are INFINITY.
     }
 }
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -2384,21 +2345,21 @@ void KinodynamicRRTX::dumpTreeToCSV(const std::string& filename) const {
         std::cerr << "Failed to open " << filename << " for writing\n";
         return;
     }
-    // 1. Determine the dimension of the states from the first node
+    // Determine the dimension of the states from the first node
     if (tree_.empty()) {
         std::cerr << "Tree is empty. Nothing to dump.\n";
         return;
     }
     size_t dim = tree_[0]->getStateValue().size();
 
-    // 2. Write the CSV header
+    // Write the CSV header
     fout << "node_id";
     for (size_t d = 0; d < dim; ++d) {
         fout << ",x" << d;
     }
     fout << ",parent_id\n";
 
-    // 3. Iterate through each node and write its data
+    // Iterate through each node and write its data
     for (const auto& node_ptr : tree_) {
         int nid = node_ptr->getIndex(); 
         const auto& coords = node_ptr->getStateValue();
@@ -2417,10 +2378,9 @@ void KinodynamicRRTX::dumpTreeToCSV(const std::string& filename) const {
 
 
 void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
-    // 1. Store the robot's continuous state
+    // Store the robot's continuous state
     robot_continuous_state_ = robot_state;
 
-    // --- STABILIZATION FIX START ---
 
     // Define a hysteresis factor. A new path must be at least 5% cheaper to be adopted.
     // This prevents switching for negligible gains.
@@ -2436,9 +2396,8 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         }
     }
 
-    // --- STABILIZATION FIX END ---
 
-    // 2. Search for the best *potential* anchor node in the neighborhood.
+    // Search for the best potential anchor node in the neighborhood.
     // This part of your logic remains unchanged.
     RRTxNode* best_candidate_node = nullptr;
     Trajectory best_candidate_bridge;
@@ -2457,7 +2416,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
             RRTxNode* candidate = tree_[idx].get();
             if (candidate->getCost() == INFINITY) continue;
 
-            // CHANGED: Reuse 'current_bridge' object via assignment. No new object is constructed here.
+            // Reuse 'current_bridge' object via assignment. No new object is constructed here.
             current_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
             
             if (!current_bridge.is_valid || !obs_checker_->isTrajectorySafe(current_bridge, clock_->now().seconds())) continue;
@@ -2480,9 +2439,8 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         current_search_radius *= radius_multiplier;
     }
 
-    // --- STABILIZATION FIX START ---
 
-    // 3. Make a stable decision.
+    // Make a stable decision.
     // Only switch to the new candidate if it's significantly better than our current path.
     if (best_candidate_node && best_candidate_cost < cost_of_current_path * hysteresis_factor) {
         // The new node is significantly better. It's worth switching.
@@ -2513,7 +2471,6 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
         }
     }
-    // --- STABILIZATION FIX END ---
 }
 
 
@@ -2544,7 +2501,6 @@ bool KinodynamicRRTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path,
         const Eigen::VectorXd& segment_start_state = path[i];
         const Eigen::VectorXd& segment_end_state = path[i+1];
 
-        // *** ADD THIS CHECK ***
         // If the segment is extremely short, assume it's valid and continue.
         // A threshold of 0.01 seconds (10ms) is a reasonable choice.
         const double segment_duration = segment_start_state(segment_start_state.size() - 1) - segment_end_state(segment_end_state.size() - 1);
@@ -2553,7 +2509,7 @@ bool KinodynamicRRTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path,
         }
         // *********************
 
-        // --- FIX: Generate the TRUE kinodynamic trajectory for this segment ---
+        // --- Generate the TRUE kinodynamic trajectory for this segment ---
         Trajectory segment_traj = statespace_->steer(segment_start_state, segment_end_state);
 
         // If the segment itself is not valid, the whole path is invalid.
@@ -2565,7 +2521,7 @@ bool KinodynamicRRTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path,
         // Calculate the absolute world time when this segment starts.
         const double segment_global_start_time = t_arrival_predicted - segment_start_state(segment_start_state.size() - 1);
 
-        // --- FIX: Check the safety of the TRUE trajectory ---
+        // --- Check the safety of the TRUE trajectory ---
         if (!obs_checker_->isTrajectorySafe(segment_traj, segment_global_start_time)) {
             RCLCPP_WARN(rclcpp::get_logger("fmtx_validator"), "Path invalidated by predictive check on segment %zu.", i);
             return false;

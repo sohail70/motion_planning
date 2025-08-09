@@ -1,5 +1,7 @@
 // Copyright 2025 Soheil E.nia
-
+/**
+ * TODO: At some point I ignored this in some header files. I need to use this everywhere possible to reduce compile time
+ */
 #pragma once
 
 #include <Eigen/Dense>

@@ -9,7 +9,6 @@ import seaborn as sns
 from matplotlib.patches import Patch
 
 # --- Configuration ---
-# Please verify these paths are correct
 FMTX_DIR = "../build/new/new_names/full_fmtx"
 RRTX_DIR = "../build/new/new_names/full_rrtx"
 OUTPUT_FIGURES_DIR = "./figures_combined_summary" 

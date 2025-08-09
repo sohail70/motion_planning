@@ -30,7 +30,7 @@ class KinodynamicFMTX : public Planner {
             //     const double t_now = clock_->now().seconds();
 
             //     // Get the robot's total time-to-go from the last element of its state vector.
-            //     // FIX: Use .size() - 1 to access the last element for compatibility with older Eigen versions.
+            //     // Use .size() - 1 to access the last element for compatibility with older Eigen versions.
             //     const double robot_total_time_to_go = path.front()(path.front().size() - 1);
 
             //     // Calculate the single, predicted global time of arrival for this entire path.
@@ -45,7 +45,7 @@ class KinodynamicFMTX : public Planner {
             //         segment_traj.path_points.push_back(segment_start_state);
             //         segment_traj.path_points.push_back(segment_end_state);
                     
-            //         // FIX: Calculate time duration using the last element of each state.
+            //         // Calculate time duration using the last element of each state.
             //         segment_traj.time_duration = segment_start_state(segment_start_state.size() - 1) - segment_end_state(segment_end_state.size() - 1);
                     
             //         if (segment_traj.time_duration <= 1e-6) {
@@ -53,7 +53,7 @@ class KinodynamicFMTX : public Planner {
             //             return false;
             //         }
 
-            //         // FIX: Calculate the segment's global start time using the last element.
+            //         // Calculate the segment's global start time using the last element.
             //         const double segment_global_start_time = t_arrival - segment_start_state(segment_start_state.size() - 1);
 
             //         if (!obs_checker_->isTrajectorySafe(segment_traj, segment_global_start_time)) {
@@ -98,18 +98,17 @@ class KinodynamicFMTX : public Planner {
 
             
             /**
-             * @brief Reconstructs the full, fine-grained execution trajectory from the robot to the goal.
-             * @return A complete ExecutionTrajectory object containing Time, X, V, and A matrices.
+             * Reconstructs the full, fine-grained execution trajectory from the robot to the goal.
+             * return A complete ExecutionTrajectory object containing Time, X, V, and A matrices.
              */
             ExecutionTrajectory getFinalExecutionTrajectory() const;
 
 
             /**
-             * @brief Re-anchors the planner's search to the robot's current continuous state.
+             * Re-anchors the planner's search to the robot's current continuous state.
              * Finds the best node in the tree to serve as the new starting point (leaf node)
              * for the backward search, considering both proximity and existing cost. This is
              * the crucial link between the continuous simulation and the discrete graph.
-             * @param robot_state The current 3D state (x,y,Time) of the robot.
              */
             void setRobotState(const Eigen::VectorXd& robot_state);
 
@@ -224,20 +223,20 @@ class KinodynamicFMTX : public Planner {
 
             rclcpp::Clock::SharedPtr clock_; // Store the clock
 
-            // NEW: Member variable to store the robot's continuous state
+            // Member variable to store the robot's continuous state
             Eigen::VectorXd robot_continuous_state_;
             double robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
 
 
-            FMTNode* robot_anchor_node_ = nullptr;          // ✅ ADD: Stores the best node to connect to.
-            Trajectory robot_bridge_trajectory_;    // ✅ ADD: Stores the path from the robot to the anchor.
+            FMTNode* robot_anchor_node_ = nullptr;          // Stores the best node to connect to.
+            Trajectory robot_bridge_trajectory_;    // Stores the path from the robot to the anchor.
             
 
             ReplanMetrics last_replan_metrics_; 
             std::unordered_map<std::string, Obstacle> previous_obstacles_;
             // std::unordered_set<std::string> previous_obstacle_names_; // SAFE: Stores only names, prevents memory corruption
 
-            // // ✅ ADD THIS TYPE DEFINITION
+            // //  ADD THIS TYPE DEFINITION
             // using ObstacleMap = std::unordered_map<
             //     std::string,
             //     Obstacle,
@@ -246,7 +245,7 @@ class KinodynamicFMTX : public Planner {
             //     Eigen::aligned_allocator<std::pair<const std::string, Obstacle>>
             // >;
 
-            // // ✅ CHANGE THE MEMBER VARIABLE TO USE THE NEW TYPE
+            // //  CHANGE THE MEMBER VARIABLE TO USE THE NEW TYPE
             // ObstacleMap previous_obstacles_;
 
 

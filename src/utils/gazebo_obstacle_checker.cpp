@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
 
 GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
@@ -219,10 +221,10 @@ bool GazeboObstacleChecker::isInVelocityObstacle(
     // This function checks if the robot's velocity vector, relative to the obstacle,
     // falls within the "collision cone" projected from the robot's position.
 
-    // 1. Calculate the velocity of the robot relative to the obstacle.
+    //  Calculate the velocity of the robot relative to the obstacle.
     const Eigen::Vector2d relative_velocity = robot_velocity - obs_velocity;
 
-    // 2. If the obstacle is moving away from the robot, no future collision is possible.
+    // If the obstacle is moving away from the robot, no future collision is possible.
     // A negative dot product means the vectors are pointing in generally opposite directions.
     if (pos_robot_to_obs.dot(relative_velocity) < 0) {
         // A more robust check: check if the distance is increasing.
@@ -236,7 +238,7 @@ bool GazeboObstacleChecker::isInVelocityObstacle(
         }
     }
 
-    // 3. Calculate the geometry of the collision cone.
+    // Calculate the geometry of the collision cone.
     const double dist_sq = pos_robot_to_obs.squaredNorm();
     if (dist_sq < 1e-9) return true; // Already colliding
 
@@ -246,7 +248,7 @@ bool GazeboObstacleChecker::isInVelocityObstacle(
         return true;
     }
 
-    // 4. Perform the geometric check.
+    // Perform the geometric check.
     // The angle of the collision cone (lambda in the papers).
     double apex_angle = std::asin(combined_radius / pos_robot_to_obs.norm());
 
@@ -292,7 +294,7 @@ bool GazeboObstacleChecker::check_arc_line_collision(
         Eigen::Vector2d p_o_t = p_o0_start + v_o * t;
         return 2.0 * (p_r_t - p_o_t).dot(v_r_t - v_o);
     };
-    // --- 1. Boundary Checks ---
+    // --- Boundary Checks ---
     if (dist_sq_func(0.0) <= R_sq) return true;
     if (dist_sq_func(T_segment) <= R_sq) return true;
 
@@ -378,7 +380,6 @@ bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
         const Eigen::Vector2d p_r1 = segment_end_state.head<2>();
         const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
 
-        // ======================= MODIFICATION START =======================
         if (obs.type == Obstacle::CIRCLE) {
             const double R = obs.dimensions.radius + inflation;
             const double R_sq = R * R;
@@ -429,7 +430,6 @@ bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
                 }
             }
         }
-        // ======================== MODIFICATION END ========================
         
         time_into_full_trajectory += T_segment;
     }
@@ -438,19 +438,8 @@ bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
 }
 
 /**
- * @brief Performs a continuous, analytical collision check for a moving point (robot) against a moving box (obstacle).
+ * Performs a continuous, analytical collision check for a moving point (robot) against a moving box (obstacle).
  * It can handle both non-rotating (AABB) and rotated (OBB) boxes.
- *
- * @param p_r0 The robot's initial position for the segment.
- * @param v_r The robot's constant velocity for the segment.
- * @param p_o0 The obstacle's initial position for the segment.
- * @param v_o The obstacle's constant velocity for the segment.
- * @param w The full width of the obstacle box.
- * @param h The full height of the obstacle box.
- * @param T_segment The duration of the time interval to check.
- * @param rotation The rotation of the obstacle in radians.
- * @param consider_rotation If true, performs a more expensive OBB check. If false (default), performs a faster AABB check.
- * @return True if a collision occurs within the interval [0, T_segment], false otherwise.
  */
 bool GazeboObstacleChecker::sweptBoxIntersection(
     const Eigen::Vector2d& p_r0, const Eigen::Vector2d& v_r,
@@ -458,7 +447,7 @@ bool GazeboObstacleChecker::sweptBoxIntersection(
     double w, double h, double T_segment,
     double rotation, bool consider_rotation) const
 {
-    // 1. Calculate relative motion. The problem becomes a moving point vs. a stationary box.
+    // Calculate relative motion. The problem becomes a moving point vs. a stationary box.
     const Eigen::Vector2d v_rel = v_r - v_o;
     const Eigen::Vector2d p_rel_start = p_r0 - p_o0;
 
@@ -472,7 +461,7 @@ bool GazeboObstacleChecker::sweptBoxIntersection(
         v_local = rot * v_rel;
     }
 
-    // 2. Perform a slab-based (ray-AABB) intersection test in the box's (potentially rotated) frame.
+    // Perform a slab-based (ray-AABB) intersection test in the box's (potentially rotated) frame.
     double t_near = 0.0;
     double t_far = T_segment;
     const double half_w = w / 2.0;
@@ -555,7 +544,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //     }
 
 //     for (const auto& obs : obstacle_snapshot_) {
-//         // --- 1. Calculate Collision Radii ---
+//         // --- Calculate Collision Radii ---
 //         double obs_radius = (obs.type == Obstacle::CIRCLE)
 //                           ? obs.dimensions.radius
 //                           : std::hypot(obs.dimensions.width/2.0, obs.dimensions.height/2.0);
@@ -584,7 +573,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //             }
 //         }
         
-//         // --- 3. Predictive Check for Dynamic Obstacles ---
+//         // ---  Predictive Check for Dynamic Obstacles ---
 //         // This only runs for dynamic obstacles that passed the broad-phase check.
 //         if (obs.is_dynamic && T > 1e-9) {
 //             // Extrapolate obstacle state to the start of the trajectory edge (τ=0)
@@ -715,13 +704,13 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //         for (int i = 0; i <= num_steps; ++i) {
 //             double current_tau = i * time_step;
 
-//             // 1. Calculate robot's position at this time step
+//             // Calculate robot's position at this time step
 //             Eigen::Vector2d p_robot_at_tau = p_r0 + v_r * current_tau;
 
-//             // 2. Calculate obstacle's position at this time step
+//             // Calculate obstacle's position at this time step
 //             Eigen::Vector2d p_obs_at_tau = p_o0 + v_o0 * current_tau;
             
-//             // 3. Check for collision by comparing squared distance
+//             // Check for collision by comparing squared distance
 //             if ((p_robot_at_tau - p_obs_at_tau).squaredNorm() <= combined_radius_sq) {
 //                 // Collision detected! Return the obstacle.
 //                 return obs_snapshot;
@@ -778,7 +767,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //         double combined_radius_sq = combined_radius * combined_radius;
         
 //         // ==================================================================
-//         // ✅ --- ADDED: Static Collision Check ---
+//         // --- ADDED: Static Collision Check ---
 //         // This is a fast, geometric check that ignores obstacle velocity.
 //         // It provides an immediate layer of safety.
 //         // ==================================================================
@@ -803,13 +792,13 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //             for (int i = 0; i <= num_steps; ++i) {
 //                 double current_tau = i * time_step;
 
-//                 // 1. Calculate robot's position at this time step
+//                 // Calculate robot's position at this time step
 //                 Eigen::Vector2d p_robot_at_tau = p_r0 + v_r * current_tau;
 
-//                 // 2. Calculate obstacle's position at this time step
+//                 // Calculate obstacle's position at this time step
 //                 Eigen::Vector2d p_obs_at_tau = p_o0 + v_o0 * current_tau;
                 
-//                 // 3. Check for collision by comparing squared distance
+//                 // Check for collision by comparing squared distance
 //                 if ((p_robot_at_tau - p_obs_at_tau).squaredNorm() <= combined_radius_sq) {
 //                     // Collision detected! Return the obstacle.
 //                     return obs_snapshot;
@@ -934,7 +923,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //         const double global_time_at_segment_start = global_start_time + cumulative_time;
 
 //         for (const auto& obs : obstacle_snapshot_) {
-//             // --- 1. Define Collision Radii ---
+//             // --- Define Collision Radii ---
 //             const double obs_radius = (obs.type == Obstacle::CIRCLE)
 //                                     ? obs.dimensions.radius
 //                                     : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
@@ -942,7 +931,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //             const double R_sq = R * R;
 //             const double v_max_obs = 12.0; // A reasonable upper bound on any obstacle's speed
 
-//             // --- 2. Broad-Phase Check ---
+//             // --- Broad-Phase Check ---
 //             // Quickly discard obstacles that are geometrically too far away to be a threat.
 //             double min_dist_sq_to_path_geom = 0.0;
 //             if (segment.type == SegmentType::LINE) {
@@ -960,7 +949,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //                 continue; // Obstacle is too far away to reach the path in time.
 //             }
 
-//             // --- 3. Static Collision Check (Narrow-Phase part 1) ---
+//             // --- Static Collision Check (Narrow-Phase part 1) ---
 //             // If the obstacle is static, the broad-phase check is sufficient.
 //             if (!obs.is_dynamic) {
 //                 if (min_dist_sq_to_path_geom <= R_sq) {
@@ -969,7 +958,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //                 continue; // Static obstacle is safe, move to the next obstacle.
 //             }
 
-//             // --- 4. Dynamic Predictive Check (Narrow-Phase part 2) ---
+//             // --- Dynamic Predictive Check (Narrow-Phase part 2) ---
 //             // This only runs for dynamic obstacles that passed the broad-phase check.
 //             const double delta_t_extrapolation = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
 //             const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t_extrapolation;
@@ -1067,7 +1056,6 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //                 const double a = v_relative.dot(v_relative);
 //                 const double b = 2.0 * p_relative_start.dot(v_relative);
                 
-//                 // ✅ CORRECTED LINE:
 //                 const double c = p_relative_start.dot(p_relative_start) - R_sq;
 
 //                 if (std::abs(a) < 1e-9) { // Zero relative velocity
@@ -1121,12 +1109,12 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //     // auto start = std::chrono::steady_clock::now();
 
 
-//     // 1. Initial validation of the trajectory
+//     // Initial validation of the trajectory
 //     if (trajectory.path_points.size() < 2) {
 //         return std::nullopt;
 //     }
 
-//     // 2. Define helper lambdas to easily access parts of the state vector
+//     // Define helper lambdas to easily access parts of the state vector
 //     auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
 //     auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
 //     auto get_vxy = [](const Eigen::VectorXd& state) { return state.segment<2>(2); }; // For 5D states
@@ -1134,7 +1122,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //     double time_into_full_trajectory = 0.0;
 //     const int state_dim = trajectory.path_points[0].size();
 
-//     // 3. Iterate over each segment of the trajectory
+//     // Iterate over each segment of the trajectory
 //     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
 //         const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
 //         const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
@@ -1144,12 +1132,10 @@ bool GazeboObstacleChecker::isTrajectorySafe(
         
 //         const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
 
-//         // 4. Conditionally apply the correct physics model based on state dimension
+//         // Conditionally apply the correct physics model based on state dimension
 //         if (state_dim == 5) {
 //         // if (false) {
-//             // =======================================================
-//             // == ACCELERATION MODEL (5D): Subdivide the curved path ==
-//             // =======================================================
+//             // ACCELERATION MODEL (5D): Subdivide the curved path
 //             const int num_subdivisions = 1; // A tunable parameter for accuracy vs. performance
             
 //             // Calculate the constant acceleration for the entire segment
@@ -1239,9 +1225,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //                 t_sub_start = t_sub_end;
 //             }
 //         } else {
-//             // =========================================================
-//             // == CONSTANT VELOCITY MODEL (First-Order / Other Systems) ==
-//             // =========================================================
+//             // CONSTANT VELOCITY MODEL (First-Order / Other Systems)
 //             const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
 //             const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
 //             const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
@@ -1355,9 +1339,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
         */ 
         if (state_dim == 5) {
         // if (false) {
-            // =================================================================
-            // == ACCELERATION MODEL (5D): Approximate the CURVED path as one line ==
-            // =================================================================
+            // ACCELERATION MODEL (5D): Approximate the CURVED path as one line 
             const Eigen::Vector2d p_r0_seg = get_xy(segment_start_state);
             const Eigen::Vector2d v_r0_seg = get_vxy(segment_start_state);
             const Eigen::Vector2d v_r1_seg = get_vxy(segment_end_state);
@@ -1405,9 +1387,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
                 }
             }
         } else {
-            // =========================================================
-            // == CONSTANT VELOCITY MODEL (Already a straight line) ==
-            // =========================================================
+            // CONSTANT VELOCITY MODEL (Already a straight line)
             const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
             const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
             const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
@@ -1467,15 +1447,15 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
     const Trajectory& trajectory,
     double global_start_time
 ) const {
-    // 1. A trajectory needs at least two points to form a segment.
+    // A trajectory needs at least two points to form a segment.
     if (trajectory.path_points.size() < 2) {
         return std::nullopt;
     }
 
-    // 2. Create the robot's collision geometry (a sphere representing the safety bubble).
+    // Create the robot's collision geometry (a sphere representing the safety bubble).
     auto robot_geom = std::make_shared<fcl::Sphered>(inflation);
 
-    // 3. Helper lambdas to get position and time from a state vector.
+    // Helper lambdas to get position and time from a state vector.
     auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
     auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
 
@@ -1486,7 +1466,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
     //           << ", Global Start Time: " << global_start_time
     //           << ", Trajectory Points: " << trajectory.path_points.size() << std::endl;
 
-    // --- 4. Loop through each LINEARIZED segment from the trajectory ---
+    // --- Loop through each LINEARIZED segment from the trajectory ---
     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
         const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
         const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
@@ -1574,7 +1554,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
 //     const Trajectory& trajectory,
 //     double global_start_time
 // ) const {
-//     // 1. --- Initial Setup & Validation ---
+//     // --- Initial Setup & Validation ---
 //     if (trajectory.path_points.size() < 2) {
 //         return std::nullopt;
 //     }
@@ -1601,7 +1581,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
 //     // The robot is represented as a sphere with the inflation radius for all checks.
 //     btSphereShape robot_shape(inflation);
 
-//     // 2. --- Iterate Through Trajectory Segments ---
+//     // --- Iterate Through Trajectory Segments ---
 //     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
 //         const Eigen::VectorXd& start_state = trajectory.path_points[i];
 //         const Eigen::VectorXd& end_state = trajectory.path_points[i + 1];
@@ -1631,7 +1611,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
 //         robot_tf_end.setIdentity();
 //         robot_tf_end.setOrigin(to_btVector3(p_r1));
 
-//         // 3. --- Check Against Each Obstacle ---
+//         // --- Check Against Each Obstacle ---
 //         for (const auto& obs : obstacle_snapshot_) {
 //             // Create the obstacle's collision shape
 //             std::unique_ptr<btConvexShape> obs_shape;
@@ -1665,20 +1645,20 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
 //                 obs_tf_end.setRotation(q); // Assuming non-rotating obstacles
 //             }
 
-//             // 4. --- Perform Relative Motion Sweep Test (THE CORE FIX) ---
+//             // --- Perform Relative Motion Sweep Test (THE CORE FIX) ---
 
-//             // a. Create a temporary collision object for the obstacle and add it to the world
+//             // Create a temporary collision object for the obstacle and add it to the world
 //             btCollisionObject obs_co;
 //             obs_co.setCollisionShape(obs_shape.get());
 //             obs_co.setWorldTransform(obs_tf_start);
 //             bullet_world_->addCollisionObject(&obs_co);
 
-//             // b. Calculate the robot's end transform *relative* to the obstacle's motion
+//             // Calculate the robot's end transform *relative* to the obstacle's motion
 //             btTransform robot_tf_end_relative = robot_tf_end;
 //             btVector3 obstacle_displacement = obs_tf_end.getOrigin() - obs_tf_start.getOrigin();
 //             robot_tf_end_relative.getOrigin() -= obstacle_displacement;
 
-//             // c. Setup the callback and perform the sweep test with the correct 5 arguments
+//             // Setup the callback and perform the sweep test with the correct 5 arguments
 //             btCollisionWorld::ClosestConvexResultCallback result_callback(btVector3(0,0,0), btVector3(0,0,0));
             
 //             bullet_world_->convexSweepTest(
@@ -1689,7 +1669,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
 //                 bullet_world_->getDispatchInfo().m_allowedCcdPenetration
 //             );
 
-//             // d. IMPORTANT: Clean up by removing the temporary object from the world
+//             // Clean up by removing the temporary object from the world
 //             bullet_world_->removeCollisionObject(&obs_co);
 
 //             if (result_callback.hasHit()) {
@@ -1707,7 +1687,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
     const Trajectory& trajectory,
     double global_start_time
 ) const {
-    // 1. --- Initial Setup & Validation ---
+    // --- Initial Setup & Validation ---
     if (trajectory.path_points.size() < 2) {
         return std::nullopt;
     }
@@ -1764,7 +1744,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
         robot_tf_end.setIdentity();
         robot_tf_end.setOrigin(to_btVector3(p_r1));
 
-        // 3. --- Check Against Each Obstacle ---
+        // --- Check Against Each Obstacle ---
         for (const auto& obs : obstacle_snapshot_) {
             // OPTIMIZATION: Get the pre-cached shape instead of creating a new one.
             auto shape_it = bullet_shape_cache_.find(obs.name);
@@ -1806,7 +1786,6 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
 
             // OPTIMIZATION: Reset the state of the reused callback object.
             result_callback.m_closestHitFraction = 1.0f;
-            // ✅ THE FIX IS HERE: Use the correct member name 'm_hitCollisionObject'.
             result_callback.m_hitCollisionObject = nullptr;
             
             bullet_world_->convexSweepTest(&robot_shape, robot_tf_start, robot_tf_end_relative, result_callback, 0.0f);
@@ -1874,7 +1853,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
 //                               : std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
 //             double combined_radius = obs_radius + robot_radius;
 
-//             // --- 1. Static Obstacle Check ---
+//             // --- Static Obstacle Check ---
 //             // A simple, fast geometric check for non-moving obstacles.
 //             if (!obs.is_dynamic) {
 //                 if (distanceSqrdPointToSegment(obs.position, get_xy(qi), get_xy(qj)) <= combined_radius * combined_radius) {
@@ -2057,7 +2036,7 @@ Eigen::VectorXd GazeboObstacleChecker::quaternionToEuler(const Eigen::VectorXd& 
 //         else if (is_moving && within_range) {
 
 //             obstacle.last_update_time = now;
-//             // 1. FIRST, perform velocity estimation on the 'obstacle' object.
+//             // FIRST, perform velocity estimation on the 'obstacle' object.
 //             //    This gives it a non-zero velocity.
 //             if(estimation) {
 //                 auto prev_it = previous_obstacle_states_.find(name);
@@ -2229,10 +2208,10 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
                 if (filter_it == obstacle_filters_.end()) {
                     // First time seeing this obstacle, initialize a new filter.
                     
-                    // --- ✅ 1. Use the Factory to create the filter ---
+                    // --- Use the Factory to create the filter ---
                     KalmanFilter new_filter = KalmanFilterFactory::createFilter(kf_model_type_);
 
-                    // --- ✅ 2. Initialize the state with the correct size ---
+                    // --- Initialize the state with the correct size ---
                     int state_size = (kf_model_type_ == "cv") ? 4 : 6;
                     Eigen::VectorXd initial_state = Eigen::VectorXd::Zero(state_size);
                     initial_state.head<2>() << obstacle.position.x(), obstacle.position.y();
@@ -2252,15 +2231,15 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
                         dt = 0.016; // Fallback to a reasonable timestep, e.g., ~60Hz
                     }
 
-                    // 1. Predict step: Estimate where the filter thinks the obstacle should be.
+                    // Predict step: Estimate where the filter thinks the obstacle should be.
                     filter_it->second.predict(dt);
 
-                    // 2. Update step: Correct the prediction with the new measurement.
+                    // Update step: Correct the prediction with the new measurement.
                     Eigen::VectorXd measurement(2);
                     measurement << obstacle.position.x(), obstacle.position.y();
                     filter_it->second.update(measurement);
 
-                    // 3. Get the smoothed state from the filter to use in planning.
+                    // Get the smoothed state from the filter to use in planning.
                     Eigen::VectorXd estimated_state = filter_it->second.getState();
                     obstacle.velocity << estimated_state(2), estimated_state(3);
 
@@ -2415,10 +2394,10 @@ void GazeboObstacleChecker::lightweightPoseCallback(const gz::msgs::Pose_V& msg)
 //                 if (filter_it == obstacle_filters_.end()) {
 //                     // First time seeing this obstacle, initialize a new filter.
                     
-//                     // --- ✅ 1. Use the Factory to create the filter ---
+//                     // --- Use the Factory to create the filter ---
 //                     KalmanFilter new_filter = KalmanFilterFactory::createFilter(kf_model_type_);
 
-//                     // --- ✅ 2. Initialize the state with the correct size ---
+//                     // --- Initialize the state with the correct size ---
 //                     int state_size = (kf_model_type_ == "cv") ? 4 : 6;
 //                     Eigen::VectorXd initial_state = Eigen::VectorXd::Zero(state_size);
 //                     initial_state.head<2>() << obstacle.position.x(), obstacle.position.y();
@@ -2438,15 +2417,15 @@ void GazeboObstacleChecker::lightweightPoseCallback(const gz::msgs::Pose_V& msg)
 //                         dt = 0.016; // Fallback to a reasonable timestep, e.g., ~60Hz
 //                     }
 
-//                     // 1. Predict step: Estimate where the filter thinks the obstacle should be.
+//                     // Predict step: Estimate where the filter thinks the obstacle should be.
 //                     filter_it->second.predict(dt);
 
-//                     // 2. Update step: Correct the prediction with the new measurement.
+//                     // Update step: Correct the prediction with the new measurement.
 //                     Eigen::VectorXd measurement(2);
 //                     measurement << obstacle.position.x(), obstacle.position.y();
 //                     filter_it->second.update(measurement);
 
-//                     // 3. Get the smoothed state from the filter to use in planning.
+//                     // Get the smoothed state from the filter to use in planning.
 //                     Eigen::VectorXd estimated_state = filter_it->second.getState();
 //                     obstacle.velocity << estimated_state(2), estimated_state(3);
 
@@ -2617,10 +2596,10 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
                 if (filter_it == obstacle_filters_.end()) {
                     // First time seeing this obstacle, initialize a new filter.
                     
-                    // --- ✅ 1. Use the Factory to create the filter ---
+                    // --- Use the Factory to create the filter ---
                     KalmanFilter new_filter = KalmanFilterFactory::createFilter(kf_model_type_);
 
-                    // --- ✅ 2. Initialize the state with the correct size ---
+                    // --- Initialize the state with the correct size ---
                     int state_size = (kf_model_type_ == "cv") ? 4 : 6;
                     Eigen::VectorXd initial_state = Eigen::VectorXd::Zero(state_size);
                     initial_state.head<2>() << obstacle.position.x(), obstacle.position.y();
@@ -2640,15 +2619,15 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
                         dt = 0.016; // Fallback to a reasonable timestep, e.g., ~60Hz
                     }
 
-                    // 1. Predict step: Estimate where the filter thinks the obstacle should be.
+                    // Predict step: Estimate where the filter thinks the obstacle should be.
                     filter_it->second.predict(dt);
 
-                    // 2. Update step: Correct the prediction with the new measurement.
+                    // Update step: Correct the prediction with the new measurement.
                     Eigen::VectorXd measurement(2);
                     measurement << obstacle.position.x(), obstacle.position.y();
                     filter_it->second.update(measurement);
 
-                    // 3. Get the smoothed state from the filter to use in planning.
+                    // Get the smoothed state from the filter to use in planning.
                     Eigen::VectorXd estimated_state = filter_it->second.getState();
                     obstacle.velocity << estimated_state(2), estimated_state(3);
 

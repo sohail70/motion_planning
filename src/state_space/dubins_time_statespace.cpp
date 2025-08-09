@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/state_space/dubins_time_statespace.hpp"
 #include <stdexcept>
 
@@ -45,7 +47,6 @@ Trajectory DubinsTimeStateSpace::steer(const Eigen::VectorXd& from, const Eigen:
     }
 
     // --- Step 2: Add Time-Based Checks ---
-    // This logic is derived from the Julia code's `validMove` and time parameterization.
     
     // Planners like RRTX/FMTX often plan backward from the goal, so 'from' has a later time than 'to'.
     double time_elapsed = from[3] - to[3];
@@ -197,7 +198,7 @@ Trajectory DubinsTimeStateSpace::createHoverPath(const Eigen::VectorXd& hover_st
         double angle_rotated = rotation_direction_multiplier * angular_vel * time_elapsed;
 
         Eigen::VectorXd point(4);
-        // FIX: The angle for position calculation must change in the same direction as the heading.
+        // The angle for position calculation must change in the same direction as the heading.
         point(0) = center_x + min_turning_radius_ * cos(center_angle + angle_rotated);
         point(1) = center_y + min_turning_radius_ * sin(center_angle + angle_rotated);
         // This line remains the same

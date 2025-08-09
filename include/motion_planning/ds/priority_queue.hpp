@@ -1,3 +1,8 @@
+// Copyright 2025 Soheil E.nia
+
+/**
+ * TODO: Priorityqueue2 and priorityqueue's difference is just using a sharedptr vs raw pointer! unify that later. I guess I use one in some algorithm and the other in some other algs!  * 
+ */
 #include "motion_planning/pch.hpp"
 #include "motion_planning/ds/rrtx_node.hpp"
 #include "motion_planning/ds/fmt_node.hpp"

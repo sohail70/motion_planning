@@ -1,6 +1,8 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/state_space/thruster_statespace.hpp"
 #include <stdexcept>
-#include <iomanip> // For std::fixed, std::setprecision
+#include <iomanip>
 
 ThrusterSteerStateSpace::ThrusterSteerStateSpace(int dimension, double max_acceleration, unsigned int seed)
     : StateSpace(dimension), max_acceleration_(max_acceleration) {
@@ -474,7 +476,7 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
 // }
 
 
-// Implements Julia's steering_ND
+// Implements steering_ND
 /*
     solves the ND steering function for the two point bouandary value problem
     all inputs are vectors of length D. a contains max acceleration magnitudes per
@@ -497,7 +499,7 @@ ThrusterSteerStateSpace::NDSteeringResult ThrusterSteerStateSpace::steeringND(
 
     // for raw_t note that first and last ime are the same for all D and so left out of here
     Eigen::MatrixXd raw_t(2, D_spatial); // t1, t2 for each dimension (relative to segment start, not global time)
-    Eigen::MatrixXd raw_a_vals(3, D_spatial); // a1, v_coast, a2 (Julia's rets1D contains a1, a2, v_coast)
+    Eigen::MatrixXd raw_a_vals(3, D_spatial); // a1, v_coast, a2 
 
     // first solve the 1D problem in each dimension (a is between t, while v, x are at t), each D gets 4 times including start/goal that things change
 
@@ -870,7 +872,7 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
     traj_out.cost = std::numeric_limits<double>::infinity();
     const double EPS = 1e-9;
 
-    // 1. Extract states and calculate the duration of the trajectory
+    // Extract states and calculate the duration of the trajectory
     if (from.size() != dimension_ || to.size() != dimension_) {
         std::cerr << "Error: 'from' or 'to' state has incorrect dimension." << std::endl;
         return traj_out;
@@ -890,7 +892,7 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
         return traj_out;
     }
 
-    // 2. Solve the BVP directly from FROM to TO over the calculated duration.
+    // Solve the BVP directly from FROM to TO over the calculated duration.
     //    We ask the solver to work in a simple [0, duration] time frame.
     Eigen::VectorXd a_max_vec = Eigen::VectorXd::Constant(D_spatial, max_acceleration_);
     NDSteeringResult nd_result = steeringND(from_pos, to_pos, from_vel, to_vel, 0.0, duration, a_max_vec);
@@ -901,7 +903,7 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
     traj_out.geometric_distance = getGeometricDistance(nd_result);
 
 
-    // // 3. Discretize the resulting trajectory
+    // // Discretize the resulting trajectory
     // double discretization_step = 1.5;
     // auto [fine_Time_local, fine_A, fine_V, fine_X] = fineGrain(nd_result.Time, nd_result.A, nd_result.V, nd_result.X, discretization_step);
 
@@ -915,7 +917,7 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
     // traj_out.cost = duration;
     traj_out.cost = std::sqrt(duration * duration + traj_out.geometric_distance * traj_out.geometric_distance);
     
-    // 4. The solver gives us the correct path shape (X) and velocities (V).
+    // The solver gives us the correct path shape (X) and velocities (V).
     //    We just need to map the time from [0, duration] to your planner's
     //    [from_time, to_time] convention.
     traj_out.execution_data.is_valid = true;

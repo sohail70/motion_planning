@@ -18,7 +18,7 @@
 #include <thread>
 #include <atomic>
 
-std::atomic<bool> running{true}; // Flag to control the infinite loop
+std::atomic<bool> running{true}; 
 pid_t child_pid = -1;
 
 void runRosGzBridge() {
@@ -51,19 +51,17 @@ void runRosGzBridge() {
 
 void sigint_handler(int sig) {
     if (child_pid > 0) {
-        // Terminate the child process
         kill(child_pid, SIGTERM);
         waitpid(child_pid, nullptr, 0);
         child_pid = -1;
     }
-    running = false; // Stop the main loop
+    running = false;
     rclcpp::shutdown();
 }
 
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     
-    //////////////////////////////////////////////////////////////////////////////////////////////////
     // Set up SIGINT handler
     struct sigaction sa;
     sa.sa_handler = sigint_handler;
@@ -80,7 +78,6 @@ int main(int argc, char **argv) {
     ros_gz_bridge_thread.detach(); // Detach the thread to run independently
 
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Params for Pure-Pursuit Controller
     Params controller_params;
     controller_params.setParam("kp_angular", 1.2);
@@ -98,7 +95,6 @@ int main(int argc, char **argv) {
 
 
     Params DWA;
-    // ========== Core motion limits ==========
     DWA.setParam("max_speed",         3.0);   // Robot can go up to 3 m/s
     DWA.setParam("min_speed",        -1.0);   // Allow reversing if needed
     DWA.setParam("max_yawrate",       0.8);   // Turn rate up to 1.5 rad/s
@@ -107,7 +103,6 @@ int main(int argc, char **argv) {
     DWA.setParam("max_dyawrate",      2.0);   // Angular acceleration limit
     DWA.setParam("robot_radius",      0.3);
 
-    // ========== Sampling and horizon ==========
     DWA.setParam("dt",               0.1);    // Simulation time step in DWA
     DWA.setParam("predict_time",     5.0);    // 2s horizon for quick re-planning
     int sim_steps_ = (int)(DWA.getParam<double>("predict_time") / DWA.getParam<double>("dt"));
@@ -117,7 +112,6 @@ int main(int argc, char **argv) {
     DWA.setParam("speed_resolution",  0.1);
     DWA.setParam("yawrate_resolution",0.1);
 
-    // ========== Cost weights ==========
     DWA.setParam("obstacle_cost_gain",  5.0); // Higher => more aggressive obstacle avoidance
     DWA.setParam("speed_cost_gain",     0.3); // Medium => encourages higher speed, but not crazy
     DWA.setParam("goal_cost_gain",      3.0); // Balanced
@@ -169,7 +163,6 @@ int main(int argc, char **argv) {
         std::cout << name << ": " << info << "\n";
     }
 
-    // GET THE CLOCK FROM THE NODE. This will be a sim clock.
     auto sim_clock = node->get_clock();
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 

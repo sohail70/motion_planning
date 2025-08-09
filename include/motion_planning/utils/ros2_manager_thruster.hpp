@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #pragma once
 
 #include "rclcpp/rclcpp.hpp"
@@ -161,7 +163,7 @@ private:
         std::vector<Eigen::VectorXd> cylinder_positions;
         std::vector<double> cylinder_radii;
         
-        // ✅ Create the specific data structure your visualizeCube function needs
+        // Create the specific data structure your visualizeCube function needs
         std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_data_for_viz;
 
         std::vector<Eigen::Vector2d> dynamic_obstacle_positions;
@@ -175,7 +177,7 @@ private:
                 cylinder_positions.push_back(pos);
                 cylinder_radii.push_back(obstacle.dimensions.radius);
             } else if (obstacle.type == Obstacle::BOX) {
-                // ✅ Populate the vector of tuples directly
+                // Populate the vector of tuples directly
                 box_data_for_viz.emplace_back(
                     obstacle.position,
                     obstacle.dimensions.width,
@@ -195,7 +197,7 @@ private:
             visualizer_->visualizeCylinder(cylinder_positions, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "cylinder_obstacles");
         }
         if (!box_data_for_viz.empty()) {
-            // ✅ Call your actual visualizeCube function with the correct data structure
+            // Call your actual visualizeCube function with the correct data structure
             visualizer_->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
         }
         if (!dynamic_obstacle_positions.empty()) {
@@ -267,15 +269,13 @@ private:
             }
         }
 
-        // =================================================================
-        // =========== CORRECTED: COLLISION COUNTING LOGIC =================
-        // =================================================================
+        // COLLISION COUNTING LOGIC
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
         if (gazebo_checker) {
-            // --- FIX: Use the correct state variable ---
+            // --- Use the correct state variable ---
             Eigen::Vector2d current_pos = getSpatialPosition(current_interpolated_state_);
 
-            // --- FIX: Calculate current yaw from the velocity vector ---
+            // --- Calculate current yaw from the velocity vector ---
             Eigen::VectorXd current_vel = getSpatialVelocity(current_interpolated_state_);
             double current_yaw = 0.0; // Default yaw if stationary
             if (current_vel.norm() > 1e-3) {

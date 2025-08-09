@@ -155,23 +155,23 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
         // // Build the tree all at once after we fill the data_ in the KDTree
         // kdtree_->buildTree();
 
-        // 1. Get the full 3D (or 4D) samples from the state space.
+        // Get the full 3D (or 4D) samples from the state space.
         Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
 
-        // 2. Define how many spatial dimensions you have.
+        // Define how many spatial dimensions you have.
         //    This makes the code robust for future changes (e.g., to 3D space).
         //    Assuming (x, y, time), the spatial dimension is 2.
         int spatial_dimension = 2; // For (x, y)
         // For a future Dubins (x, y, theta, time) planner, this would still be 2.
 
-        // 3. Use .leftCols() to create a new matrix with only the spatial data.
+        // Use .leftCols() to create a new matrix with only the spatial data.
         //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
         Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(spatial_dimension).eval();
         
-        // 4. Pass the 2D spatial matrix to the KD-tree.
+        // Pass the 2D spatial matrix to the KD-tree.
         kdtree_->addPoints(spatial_samples_only);
         
-        // 5. Build the tree all at once after we fill the data.
+        // Build the tree all at once after we fill the data.
         kdtree_->buildTree();
 
     }
@@ -208,12 +208,11 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 void KinodynamicFMTX::plan() {
 
     //
-    // ---> START OF NEW LOGIC <---
     //
-    // 1. Get the current time ONCE at the beginning of the planning cycle.
+    // Get the current time ONCE at the beginning of the planning cycle.
     const double t_now = clock_->now().seconds();
 
-    // 2. Get the current best time-to-go from the robot's anchor node.
+    // Get the current best time-to-go from the robot's anchor node.
     //    Use a large fallback if the path is not yet found.
     // const double best_known_time_to_goal = (robot_node_ && robot_node_->getTimeToGoal() != INFINITY)
     //                                        ? robot_node_->getTimeToGoal()
@@ -221,11 +220,10 @@ void KinodynamicFMTX::plan() {
 
     const double best_known_time_to_goal = robot_current_time_to_goal_;
 
-    // 3. Calculate the single, predicted global time of arrival for this planning cycle.
+    // Calculate the single, predicted global time of arrival for this planning cycle.
     //    This provides a stable anchor for all time calculations within this plan() call.
     const double t_arrival_predicted = t_now + best_known_time_to_goal;
     //
-    // ---> END OF NEW LOGIC <---
     //
 
     std::unordered_map<FMTNode*, bool> costUpdated;
@@ -277,8 +275,8 @@ void KinodynamicFMTX::plan() {
             //     cost_via_z = z->getCost() + edge_info_from_z.distance;
             // } 
             // This condition is the core of FMTX. It serves two purposes:
-            // 1. If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
-            // 2. If x is already connected, this condition acts as a "witness" that a better path *might* exist.
+            // If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
+            // If x is already connected, this condition acts as a "witness" that a better path *might* exist.
             //    It proves x's current cost is suboptimal and justifies the more expensive search that follows.
             if (x->getCost() > cost_via_z) {
                 if (costUpdated[x]) {
@@ -369,12 +367,10 @@ void KinodynamicFMTX::plan() {
 
                     // // // /////////////////////////////////--------------
 
-                    // bool obstacle_free = true; // ✅ Default to true
+                    // bool obstacle_free = true; // Default to true
 
-                    // // ✅ --- START OF THE OPTIMIZATION ---
                     // // Only perform the expensive predictive check if the node 'x' is on the relevant
                     // // future path of the robot. The robot_node_ stores the robot's current progress.
-                    // // ✅ --- CORRECTED OPTIMIZATION ---
                     // // First, check if the robot has a valid, finite time-to-go.
                     // // Then, check if the node 'x' is on the relevant future path.
                     // if (robot_current_time_to_goal_ != std::numeric_limits<double>::infinity()) {
@@ -536,22 +532,22 @@ void KinodynamicFMTX::near(int node_index) {
 //             std::pow(max_length / 2.0, 2)
 //         );
 
-//         // 1. Define the 3D state vector for the obstacle
+//         // Define the 3D state vector for the obstacle
 //         // Eigen::VectorXd obs_state(3);
 
-//         // // 2. Convert the time_point to a scalar double (e.g., seconds since epoch)
+//         // // Convert the time_point to a scalar double (e.g., seconds since epoch)
 //         // double time_as_double = std::chrono::duration<double>(
 //         //     obstacle.last_update_time.time_since_epoch()
 //         // ).count();
 //         // std::cout<<obstacle.last_update_time.time_since_epoch().count()<<"\n"; 
-//         // // 3. Fill the vector with three explicit scalar values
+//         // // Fill the vector with three explicit scalar values
 //         // obs_state << obstacle.position(0), obstacle.position(1), time_as_double;
         
 
 //         Eigen::VectorXd obs_state(2);
 //         double time_as_double = obstacle.last_update_time.seconds();
 //         // std::cout<<time_as_double<<"\n" ;
-//         // 3. Fill the vector with three explicit scalar values
+//         // Fill the vector with three explicit scalar values
 //         // obs_state << obstacle.position(0), obstacle.position(1), time_as_double;
 //         obs_state << obstacle.position(0), obstacle.position(1);
 
@@ -1305,12 +1301,12 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 // {
 //     std::vector<Eigen::VectorXd> final_executable_path;
 
-//     // 1. Ensure a valid plan exists from our anchor node.
+//     // Ensure a valid plan exists from our anchor node.
 //     if (!robot_node_ || robot_node_->getCost() == INFINITY) {
 //         return final_executable_path; // Return empty path if no solution.
 //     }
 
-//     // 2. Reconstruct the discrete part of the path, which runs BACKWARD from the anchor.
+//     // Reconstruct the discrete part of the path, which runs BACKWARD from the anchor.
 //     //    Path is [Leaf, Parent, ..., Root]
 //     std::vector<Eigen::VectorXd> discrete_path_backward;
 //     FMTNode* current_node = robot_node_;
@@ -1323,12 +1319,12 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 //         return final_executable_path;
 //     }
 
-//     // 3. Create the "bridge" trajectory from the robot's current continuous state
+//     // Create the "bridge" trajectory from the robot's current continuous state
 //     //    to the discrete anchor node (the leaf of the path).
 //     const Eigen::VectorXd& connection_target = discrete_path_backward.front();
 //     Trajectory bridge_traj = statespace_->steer(robot_continuous_state_, connection_target);
 
-//     // 4. Stitch the path together in the correct FORWARD execution order.
+//     // Stitch the path together in the correct FORWARD execution order.
 //     if (bridge_traj.is_valid && !bridge_traj.path_points.empty()) {
 //         // The bridge trajectory is already forward [Robot -> Leaf]. Add its points.
 //         final_executable_path = bridge_traj.path_points;
@@ -1339,7 +1335,7 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 //         final_executable_path.push_back(robot_continuous_state_);
 //     }
 
-//     // 5. Append the rest of the discrete path, avoiding duplicates.
+//     // Append the rest of the discrete path, avoiding duplicates.
 //     //    The discrete path is backward [Leaf, Parent, ..., Root].
 //     //    The bridge path already contains the Leaf, so we start from the Parent (index 1).
 //     for (size_t i = 1; i < discrete_path_backward.size(); ++i) {
@@ -1355,7 +1351,7 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 // {
 //     std::vector<Eigen::VectorXd> final_executable_path;
 
-//     // 1. Find the best node in the entire neighborhood to connect to.
+//     // Find the best node in the entire neighborhood to connect to.
 //     // This combines the logic from the old setRobotState and the robust bridging loop.
 
 //     const double search_radius = neighborhood_radius_; // Use the planner's radius
@@ -1393,7 +1389,7 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 //         }
 //     }
 
-//     // 2. If a valid connection was found, build the final path.
+//     // If a valid connection was found, build the final path.
 //     if (best_node_to_connect) {
 //         // The bridge portion of the path is from our best trajectory.
 //         final_executable_path = best_bridge_traj.path_points;
@@ -1487,10 +1483,10 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 //     /* --- THE FIX IS HERE: Correct Path Assembly ---                                */
 //     /*********************************************************************************/
 //     if (best_node_to_connect) {
-//         // 1. Start the path with the smooth "bridge" from the robot to the tree.
+//         // Start the path with the smooth "bridge" from the robot to the tree.
 //         final_executable_path = best_bridge_traj.path_points;
 
-//         // 2. Iteratively generate and append the path for the rest of the tree segments.
+//         // Iteratively generate and append the path for the rest of the tree segments.
 //         FMTNode* child_node = best_node_to_connect;
 //         FMTNode* parent_node = child_node->getParent();
 
@@ -1532,7 +1528,7 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 //     Trajectory best_bridge_traj;
 //     best_bridge_traj.is_valid = false;
 
-//     // 1. Find closest feasible node
+//     // Find closest feasible node
 //     double current_search_radius = neighborhood_radius_;
 //     const int max_attempts = 4;
 //     const double radius_multiplier = 1.8;
@@ -1563,17 +1559,17 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 //         current_search_radius *= radius_multiplier;
 //     }
 
-//     // 2. If no connection found, abort
+//     // If no connection found, abort
 //     if (!best_node_to_connect || best_bridge_traj.path_points.empty()) {
 //         RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"),
 //                      "No valid connection from robot to tree. Cannot build path.");
 //         return {};
 //     }
 
-//     // 3. Start with bridge trajectory
+//     // Start with bridge trajectory
 //     final_executable_path = best_bridge_traj.path_points;
 
-//     // 4. Traverse the tree using cached trajectories (not re-steering!)
+//     // Traverse the tree using cached trajectories (not re-steering!)
 //     FMTNode* child = best_node_to_connect;
 //     FMTNode* parent = child->getParent();
 
@@ -1613,7 +1609,7 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 
 std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
 {
-    // 1. Check if the planner has a valid anchor point for the robot.
+    // Check if the planner has a valid anchor point for the robot.
     //    (setRobotState should have found one).
     if (!robot_node_ || robot_node_->getCost() == INFINITY) {
         RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"),
@@ -1621,7 +1617,7 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
         return {}; // Return empty path
     }
 
-    // 2. ✅ Generate the "bridge" trajectory from the robot's continuous state
+    // Generate the "bridge" trajectory from the robot's continuous state
     //    to the anchor node on the fly.
     Trajectory bridge_traj = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
 
@@ -1631,10 +1627,10 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
         return {};
     }
 
-    // 3. Start the final path with this bridge trajectory.
+    // Start the final path with this bridge trajectory.
     std::vector<Eigen::VectorXd> final_executable_path = bridge_traj.path_points;
 
-    // 4. Traverse the rest of the tree from the anchor node using parent pointers.
+    // Traverse the rest of the tree from the anchor node using parent pointers.
     FMTNode* child = robot_node_;
     FMTNode* parent = child->getParent();
 
@@ -1661,10 +1657,9 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
     return final_executable_path;
 }
 void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
-    // 1. Store the robot's continuous state
+    // Store the robot's continuous state
     robot_continuous_state_ = robot_state;
 
-    // --- STABILIZATION FIX START ---
 
     // Define a hysteresis factor. A new path must be at least 5% cheaper to be adopted.
     // This prevents switching for negligible gains.
@@ -1679,9 +1674,8 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
             cost_of_current_path = bridge_to_current_anchor.cost + robot_node_->getCost();
         }
     }
-    // --- STABILIZATION FIX END ---
 
-    // 2. Search for the best *potential* anchor node in the neighborhood.
+    // Search for the best *potential* anchor node in the neighborhood.
     // This part of your logic remains unchanged.
     FMTNode* best_candidate_node = nullptr;
     Trajectory best_candidate_bridge;
@@ -1716,9 +1710,8 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         current_search_radius *= radius_multiplier;
     }
 
-    // --- STABILIZATION FIX START ---
 
-    // 3. Make a stable decision.
+    // Make a stable decision.
     // Only switch to the new candidate if it's significantly better than our current path.
     if (best_candidate_node && best_candidate_cost < cost_of_current_path * hysteresis_factor) {
         // The new node is significantly better. It's worth switching.
@@ -1742,20 +1735,19 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
              robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
         }
     }
-    // --- STABILIZATION FIX END ---
 }
 
 ExecutionTrajectory KinodynamicFMTX::getFinalExecutionTrajectory() const {
     ExecutionTrajectory final_traj;
     final_traj.is_valid = false; // Default to invalid
 
-    // 1. Ensure a valid plan exists from the robot's anchor node.
+    // Ensure a valid plan exists from the robot's anchor node.
     if (!robot_node_ || robot_node_->getCost() == INFINITY) {
         RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"), "Robot has no valid anchor. Cannot build execution path.");
         return final_traj;
     }
 
-    // 2. Generate the "bridge" trajectory from the robot's continuous state to the anchor.
+    // Generate the "bridge" trajectory from the robot's continuous state to the anchor.
     Trajectory bridge_traj = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
     if (!bridge_traj.is_valid) {
         RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"), "Failed to steer from robot to anchor node.");
@@ -1766,7 +1758,7 @@ ExecutionTrajectory KinodynamicFMTX::getFinalExecutionTrajectory() const {
     final_traj = bridge_traj.execution_data;
     final_traj.is_valid = true;
 
-    // 3. Traverse the tree from the anchor node up to the root, appending each segment.
+    // Traverse the tree from the anchor node up to the root, appending each segment.
     FMTNode* child_node = robot_node_;
     FMTNode* parent_node = child_node->getParent();
 
@@ -1844,7 +1836,7 @@ ExecutionTrajectory KinodynamicFMTX::getFinalExecutionTrajectory() const {
 //         const Eigen::VectorXd& segment_start_state = path[i];
 //         const Eigen::VectorXd& segment_end_state = path[i+1];
 
-//         // --- FIX: Generate the TRUE kinodynamic trajectory for this segment ---
+//         // --- Generate the TRUE kinodynamic trajectory for this segment ---
 //         Trajectory segment_traj = statespace_->steer(segment_start_state, segment_end_state);
 
 //         // If the segment itself is not valid, the whole path is invalid.
@@ -1856,7 +1848,7 @@ ExecutionTrajectory KinodynamicFMTX::getFinalExecutionTrajectory() const {
 //         // Calculate the absolute world time when this segment starts.
 //         const double segment_global_start_time = t_arrival_predicted - segment_start_state(segment_start_state.size() - 1);
 
-//         // --- FIX: Check the safety of the TRUE trajectory ---
+//         // --- Check the safety of the TRUE trajectory ---
 //         if (!obs_checker_->isTrajectorySafe(segment_traj, segment_global_start_time)) {
 //             RCLCPP_WARN(rclcpp::get_logger("fmtx_validator"), "Path invalidated by predictive check on segment %zu.", i);
 //             return false;
@@ -1901,7 +1893,7 @@ bool KinodynamicFMTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path,
         }
         // *********************
 
-        // --- FIX: Generate the TRUE kinodynamic trajectory for this segment ---
+        // --- Generate the TRUE kinodynamic trajectory for this segment ---
         Trajectory segment_traj = statespace_->steer(segment_start_state, segment_end_state);
 
         // If the segment itself is not valid, the whole path is invalid.
@@ -1913,7 +1905,7 @@ bool KinodynamicFMTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path,
         // Calculate the absolute world time when this segment starts.
         const double segment_global_start_time = t_arrival_predicted - segment_start_state(segment_start_state.size() - 1);
 
-        // --- FIX: Check the safety of the TRUE trajectory ---
+        // --- Check the safety of the TRUE trajectory ---
         if (!obs_checker_->isTrajectorySafe(segment_traj, segment_global_start_time)) {
             RCLCPP_WARN(rclcpp::get_logger("fmtx_validator"), "Path invalidated by predictive check on segment %zu.", i);
             return false;
@@ -2588,14 +2580,14 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 //                 if (edge_info.distance == INFINITY) continue;
 
 //                 // --- START OF MODIFIED LOGIC ---
-//                 // 1. Ensure the trajectory for this edge is computed and cached.
+//                 // Ensure the trajectory for this edge is computed and cached.
 //                 //    We check the trajectory from the potential child (node) to the potential parent (neighbor).
 //                 if (!edge_info.is_trajectory_computed) {
 //                     edge_info.cached_trajectory = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
 //                     edge_info.is_trajectory_computed = true;
 //                 }
                 
-//                 // 2. Perform the predictive safety check using the cached trajectory.
+//                 //  Perform the predictive safety check using the cached trajectory.
 //                 bool is_safe = true;
 //                 if (edge_info.cached_trajectory.is_valid) {
 //                     // Since we are reacting to a change now, we check the trajectory's safety
@@ -2630,7 +2622,6 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 //         }
 //     }
 
-//     // --- (The rest of the function for processing orphans remains the same) ---
 //     std::unordered_set<int> final_orphan_nodes;
 //     for (int orphan_idx : nodes_to_make_orphan_and_process_neighbors) {
 //         final_orphan_nodes.insert(orphan_idx);
@@ -2675,13 +2666,13 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 //                 if (edge_info.distance != INFINITY) continue;
 
 //                 // --- START OF MODIFIED LOGIC ---
-//                 // 1. Ensure the trajectory is computed for this previously blocked edge.
+//                 // Ensure the trajectory is computed for this previously blocked edge.
 //                 if (!edge_info.is_trajectory_computed) {
 //                     edge_info.cached_trajectory = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
 //                     edge_info.is_trajectory_computed = true;
 //                 }
 
-//                 // 2. Check if the trajectory is now safe.
+//                 // Check if the trajectory is now safe.
 //                 bool is_now_safe = false;
 //                 if (edge_info.cached_trajectory.is_valid) {
 //                     const double global_start_time_heuristic = clock_->now().seconds();
@@ -2700,7 +2691,6 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 //         }
 //     }
 
-//     // --- (The rest of the function for queueing neighbors remains the same) ---
 //     for (int node_index : removed) {
 //         auto node = tree_.at(node_index).get();
 //         near(node_index);

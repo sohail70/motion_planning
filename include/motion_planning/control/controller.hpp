@@ -1,3 +1,4 @@
+// Copyright 2025 Soheil E.nia
 #pragma once
 
 #include <Eigen/Dense>
@@ -50,7 +51,7 @@ public:
         ControlOutput output{0.0, 0.0, Eigen::Vector2d{0, 0}};
         if (current_path_.empty()) return output;
 
-        // 1. Path Progression & Lookahead Calculation
+        // Path Progression & Lookahead Calculation
         progress_index_ = findClosestSegment(robot_pose.position);
         Eigen::Vector2d lookahead = getLookaheadPoint(robot_pose.position);
         output.lookahead_point = lookahead;
@@ -60,19 +61,19 @@ public:
             progress_index_ = std::min(progress_index_ + 1, current_path_.size() - 1);
         }
 
-        // 2. Compute Heading & Steering Error
+        // Compute Heading & Steering Error
         double yaw = getYaw(robot_pose.orientation);
         double target_angle = atan2(lookahead.y() - robot_pose.position.y(),
                                     lookahead.x() - robot_pose.position.x());
         double angle_error = angleDiff(target_angle, yaw);
 
-        // 3. Compute Cross-Track Error
+        // Compute Cross-Track Error
         Eigen::Vector2d path_tangent = (current_path_[progress_index_ + 1].head<2>() -
                                         current_path_[progress_index_].head<2>()).normalized();
         Eigen::Vector2d robot_to_path = current_path_[progress_index_].head<2>() - robot_pose.position;
         double cross_track_error = robot_to_path.dot(Eigen::Vector2d(-path_tangent.y(), path_tangent.x()));
 
-        // 4. Compute Steering Command with Smoothness
+        // Compute Steering Command with Smoothness
         double desired_curvature = (2.0 * cross_track_error) / (lookahead_distance_ * lookahead_distance_);
         double angular = (kp_ * angle_error) + 
                          (cross_track_gain_ * desired_curvature) + 
@@ -84,7 +85,7 @@ public:
         angular = smoothing_factor_ * angular + (1 - smoothing_factor_) * prev_angular_;
         prev_angular_ = angular;
 
-        // 5. Adaptive Speed Control
+        // Adaptive Speed Control
         double curvature = calculateCurvature();
         double speed = calculateSpeed(angle_error, curvature);
 

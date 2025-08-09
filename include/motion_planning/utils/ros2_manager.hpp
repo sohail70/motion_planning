@@ -1,4 +1,5 @@
-// ros2_manager.hpp
+// Copyright 2025 Soheil E.nia
+
 #pragma once
 
 #include "motion_planning/utils/obstacle_checker.hpp"

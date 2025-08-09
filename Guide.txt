@@ -232,7 +232,7 @@ tree_.clear();  // node1 and node2 are deleted, but:
 
 
 
-2. Why Aren’t parent_ and children_ Cleared Automatically?
+Why Aren’t parent_ and children_ Cleared Automatically?
 Raw pointers (FMTNode*) have no idea when the object they point to is deleted.
 
 They don’t participate in ownership.
@@ -280,7 +280,7 @@ tree_.push_back(node2);
 tree_.clear();  // node1 and node2 are deleted, but:
 // node1->children_[0] is now a dangling pointer!
 // node2->parent_ is now a dangling pointer!
-2. Why Aren’t parent_ and children_ Cleared Automatically?
+Why Aren’t parent_ and children_ Cleared Automatically?
 Raw pointers (FMTNode*) have no idea when the object they point to is deleted.
 
 They don’t participate in ownership.
@@ -456,7 +456,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
     r_n ← ComputeRadius(|V|)              # Neighborhood radius
 
 # === Main Loop ===
-2. While RobotNotAtGoal() and V_open ≠ ∅:
+While RobotNotAtGoal() and V_open ≠ ∅:
 3.   # Update robot's node
 4.   robot_pos ← GetRobotPosition()
 5.   x_robot ← FindNearestNode(robot_pos, V)  # KD-tree search
@@ -468,7 +468,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 9.     orphans ← ∅                        # Nodes to orphan
 10.    for (x, y) ∈ EO:
 11.      edge(x, y).distance ← ∞          # Block edge
-12.      if parent(x) == y:               # Orphan x if parent edge is blocked
+1     if parent(x) == y:               # Orphan x if parent edge is blocked
 13.        orphans.add(x)
 14.      if parent(y) == x:               # Orphan y if parent edge is blocked
 15.        orphans.add(y)
@@ -478,7 +478,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 19.      if x ∈ V_open: V_open.remove(x)  # Remove from queue
 20.      c(x) ← ∞                         # Reset cost
 21.      if parent(x) ≠ ∅:
-22.        parent(x).children.remove(x)   # Remove parent link
+2       parent(x).children.remove(x)   # Remove parent link
 23.        parent(x) ← ∅
 24.    # Reactivate neighbors of orphans
 25.    for x ∈ Vc_T:
@@ -490,7 +490,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 29.   for o ∈ (O_prev \ O_new):           # Vanished obstacles
 30.     EO_prev ← {(v, u) ∈ E | EdgeBlocked(v, u, o)}  # Edges previously blocked by o
 31.     EO_new ← {(v, u) ∈ EO_prev | ¬EdgeBlocked(v, u, O_new)}  # Now collision-free
-32.     VO ← {v | (v, u) ∈ EO_new} ∪ {u | (v, u) ∈ EO_new}  # Nodes connected to restored edges
+3    VO ← {v | (v, u) ∈ EO_new} ∪ {u | (v, u) ∈ EO_new}  # Nodes connected to restored edges
 33.     # Restore edges
 34.     for (v, u) ∈ EO_new:
 35.       edge(v, u).distance ← OriginalCost(v, u)  # Restore edge
@@ -502,7 +502,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 
     # === Core Planning ===
 41.   while V_open ≠ ∅ and (c(V_open.top()) < c(x_robot) ∨ x_robot ∈ V_open):
-42.     z ← ExtractMin(V_open)
+4    z ← ExtractMin(V_open)
 43.     N_z ← {x ∈ Near(z) | c(x) > c(z) + Cost(z,x)} 
 44.     for x ∈ N_z:
 45.       Y_near ← {y ∈ Near(x) | y ∈ V_open}  
@@ -512,7 +512,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 49.         collision_free ← CollisionFree(y_min, x)
 50.       if y_min ≠ ∅ and collision_free:
 51.         if parent(x) ≠ ∅:             # Rewire
-52.           parent(x).children.remove(x)
+5          parent(x).children.remove(x)
 53.         parent(x) ← y_min
 54.         c(x) ← c(y_min) + Cost(y_min,x)
 55.         if x ∈ V_open: 
@@ -539,7 +539,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
     r_n ← ComputeRadius(|V|)              
 
 # === Main Loop ===
-2. While RobotNotAtGoal() and V_open ≠ ∅:
+While RobotNotAtGoal() and V_open ≠ ∅:
 3.   robot_pos ← GetRobotPosition()
 4.   x_robot ← FindNearestNode(robot_pos, V)  
 5.   O_new ← GetObstacles()
@@ -551,7 +551,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 9.     Vc_T ← orphans ∪ GetDescendants(orphans)
 10.    for x ∈ Vc_T:
 11.      if x ∈ V_open: V_open.remove(x)  
-12.      c(x), parent(x) ← ∞, ∅            # ★ Reset in one line
+1     c(x), parent(x) ← ∞, ∅            # ★ Reset in one line
 13.      if parent(x): parent(x).children.remove(x)  
 14.    # Reactivate valid neighbors
 15.    for x ∈ Vc_T:
@@ -563,7 +563,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 19.     EO_prev ← {(v, u) ∈ E | EdgeBlocked(v, u, o)}  
 20.     EO_new ← {(v, u) ∈ EO_prev | ¬EdgeBlocked(v, u, O_new)}  
 21.     for (v, u) ∈ EO_new: edge(v, u).distance ← OriginalCost(v, u)  
-22.     VO ← {v, u for (v, u) ∈ EO_new}  # ★ Flatten nodes
+2    VO ← {v, u for (v, u) ∈ EO_new}  # ★ Flatten nodes
 23.     for v ∈ VO:
 24.       for y ∈ {y ∈ Near(v) | c(y) < ∞ ∧ y ∉ V_open}:  
 25.         V_open.insert(y)              
@@ -575,7 +575,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 29.       y_min ← arg min[y ∈ Near(x) ∩ V_open] (c(y) + Cost(y, x))  # ★ Combine Y_near
 30.       if y_min and (O_prev ≠ ∅ ∨ CollisionFree(y_min, x)):  # ★ Simplify collision check
 31.         if parent(x): parent(x).children.remove(x)  
-32.         parent(x), c(x) ← y_min, c(y_min) + Cost(y_min, x)
+3        parent(x), c(x) ← y_min, c(y_min) + Cost(y_min, x)
 33.         AddOrUpdate(V_open, x)        # ★ Combine lines 55–58
 
     # Update obstacle state
@@ -590,7 +590,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 /////////////////////modularized//////////////////
 # === Initialization ===
 1. Initialize:
-2.    V ← {x_init} ∪ SampleFree(n)          
+   V ← {x_init} ∪ SampleFree(n)          
 3.    V_open ← {x_init}                     # Priority queue (g-value sorted)
 4.    O_prev ← ∅                            # Previous obstacle state
 5.    x_robot ← ∅                           # Robot's nearest node
@@ -602,7 +602,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 9.    x_robot ← FindNearestNode(robot_pos, V)  
 10.   O_new ← GetObstacles()
 11.   UpdateObstacles(O_prev, O_new)        # Handle obstacle changes
-12.   FMTStarExpand()                       # Core planning logic
+1  FMTStarExpand()                       # Core planning logic
 13.   O_prev ← O_new                        # Update obstacle state
 
 # === Path Extraction ===
@@ -617,7 +617,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 20.    if removed_obs ≠ ∅:
 21.        RemoveObstacles(removed_obs)     # Restore edges, reactivate nodes
 
-22. Function AddObstacles(added_obs):
+2Function AddObstacles(added_obs):
 23.    for o ∈ added_obs:
 24.        EO ← {(x, y) ∈ E | EdgeIntersectsObstacle(x, y, o)}
 25.        orphans ← {x, y for (x, y) ∈ EO if parent(x) == y or parent(y) == x}
@@ -628,7 +628,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 30.            if parent(x): parent(x).children.remove(x)
 31.        QueueNeighbors(Vc_T)             # Add valid neighbors to queue
 
-32. Function RemoveObstacles(removed_obs):
+3Function RemoveObstacles(removed_obs):
 33.    for o ∈ removed_obs:
 34.        EO_prev ← {(v, u) ∈ E | EdgeBlocked(v, u, o)}
 35.        EO_new ← {(v, u) ∈ EO_prev | ¬EdgeBlocked(v, u, O_new)}
@@ -639,7 +639,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 
 40. Function QueueNeighbors(nodes):
 41.    for x ∈ nodes:
-42.        for y ∈ Near(x):
+4       for y ∈ Near(x):
 43.            if c(y) < ∞ and y ∉ V_open:  # Finite cost and not in queue
 44.                V_open.insert(y)         # Explicitly add to queue
 
@@ -652,7 +652,7 @@ even though the cost to root of z2 is less than cost to root of z3! (because the
 
 50. Function FMTStarExpand():
 51.    while V_open ≠ ∅ ∧ (c(V_open.top()) < c(x_robot) ∨ x_robot ∈ V_open):
-52.        z ← ExtractMin(V_open)
+5       z ← ExtractMin(V_open)
 53.        for x ∈ {x ∈ Near(z) | c(x) > c(z) + Cost(z, x)}:
 54.            y_min ← argmin_{y ∈ Near(x) ∩ V_open} [c(y) + Cost(y, x)]
 55.            if y_min ∧ (O_prev ≠ ∅ ∨ CollisionFree(y_min, x)):

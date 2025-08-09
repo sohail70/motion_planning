@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/planners/planner_factory.hpp"
 #include "motion_planning/state_space/dubins_time_statespace.hpp" // Changed
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
@@ -14,15 +16,11 @@
 #include <thread>
 #include <valgrind/callgrind.h>
 
-
-
-
-
 struct LogEntry {
     double elapsed_s = 0.0;
     double duration_ms = 0.0;
     double time_to_goal = 0.0; // The time-to-go of the robot's path
-    double path_cost = 0.0; // 
+    double path_cost = 0.0;
     int obstacle_checks = 0;
     long long rewire_neighbor_searches = 0;
     int orphaned_nodes = 0;
@@ -30,7 +28,6 @@ struct LogEntry {
 };
 
 
-// Global running flag for signal handling
 std::atomic<bool> g_running{true};
 
 void sigint_handler(int sig) {
@@ -83,12 +80,11 @@ void resetAndPlaySimulation()
 }
 
 int main(int argc, char** argv) {
-    // --- 1. Initial Setup ---
+    // --- Initial Setup ---
     rclcpp::init(argc, argv);
     signal(SIGINT, sigint_handler);
 
 
-        // 1) Parse your flags
     int num_samples = 5000;
     double factor = 1.5;
     unsigned int seed = 42;
@@ -116,16 +112,13 @@ int main(int argc, char** argv) {
         }
     }
 
-    // --- 2. Parameter Setup ---
-    // Encapsulate parameters for better organization
+    // --- Parameter Setup ---
     Params manager_params;
     manager_params.setParam("use_sim_time", true);
     manager_params.setParam("sim_time_step", -0.04); // Time-to-go consumed per sim step
     manager_params.setParam("sim_frequency_hz", 50);  // Smoothness of arrow
     manager_params.setParam("vis_frequency_hz", 10);  // Obstacle visualization rate
     manager_params.setParam("follow_path", true);
-
-
     Params gazebo_params;
     gazebo_params.setParam("robot_model_name", "tugbot");
     gazebo_params.setParam("default_robot_x", 48.0); // in case you want to test the planner without running gz sim
@@ -138,10 +131,6 @@ int main(int argc, char** argv) {
     gazebo_params.setParam("fcl", false);
     gazebo_params.setParam("bullet", false);
 
-    // gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
-    // This value is CRITICAL. If it's 0.0, your robot has no size.
-    // Set it to a value representing your robot's radius + a safety margin.
-    // For example, if your robot is 1 meter wide, a radius of 0.5m + a buffer of 1m = 1.5.
     gazebo_params.setParam("inflation", 0.5); // <-- VERIFY THIS IS A REASONABLE, NON-ZERO VALUE
     gazebo_params.setParam("persistent_static_obstacles", false);
 
@@ -157,14 +146,12 @@ int main(int argc, char** argv) {
     planner_params.setParam("obs_cache", false);
     planner_params.setParam("partial_plot", false);
     planner_params.setParam("use_heuristic", false);
-    planner_params.setParam("ignore_sample", false);
-    planner_params.setParam("prune", false);
     planner_params.setParam("precache_neighbors", true);
     planner_params.setParam("kd_dim", 4); // 2 or 3 or 4 only dubin
     planner_params.setParam("use_knn", false);
     planner_params.setParam("mode", 1); //1: prune false 2: prune true
 
-    // --- 3. Object Initialization ---
+    // --- Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("fmtx_dubins_visualizer",
         rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
@@ -177,7 +164,7 @@ int main(int argc, char** argv) {
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
-    // --- 4. Planner and Problem Definition (4D Dubins) ---
+    // --- Planner and Problem Definition (4D Dubins) ---
     const int dim = 4;
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
 
@@ -205,7 +192,7 @@ int main(int argc, char** argv) {
     kinodynamic_planner->setClock(sim_clock);
     planner->setup(planner_params, visualization);
 
-    // --- 5. Initial Plan ---
+    // --- Initial Plan ---
     std::vector<Eigen::VectorXd> current_executable_path;
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
     // obstacle_checker->getAtomicSnapshot();
@@ -217,12 +204,11 @@ int main(int argc, char** argv) {
     }
     RCLCPP_INFO(vis_node->get_logger(), "Initial plan complete. Executing...");
 
-    // Visualization timer for the search tree
     auto tree_vis_timer = vis_node->create_wall_timer(
         std::chrono::milliseconds(100),
         [&]() { if (kinodynamic_planner) kinodynamic_planner->visualizeTree(); });
 
-    // --- 6. Executor Setup ---
+    // --- Executor Setup ---
     // rclcpp::executors::MultiThreadedExecutor executor;
     rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
 
@@ -231,7 +217,7 @@ int main(int argc, char** argv) {
 
     std::thread executor_thread([&executor]() { executor.spin(); });
 
-    // --- 7. Main Execution and Replanning Loop ---
+    // --- Main Execution and Replanning Loop ---
     resetAndPlaySimulation();
     RCLCPP_INFO(vis_node->get_logger(), "Starting execution and monitoring loop. Press Ctrl+C to exit.");
     const double goal_tolerance = 3.0;
@@ -272,7 +258,7 @@ int main(int argc, char** argv) {
         /////////////
 
 
-        // --- 1. Read robot state once ---
+        // --- Read robot state once ---
         Eigen::VectorXd current_state = ros_manager->getCurrentSimulatedState();
         kinodynamic_planner->setRobotState(current_state);
 
@@ -281,7 +267,7 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        // --- 2. Check goal reached ---
+        // --- Check goal reached ---
         double dist_to_goal = (current_state.head<2>() - tree_root_state.head<2>()).norm();
         if (dist_to_goal < goal_tolerance) {
             RCLCPP_INFO(vis_node->get_logger(), "Goal Reached! Mission Accomplished.");
@@ -289,7 +275,7 @@ int main(int argc, char** argv) {
             break;
         }
 
-        // --- 3. Update obstacle snapshot ---
+        // --- Update obstacle snapshot ---
         auto snapshot = obstacle_checker->getAtomicSnapshot();
         auto start = std::chrono::steady_clock::now();
 
@@ -297,10 +283,10 @@ int main(int argc, char** argv) {
 
         current_state = ros_manager->getCurrentSimulatedState();
         kinodynamic_planner->setRobotState(current_state);
-        // --- 4. Reactive safety check ---
+        // --- Reactive safety check ---
         bool path_invalid = !kinodynamic_planner->isPathStillValid(current_executable_path, current_state);
 
-        // --- 5. Decide whether to replan ---
+        // --- Decide whether to replan ---
         if (path_invalid || obstacles_changed) {
             RCLCPP_INFO(vis_node->get_logger(), "Triggering replan (invalid path: %s, obstacles changed: %s)",
                         path_invalid ? "yes" : "no",
@@ -308,7 +294,7 @@ int main(int argc, char** argv) {
 
             current_state = ros_manager->getCurrentSimulatedState();
             kinodynamic_planner->setRobotState(current_state);
-            // 6. Execute replanning
+            // Execute replanning
             planner->plan();
 
             auto end = std::chrono::steady_clock::now();
@@ -335,10 +321,8 @@ int main(int argc, char** argv) {
 
 
             ////----------
-            // Get the complete metrics struct AFTER plan and setRobotState are done
             const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
 
-            // Populate the log entry
             entry.obstacle_checks = metrics.obstacle_checks;
             entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
             entry.orphaned_nodes = metrics.orphaned_nodes;
@@ -362,70 +346,10 @@ int main(int argc, char** argv) {
                     RCLCPP_INFO(vis_node->get_logger(), "New path similar to current. Keeping existing.");
                 }
             }
-            //////////////////////////
-            // if (new_path.empty()) {
-            //     // Failure: Attempt to generate a safe hover path.
-            //     RCLCPP_WARN(vis_node->get_logger(), "Replanning failed. Searching for a safe hover maneuver.");
-
-            //     auto dubins_time_ss = std::dynamic_pointer_cast<DubinsTimeStateSpace>(statespace);
-            //     bool hover_path_found = false;
-
-            //     if (dubins_time_ss) {
-            //         const double hover_duration = 3.0; // seconds
-            //         const double current_time = sim_clock->now().seconds();
-
-            //         // 1. First, try to generate a hover path to the RIGHT.
-            //         // FIX: Remove the class name prefix from the enum.
-            //         auto hover_traj_right = dubins_time_ss->createHoverPath(
-            //             fresh_robot_state, hover_duration, HoverDirection::RIGHT);
-
-            //         // 2. Check if this path is safe.
-            //         if (obstacle_checker->isTrajectorySafe(hover_traj_right, current_time)) {
-            //             RCLCPP_INFO(vis_node->get_logger(), "Safe hover path found (RIGHT). Executing.");
-            //             current_executable_path = hover_traj_right.path_points;
-            //             hover_path_found = true;
-            //         } else {
-            //             // 3. If right is not safe, try to generate a path to the LEFT.
-            //             RCLCPP_WARN(vis_node->get_logger(), "Right hover is unsafe. Trying left.");
-            //             // FIX: Remove the class name prefix from the enum.
-            //             auto hover_traj_left = dubins_time_ss->createHoverPath(
-            //                 fresh_robot_state, hover_duration, HoverDirection::LEFT);
-
-            //             // 4. Check if the left path is safe.
-            //             if (obstacle_checker->isTrajectorySafe(hover_traj_left, current_time)) {
-            //                 RCLCPP_INFO(vis_node->get_logger(), "Safe hover path found (LEFT). Executing.");
-            //                 current_executable_path = hover_traj_left.path_points;
-            //                 hover_path_found = true;
-            //             }
-            //         }
-            //     }
-
-            //     // 5. If neither hover path is safe, stop as a last resort.
-            //     if (!hover_path_found) {
-            //         RCLCPP_ERROR(vis_node->get_logger(), "No safe hover maneuver possible. Robot is trapped. Engaging E-STOP.");
-            //         current_executable_path = { fresh_robot_state };
-            //     }
-            // } else {
-            //     // Success case remains the same
-            //     if (!kinodynamic_planner->arePathsSimilar(current_executable_path, new_path, 0.1)) {
-            //         RCLCPP_INFO(vis_node->get_logger(), "Updating to new optimal path.");
-            //         current_executable_path = new_path;
-            //     } else {
-            //         RCLCPP_INFO(vis_node->get_logger(), "New path similar to current. Keeping existing.");
-            //     }
-            // }
-
-
-
-            //////////////////////////
-            // Send updated (or stop) path to robot
             ros_manager->setPath(current_executable_path);
         }
 
-        // --- 7. Always visualize current plan ---
         kinodynamic_planner->visualizePath(current_executable_path);
-
-        // --- 8. Control layer can fetch and follow 'current_executable_path' at high rate elsewhere ---
 
         loop_rate.sleep();
     }
@@ -439,13 +363,11 @@ int main(int argc, char** argv) {
         entry.collision_count = final_collision_count;
     }
 
-    // Get timestamp for a unique filename
     std::time_t now_time = std::time(nullptr);
     std::tm* local_tm = std::localtime(&now_time);
     char time_buf[80];
     strftime(time_buf, sizeof(time_buf), "%Y%m%d_%H%M%S", local_tm);
 
-    // Create filename
     int num_of_samples_val = planner_params.getParam<int>("num_of_samples");
     std::string filename = "sim_fmtx_" + std::to_string(num_of_samples_val) + 
                            "samples_" + time_buf + "_metrics.csv";
@@ -458,10 +380,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Write CSV header
     out << "elapsed_s,duration_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes,collision_count\n";
     
-    // Write log data
     for (const auto& entry : log_data) {
         out << entry.elapsed_s << ","
             << entry.duration_ms << ","
@@ -480,7 +400,7 @@ int main(int argc, char** argv) {
 
 
 
-    // --- 8. Graceful Shutdown ---
+    // --- Graceful Shutdown ---
     RCLCPP_INFO(vis_node->get_logger(), "Shutting down.");
     g_running = false;
     executor.cancel();

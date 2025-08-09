@@ -1,4 +1,5 @@
 // Copyright 2025 Soheil E.nia
+
 #include "motion_planning/planners/planner_factory.hpp"
 #include "motion_planning/state_space/thruster_statespace.hpp"
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
@@ -79,18 +80,17 @@ void resetAndPlaySimulation()
 
 
 
-std::atomic<bool> g_running{true}; // Flag to control the infinite loop
+std::atomic<bool> g_running{true};
 
 
 void sigint_handler(int sig) {
-    g_running = false; // Stop the main loop
+    g_running = false;
     rclcpp::shutdown();
 }
 
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     
-    //////////////////////////////////////////////////////////////////////////////////////////////////
     // Set up SIGINT handler
     struct sigaction sa;
     sa.sa_handler = sigint_handler;
@@ -103,9 +103,6 @@ int main(int argc, char **argv) {
     }
 
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////
-    // ─────────────────────────────────────────────────────────────────────────────
-    // 1) Parse your flags
     int num_samples = 10;
     double factor = 1.5;
     unsigned int seed = 42;
@@ -133,14 +130,12 @@ int main(int argc, char **argv) {
         }
     }
 
-    // 2) Seed RNG
     std::srand(seed);
     std::cout << "[INFO] seed=" << seed
                 << ", samples=" << num_samples
                 << ", factor=" << factor
                 << ", duration=" << run_secs << "s\n";
 
-    // ─────────────────────────────────────────────────────────────────────────────
 
 
 
@@ -173,45 +168,15 @@ int main(int argc, char **argv) {
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("partial_update", true); //update till the robot's costToInit
     planner_params.setParam("static_obs_presence", false); // to not process static obstalces twice because obstacle checker keeps sending all the obstalces! i geuss the persisten_static_obstalces needs to be true always
-    /*
-        we can cache and its useful because near obstacle there comes a time that too many z indices came up with the same best neighbor node for specific x index
-        and since there is an obs in between then we end up needing to re check the same obstacle check between nodes
-        I reckon if i use blocked_neighbor variable then we won't need this but that blocked_neighbor variable introduces it own overhead that only worth to use
-        if we are using fmta 
-
-        another thing i notices is this doesnt help much with performance in my 2D case. but im gonna leave it in case i have time to test it in more dimensions
-    
-    */
-    planner_params.setParam("obs_cache", false); // TODO: later i should implement it in the fmt node (edge info) it self but right now im using a hash map in fmtx it self which i dont think is efficient but at the same time since im in replanning mode then restarting the obs status of edges is also maybe a challenge but i think its doable
+    planner_params.setParam("obs_cache", false); 
     planner_params.setParam("partial_plot", false);
     planner_params.setParam("use_heuristic", false); // TODO: I need to verify if its legit workingor not.
-    planner_params.setParam("ignore_sample", false); // false: no explicit obstalce check  -  true: explicit obstalce check in dynamic update --> when ignore_sample true the prune is not happening anymore so doesnt matter what you put there
-    /*
-        right now ignore samples is being used with specific way of finding the samples and also the collision check also happens in fmt expand
-        later maybe i could combine it with obstale aware distance and no collision checks and see what happens
-    */
-    planner_params.setParam("prune", false); // prune == true means do an obstalce check in handlAdd/Remove and set the neighbor cost to inf and DO NOT  obstalce check in plan , prune==false means do not do an obstalce check in handleAdd/Remove and delay it in plan --> the delayed part makes it more expensive in case of high obstalce but in case of low obstalce its faster! (also for high number of samples the delayed part is slower)--> prune true overall is faster i guess
-    /*
-        IMPORTANT NOTE: prune vs plan? in prune we do obstacle check in local vicinity of obstalce and set cost to neighbor to inf in add obstalce and reset in remove obstalce
-                        and since we invalidated the edges between those nodes on obstalce and their neighbor, we don't need to do an obstacle check in plan function 
-                        but i wonder what if we do not do an obstacle check in add/remove obstalce and postpone the check to plan ? this is in line with fmt philosophy but
-                        the thing is then we have to do lots of obstacle checks for all the orphaned edges! as opposed to do only local obstacle checks so the question boild down
-                        to number of obstacle checks in local vicnity of the obstalce with ALL their neighbors and the number of delayed obstacle checks in plan function where only the query
-                        current edge-> best_neighbor edge. in my tests the prune version where we do not delay checks works faster but maybe at high dimensional space its better to use the delayed version!
-                        thats another topic of research i'll do later!
-
-                        all in all prune is like doing the rrtx approach in setting the distance to inf based on explicit obstacle check between a node in obstalce and its neighbors
-
-        NEW UPDATE: in 30 obstalce case testing with the whole environment visible doing the fmt style was much better!--> maybe i should put two variants!!! --> Need to decide !
-    */
-
     planner_params.setParam("precache_neighbors", true);
     planner_params.setParam("kd_dim", 3); // 2 or 3 for only 2nd order thruster and 4 incase you do 3rd order [x, y, z, vx, vy, vz, time]
     planner_params.setParam("use_knn", false);
     planner_params.setParam("mode", 1); //1: prune false 2: prune true
 
-    /////////////////////////////////////////////////////////////////////////////////////////////////
-    // --- 3. Object Initialization ---
+    // --- Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("fmtx_thruster_visualizer",
         rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
@@ -224,7 +189,7 @@ int main(int argc, char **argv) {
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
-    // --- 4. Planner and Problem Definition (5D Thruster) ---
+    // --- Planner and Problem Definition (5D Thruster) ---
     const int dim = 5; // STATE: [x, y, vx, vy, time]
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
 
@@ -260,14 +225,11 @@ int main(int argc, char **argv) {
     kinodynamic_planner->setClock(sim_clock);
     planner->setup(planner_params, visualization);
 
-    // --- 5. Initial Plan ---
+    // --- Initial Plan ---
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
     planner->plan();
-
-    // To get the path, we need a function that stitches the ExecutionTrajectory data.
-    // (See Section 3 for the implementation of this new function).
     kinodynamic_planner->setRobotState(robot_initial_state);
-    auto path = kinodynamic_planner->getPathPositions(); // Returns the correct format directly
+    auto path = kinodynamic_planner->getPathPositions();
     if (!path.empty()) {
         ros_manager->setPlannedThrusterTrajectory(path);
                 // Set the robot's starting state in the manager to initialize its clock.
@@ -276,12 +238,11 @@ int main(int argc, char **argv) {
     
     RCLCPP_INFO(vis_node->get_logger(), "Initial plan complete. Executing...");
 
-    // Visualization timer for the search tree
     auto tree_vis_timer = vis_node->create_wall_timer(
         std::chrono::milliseconds(200),
         [&]() { if (kinodynamic_planner) kinodynamic_planner->visualizeTree(); });
 
-    // --- 6. Executor Setup ---
+    // --- Executor Setup ---
     // rclcpp::executors::MultiThreadedExecutor executor;
     rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
 
@@ -289,10 +250,10 @@ int main(int argc, char **argv) {
     // executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
     std::thread executor_thread([&executor]() { executor.spin(); });
 
-    // --- 7. Main Execution and Replanning Loop ---
+    // --- Main Execution and Replanning Loop ---
     resetAndPlaySimulation();
     const double goal_tolerance = 3.0;
-    rclcpp::Rate loop_rate(20); // Replanning loop can run slower
+    rclcpp::Rate loop_rate(20);
     std::vector<double> sim_durations;
     std::vector<std::tuple<double, double>> sim_duration_2;
 
@@ -306,51 +267,6 @@ int main(int argc, char **argv) {
     std::vector<LogEntry> log_data;
     auto global_start = std::chrono::steady_clock::now();
     
-
-
-    // while (g_running && rclcpp::ok()) {
-    //     // Get the robot's current 5D state from the simulator.
-    //     Eigen::VectorXd current_state = ros_manager->getCurrentKinodynamicState();
-    //     kinodynamic_planner->setRobotState(current_state);
-
-    //     // Check for goal arrival.
-    //     double dist_to_goal = (current_state.head<2>() - tree_root_state.head<2>()).norm();
-    //     if (dist_to_goal < goal_tolerance) {
-    //         RCLCPP_INFO(vis_node->get_logger(), "Goal Reached! Mission Accomplished.");
-    //         g_running = false;
-    //         break;
-    //     }
-    //     auto start = std::chrono::high_resolution_clock::now();
-
-    //     // Update obstacles and check if replanning is needed.
-    //     auto snapshot = obstacle_checker->getAtomicSnapshot();
-    //     bool obstacles_changed = kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
-
-    //     // Here, you would also add a call to a path validator like `isPathStillValid`.
-    //     // For simplicity, we replan only on obstacle changes.
-    //     if (obstacles_changed) {
-    //         RCLCPP_INFO(vis_node->get_logger(), "Obstacles changed. Triggering replan...");
-            
-    //         // Update the planner's knowledge of the robot's state right before planning.
-    //         kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
-            
-    //         planner->plan();
-
-    //         kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
-    //         // Get the new execution trajectory.
-    //         auto path = kinodynamic_planner->getPathPositions(); // Returns the correct format directly
-    //         if (!path.empty()) {
-    //             ros_manager->setPlannedThrusterTrajectory(path);
-    //             kinodynamic_planner->visualizePath(path);
-    //         }
-    //     }
-    //     auto end = std::chrono::high_resolution_clock::now();
-    //     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    //     std::cout << "Time taken for the update : " << duration.count() 
-    //             << " milliseconds\n";
-
-    //     loop_rate.sleep();
-    // }
 
     // Start profiling
     CALLGRIND_START_INSTRUMENTATION;
@@ -366,11 +282,11 @@ int main(int argc, char **argv) {
         /////////////
 
 
-        // 1. Get the robot's current state from the simulator.
+        // Get the robot's current state from the simulator.
         Eigen::VectorXd current_state = ros_manager->getCurrentKinodynamicState();
         kinodynamic_planner->setRobotState(current_state);
 
-        // 2. Check if the goal has been reached.
+        // Check if the goal has been reached.
         double dist_to_goal = (current_state.head<2>() - tree_root_state.head<2>()).norm();
         if (dist_to_goal < goal_tolerance) {
             RCLCPP_INFO(vis_node->get_logger(), "Goal Reached! Mission Accomplished.");
@@ -378,13 +294,13 @@ int main(int argc, char **argv) {
             break;
         }
         
-        // 3. Get the trajectory the robot is currently trying to execute.
+        // Get the trajectory the robot is currently trying to execute.
         // auto current_path = kinodynamic_planner->getPathPositions();
 
-        // 4. PROACTIVELY VALIDATE THE CURRENT PATH
+        // PROACTIVELY VALIDATE THE CURRENT PATH
         // bool is_path_still_safe = kinodynamic_planner->isPathStillValid(current_path, current_state);
 
-        // 5. REPLAN IF, AND ONLY IF, THE CURRENT PATH IS UNSAFE
+        // REPLAN IF, AND ONLY IF, THE CURRENT PATH IS UNSAFE
         // if (!is_path_still_safe) {
             // RCLCPP_WARN(vis_node->get_logger(), "Collision predicted on current path! Triggering replan...");
             
@@ -459,13 +375,11 @@ int main(int argc, char **argv) {
         entry.collision_count = final_collision_count;
     }
 
-    // Get timestamp for a unique filename
     std::time_t now_time = std::time(nullptr);
     std::tm* local_tm = std::localtime(&now_time);
     char time_buf[80];
     strftime(time_buf, sizeof(time_buf), "%Y%m%d_%H%M%S", local_tm);
 
-    // Create filename
     int num_of_samples_val = planner_params.getParam<int>("num_of_samples");
     std::string filename = "sim_fmtx_" + std::to_string(num_of_samples_val) + 
                            "samples_" + time_buf + "_metrics.csv";
@@ -478,10 +392,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // Write CSV header
     out << "elapsed_s,duration_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes,collision_count\n";
     
-    // Write log data
     for (const auto& entry : log_data) {
         out << entry.elapsed_s << ","
             << entry.duration_ms << ","
@@ -500,7 +412,7 @@ int main(int argc, char **argv) {
 
 
 
-    // --- 8. Graceful Shutdown ---
+    // --- Graceful Shutdown ---
     RCLCPP_INFO(vis_node->get_logger(), "Shutting down.");
     g_running = false;
     executor.cancel();

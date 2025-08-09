@@ -9,13 +9,11 @@ import seaborn as sns
 from matplotlib.patches import Patch
 
 # --- Configuration ---
-# Please verify these paths are correct
 FMTX_DIR = "../build/new/new_names/full_fmtx"
 RRTX_DIR = "../build/new/new_names/full_rrtx"
 OUTPUT_FIGURES_DIR = "./figures_final_boxplots"
 
 # --- Data Loading and Parsing Functions ---
-# (These functions are from your script and are correct)
 def parse_filename_params(filename):
     base = os.path.basename(filename)
     match = re.match(r"(\d+)_(\d+)_(\d+)_sim_(fmtx|rrtx)_(\d+)samples", base.lower())
@@ -78,7 +76,7 @@ def create_per_trial_median_df(data):
                             })
     return pd.DataFrame(records)
 
-# --- NEW, CONSOLIDATED PLOTTING FUNCTION ---
+# --- CONSOLIDATED PLOTTING FUNCTION ---
 def plot_combined_grid_boxplots(df, output_dir):
     """
     Generates a single 3x3 grid of box plots with detailed x-axis labels.

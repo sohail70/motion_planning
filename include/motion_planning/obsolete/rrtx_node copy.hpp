@@ -63,7 +63,7 @@ public:
 
 
     void disconnectFromGraph() {
-        // 1. Clear parent relationship
+        // Clear parent relationship
         if (parent_ != nullptr) {
             auto& parent_children = parent_->children_;
             parent_children.erase(
@@ -73,7 +73,7 @@ public:
             parent_ = nullptr;
         }
 
-        // 2. Clear successor relationships
+        // Clear successor relationships
         for (RRTxNode* child : children_) {
             if (child && child->parent_ == this) {
                 child->parent_ = nullptr;
@@ -81,7 +81,7 @@ public:
         }
         children_.clear();
 
-        // 3. Clear edge relationships (both directions)
+        // Clear edge relationships (both directions)
         for (auto& [neighbor, _] : outgoing_edges_) {
             if (neighbor) {
                 neighbor->incoming_edges_.erase(this);

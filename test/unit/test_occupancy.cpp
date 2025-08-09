@@ -1,7 +1,6 @@
 // Copyright 2025
 
 
-
 #include "motion_planning/utils/ros2_manager.hpp"
 #include "motion_planning/utils/occupancygrid_obstacle_checker.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"

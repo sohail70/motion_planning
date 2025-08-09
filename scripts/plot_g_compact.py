@@ -9,10 +9,10 @@ from matplotlib.ticker import AutoMinorLocator
 # import seaborn as sns # Seaborn is not strictly needed for these specific plots
 
 # --- Configuration ---
-FMTX_DIR = "../build/new/new_names/full_fmtx" # USER: Verify this path
-RRTX_DIR = "../build/new/new_names/full_rrtx" # USER: Verify this path
-OUTPUT_FIGURES_DIR = "./figures_summary_compact_sensitivity" # New output directory for clarity
-DEFAULT_METRIC = 'median_duration' # Metric to use for most plots
+FMTX_DIR = "../build/new/new_names/full_fmtx" 
+RRTX_DIR = "../build/new/new_names/full_rrtx"
+OUTPUT_FIGURES_DIR = "./figures_summary_compact_sensitivity"
+DEFAULT_METRIC = 'median_duration' 
 
 # --- Helper Functions ---
 def parse_filename_params(filename):
@@ -256,7 +256,7 @@ def main():
     print(f"\nUnique values for plotting: Samples={unique_samples_found}, C={unique_C_values_found}, Obstacles={unique_obstacle_counts_found}")
     print(f"Generating plots using metric: {DEFAULT_METRIC}")
 
-    # 1. Sensitivity to C (All Samples Grouped per Obstacle Count)
+    # Sensitivity to C (All Samples Grouped per Obstacle Count)
     print("\n--- Generating Sensitivity to C (All Samples Grouped) Plots ---")
     for obst_count in unique_obstacle_counts_found:
         plot_sensitivity_C_all_samples_grouped(
@@ -268,7 +268,7 @@ def main():
             metric_to_plot=DEFAULT_METRIC
         )
         
-    # 2. Sensitivity to Obstacles (All Samples Grouped per C-value)
+    # Sensitivity to Obstacles (All Samples Grouped per C-value)
     print("\n--- Generating Sensitivity to Obstacles (All Samples Grouped) Plots ---")
     for C_value in unique_C_values_found:
         plot_sensitivity_Obstacles_all_samples_grouped(

@@ -150,12 +150,12 @@
 #             list_of_dfs = planners_trial_data[planner_name]
 #             color = colors.get(planner_name, 'gray')
 
-#             # 1. Plot individual trials with low opacity
+#             # Plot individual trials with low opacity
 #             for trial_df in list_of_dfs:
 #                 trial_df_sorted = trial_df.sort_values('elapsed_s')
 #                 ax.plot(trial_df_sorted['elapsed_s'], trial_df_sorted[metric_col], '-', color=color, linewidth=0.5, alpha=0.1)
 
-#             # 2. Plot a smoothed rolling median over all concatenated trials
+#             # Plot a smoothed rolling median over all concatenated trials
 #             all_trials_df = pd.concat(list_of_dfs, ignore_index=True).sort_values('elapsed_s')
 #             if not all_trials_df.empty:
 #                 window_size = max(10, int(len(all_trials_df) * 0.05))
@@ -250,13 +250,13 @@
 #         print("Please ensure your C++ benchmarks have been run and saved CSV files.")
 #         return
     
-#     # 1. Load and aggregate all data from all trial runs
+#     # Load and aggregate all data from all trial runs
 #     trial_data = aggregate_run_data(files)
 #     if not trial_data:
 #         print("No valid data could be aggregated. Exiting.")
 #         return
 
-#     # 2. Generate plots
+#     # Generate plots
 #     print("\n--- Generating Plots ---")
     
 #     # Plot distributions for all key metrics
@@ -270,7 +270,7 @@
 #     plot_time_series(trial_data, 'duration_ms', "Planner Update Time Over Simulation", "Update Duration (ms)")
 #     plot_time_series(trial_data, 'path_cost', "Path Cost Over Simulation", "Path Cost")
 
-#     # 3. Perform and print statistical analysis
+#     # Perform and print statistical analysis
 #     perform_statistical_analysis(trial_data)
 
 # if __name__ == "__main__":

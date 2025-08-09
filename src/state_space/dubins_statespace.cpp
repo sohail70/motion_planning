@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/state_space/dubins_statespace.hpp"
 #include "motion_planning/state_space/euclidean_state.hpp"
 #include <cmath>
@@ -687,11 +689,11 @@ double DubinsStateSpace::distance(const std::shared_ptr<State>& state1, const st
 //     out.is_valid = true;
 //     out.cost     = best->cost;
 //     out.geometric_distance = out.cost; // in Dubin in 3D case (x,y,theta) without (t) geometric and cost is the same!
-//     // --- NEW: Store maneuver info for the time-aware class to use ---
+//     // --- Store maneuver info for the time-aware class to use ---
 //     out.maneuver_type = best->type;
 //     out.maneuver_pts = best->pts;
 
-//     // --- NEW: Populate GEOMETRIC part of Analytical Segments ---
+//     // --- Populate GEOMETRIC part of Analytical Segments ---
 //     out.analytical_segments.clear();
 //     const auto& P = best->pts;
 //     //////////////////////
@@ -788,7 +790,7 @@ double DubinsStateSpace::distance(const std::shared_ptr<State>& state1, const st
 //         // Generate points along the arc.
 //         for (int i = 1; i <= num_steps; ++i) {
 //             double phi = start_angle + i * angle_step;
-//             // FIX: Create a vector of the same size as the input 'from' state
+//             // Create a vector of the same size as the input 'from' state
 //             Eigen::VectorXd pt(from.size()); 
 //             pt.setZero(); // Initialize to zero
 
@@ -812,7 +814,7 @@ double DubinsStateSpace::distance(const std::shared_ptr<State>& state1, const st
 
 //         for(int i = 1; i <= N; i++){
 //             Eigen::Vector2d P_interp = A + (B-A) * (static_cast<double>(i) / N);
-//             // FIX: Create a vector of the same size as the input 'from' state
+//             // Create a vector of the same size as the input 'from' state
 //             Eigen::VectorXd pt(from.size());
 //             pt.setZero();
 
@@ -1065,7 +1067,7 @@ Trajectory DubinsStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Vec
     const double delta_phi = 0.1;
     out.path_points.push_back(from);
 
-    // FIX: Define P before the if/else-if block
+    // Define P before the if/else-if block
     const auto& P_for_discretize = best_maneuver.pts;
 
     auto push_waypoint = [&](const Eigen::Vector2d& point_2d, const Eigen::Vector2d& center, bool is_clockwise) {
@@ -1122,16 +1124,16 @@ std::shared_ptr<State> DubinsStateSpace::sampleUniform(double min, double max) {
 void DubinsStateSpace::sampleUniform(double min, double max, int k) { /* ... */ }
 
 std::shared_ptr<State> DubinsStateSpace::sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) {
-    // 1. Check that the input bounds are 3-dimensional.
+    // Check that the input bounds are 3-dimensional.
     // This class specifically handles the 3D Dubins car model.
     if (min_bounds.size() != 3 || max_bounds.size() != 3) {
         throw std::invalid_argument("DubinsStateSpace requires 3D bounds for vector-based sampling.");
     }
 
-    // 2. Create a 3D vector for the new sample.
+    // Create a 3D vector for the new sample.
     Eigen::VectorXd values(3);
 
-    // 3. Sample x, y, and theta from their respective bounds.
+    // Sample x, y, and theta from their respective bounds.
     for (int i = 0; i < 3; ++i) {
         // Generate a random double between 0.0 and 1.0
         double random_coeff = static_cast<double>(rand()) / RAND_MAX;
@@ -1140,7 +1142,7 @@ std::shared_ptr<State> DubinsStateSpace::sampleUniform(const Eigen::VectorXd& mi
         values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
     }
     
-    // 4. Use the class's own addState method to create and return the new state.
+    // Use the class's own addState method to create and return the new state.
     return this->addState(values);
 }
 

@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #pragma once
 
 #include "motion_planning/state_space/statespace.hpp"
@@ -5,7 +7,7 @@
 #include <Eigen/Dense>
 
 /**
- * @brief Represents a state space that is a product of a Euclidean space (R^D) and a time dimension (T).
+ * Represents a state space that is a product of a Euclidean space (R^D) and a time dimension (T).
  *
  * This class is suitable for planning problems where the state is defined by (x, y, ..., time).
  * It assumes motion is a straight line in the Euclidean dimensions at a constant velocity.

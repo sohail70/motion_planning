@@ -1,4 +1,5 @@
-// Copyright 2025 Soheil E.Nia
+// Copyright 2025 Soheil E.nia
+
 #pragma once
 
 #include "motion_planning/pch.hpp"

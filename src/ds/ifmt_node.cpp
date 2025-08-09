@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/ds/ifmt_node.hpp"
 
 IFMTNode::IFMTNode(std::shared_ptr<State> state, int index)

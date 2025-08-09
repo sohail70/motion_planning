@@ -54,13 +54,13 @@ def calculate_per_trial_summary(df_list):
     Correctly calculates summary stats based on per-trial medians.
     This is the standard, robust method.
     """
-    # 1. Get the median replanning time for each individual trial.
+    # Get the median replanning time for each individual trial.
     per_trial_medians = [df['duration_ms'].median() for df in df_list if not df.empty]
 
     if not per_trial_medians:
         return {'median': np.nan, 'std': np.nan}
         
-    # 2. The final metrics are the median and std dev of that list of per-trial medians.
+    # The final metrics are the median and std dev of that list of per-trial medians.
     return {
         'median': np.median(per_trial_medians), 
         'std': np.std(per_trial_medians)

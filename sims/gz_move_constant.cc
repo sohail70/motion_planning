@@ -90,9 +90,7 @@ public:
                 this->currentTarget = this->endPoint;
             }
             
-            // =================================================================
-            //  THE FIX: Recalculate vectorToTarget immediately after the swap
-            // =================================================================
+            //  Recalculate vectorToTarget immediately after the swap
             vectorToTarget = this->currentTarget - currentPos;
         }
 

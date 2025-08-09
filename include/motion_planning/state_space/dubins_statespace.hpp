@@ -1,4 +1,4 @@
-// Create a new file: motion_planning/state_space/dubins_statespace.hpp
+// Copyright 2025 Soheil E.nia
 #pragma once
 
 #include "motion_planning/state_space/statespace.hpp"
@@ -15,7 +15,6 @@ public:
     // The core steering function that calculates the Dubins path between two states.
     virtual Trajectory steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const override;
 
-    // --- Overriding virtual functions from StateSpace ---
 
     // This provides a fast, approximate distance for the KD-Tree.
     double distance(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2) const override;
@@ -41,5 +40,5 @@ public:
 
 protected:
     double min_turning_radius_;
-    Eigen::VectorXd weights_; // To balance x, y vs. theta in the distance metric.
+    Eigen::VectorXd weights_; // To balance x, y vs. theta in the distance metric --> But i do not use this because i implemented this in kd tree
 };

@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #pragma once
 
 
@@ -56,10 +58,8 @@ bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory,
 
 
     /**
-     * @brief [THE NEW, CORRECTED FUNCTION] Performs a full time-aware collision check.
-     * @param trajectory The kinodynamically-feasible trajectory to check.
-     * @param start_node_cost The global time at which the robot begins this trajectory.
-     * @return An std::optional containing the colliding obstacle if a collision is
+     * Performs a full time-aware collision check.
+     * return An std::optional containing the colliding obstacle if a collision is
      * predicted. Returns std::nullopt if the path is clear.
      */
     std::optional<Obstacle> getCollidingObstacle(const Trajectory& trajectory, double start_node_cost) const override;
@@ -69,10 +69,7 @@ bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory,
     bool sweptBoxIntersection( const Eigen::Vector2d& p_r0, const Eigen::Vector2d& v_r, const Eigen::Vector2d& p_o0, const Eigen::Vector2d& v_o, double w, double h, double T_segment, double rotation, bool consider_rotation) const;
     
     /**
-     * @brief [NEW & CORRECTED] Performs a full time-aware collision check for a trajectory.
-     * @param trajectory The kinodynamically-feasible trajectory to check.
-     * @param start_node_time The global time at which the robot begins this trajectory.
-     * @return TRUE if the path is clear, FALSE if a collision is predicted.
+     * return TRUE if the path is clear, FALSE if a collision is predicted.
      */
     bool isTrajectorySafe( const Trajectory& trajectory, double start_node_time) const override;
 
@@ -175,7 +172,7 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
     };
 
     Snapshot getAtomicSnapshot() {
-        // 1. First, process any new pose message that has arrived since the last call.
+        // First, process any new pose message that has arrived since the last call.
         //    This updates the internal state (Kalman filters, obstacle_positions_, etc.).
         processLatestPoseInfo();
         /*
@@ -188,7 +185,6 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
     }
 
 
-    // --- NEW HELPER FUNCTION (based on the Julia code's logic) ---
     // Calculates the squared distance from a point 'p' to a line segment defined by 'a' and 'b'.
 double distanceSqrdPointToSegment(const Eigen::Vector2d& p, const Eigen::Vector2d& a, const Eigen::Vector2d& b) const {
     const Eigen::Vector2d ab = b - a;
@@ -235,14 +231,14 @@ double distanceSqrdPointToArc(
     double radius,
     bool is_clockwise) const
 {
-    // 1. Vector from point to circle center
+    // Vector from point to circle center
     Eigen::Vector2d to_center = p - center;
     double dist_to_center_sq = to_center.squaredNorm();
 
-    // 2. Find the closest point on the full circle to p
+    // Find the closest point on the full circle to p
     Eigen::Vector2d closest_point_on_circle = center + radius * to_center.normalized();
 
-    // 3. Check if this closest point lies within the arc segment
+    // Check if this closest point lies within the arc segment
     double start_angle = atan2(start.y() - center.y(), start.x() - center.x());
     double end_angle = atan2(end.y() - center.y(), end.x() - center.x());
     double point_angle = atan2(closest_point_on_circle.y() - center.y(), closest_point_on_circle.x() - center.x());
@@ -412,9 +408,9 @@ private:
     mutable std::unordered_map<std::string, fcl::CollisionObjectd> fcl_cache_;
 
     // /**
-    //  * @brief Creates an FCL collision object from our custom Obstacle struct.
-    //  * @param obstacle The obstacle to convert.
-    //  * @return A shared pointer to an FCL CollisionObject.
+    //  * Creates an FCL collision object from our custom Obstacle struct.
+    //  * obstacle The obstacle to convert.
+    //  * A shared pointer to an FCL CollisionObject.
     //  */
     // fcl::CollisionObjectd createFCLObject(const Obstacle& obstacle) const;
 

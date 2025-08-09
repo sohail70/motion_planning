@@ -180,7 +180,7 @@ bool NanoFlann::removePoint(const Eigen::VectorXd& query) {
         return false;  // No points to remove
     }
 
-    // 1. Find the nearest neighbor (k=1)
+    // Find the nearest neighbor (k=1)
     std::vector<size_t> nearestIndices = knnSearch(query, 1);
     if (nearestIndices.empty()) {
         return false;  // No neighbors found (shouldn't happen if tree is built)
@@ -193,10 +193,10 @@ bool NanoFlann::removePoint(const Eigen::VectorXd& query) {
     //     return false;  // Nearest neighbor is not an exact match
     // }
 
-    // 2. Remove the row from data_
+    // Remove the row from data_
     removeRow(data_, rowToRemove);
 
-    // 3. Rebuild the KD-tree
+    // Rebuild the KD-tree
     kdtree_->index_->buildIndex();
 
     return true;

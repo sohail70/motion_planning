@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/planners/geometric/rrtx.hpp"
 
 RRTX::RRTX(std::shared_ptr<StateSpace> statespace, 
@@ -570,7 +572,7 @@ std::unordered_set<int> RRTX::findSamplesNearObstacles(
         conflicting_samples.insert(sample_indices.begin(), sample_indices.end());
         if (mode == 3){
             for (int idx : sample_indices) {
-                // ✅ Only add the obstacle if it hasn't been added to this node's threat list yet.
+                // Only add the obstacle if it hasn't been added to this node's threat list yet.
                 if (node_added_threats[idx].find(obstacle.name) == node_added_threats[idx].end()) {
                     node_to_threats_map_[idx].push_back(obstacle);
                     node_added_threats[idx].insert(obstacle.name);
@@ -1341,7 +1343,7 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
             if (it == node_to_threats_map_.end()) continue;
             const auto& threats = it->second;
 
-            // ✅ 1. First, check if the node's position itself is invalid.
+            // First, check if the node's position itself is invalid.
             bool node_is_unusable = false;
             for (const auto& obs : threats) {
                 if (!obs_checker_->isObstacleFreeAgainstSingleObstacle(node->getStateValue(), node->getStateValue(), obs)) {
@@ -1350,7 +1352,7 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
                 }
             }
 
-            // 2. If the node is unusable, take the fast path: invalidate all its edges and orphan it.
+            // If the node is unusable, take the fast path: invalidate all its edges and orphan it.
             if (node_is_unusable) {
                 // Invalidate all outgoing edges
                 for (auto& [neighbor, edge] : node->outgoingEdges()) {
@@ -1370,7 +1372,7 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
                 continue; // Skip the per-edge checks below
             }
 
-            // ✅ 3. If the node is valid, proceed with the original per-edge checks.
+            // If the node is valid, proceed with the original per-edge checks.
             for (auto& [neighbor, edge] : node->outgoingEdges()) {
                 if (edge.distance == INFINITY) continue;
                 

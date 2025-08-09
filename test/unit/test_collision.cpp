@@ -1,3 +1,6 @@
+// Copyright 2025 Soheil E.nia
+
+
 // // // ////////////////////////////////////R2T StateSpace Collision Test//////////////////////////////////////////////////////////////
 // #include "rclcpp/rclcpp.hpp"
 // #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
@@ -30,10 +33,6 @@
 //     }
 // }
 
-// // ===================================================================
-// // A simple class to simulate the robot's movement along a path.
-// // All logic is self-contained here.
-// // ===================================================================
 // class RobotSimulator {
 // public:
 //     RobotSimulator(const Eigen::VectorXd& start, const Eigen::VectorXd& goal, double speed)
@@ -80,13 +79,11 @@
 // };
 
 
-// // ===================================================================
-// // --- MAIN TEST FUNCTION ---
-// // ===================================================================
+
 // int main(int argc, char** argv) {
 //     rclcpp::init(argc, argv);
 
-//     // --- 1. Basic Setup ---
+//     // --- Basic Setup ---
 //     auto node = std::make_shared<rclcpp::Node>("predictive_test_node", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));
 //     auto visualizer = std::make_shared<RVizVisualization>(node);
     
@@ -101,12 +98,12 @@
 //     gazebo_params.setParam("persistent_static_obstacles", true);
 //     gazebo_params.setParam("estimation", true);
 //     gazebo_params.setParam("kf_model_type", "cv");
-    // gazebo_params.setParam("fcl", false);
-    // gazebo_params.setParam("bullet", false);
+//     gazebo_params.setParam("fcl", false);
+//     gazebo_params.setParam("bullet", false);
 //     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_4_obs.sdf");
 //     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
 
-//     // --- 2. Define Robot's Path & Validate Kinematics ---
+//     // --- Define Robot's Path & Validate Kinematics ---
 //     const double MAX_ROBOT_SPEED = 5.0; // Set a max speed limit in m/s
 
 //     // Define start and goal with a time dimension (time-to-go).
@@ -139,14 +136,12 @@
 //     // Create the simulator with the validated, required speed.
 //     RobotSimulator simulator(start_node, goal_node, required_speed);
 
-//     // --- 3. Run Simulation and Prediction Loop ---
+//     // --- Run Simulation and Prediction Loop ---
 //     resetAndPlaySimulation();
 //     RCLCPP_INFO(node->get_logger(), "Starting simulation and prediction loop...");
     
 
-//     // =====================================================================
-//     // ====================== THE CRITICAL FIX IS HERE =====================
-//     // =====================================================================
+
 //     // Wait for the first Gazebo message to arrive to ensure we have obstacles.
 //     RCLCPP_INFO(node->get_logger(), "Waiting for initial obstacle data from Gazebo...");
 //     size_t obstacle_count = 0;
@@ -166,9 +161,6 @@
 //         rclcpp::shutdown();
 //         return EXIT_FAILURE;
 //     }
-//     // =====================================================================
-//     // ====================== END OF FIX ===================================
-//     // =====================================================================
 
 
 //     rclcpp::Rate loop_rate(20); 
@@ -269,13 +261,11 @@
 // #include "motion_planning/utils/params.hpp"
 // #include "motion_planning/ds/edge_info.hpp"
 // #include "motion_planning/utils/parse_sdf.hpp"
-// #include "motion_planning/state_space/dubins_time_statespace.hpp" // <-- Main addition
-
+// #include "motion_planning/state_space/dubins_time_statespace.hpp"
 // #include <gz/transport/Node.hh>
 // #include <gz/msgs/world_control.pb.h>
 // #include <gz/msgs/boolean.pb.h>
 
-// // Helper function to reset and play the Gazebo simulation
 // void resetAndPlaySimulation() {
 //     gz::transport::Node node;
 //     // Reset the world
@@ -297,10 +287,7 @@
 //     }
 // }
 
-// // ===================================================================
-// // A class to simulate the robot's movement along a pre-computed Dubins path.
-// // It interpolates between the waypoints of the trajectory over time.
-// // ===================================================================
+
 // class DubinsRobotSimulator {
 // public:
 //     // The simulator is initialized with the full trajectory
@@ -404,13 +391,10 @@
 // };
 
 
-// // ===================================================================
-// // --- MAIN TEST FUNCTION ---
-// // ===================================================================
 // int main(int argc, char** argv) {
 //     rclcpp::init(argc, argv);
 
-//     // --- 1. Basic Setup ---
+//     // --- Basic Setup ---
 //     auto node = std::make_shared<rclcpp::Node>("predictive_dubin_test_node", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));
 //     auto visualizer = std::make_shared<RVizVisualization>(node);
     
@@ -425,13 +409,13 @@
 //     gazebo_params.setParam("persistent_static_obstacles", true);
 //     gazebo_params.setParam("estimation", true);
 //     gazebo_params.setParam("kf_model_type", "cv");
-    // gazebo_params.setParam("fcl", false);
-    // gazebo_params.setParam("bullet", false);
+//     gazebo_params.setParam("fcl", false);
+//     gazebo_params.setParam("bullet", false);
 
 //     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_4_obs.sdf");
 //     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
 
-//     // --- 2. Define Robot's Path using DubinsTimeStateSpace ---
+//     // --- Define Robot's Path using DubinsTimeStateSpace ---
 //     const double MIN_TURNING_RADIUS = 5.0; // meters
 //     const double MIN_ROBOT_SPEED = 2.0;    // m/s
 //     const double MAX_ROBOT_SPEED = 8.0;    // m/s
@@ -462,7 +446,7 @@
 //     // Create the simulator with the generated trajectory.
 //     DubinsRobotSimulator simulator(full_trajectory);
 
-//     // --- 3. Run Simulation and Prediction Loop ---
+//     // --- Run Simulation and Prediction Loop ---
 //     resetAndPlaySimulation();
 //     RCLCPP_INFO(node->get_logger(), "Starting simulation and prediction loop...");
     
@@ -570,14 +554,14 @@
 #include "motion_planning/utils/params.hpp"
 #include "motion_planning/ds/edge_info.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
-#include "motion_planning/state_space/thruster_statespace.hpp" // For ground truth trajectory
+#include "motion_planning/state_space/thruster_statespace.hpp"
 
 #include <gz/transport/Node.hh>
 #include <gz/msgs/world_control.pb.h>
 #include <gz/msgs/boolean.pb.h>
-#include <cmath> // For std::isfinite
-#include <sstream> // For std::stringstream
-#include <iomanip> // For std::setprecision
+#include <cmath>
+#include <sstream>
+#include <iomanip>
 
 // Helper function to reset and play the Gazebo simulation
 void resetAndPlaySimulation() {
@@ -601,10 +585,7 @@ void resetAndPlaySimulation() {
     }
 }
 
-// ===================================================================
-// A class to simulate the robot's movement along a physically correct
-// second-order (constant acceleration) trajectory.
-// ===================================================================
+
 class ThrusterRobotSimulator {
 public:
     // The simulator is initialized with the full, fine-grained trajectory
@@ -701,13 +682,11 @@ private:
     double total_duration_;
 };
 
-// ===================================================================
-// --- MAIN TEST FUNCTION ---
-// ===================================================================
+
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
 
-    // --- 1. Basic Setup ---
+    // --- Basic Setup ---
     auto node = std::make_shared<rclcpp::Node>("predictive_thruster_test_node", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));
     auto visualizer = std::make_shared<RVizVisualization>(node);
     
@@ -728,7 +707,7 @@ int main(int argc, char** argv) {
     auto obstacle_info = parseSdfObstacles("dynamic_world_1_obs.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
 
-    // --- 2. Define Robot's Path using ThrusterSteerStateSpace ---
+    // --- Define Robot's Path using ThrusterSteerStateSpace ---
     const int dim = 5;
     const double max_acceleration = 2.0; // m/s^2
     auto thruster_ss = std::make_shared<ThrusterSteerStateSpace>(dim, max_acceleration);
@@ -787,7 +766,7 @@ int main(int argc, char** argv) {
     RCLCPP_INFO(node->get_logger(), "Final Thruster Path Generated! Total Time: %.2f s, Total Points: %zu", 
                 full_trajectory.time_duration, full_trajectory.path_points.size());
     
-    // ✅ ADDED: Detailed printout and validation of the final stitched path
+    // Detailed printout and validation of the final stitched path
     RCLCPP_INFO(node->get_logger(), "--- Verifying Final Stitched Trajectory ---");
     for (size_t i = 0; i < full_trajectory.path_points.size(); ++i) {
         const auto& p = full_trajectory.path_points[i];
@@ -806,7 +785,7 @@ int main(int argc, char** argv) {
     // Create the simulator with the generated trajectory.
     ThrusterRobotSimulator simulator(full_trajectory);
 
-    // --- 3. Run Simulation and Prediction Loop ---
+    // --- Run Simulation and Prediction Loop ---
     resetAndPlaySimulation();
     RCLCPP_INFO(node->get_logger(), "Starting simulation and prediction loop...");
     
@@ -872,10 +851,6 @@ int main(int argc, char** argv) {
         std::string trajectory_color_str = is_safe ? "0.1,0.8,0.1" : "1.0,0.1,0.1";
         visualizer->visualizeEdges(remaining_path_edges, "map", trajectory_color_str, "remaining_trajectory");
 
-        // =======================================================
-        // === 🛠️ CORRECTED OBSTACLE VISUALIZATION LOGIC START ===
-        // =======================================================
-        
         // Prepare separate containers for each shape type
         std::vector<Eigen::VectorXd> cylinder_positions;
         std::vector<double> cylinder_radii;
@@ -904,10 +879,6 @@ int main(int argc, char** argv) {
             visualizer->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
         }
         
-        // =====================================================
-        // === CORRECTED OBSTACLE VISUALIZATION LOGIC END ======
-        // =====================================================
-
         loop_rate.sleep();
     }
     

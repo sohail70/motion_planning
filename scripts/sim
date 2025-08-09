@@ -40,4 +40,4 @@ for SAMPLES in "${SAMPLE_COUNTS[@]}"; do
   done
 done
 
-echo "✅ All runs complete."
+echo "All runs complete."

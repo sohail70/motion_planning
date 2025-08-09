@@ -31,16 +31,13 @@ struct LogEntry {
     int collision_count = 0;
 };
 
-// Define a global running flag for signal handling
 std::atomic<bool> g_running{true};
 
-// Signal handler to gracefully shut down
 void sigint_handler(int sig)
 {
     g_running = false;
 }
 
-// Gazebo simulation control function (remains unchanged)
 
 void resetAndPlaySimulation()
 {
@@ -89,12 +86,11 @@ void resetAndPlaySimulation()
 
 int main(int argc, char** argv)
 {
-    // --- 1. Initial Setup ---
+    // --- Initial Setup ---
     rclcpp::init(argc, argv);
     signal(SIGINT, sigint_handler);
 
 
-    // 1) Parse your flags
     int num_samples = 3000;
     double factor = 2.0;
     unsigned int seed = 42;
@@ -123,8 +119,7 @@ int main(int argc, char** argv)
     }
 
 
-    // --- 2. Parameter Setup ---
-    // Encapsulate parameters for better organization
+    // --- Parameter Setup ---
     Params manager_params;
     manager_params.setParam("use_sim_time", true);
     manager_params.setParam("sim_time_step", -0.04); // Time-to-go consumed per sim step
@@ -143,11 +138,6 @@ int main(int argc, char** argv)
     gazebo_params.setParam("kf_model_type", "cv");
     gazebo_params.setParam("fcl", false);
     gazebo_params.setParam("bullet", false);
-
-    // gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
-    // This value is CRITICAL. If it's 0.0, your robot has no size.
-    // Set it to a value representing your robot's radius + a safety margin.
-    // For example, if your robot is 1 meter wide, a radius of 0.5m + a buffer of 1m = 1.5.
     gazebo_params.setParam("inflation", 0.5); //
     gazebo_params.setParam("persistent_static_obstacles", false);
 
@@ -171,14 +161,11 @@ int main(int argc, char** argv)
     planner_params.setParam("obs_cache", false);
     planner_params.setParam("partial_plot", false);
     planner_params.setParam("use_heuristic", false);
-    planner_params.setParam("ignore_sample", false);
-    planner_params.setParam("prune", false);
     planner_params.setParam("kd_dim", 3); // 2 or 3 only for R2T
     planner_params.setParam("use_knn", false); // In FMTX you get more connection using knn than radial due to obvious reasons!(having steer constraints!)
     planner_params.setParam("precache_neighbors", true);
     planner_params.setParam("mode", 1); //1: prune false 2: prune true
-    // --- 3. Object Initialization ---
-    // A single node is shared for visualization purposes
+    // --- Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("fmtx_visualizer",
         rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));
     
@@ -195,7 +182,7 @@ int main(int argc, char** argv)
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
 
-    // --- 4. Planner and Problem Definition ---
+    // --- Planner and Problem Definition ---
     const int dim = 3;
     const int spatial_dim = 2;
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
@@ -229,7 +216,7 @@ int main(int argc, char** argv)
 
     std::vector<Eigen::VectorXd> current_executable_path;
 
-    // --- 5. Perform the INITIAL Plan ---
+    // --- Perform the INITIAL Plan ---
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
     // obstacle_checker->getAtomicSnapshot();
     auto start = std::chrono::steady_clock::now();
@@ -248,7 +235,6 @@ int main(int argc, char** argv)
     // Anchor the robot to the initial plan
     kinodynamic_planner->setRobotState(robot_initial_state);
     
-    // --- FIX: Assign to the variable, don't re-declare it with 'auto' ---
     current_executable_path = kinodynamic_planner->getPathPositions();
     if (!current_executable_path.empty()) {
         ros_manager->setPath(current_executable_path);
@@ -257,7 +243,6 @@ int main(int argc, char** argv)
 
 
 
-    // ================== NEW CODE: CREATE A DEDICATED VISUALIZATION TIMER ==================
     const int tree_visualization_hz = 10; // Visualize the tree only 2 times per second.
     auto tree_vis_timer = vis_node->create_wall_timer(
         std::chrono::milliseconds(1000 / tree_visualization_hz),
@@ -269,21 +254,20 @@ int main(int argc, char** argv)
 
 
 
-    // --- 6. Set Up Executor (Unchanged) ---
     // rclcpp::executors::MultiThreadedExecutor executor;
     rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
 
     executor.add_node(ros_manager);
-    executor.add_node(vis_node); // **IMPORTANT**: Add the vis_node to the executor so its timer runs!
+    executor.add_node(vis_node);
 
     std::thread executor_thread([&executor]() {
         executor.spin();
     });
 
-    // --- 7. Main Execution and Replanning Loop ---
+    // --- Main Execution and Replanning Loop ---
     resetAndPlaySimulation();
     RCLCPP_INFO(vis_node->get_logger(), "Starting execution and monitoring loop. Press Ctrl+C to exit.");
-    const double goal_tolerance = 3.0; // How close to (0,0) counts as "reached", in meters.
+    const double goal_tolerance = 3.0;
     std::vector<double> sim_durations;
     std::vector<std::tuple<double, double>> sim_duration_2;
 
@@ -297,7 +281,7 @@ int main(int argc, char** argv)
 
     std::vector<LogEntry> log_data;
     auto global_start = std::chrono::steady_clock::now();
-    rclcpp::Rate loop_rate(20); // Frequency to check for replan triggers
+    rclcpp::Rate loop_rate(20);
     // Start profiling
     int counter = 0;
 
@@ -337,18 +321,6 @@ int main(int argc, char** argv)
 
         const auto& snapshot = obstacle_checker->getAtomicSnapshot();
 
-        // --- TRIGGER 1 (Reactive): Is my current path predictively safe? ---
-        // Pass both the path and the robot's current state to the validator.
-        // if (!kinodynamic_planner->isPathStillValid(current_executable_path, current_sim_state)) {
-        //     RCLCPP_INFO(vis_node->get_logger(), "Current path is no longer predictively valid! Triggering replan.");
-        //     needs_replan = true;
-        // }
-
-        // --- TRIGGER 2 (Proactive): Have obstacles changed in a significant way? ---
-        // if (!needs_replan && kinodynamic_planner->updateObstacleSamples(snapshot.obstacles)) {
-        //     RCLCPP_INFO(vis_node->get_logger(), "Obstacle change detected! Proactively replanning...");
-        //     needs_replan = true;
-        // }
         auto start = std::chrono::steady_clock::now();
         kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
         // if (needs_replan) {
@@ -374,7 +346,6 @@ int main(int argc, char** argv)
             //////---------
   
 
-            // Re-run the full planning pipeline
             current_sim_state = ros_manager->getCurrentSimulatedState();
             kinodynamic_planner->setRobotState(current_sim_state);
             auto new_executable_path = kinodynamic_planner->getPathPositions();
@@ -395,7 +366,6 @@ int main(int argc, char** argv)
 
 
 
-            // *** CORRECTED LOGIC TO HANDLE FAILURE ***
             if (new_executable_path.empty()) {
                 // FAILURE CASE: The planner could not find a valid path from the robot's current state.
                 RCLCPP_ERROR(vis_node->get_logger(), "Replanning failed! Commanding robot to STOP.");
@@ -435,152 +405,13 @@ int main(int argc, char** argv)
     for (auto& entry : log_data) {
         entry.collision_count = final_collision_count;
     }
-    // =====================================================================
 
 
-    // while (g_running && rclcpp::ok())
-    // {
-    //     bool needs_replan = false;
-        
-    //     // Get the robot's current state ONCE per cycle.
-    //     Eigen::VectorXd current_sim_state = ros_manager->getCurrentSimulatedState();
-    //     if (current_sim_state.size() == 0) { // Wait for the simulation to initialize
-    //          loop_rate.sleep();
-    //          continue;
-    //     }
-
-    //     // Calculate the 2D distance to the goal using the tree_root_state variable.
-    //     double distance_to_goal = (current_sim_state.head<2>() - tree_root_state.head<2>()).norm();
-
-    //     if (distance_to_goal < goal_tolerance) {
-    //         RCLCPP_INFO(vis_node->get_logger(), "Goal Reached! Mission Accomplished.");
-    //         g_running = false; // Set the flag to cleanly exit the loop.
-    //         continue;          // Skip the rest of this loop iteration.
-    //     }
-
-
-
-    //     auto snapshot = obstacle_checker->getAtomicSnapshot();
-
-    //     // --- TRIGGER 1 (Reactive): Is my current path predictively safe? ---
-    //     if (!kinodynamic_planner->isPathStillValid(current_executable_path, current_sim_state)) {
-    //         // RCLCPP_INFO(vis_node->get_logger(), "Current path is no longer predictively valid! Triggering replan.");
-    //         needs_replan = true;
-    //     }
-
-    //     auto start = std::chrono::steady_clock::now();
-
-
-    //     // --- TRIGGER 2 (Proactive): Have obstacles changed in a significant way? ---
-    //     if (!needs_replan && kinodynamic_planner->updateObstacleSamples(snapshot.obstacles)) {
-    //         // RCLCPP_INFO(vis_node->get_logger(), "Obstacle change detected! Proactively replanning...");
-    //         needs_replan = true;
-    //     }
-
-    //     if (needs_replan) {
-            
-    //         // RCLCPP_INFO(vis_node->get_logger(), "Replanning triggered. Finding new optimal path...");
-            
-    //         // --- CRITICAL SECTION ---
-    //         // Ensure the planner's state is updated with the LATEST robot position before planning.
-    //         // We use the `current_sim_state` variable we fetched at the start of this loop.
-    //         kinodynamic_planner->setRobotState(current_sim_state);
-
-    //         // Now, run the planner and get the new path.
-    //         // getPathPositions will correctly use the state we just set.
-    //         planner->plan();
-    //         auto new_executable_path = kinodynamic_planner->getPathPositions();
-            
-    //         // Path comparison and update logic...
-    //         if (!new_executable_path.empty()) {
-    //             // --- HYSTERESIS CHECK ---
-    //             // Only switch to the new path if it's significantly different from the old one.
-    //             // A tolerance of 0.1 means waypoints must differ by > 10cm. Tune as needed.
-    //             if (!kinodynamic_planner->arePathsSimilar(current_executable_path, new_executable_path, 0.1)) {
-    //                 // RCLCPP_INFO(this->get_logger(), "New, different path found. Updating trajectory.");
-    //                 current_executable_path = new_executable_path;
-    //                 ros_manager->setPath(current_executable_path);
-    //                 // kinodynamic_planner->visualizePath(current_executable_path);
-    //             } else {
-    //                 // Path is essentially the same. Do nothing and continue on the current path for another cycle.
-    //                 // RCLCPP_INFO(this->get_logger(), "Replanning resulted in a similar path. Ignoring update.");
-    //             }
-
-    //         } else {
-    //             // FAILURE CASE: Robot is stranded. Implement evasive maneuver.
-    //             // RCLCPP_ERROR(vis_node->get_logger(), "Robot is stranded! Attempting evasive maneuver...");
-
-    //             // --- "SAFETY BUBBLE" LOGIC ---
-    //             const int num_escape_directions = 16;
-    //             const double probe_distance = 1.0; // How far to look for a safe spot
-    //             double max_safe_distance = -1.0;
-    //             Eigen::Vector2d best_escape_vector = Eigen::Vector2d::Zero();
-
-    //             for (int i = 0; i < num_escape_directions; ++i) {
-    //                 double angle = 2.0 * M_PI * i / num_escape_directions;
-    //                 Eigen::Vector2d escape_vector(cos(angle), sin(angle));
-                    
-    //                 // Calculate a probe point in this direction
-    //                 Eigen::Vector2d probe_point = current_sim_state.head<2>() + escape_vector * probe_distance;
-
-    //                 // Find how far this probe point is from any obstacle
-    //                 double safe_distance = obstacle_checker->findNearestObstacleDistance(probe_point);
-
-    //                 if (safe_distance > max_safe_distance) {
-    //                     max_safe_distance = safe_distance;
-    //                     best_escape_vector = escape_vector;
-    //                 }
-    //             }
-
-    //             if (max_safe_distance > 0.25) { // Only move if we found a reasonably safe direction
-    //                 // RCLCPP_WARN(vis_node->get_logger(), "Found safe direction. Executing short evasive move.");
-                    
-    //                 // Create a short, 2-point path for the maneuver
-    //                 std::vector<Eigen::VectorXd> escape_path;
-    //                 escape_path.push_back(current_sim_state); // Start from current state
-
-    //                 Eigen::VectorXd escape_goal_state = current_sim_state;
-    //                 // Move 0.5 meters in the safest direction
-    //                 escape_goal_state.head<2>() += best_escape_vector * 0.5; 
-    //                 // Decrease time-to-go slightly to make it a valid forward-in-time segment
-    //                 escape_goal_state(2) -= 0.5; // Assume 1 m/s for time calculation
-    //                 escape_path.push_back(escape_goal_state);
-
-    //                 current_executable_path = escape_path;
-    //                 ros_manager->setPath(current_executable_path);
-    //                 // kinodynamic_planner->visualizePath(current_executable_path);
-
-    //             } else {
-    //                 // FINAL FALLBACK: If completely trapped, command a stop.
-    //                 // RCLCPP_ERROR(vis_node->get_logger(), "No safe escape direction found! Commanding robot to STOP.");
-    //                 std::vector<Eigen::VectorXd> stop_path;
-    //                 stop_path.push_back(current_sim_state);
-    //                 current_executable_path = stop_path;
-    //                 ros_manager->setPath(current_executable_path);
-    //             }
-    //         }
-    //     }
-    //     auto end = std::chrono::steady_clock::now();
-    //     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    //     if (duration.count() > 0) {
-    //         std::cout << "time taken for the update : " << duration.count() 
-    //                 << " milliseconds\n";
-    //     }
-
-    //     // Visualization and sleep remain the same.
-    //     // kinodynamic_planner->visualizeTree();
-    //     loop_rate.sleep();
-    // }
-
-
-
-    // Get timestamp for a unique filename
     std::time_t now_time = std::time(nullptr);
     std::tm* local_tm = std::localtime(&now_time);
     char time_buf[80];
     strftime(time_buf, sizeof(time_buf), "%Y%m%d_%H%M%S", local_tm);
 
-    // Create filename
     int num_of_samples_val = planner_params.getParam<int>("num_of_samples");
     std::string filename = "sim_fmtx_" + std::to_string(num_of_samples_val) + 
                            "samples_" + time_buf + "_metrics.csv";
@@ -593,10 +424,8 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // Write CSV header
     out << "elapsed_s,duration_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes,collision_count\n";
     
-    // Write log data
     for (const auto& entry : log_data) {
         out << entry.elapsed_s << ","
             << entry.duration_ms << ","
@@ -616,7 +445,7 @@ int main(int argc, char** argv)
 
 
 
-    // --- 8. Graceful Shutdown ---
+    // --- Graceful Shutdown ---
     RCLCPP_INFO(vis_node->get_logger(), "Shutting down.");
     executor.cancel();
     if (executor_thread.joinable())

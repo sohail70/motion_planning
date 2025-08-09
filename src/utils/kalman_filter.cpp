@@ -1,4 +1,6 @@
-#include "motion_planning/utils/kalman_filter.hpp" // Adjust path if necessary
+// Copyright 2025 Soheil E.nia
+
+#include "motion_planning/utils/kalman_filter.hpp"
 #include <stdexcept>
 
 // The constructor acts as a switch to call the correct initialization function.

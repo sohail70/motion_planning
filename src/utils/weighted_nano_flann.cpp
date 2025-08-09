@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/utils/weighted_nano_flann.hpp"
 #include <iostream>
 #include <set>

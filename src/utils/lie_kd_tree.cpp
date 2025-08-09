@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/utils/lie_kd_tree.hpp"
 #include <queue>
 #include <stdexcept>
@@ -106,7 +108,7 @@ void LieSplittingKDTree::knn_search_recursive(LieNode* current, const Eigen::Vec
         return;
     }
 
-    // 1. Add current point to the priority queue
+    // Add current point to the priority queue
     // We need the geometric path length for the Ball-Box theorem.
 
     // Trajectory traj_geom = space->steer(query, current->point);
@@ -122,14 +124,14 @@ void LieSplittingKDTree::knn_search_recursive(LieNode* current, const Eigen::Vec
     }
 
 
-    // 2. Decide which subtree to explore first
+    // Decide which subtree to explore first
     double side = query.dot(current->split_normal) - current->split_value;
     LieNode* near_child = (side < 0) ? current->left : current->right;
     LieNode* far_child = (side < 0) ? current->right : current->left;
 
     knn_search_recursive(near_child, query, k, pq);
 
-    // 3. Check if the other subtree needs to be explored
+    // Check if the other subtree needs to be explored
     double radius = (pq.size() == k) ? std::sqrt(pq.top().first) : std::numeric_limits<double>::infinity();
     
     // This is the crucial pruning step from the paper 
@@ -140,7 +142,7 @@ void LieSplittingKDTree::knn_search_recursive(LieNode* current, const Eigen::Vec
 
 
 /**
- * @brief Gets the privileged directions for a Dubins car at a given state.
+ * Gets the privileged directions for a Dubins car at a given state.
  * These are the local, configuration-dependent axes of motion.
  */
 void LieSplittingKDTree::getPrivilegedAxes(const Eigen::VectorXd& state, std::vector<Eigen::VectorXd>& axes) const {
@@ -161,7 +163,7 @@ void LieSplittingKDTree::getPrivilegedAxes(const Eigen::VectorXd& state, std::ve
 }
 
 /**
- * @brief Implements the Lie Splitting Strategy.
+ * Implements the Lie Splitting Strategy.
  * Selects a splitting normal with frequency proportional to its weight. 
  */
 Eigen::VectorXd LieSplittingKDTree::getSplitNormal(int depth, const Eigen::VectorXd& point) const {
@@ -184,7 +186,7 @@ Eigen::VectorXd LieSplittingKDTree::getSplitNormal(int depth, const Eigen::Vecto
 }
 
 /**
- * @brief Checks intersection using the "Outer Box Bound" method. 
+ * Checks intersection using the "Outer Box Bound" method. 
  * Approximates the sub-Riemannian ball with a tight bounding box and checks
  * if that box intersects the given hyperplane. 
  */
@@ -247,7 +249,7 @@ void LieSplittingKDTree::radius_search_recursive(LieNode* current, const Eigen::
         return;
     }
 
-    // 1. Check if the current node is within the radius
+    // Check if the current node is within the radius
     // NOTE: We use the base DubinsStateSpace to get the pure geometric distance,
     // which corresponds to the radius 'r' of the sub-Riemannian ball B(p,r).
 
@@ -257,15 +259,15 @@ void LieSplittingKDTree::radius_search_recursive(LieNode* current, const Eigen::
         results.push_back(current->index);
     }
 
-    // 2. Determine which subtree to search first
+    // Determine which subtree to search first
     double side = query.dot(current->split_normal) - current->split_value;
     LieNode* near_child = (side < 0) ? current->left : current->right;
     LieNode* far_child = (side < 0) ? current->right : current->left;
 
-    // 3. Recurse into the "near" side
+    // Recurse into the "near" side
     radius_search_recursive(near_child, query, radius, results);
 
-    // 4. Prune the "far" side using the paper's core concept 
+    // Prune the "far" side using the paper's core concept 
     if (ballHyperplaneIntersection(query, radius, current->point, current->split_normal)) {
         radius_search_recursive(far_child, query, radius, results);
     }
@@ -293,7 +295,7 @@ void LieSplittingKDTree::radius_search_dual_recursive(LieNode* current, const Ei
         return;
     }
 
-    // 1. Check the current node against both radii
+    // Check the current node against both radii
 
     // Trajectory traj = space_->steer(query, current->point);
     Trajectory traj = space_->steer(current->point, query);
@@ -305,14 +307,14 @@ void LieSplittingKDTree::radius_search_dual_recursive(LieNode* current, const Ei
         }
     }
 
-    // 2. Branching logic is identical to single radius search
+    // Branching logic is identical to single radius search
     double side = query.dot(current->split_normal) - current->split_value;
     LieNode* near_child = (side < 0) ? current->left : current->right;
     LieNode* far_child = (side < 0) ? current->right : current->left;
     
     radius_search_dual_recursive(near_child, query, r1, r2, results1, results2);
 
-    // 3. Pruning is done using the LARGER radius (r1)
+    // Pruning is done using the LARGER radius (r1)
     if (ballHyperplaneIntersection(query, r1, current->point, current->split_normal)) {
         radius_search_dual_recursive(far_child, query, r1, r2, results1, results2);
     }

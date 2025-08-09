@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/ds/bit_node.hpp"
 
 BITNode::BITNode(std::shared_ptr<State> state, int index)
@@ -57,7 +59,7 @@ void BITNode::disconnectFromGraph() {
     this->in_queue_ = false;
     this->cost_ = INFINITY;
     
-    // Fix: Remove .lock() since children_ stores shared_ptr directly
+    // Remove .lock() since children_ stores shared_ptr directly
     for (auto& child : children_) {
         child->parent_.reset(); // Access directly via shared_ptr
     }

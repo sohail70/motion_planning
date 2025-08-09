@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/state_space/rdt_statespace.hpp"
 #include <stdexcept>
 #include <random>
@@ -174,13 +176,13 @@ RDTStateSpace::RDTStateSpace(int euclidean_dimension, double min_velocity, doubl
 //     // --- The Constant Velocity Model Logic ---
 //     // ====================================================================================
 
-//     // 1. Calculate the time it would *actually* take our robot to travel this distance
+//     // Calculate the time it would *actually* take our robot to travel this distance
 //     //    at its defined, constant velocity.
 //     double time_duration_at_const_vel = (robot_velocity_ > 1e-6)
 //                                       ? (spatial_distance / robot_velocity_)
 //                                       : std::numeric_limits<double>::infinity();
 
-//     // 2. The connection is kinodynamically valid ONLY IF the robot can make it in time.
+//     // The connection is kinodynamically valid ONLY IF the robot can make it in time.
 //     //    The time required at its constant speed must be less than or equal to the
 //     //    time allotted by the difference between the sampled nodes. This allows the robot
 //     //    to "wait" at a node if it arrives early, but it cannot go faster than its defined speed.
@@ -240,10 +242,10 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
     // =======================================================================
     // --- The Variable Velocity Model Logic ---
     // =======================================================================
-    // 1. Calculate the speed *required* to connect the two states in the allotted time.
+    // Calculate the speed *required* to connect the two states in the allotted time.
     double required_speed = spatial_distance / time_duration;
 
-    // 2. The connection is valid ONLY IF this required speed is within the robot's
+    // The connection is valid ONLY IF this required speed is within the robot's
     //    physical capabilities.
     if (required_speed > max_velocity_ + 1e-6 || required_speed < min_velocity_ - 1e-6) {
         // The robot is either too slow or would have to move too fast.
@@ -265,7 +267,7 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
     traj.path_points.push_back(from);
     traj.path_points.push_back(to);
 
-    // // --- NEW: Add the single analytical segment for the collision checker ---
+    // // --- Add the single analytical segment for the collision checker ---
     // traj.analytical_segments.clear();
     // traj.analytical_segments.push_back({
     //     .type         = SegmentType::LINE,
@@ -357,14 +359,14 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
 //     const double alpha = 1.0; // Weight for time duration
 //     const double beta = 0.1;  // Weight for control effort (velocity squared). Tune this!
 
-//     // 1. Calculate the unconstrained optimal time
+//     // Calculate the unconstrained optimal time
 //     double t_unconstrained = d * std::sqrt(beta / alpha);
 
-//     // 2. Define the feasible time interval based on physical velocity limits
+//     // Define the feasible time interval based on physical velocity limits
 //     double t_min_feasible = d / max_velocity_;
 //     double t_max_feasible = (min_velocity_ > 1e-6) ? (d / min_velocity_) : std::numeric_limits<double>::infinity();
 
-//     // 3. Clamp the optimal time to the feasible range
+//     // Clamp the optimal time to the feasible range
 //     double t_optimal = std::clamp(t_unconstrained, t_min_feasible, t_max_feasible);
 
 //     if (std::isinf(t_optimal)) {

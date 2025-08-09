@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/ds/rrtx_node.hpp"
 
 RRTxNode::RRTxNode(std::shared_ptr<State> state, int index)
@@ -132,7 +134,7 @@ const Trajectory& RRTxNode::getParentTrajectory() const {
 
 
 void RRTxNode::disconnectFromGraph() {
-    // 1. Clear parent relationship
+    // Clear parent relationship
     if (parent_ != nullptr) {
         auto& parent_children = parent_->children_;
         parent_children.erase(
@@ -142,7 +144,7 @@ void RRTxNode::disconnectFromGraph() {
         parent_ = nullptr;
     }
 
-    // 2. Clear successor relationships
+    // Clear successor relationships
     for (RRTxNode* child : children_) {
         if (child && child->parent_ == this) {
             child->parent_ = nullptr;
@@ -150,7 +152,7 @@ void RRTxNode::disconnectFromGraph() {
     }
     children_.clear();
 
-    // 3. Clear edge relationships (both directions)
+    // Clear edge relationships (both directions)
     for (auto& [neighbor, _] : outgoing_edges_) {
         if (neighbor) {
             neighbor->incoming_edges_.erase(this);

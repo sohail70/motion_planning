@@ -9,10 +9,10 @@ from matplotlib.ticker import AutoMinorLocator
 import seaborn as sns
 
 # --- Configuration ---
-FMTX_DIR = "../build/new/new_names/full_fmtx" # USER: Verify this path
-RRTX_DIR = "../build/new/new_names/full_rrtx" # USER: Verify this path
-OUTPUT_FIGURES_DIR = "./figures_summary_all_combinations" # Output directory for plots
-DEFAULT_METRIC = 'median_duration' # Metric to use for most plots
+FMTX_DIR = "../build/new/new_names/full_fmtx"
+RRTX_DIR = "../build/new/new_names/full_rrtx" 
+OUTPUT_FIGURES_DIR = "./figures_summary_all_combinations" 
+DEFAULT_METRIC = 'median_duration'
 
 # --- Helper Functions ---
 def parse_filename_params(filename):
@@ -169,7 +169,7 @@ def plot_performance_scatter(summary_df_pivot, output_dir, metric_to_plot=DEFAUL
         data=df_for_scatter, x='RRTx', y='FMTx',
         hue=hue_col, size=size_col,
         palette='viridis', sizes=(30, 200), 
-        alpha=0.8, style='obstacles' # Use obstacles for style if it's in index
+        alpha=0.8, style='obstacles' 
     )
     
     # Determine plot limits for y=x line
@@ -288,7 +288,7 @@ def main():
     print(f"\nUnique values found: Samples={unique_samples}, C={unique_C_values}, Obstacles={unique_obstacle_counts}")
     print(f"Generating plots using metric: {DEFAULT_METRIC}")
 
-    # 1. Parameter Sensitivity Plots (for all combinations)
+    # Parameter Sensitivity Plots (for all combinations)
     print("\n--- Generating Parameter Sensitivity Plots ---")
     # Varying C
     for s_val in unique_samples:
@@ -309,7 +309,7 @@ def main():
                                        varying_param_name='samples', x_tick_values=unique_samples,
                                        output_dir=OUTPUT_FIGURES_DIR, metric_to_plot=DEFAULT_METRIC)
 
-    # 2. Overall Performance Scatter Plot
+    # Overall Performance Scatter Plot
     print("\n--- Generating Overall Performance Scatter Plot ---")
     summary_df_pivot = summary_df.pivot_table(
         index=['samples', 'C', 'obstacles'], columns='planner', values=DEFAULT_METRIC
@@ -323,7 +323,7 @@ def main():
     else:
         print("Not enough data for scatter plot after pivoting and cleaning NaNs.")
 
-    # 3. Speedup Bar Charts (for all combinations)
+    # Speedup Bar Charts (for all combinations)
     print("\n--- Generating Speedup Bar Charts ---")
     # Use summary_df_pivot_cleaned for speedup plots too
     if not summary_df_pivot_cleaned.empty:

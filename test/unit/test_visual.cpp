@@ -1,19 +1,17 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/utils/rviz_visualization.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 class FMTNode : public rclcpp::Node {
 public:
-    // Constructor doesn't use shared_from_this() anymore
     FMTNode() : Node("fmtx_visualizer") {
-        // We will set the visualizer after the node is fully constructed
     }
 
-    // Set the visualizer after construction (ensure node is shared_ptr)
     void initializeVisualizer() {
         visualizer_ = std::make_shared<RVizVisualization>(shared_from_this());
     }
 
-    // Some method to trigger visualization (maybe after planning)
     void triggerVisualization() {
         std::vector<Eigen::VectorXd> nodes;
         
@@ -48,7 +46,7 @@ int main(int argc, char **argv) {
 
     // Now initialize the visualizer
     node->initializeVisualizer();
-    rclcpp::Rate rate(1);  // Control the loop rate (e.g., 1 Hz)
+    rclcpp::Rate rate(1);  // Control the loop rate
     
     while (rclcpp::ok()) {
         node->triggerVisualization();

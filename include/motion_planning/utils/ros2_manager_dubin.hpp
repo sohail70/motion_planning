@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #pragma once
 
 #include "rclcpp/rclcpp.hpp"
@@ -14,9 +16,6 @@
 
 class DubinsROS2Manager : public rclcpp::Node {
 public:
-    /**
-     * @brief Constructor for full replanning simulations.
-     */
     DubinsROS2Manager(
         std::shared_ptr<ObstacleChecker> obstacle_checker,
         std::shared_ptr<RVizVisualization> visualizer,
@@ -51,9 +50,7 @@ public:
         }
     }
 
-    /**
-     * @brief Simplified constructor for basic visualization tests.
-     */
+
     DubinsROS2Manager(std::shared_ptr<RVizVisualization> visualizer)
         : Node("dubins_ros2_manager", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)})),
           obstacle_checker_(nullptr), // No obstacle checker in simple tests
@@ -183,7 +180,7 @@ private:
         std::vector<Eigen::VectorXd> cylinder_positions;
         std::vector<double> cylinder_radii;
         
-        // ✅ Create the specific data structure your visualizeCube function needs
+        // Create the specific data structure your visualizeCube function needs
         std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_data_for_viz;
 
         std::vector<Eigen::Vector2d> dynamic_obstacle_positions;
@@ -197,7 +194,7 @@ private:
                 cylinder_positions.push_back(pos);
                 cylinder_radii.push_back(obstacle.dimensions.radius);
             } else if (obstacle.type == Obstacle::BOX) {
-                // ✅ Populate the vector of tuples directly
+                // Populate the vector of tuples directly
                 box_data_for_viz.emplace_back(
                     obstacle.position,
                     obstacle.dimensions.width,
@@ -217,7 +214,7 @@ private:
             visualizer_->visualizeCylinder(cylinder_positions, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "cylinder_obstacles");
         }
         if (!box_data_for_viz.empty()) {
-            // ✅ Call your actual visualizeCube function with the correct data structure
+            //  Call your actual visualizeCube function with the correct data structure
             visualizer_->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
         }
         if (!dynamic_obstacle_positions.empty()) {
@@ -275,14 +272,12 @@ private:
         }
 
         current_interpolated_state_ = new_state;
-        // =================================================================
-        // =========== CORRECTED: COLLISION COUNTING LOGIC =================
-        // =================================================================
+        // COLLISION COUNTING LOGIC
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
         if (gazebo_checker) {
             Eigen::Vector2d current_pos = new_state.head<2>();
             
-            // --- FIX: Get the yaw from the Dubins state vector (x, y, theta, t) ---
+            // --- Get the yaw from the Dubins state vector (x, y, theta, t) ---
             double current_yaw = new_state(2);
             
             // Call the single, unified collision check function
@@ -294,7 +289,6 @@ private:
             }
             is_in_collision_state_ = is_colliding_now;
         }
-        // =================================================================
 
 
 

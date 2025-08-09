@@ -1,17 +1,15 @@
+// Copyright 2025 Soheil E.nia
+
 #include <iostream>
 #include <memory>
 #include <vector>
 #include <random>
 #include <chrono>
-
 #include <Eigen/Dense>
 #include <rclcpp/rclcpp.hpp>
-
-// Your project's include paths
 #include "motion_planning/utils/weighted_nano_flann.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
 
-// Helper function to generate a single random 4D point within given bounds.
 Eigen::VectorXd sample_random_point(std::mt19937& gen,
                                     const Eigen::VectorXd& lower_bounds,
                                     const Eigen::VectorXd& upper_bounds)
@@ -25,14 +23,12 @@ Eigen::VectorXd sample_random_point(std::mt19937& gen,
 }
 
 int main(int argc, char** argv) {
-    // 1. --- ROS2 and Visualization Setup ---
     rclcpp::init(argc, argv);
     auto vis_node = std::make_shared<rclcpp::Node>("nanoflann_visualizer",
         rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
     RCLCPP_INFO(vis_node->get_logger(), "Visualization node created.");
 
-    // 2. --- Parameters ---
     const int dimension = 4;
     const int num_sample_points = 5000;
     const double search_radius = 15.0;
@@ -47,15 +43,12 @@ int main(int argc, char** argv) {
     std::vector<int> wrap_dims = {2};
     std::vector<double> wrap_periods = {2.0 * M_PI};
 
-    // 3. --- KD-Tree Initialization ---
     auto kdtree = std::make_unique<WeightedNanoFlann>(dimension, weights, wrap_dims, wrap_periods);
     RCLCPP_INFO(vis_node->get_logger(), "WeightedNanoFlann KD-Tree initialized.");
 
-    // 4. --- Sample Points and Build Tree ---
     std::vector<Eigen::VectorXd> sampled_points;
     sampled_points.reserve(num_sample_points);
     
-    // std::mt19937 generator(std::chrono::system_clock::now().time_since_epoch().count());
     std::mt19937 generator(42);
 
     RCLCPP_INFO(vis_node->get_logger(), "Generating %d random samples with fixed seed...", num_sample_points);
@@ -66,7 +59,6 @@ int main(int argc, char** argv) {
     kdtree->buildTree();
     RCLCPP_INFO(vis_node->get_logger(), "KD-Tree built with %zu points.", kdtree->size());
 
-    // 5. --- Define Query and Perform Radius Search ---
     Eigen::VectorXd query_point(dimension);
     query_point << 5.0, 5.0, M_PI / 2.0, 20.0;
 
@@ -74,7 +66,6 @@ int main(int argc, char** argv) {
     std::vector<size_t> near_indices = kdtree->radiusSearch(query_point, search_radius);
     RCLCPP_INFO(vis_node->get_logger(), "Found %zu neighbors.", near_indices.size());
 
-    // 6. --- Prepare Data for Visualization (using 2D projections) ---
     std::vector<Eigen::VectorXd> all_points_vis;
     all_points_vis.reserve(sampled_points.size());
     for (const auto& p : sampled_points) {
@@ -90,7 +81,6 @@ int main(int argc, char** argv) {
     std::vector<Eigen::VectorXd> query_point_vis;
     query_point_vis.push_back(query_point.head<2>());
 
-    // 7. --- Visualization Loop ---
     auto vis_timer = vis_node->create_wall_timer(
         std::chrono::seconds(1),
         [&]() {

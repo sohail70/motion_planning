@@ -1,3 +1,6 @@
+// Copyright 2025 Soheil E.nia
+
+
 /*
     Since The robot move from child node to parent node I use steer the same way! steer(child,parent) but the time_parent > time_child
     also for combining the trajectoris in backward case i had to cobine them from the end of the execution trajectory till the start!
@@ -5,7 +8,7 @@
 
 
 
-//////////////////////////////////////////VALID WITH RRTX data///////////////////////
+// ////////////////////////////////////////VALID WITH RRTX data///////////////////////
 // #include <iostream>
 // #include <memory>
 // #include <vector>
@@ -17,28 +20,6 @@
 // #include "motion_planning/utils/rviz_visualization.hpp"
 // #include "motion_planning/state_space/thruster_statespace.hpp"
 
-// /**
-//  * @brief This program demonstrates and tests the ThrusterSteerStateSpace for 5D (2D pos/vel/time) and 7D (3D pos/vel/time).
-//  * It performs the following steps:
-//  * 1. Initializes a ROS2 node for visualization.
-//  * 2. Creates an instance of the ThrusterSteerStateSpace.
-//  * 3. Defines a start and an end state (position, velocity, time).
-//  * 4. Calls the `steer` function to compute the optimal kinodynamic trajectory.
-//  * 5. Visualizes the resulting path in RViz as a series of short line segments.
-//  *
-//  * To Compile:
-//  * You will need to link against rclcpp, visualization_msgs, and your other libraries.
-//  * Example in CMakeLists.txt (assuming similar structure to your Dubins test):
-//  *
-//  * find_package(rclcpp REQUIRED)
-//  * find_package(visualization_msgs REQUIRED)
-//  * ...
-//  * add_executable(test_thruster_steer test_thruster_steer.cpp ...)
-//  * ament_target_dependencies(test_thruster_steer rclcpp visualization_msgs ...)
-//  * target_link_libraries(test_thruster_steer ${your_motion_planning_library})
-//  */
-
-// // Helper function to print vectors for debugging
 // static void printVec(const Eigen::VectorXd& v) {
 //     std::cout << "[ ";
 //     for (int i = 0; i < v.size(); ++i) {
@@ -47,14 +28,12 @@
 //     std::cout << "]";
 // }
 
-// // Helper to extract spatial position (x,y,z) from full state vector [x,y,z,vx,vy,vz,t] or [x,y,vx,vy,t]
 // Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state, int D_spatial_dim) {
 //     return full_state.head(D_spatial_dim);
 // }
 
 
 // int main(int argc, char** argv) {
-//     // --- 1. Initialization ---
 //     rclcpp::init(argc, argv);
 //     auto node = std::make_shared<rclcpp::Node>("thruster_steer_test_node");
 //     auto visualizer = std::make_shared<RVizVisualization>(node);
@@ -78,7 +57,6 @@
 //     int D_spatial = (DIM - 1) / 2; // e.g., 3 for 3D position/velocity
 
 
-//     // Extract spatial positions and velocities
 //     Eigen::VectorXd robot_pos = robot_state.head(D_spatial);
 //     Eigen::VectorXd robot_vel = robot_state.segment(D_spatial, D_spatial);
 //     double robot_time = robot_state[DIM - 1];
@@ -91,7 +69,6 @@
 
 //     Eigen::VectorXd A(D_spatial);
 //     A << .7978204924930904,.5206223536819761;
-//     // // --- 2. Create the Thruster State Space ---
 //     std::shared_ptr<ThrusterSteerStateSpace> thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
 
 //     ThrusterSteerStateSpace::NDSteeringResult nd_result = thruster_ss->steeringND(robot_pos, goal_pos, robot_vel, goal_vel, robot_time, goal_time, A);
@@ -107,7 +84,6 @@
     
 
 //     double discretization_step = 0.01; // meters (or unit of position distance for spatial dimensions)
-//     // Calculate fine-grained trajectory
 //     auto [fine_Time, fine_A, fine_V, fine_X] = thruster_ss->fineGrain(nd_result.Time, nd_result.A, nd_result.V, nd_result.X, discretization_step);
 //     std::cout<<"------------X------------- \n";
 //     std::cout<<fine_X<<"\n";
@@ -122,7 +98,6 @@
 //     std::cout << "Attempting to steer from: "; printVec(robot_state); std::cout << "\n";
 //     std::cout << "To: "; printVec(goal_state); std::cout << "\n";
 
-//     // // --- 3. Call the steer function ---
 //     auto start_time_steer = std::chrono::high_resolution_clock::now();
 //     Trajectory traj = thruster_ss->steer(robot_state,goal_state);
 //     auto end_time_steer = std::chrono::high_resolution_clock::now();
@@ -130,7 +105,6 @@
 //     std::cout << "Time taken for the steer function: " << duration_steer.count() << " microseconds\n";
 
 
-//     // --- 4. Visualize the Trajectory ---
 //     if (traj.is_valid) {
 //         std::cout<<traj.execution_data.X<<" \n ----- \n  "<<traj.execution_data.Time<<"\n";
 //         std::cout << "SUCCESS: Found a valid trajectory with cost (time elapsed): " << traj.cost << "s\n";
@@ -147,7 +121,6 @@
         
 //         std::cout << "Visualizing trajectory with " << path_segments.size() << " segments in RViz...\n";
         
-//         // Use a loop to keep publishing the marker
 //         rclcpp::WallRate loop_rate(1); // Publish once per second
 //         while(rclcpp::ok()) {
 //             visualizer->visualizeEdges(path_segments, "map", "0.0,1.0,0.0", "thruster_path"); // Green line
@@ -157,10 +130,6 @@
 
 //     } else {
 //         std::cout << "FAILURE: Could not find a valid trajectory between the states.\n";
-//         std::cout << "This could be due to: \n";
-//         std::cout << " - Insufficient or excessive time allocated (t_end - t_start).\n";
-//         std::cout << " - Unreachable target velocity/position given max acceleration.\n";
-//         std::cout << " - Numerical precision issues in the 1D solver.\n";
 //     }
 
 //     rclcpp::shutdown();
@@ -172,7 +141,7 @@
 
 
 
-////////////////////////////////////////simple 2 state for 5D and 7D///////////////////////
+// //////////////////////////////////////simple 2 state for 5D and 7D///////////////////////
 // #include <iostream>
 // #include <memory>
 // #include <vector>
@@ -184,28 +153,6 @@
 // #include "motion_planning/utils/rviz_visualization.hpp"
 // #include "motion_planning/state_space/thruster_statespace.hpp"
 
-// /**
-//  * @brief This program demonstrates and tests the ThrusterSteerStateSpace for 5D (2D pos/vel/time) and 7D (3D pos/vel/time).
-//  * It performs the following steps:
-//  * 1. Initializes a ROS2 node for visualization.
-//  * 2. Creates an instance of the ThrusterSteerStateSpace.
-//  * 3. Defines a start and an end state (position, velocity, time).
-//  * 4. Calls the `steer` function to compute the optimal kinodynamic trajectory.
-//  * 5. Visualizes the resulting path in RViz as a series of short line segments.
-//  *
-//  * To Compile:
-//  * You will need to link against rclcpp, visualization_msgs, and your other libraries.
-//  * Example in CMakeLists.txt (assuming similar structure to your Dubins test):
-//  *
-//  * find_package(rclcpp REQUIRED)
-//  * find_package(visualization_msgs REQUIRED)
-//  * ...
-//  * add_executable(test_thruster_steer test_thruster_steer.cpp ...)
-//  * ament_target_dependencies(test_thruster_steer rclcpp visualization_msgs ...)
-//  * target_link_libraries(test_thruster_steer ${your_motion_planning_library})
-//  */
-
-// // Helper function to print vectors for debugging
 // static void printVec(const Eigen::VectorXd& v) {
 //     std::cout << "[ ";
 //     for (int i = 0; i < v.size(); ++i) {
@@ -214,21 +161,18 @@
 //     std::cout << "]";
 // }
 
-// // Helper to extract spatial position (x,y,z) from full state vector [x,y,z,vx,vy,vz,t] or [x,y,vx,vy,t]
 // Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state, int D_spatial_dim) {
 //     return full_state.head(D_spatial_dim);
 // }
 
 
 // int main(int argc, char** argv) {
-//     // --- 1. Initialization ---
 //     rclcpp::init(argc, argv);
 //     auto node = std::make_shared<rclcpp::Node>("thruster_steer_test_node");
 //     auto visualizer = std::make_shared<RVizVisualization>(node);
     
 //     std::cout << "--- ThrusterSteerStateSpace Test ---\n";
 
-//     // --- Configuration for 5D (2D position/velocity/time) ---
 //     // Uncomment this block to test 5D
 //     const int DIM = 5; // [x, y, vx, vy, t]
 //     const double MAX_ACCEL = 5.0; // m/s^2 per dimension
@@ -258,13 +202,11 @@
 //     // int D_SPATIAL_DIM = 3;
 
 
-//     // --- 2. Create the Thruster State Space ---
 //     std::shared_ptr<StateSpace> thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
 
 //     std::cout << "Attempting to steer from: "; printVec(end_state); std::cout << "\n";
 //     std::cout << "To: "; printVec(start_state); std::cout << "\n";
 
-//     // --- 3. Call the steer function ---
 //     auto start_time_steer = std::chrono::high_resolution_clock::now();
 //     Trajectory traj = thruster_ss->steer(end_state, start_state);
 //     auto end_time_steer = std::chrono::high_resolution_clock::now();
@@ -272,16 +214,13 @@
 //     std::cout << "Time taken for the steer function: " << duration_steer.count() << " microseconds\n";
 
 
-//     // --- 4. Visualize the Trajectory ---
 //     if (traj.is_valid) {
 //         std::cout<<traj.execution_data.X<<" \n ----- \n  "<<traj.execution_data.Time<<"\n";
 //         std::cout << "SUCCESS: Found a valid trajectory with cost (time elapsed): " << traj.cost << "s\n";
         
-//         // Convert the list of waypoints into a list of line segments for visualization
 //         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> path_segments;
 //         if (traj.path_points.size() > 1) {
 //             for (size_t i = 0; i < traj.path_points.size() - 1; ++i) {
-//                 // Extract only the spatial (x,y,z) part for visualization
 //                 path_segments.emplace_back(getSpatialPosition(traj.path_points[i], D_SPATIAL_DIM),
 //                                            getSpatialPosition(traj.path_points[i+1], D_SPATIAL_DIM));
 //             }
@@ -289,8 +228,7 @@
         
 //         std::cout << "Visualizing trajectory with " << path_segments.size() << " segments in RViz...\n";
         
-//         // Use a loop to keep publishing the marker
-//         rclcpp::WallRate loop_rate(1); // Publish once per second
+//         rclcpp::WallRate loop_rate(1);
 //         while(rclcpp::ok()) {
 //             visualizer->visualizeEdges(path_segments, "map", "0.0,1.0,0.0", "thruster_path"); // Green line
 //             rclcpp::spin_some(node);
@@ -299,10 +237,6 @@
 
 //     } else {
 //         std::cout << "FAILURE: Could not find a valid trajectory between the states.\n";
-//         std::cout << "This could be due to: \n";
-//         std::cout << " - Insufficient or excessive time allocated (t_end - t_start).\n";
-//         std::cout << " - Unreachable target velocity/position given max acceleration.\n";
-//         std::cout << " - Numerical precision issues in the 1D solver.\n";
 //     }
 
 //     rclcpp::shutdown();
@@ -319,13 +253,11 @@
 // #include <Eigen/Dense>
 // #include <cmath>
 // #include <tuple>
-
 // #include "rclcpp/rclcpp.hpp"
 // #include "motion_planning/utils/rviz_visualization.hpp"
 // #include "motion_planning/state_space/thruster_statespace.hpp"
 
 
-// // Helper function to print vectors for debugging
 // static void printVec(const Eigen::VectorXd& v) {
 //     std::cout << "[ ";
 //     for (int i = 0; i < v.size(); ++i) {
@@ -334,7 +266,6 @@
 //     std::cout << "]";
 // }
 
-// // Helper to extract spatial position (x,y,z) from full state vector [x,y,z,vx,vy,vz,t]
 // Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state, int D_spatial_dim) {
 //     return full_state.head(D_spatial_dim);
 // }
@@ -351,8 +282,7 @@
 //     const double MAX_ACCEL = 3.0; // m/s^2 per dimension
 //     int D_SPATIAL_DIM = 3;
 
-//     // Define the states in forward order for clarity (A to D)
-//     // EASIER STATES: Smoother velocity transitions, larger time intervals, positive velocities.
+
 
 //     Eigen::VectorXd state_A(DIM); // Robot's Initial Start, Planner's Goal
 //     state_A << 0.0, 0.0, 0.0,    // x, y, z
@@ -375,22 +305,19 @@
 //                60.0;             // t_D = 60 (delta_t C->D = 20s)
 
 
-//     // --- 2. Create the Thruster State Space ---
 //     std::shared_ptr<StateSpace> thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
 
 //     std::vector<Eigen::VectorXd> segments_to_plan;
-//     // Order for backward planning: D -> C -> B -> A
 //     segments_to_plan.push_back(state_D); 
 //     segments_to_plan.push_back(state_C); 
 //     segments_to_plan.push_back(state_B); 
 //     segments_to_plan.push_back(state_A); 
 
 //     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> all_path_segments_viz; 
-//     std::vector<Eigen::VectorXd> waypoint_nodes_viz; // NEW: To store the spatial positions of waypoints A, B, C, D
+//     std::vector<Eigen::VectorXd> waypoint_nodes_viz;
 
 //     double total_cost = 0.0;
 
-//     // Store the spatial positions of the defined waypoints A, B, C, D
 //     waypoint_nodes_viz.push_back(getSpatialPosition(state_A, D_SPATIAL_DIM));
 //     waypoint_nodes_viz.push_back(getSpatialPosition(state_B, D_SPATIAL_DIM));
 //     waypoint_nodes_viz.push_back(getSpatialPosition(state_C, D_SPATIAL_DIM));
@@ -413,7 +340,6 @@
 
 //         if (traj.is_valid) {
 //             std::cout << "  SUCCESS: Segment cost (time elapsed): " << traj.cost << "s\n";
-//             // --- ADD THESE DEBUG PRINTS FOR THE TRAJECTORY POINTS ---
 //             if (!traj.path_points.empty()) {
 //                 std::cout << "    DEBUG TRAJ: First point:  "; printVec(traj.path_points[0]); std::cout << "\n";
 //                 std::cout << "    DEBUG TRAJ: Second point: "; printVec(traj.path_points[1]); std::cout << "\n";
@@ -431,12 +357,9 @@
 //         } else {
 //             std::cout << "  FAILURE: Could not find a valid trajectory for this segment.\n";
 //             std::cout << "  This segment's path will not be visualized.\n";
-//             // If any segment fails, the overall path is not fully planned.
-//             // For this test, we'll continue for demonstration.
 //         }
 //     }
 
-//     std::cout << "\n--- Overall Test Results ---\n";
 //     if (!all_path_segments_viz.empty()) {
 //         std::cout << "Total planned path segments for visualization: " << all_path_segments_viz.size() << "\n";
 //         std::cout << "Total accumulated cost (time elapsed): " << total_cost << "s\n";
@@ -445,7 +368,7 @@
 //         rclcpp::WallRate loop_rate(1); 
 //         while(rclcpp::ok()) {
 //             visualizer->visualizeEdges(all_path_segments_viz, "map", "0.0,1.0,0.0", "full_thruster_path"); 
-//             visualizer->visualizeNodes(waypoint_nodes_viz, "map", {1.0f, 0.0f, 0.0f}, "waypoint_nodes"); // NEW: Visualize waypoints as red nodes
+//             visualizer->visualizeNodes(waypoint_nodes_viz, "map", {1.0f, 0.0f, 0.0f}, "waypoint_nodes"); // Visualize waypoints as red nodes
 //             rclcpp::spin_some(node);
 //             loop_rate.sleep();
 //         }
@@ -473,7 +396,6 @@
 // #include "motion_planning/utils/rviz_visualization.hpp"
 // #include "motion_planning/state_space/thruster_statespace.hpp"
 // #include "motion_planning/utils/ros2_manager_thruster.hpp"
-// // Helper function to print vectors for debugging
 // static void printVec(const Eigen::VectorXd& v) {
 //     std::cout << "[ ";
 //     for (int i = 0; i < v.size(); ++i) {
@@ -482,8 +404,6 @@
 //     std::cout << "]";
 // }
 
-// // Helper to extract spatial position (x,y,z) from full state vector [x,y,z,vx,vy,vz,t]
-// // Adapts to 2D spatial for 5D case, uses .head(2)
 // Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state, int D_spatial_dim) {
 //     return full_state.head(D_spatial_dim);
 // }
@@ -500,9 +420,7 @@
 //     const double MAX_ACCEL = 2.0; // m/s^2 per dimension (Adjusted for 10-point path)
 //     int D_SPATIAL_DIM = 2; // For [x, y]
 
-//     // Define 10 states (P0 to P9) in forward order for clarity
-//     // Each segment is 10 seconds long. Total path ~90 seconds.
-//     // States: [x, y, vx, vy, t]
+
 
 //     Eigen::VectorXd P0(DIM); // Start
 //     P0 << 0.0, 0.0, 0.0, 0.0, 0.0; // (0,0), rest, t=0
@@ -535,11 +453,9 @@
 //     P9 << 65.0, 50.0, 0.0, 0.0, 90.0; // Final position, rest, t=90
 
 
-//     // --- 2. Create the Thruster State Space ---
 //     std::shared_ptr<StateSpace> thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
 
 //     std::vector<Eigen::VectorXd> segments_to_plan;
-//     // Order for backward planning: P9 -> P8 -> ... -> P0
 //     segments_to_plan.push_back(P9); 
 //     segments_to_plan.push_back(P8); 
 //     segments_to_plan.push_back(P7); 
@@ -552,11 +468,10 @@
 //     segments_to_plan.push_back(P0); 
 
 //     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> all_path_segments_viz; 
-//     std::vector<Eigen::VectorXd> waypoint_nodes_viz; // To store spatial positions of P0 to P9
+//     std::vector<Eigen::VectorXd> waypoint_nodes_viz;
 
 //     double total_cost = 0.0;
 
-//     // Store the spatial positions of the defined waypoints
 //     waypoint_nodes_viz.push_back(getSpatialPosition(P0, D_SPATIAL_DIM));
 //     waypoint_nodes_viz.push_back(getSpatialPosition(P1, D_SPATIAL_DIM));
 //     waypoint_nodes_viz.push_back(getSpatialPosition(P2, D_SPATIAL_DIM));
@@ -585,7 +500,6 @@
 
 //         if (traj.is_valid) {
 //             std::cout << "  SUCCESS: Segment cost (time elapsed): " << traj.cost << "s\n";
-//             // Debug prints for trajectory points (optional, can remove for cleaner output)
 //             if (!traj.path_points.empty()) {
 //                 std::cout << "    DEBUG TRAJ: First point:  "; printVec(traj.path_points[0]); std::cout << "\n";
 //                 std::cout << "    DEBUG TRAJ: Second point: "; printVec(traj.path_points[1]); std::cout << "\n";
@@ -606,7 +520,6 @@
 //         }
 //     }
 
-//     std::cout << "\n--- Overall Test Results ---\n";
 //     if (!all_path_segments_viz.empty()) {
 //         std::cout << "Total planned path segments for visualization: " << all_path_segments_viz.size() << "\n";
 //         std::cout << "Total accumulated cost (time elapsed): " << total_cost << "s\n";
@@ -640,10 +553,8 @@
 // #include <limits>
 // #include <Eigen/Dense>
 
-// // Include the header for the class containing steering1D
 // #include "motion_planning/state_space/thruster_statespace.hpp"
 
-// // Define a structure to hold a single test case's parameters
 // struct TestCase1D {
 //     std::string name;
 //     double x_start, x_end;
@@ -653,19 +564,15 @@
 //     bool expect_success;
 // };
 
-// // Function to verify if the trajectory parameters from steering1D are physically correct
 // bool verify_trajectory(const TestCase1D& test, const Eigen::VectorXd& result) {
 //     std::cout << "  [Verification] Running physics simulation with results...\n";
 //     const double epsilon = 1e-4;
 
-//     // Extract results. t1 and t2 are already global times from the function.
 //     double t1 = result[0];
 //     double t2 = result[1];
 //     double a1 = result[2];
 //     double a2 = result[3];
-//     // double v_coast = result[4]; // v_coast is useful but not strictly needed for verification
 
-//     // Calculate time durations for each of the three phases
 //     double dt1 = t1 - test.t_start;
 //     double dt2 = t2 - t1;
 //     double dt3 = test.t_end - t2;
@@ -675,22 +582,18 @@
 //         return false;
 //     }
 
-//     // Phase 1: Constant acceleration a1
 //     double x_at_t1 = test.x_start + test.v_start * dt1 + 0.5 * a1 * dt1 * dt1;
 //     double v_at_t1 = test.v_start + a1 * dt1;
 //     std::cout << "    - After phase 1 (t=" << t1 << "): x=" << x_at_t1 << ", v=" << v_at_t1 << "\n";
 
-//     // Phase 2: Coasting (zero acceleration)
 //     double x_at_t2 = x_at_t1 + v_at_t1 * dt2;
 //     double v_at_t2 = v_at_t1;
 //     std::cout << "    - After phase 2 (t=" << t2 << "): x=" << x_at_t2 << ", v=" << v_at_t2 << "\n";
 
-//     // Phase 3: Constant acceleration a2
 //     double x_final = x_at_t2 + v_at_t2 * dt3 + 0.5 * a2 * dt3 * dt3;
 //     double v_final = v_at_t2 + a2 * dt3;
 //     std::cout << "    - After phase 3 (t=" << test.t_end << "): x=" << x_final << ", v=" << v_final << "\n";
 
-//     // Check if final state matches the desired end state
 //     bool pos_ok = std::abs(x_final - test.x_end) < epsilon;
 //     bool vel_ok = std::abs(v_final - test.v_end) < epsilon;
 
@@ -709,12 +612,9 @@
 
 
 // int main() {
-//     // We need an instance of the class to call its member function.
-//     // The constructor parameters (dimension, max_acceleration) are not directly used by
-//     // the static-like steering1D method, but we need to create the object.
+
 //     auto thruster_ss = std::make_shared<ThrusterSteerStateSpace>(7, 5.0);
 
-//     // --- Define Test Cases ---
 //     std::vector<TestCase1D> tests = {
 //         {
 //             "Simple Accel-Coast-Decel (Rest to Rest)",
@@ -735,7 +635,7 @@
 //         {
 //             "BUGGY CASE: Positive to Negative Velocity",
 //             0.0, 5.0,   // x_start, x_end
-//             2.0, -2.0,  // v_start, v_end (This triggers Case B in your code)
+//             2.0, -2.0,  // v_start, v_end (This triggers Case B)
 //             0.0, 10.0,  // t_start, t_end
 //             1.0,        // a_max
 //             true
@@ -767,7 +667,6 @@
 //     };
 
 //     int passed_count = 0;
-//     // --- Run Tests ---
 //     for (const auto& test : tests) {
 //         std::cout << "\n==========================================================\n";
 //         std::cout << "--- Running Test: " << test.name << " ---\n";
@@ -816,9 +715,7 @@
 //         }
 //     }
 
-//     std::cout << "\n==========================================================\n";
 //     std::cout << "Test suite finished. " << passed_count << " out of " << tests.size() << " tests passed.\n";
-//     std::cout << "==========================================================\n";
 
 //     return 0;
 // }
@@ -838,12 +735,11 @@
 // #include "motion_planning/utils/rviz_visualization.hpp"
 // #include "motion_planning/state_space/thruster_statespace.hpp"
 // #include "motion_planning/ds/edge_info.hpp"
-// #include "motion_planning/utils/params.hpp" // Using the provided Params header
+// #include "motion_planning/utils/params.hpp"
 // #include "motion_planning/utils/ros2_manager_thruster.hpp"
 
 
 
-// // (Keep the helper functions 'printVec' and 'combineExecutionTrajectories' as they were)
 // static void printVec(const Eigen::VectorXd& v) {
 //     std::cout << "[ ";
 //     for (int i = 0; i < v.size(); ++i) {
@@ -894,7 +790,6 @@
 // }
 
 
-// // A SIMPLE, FORWARD-PLANNING MAIN FUNCTION
 // int main(int argc, char** argv) {
 //     rclcpp::init(argc, argv);
     
@@ -903,7 +798,7 @@
 //     const int DIM = 5;
 //     const double MAX_ACCEL = 2.0;
 
-//     // 1. --- Define Waypoints in Forward Time Order ---
+//     // --- Define Waypoints in Forward Time Order ---
 //     std::vector<Eigen::VectorXd> waypoints;
 //     waypoints.push_back((Eigen::VectorXd(DIM) << 0.0, 0.0, 0.0, 0.0, 0.0).finished());    // P0
 //     waypoints.push_back((Eigen::VectorXd(DIM) << 5.0, 2.0, 0.5, 0.2, 10.0).finished());   // P1
@@ -916,7 +811,6 @@
 //     waypoints.push_back((Eigen::VectorXd(DIM) << 60.0, 48.0, 0.5, 0.5, 80.0).finished()); // P8
 //     waypoints.push_back((Eigen::VectorXd(DIM) << 65.0, 50.0, 0.0, 0.0, 90.0).finished()); // P9
 
-//     // 2. --- Plan Trajectory for each Segment (P0->P1, P1->P2, etc.) ---
 //     auto thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
 //     std::vector<ExecutionTrajectory> execution_segments;
 
@@ -929,14 +823,12 @@
 
 //         if (traj.is_valid) {
 //             std::cout << "  SUCCESS: Segment cost: " << traj.cost << "s\n";
-//             // traj.execution_data is already for the forward path (to_state -> from_state)
 //             execution_segments.push_back(traj.execution_data);
 //         } else {
 //             RCLCPP_ERROR(rclcpp::get_logger("main"), "FAILURE: Could not find a trajectory for segment %zu.", i);
 //         }
 //     }
     
-//     // 3. --- Combine Segments and Setup ROS ---
 //     std::cout << "\n--- Combining trajectories for execution ---\n";
 //     ExecutionTrajectory full_execution_path = combineExecutionTrajectories(execution_segments);
 
@@ -958,7 +850,6 @@
 //     ros2_manager->setInitialState(waypoints[0]); // START AT P0
 //     ros2_manager->setPlannedThrusterTrajectory(full_execution_path);
 
-//     // 4. --- Visualize and Run ---
 //     visualizer->visualizeNodes(waypoints, "map", {1.0f, 0.0f, 0.0f}, "waypoint_nodes");
 
 //     rclcpp::executors::MultiThreadedExecutor executor;
@@ -987,12 +878,11 @@
 // #include "motion_planning/utils/rviz_visualization.hpp"
 // #include "motion_planning/state_space/thruster_statespace.hpp"
 // #include "motion_planning/ds/edge_info.hpp"
-// #include "motion_planning/utils/params.hpp" // Using the provided Params header
+// #include "motion_planning/utils/params.hpp" 
 // #include "motion_planning/utils/ros2_manager_thruster.hpp"
 
 
 
-// // (Keep the helper functions 'printVec' and 'combineExecutionTrajectories' as they were)
 // static void printVec(const Eigen::VectorXd& v) {
 //     std::cout << "[ ";
 //     for (int i = 0; i < v.size(); ++i) {
@@ -1045,9 +935,7 @@
 //     }
 //     return final_traj;
 // }
-// // =================================================================================
-// // FINAL AND VERIFIED MAIN FUNCTION FOR BACKWARD-IN-TIME PATH EXECUTION (P9 -> P0)
-// // =================================================================================
+
 // int main(int argc, char** argv) {
 //     rclcpp::init(argc, argv);
     
@@ -1057,7 +945,7 @@
 //     const double MAX_ACCEL = 2.0;
 //     int D_SPATIAL_DIM = 2;
 
-//     // // 1. --- Define Original Waypoints (P0 to P9) ---
+//     // // --- Define Original Waypoints (P0 to P9) ---
 //     // // This represents the result of a planner growing a tree from a goal at t=0
 //     // std::vector<Eigen::VectorXd> original_waypoints;
 //     // original_waypoints.push_back((Eigen::VectorXd(DIM) << 0.0, 0.0, 0.0, 0.0, 0.0).finished());    // P0
@@ -1082,19 +970,13 @@
 //     original_waypoints.push_back((Eigen::VectorXd(DIM) << 55.0, 42.0, -1.0, -0.5, 70.0).finished()); // P7
 //     original_waypoints.push_back((Eigen::VectorXd(DIM) << 60.0, 48.0, -0.5, -0.5, 80.0).finished()); // P8
 //     original_waypoints.push_back((Eigen::VectorXd(DIM) << 65.0, 50.0, 0.0, 0.0, 90.0).finished()); // P9
-//     // 2. --- Plan the EXECUTION path segment by segment (P9->P8, P8->P7, etc.) ---
 //     auto thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
 //     std::vector<ExecutionTrajectory> execution_segments;
 //     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> all_path_segments_viz; 
 //     double total_cost = 0.0;
-//     // Loop backwards through the original waypoints to define execution segments.
-//     // This creates a list of segments in the correct execution order: [P9->P8, P8->P7, ...]
 //     for (int i = original_waypoints.size() - 1; i > 0; --i) {
-//     // for (int i = 0 ; i < original_waypoints.size()-1; ++i) {
 //         Eigen::VectorXd start_node = original_waypoints[i];
 //         Eigen::VectorXd end_node = original_waypoints[i-1];
-//         // Eigen::VectorXd start_node = original_waypoints[i+1];
-//         // Eigen::VectorXd end_node = original_waypoints[i];
 
 //         double segment_duration = start_node[DIM-1] - end_node[DIM-1];
         
@@ -1110,9 +992,7 @@
 
 //         if (traj.is_valid) {
 //             std::cout << "  SUCCESS: Found " << segment_duration << "s trajectory.\n";
-//             // Store the raw 0-to-duration trajectory for now
 //             execution_segments.push_back(traj.execution_data);
-//             // Debug prints for trajectory points (optional, can remove for cleaner output)
 //             if (!traj.path_points.empty()) {
 //                 std::cout << "    DEBUG TRAJ: First point:  "; printVec(traj.path_points[0]); std::cout << "\n";
 //                 std::cout << "    DEBUG TRAJ: Second point: "; printVec(traj.path_points[1]); std::cout << "\n";
@@ -1132,20 +1012,16 @@
 //         }
 //     }
     
-//     // 3. --- Stitch Trajectories with a Continuous Timeline ---
 //     std::cout << "\n--- Stitching trajectories with a continuous timeline (t=0 at P9) ---\n";
     
 //     double time_offset = 0.0;
 //     for (auto& seg : execution_segments) {
 //         if (seg.Time.size() > 0) {
-//             // Apply the offset to this segment's timeline
 //             seg.Time.array() += time_offset;
-//             // Update the offset for the *next* segment to be the end time of this one
 //             time_offset = seg.Time.tail(1)[0];
 //         }
 //     }
 
-//     // 4. --- Combine Segments and Setup ROS ---
 //     ExecutionTrajectory full_execution_path = combineExecutionTrajectories(execution_segments);
 
 //     if (!full_execution_path.is_valid || full_execution_path.Time.size() == 0) {
@@ -1164,13 +1040,11 @@
 
 //     auto ros2_manager = std::make_shared<ROS2Manager>(visualizer, params);
     
-//     // The robot's initial state is P9, and its simulation time starts at 0.
 //     Eigen::VectorXd initial_robot_state = original_waypoints.back();
 //     initial_robot_state[DIM-1] = 0.0;
 //     ros2_manager->setInitialState(initial_robot_state); 
 //     ros2_manager->setPlannedThrusterTrajectory(full_execution_path);
 
-//     // 5. --- Visualize and Run ---
 
 
 //     rclcpp::executors::MultiThreadedExecutor executor;
@@ -1206,28 +1080,6 @@
 // #include "motion_planning/utils/rviz_visualization.hpp"
 // #include "motion_planning/state_space/thruster_statespace.hpp"
 
-// /**
-//  * @brief This program demonstrates and tests the ThrusterSteerStateSpace for 5D (2D pos/vel/time) and 7D (3D pos/vel/time).
-//  * It performs the following steps:
-//  * 1. Initializes a ROS2 node for visualization.
-//  * 2. Creates an instance of the ThrusterSteerStateSpace.
-//  * 3. Defines a start and an end state (position, velocity, time).
-//  * 4. Calls the `steer` function to compute the optimal kinodynamic trajectory.
-//  * 5. Visualizes the resulting path in RViz as a series of short line segments.
-//  *
-//  * To Compile:
-//  * You will need to link against rclcpp, visualization_msgs, and your other libraries.
-//  * Example in CMakeLists.txt (assuming similar structure to your Dubins test):
-//  *
-//  * find_package(rclcpp REQUIRED)
-//  * find_package(visualization_msgs REQUIRED)
-//  * ...
-//  * add_executable(test_thruster_steer test_thruster_steer.cpp ...)
-//  * ament_target_dependencies(test_thruster_steer rclcpp visualization_msgs ...)
-//  * target_link_libraries(test_thruster_steer ${your_motion_planning_library})
-//  */
-
-// // Helper function to print vectors for debugging
 // static void printVec(const Eigen::VectorXd& v) {
 //     std::cout << "[ ";
 //     for (int i = 0; i < v.size(); ++i) {
@@ -1236,7 +1088,6 @@
 //     std::cout << "]";
 // }
 
-// // Helper to extract spatial position (x,y,z) from full state vector [x,y,z,vx,vy,vz,t] or [x,y,vx,vy,t]
 // Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state, int D_spatial_dim) {
 //     return full_state.head(D_spatial_dim);
 // }
@@ -1286,7 +1137,6 @@
 
 
 // int main(int argc, char** argv) {
-//     // --- 1. Initialization ---
 //     rclcpp::init(argc, argv);
 //     auto node = std::make_shared<rclcpp::Node>("thruster_steer_test_node");
 //     auto visualizer = std::make_shared<RVizVisualization>(node);
@@ -1295,8 +1145,6 @@
 
 //     std::vector<Eigen::VectorXd> waypoints;
 
-//     // --- Configuration for 5D (2D position/velocity/time) ---
-//     // Uncomment this block to test 5D
 //     const int DIM = 5; // [x, y, vx, vy, t]
 //     const double MAX_ACCEL = 5.0; // m/s^2 per dimension
 //     Eigen::VectorXd start_state(DIM);
@@ -1333,7 +1181,7 @@
 //     // int D_SPATIAL_DIM = 3;
 
 
-//     // --- 2. Create the Thruster State Space ---
+//     // --- Create the Thruster State Space ---
 //     std::shared_ptr<StateSpace> thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
 
 //     std::cout << "Attempting to steer from: "; printVec(start_state); std::cout << "\n";
@@ -1364,20 +1212,16 @@
 //     // ros2_manager->setPlannedThrusterTrajectory(execution_segments[0]);
 //     ros2_manager->setPlannedThrusterTrajectory(combined);
 //     //////////////////////////////
-//     // --- 4. Visualize the Trajectory ---
 //     if (traj.is_valid) {
 //         std::cout << "SUCCESS: Found a valid trajectory with cost (time elapsed): " << traj.cost << "s\n";
         
-//         // Convert the list of waypoints into a list of line segments for visualization
 //         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> path_segments;
 //         if (traj.path_points.size() > 1) {
 //             for (size_t i = 0; i < traj.path_points.size() - 1; ++i) {
-//                 // Extract only the spatial (x,y,z) part for visualization
 //                 path_segments.emplace_back(getSpatialPosition(traj.path_points[i], D_SPATIAL_DIM),
 //                                            getSpatialPosition(traj.path_points[i+1], D_SPATIAL_DIM));
 //             }
 //             for (size_t i = 0; i < traj2.path_points.size() - 1; ++i) {
-//                 // Extract only the spatial (x,y,z) part for visualization
 //                 path_segments.emplace_back(getSpatialPosition(traj2.path_points[i], D_SPATIAL_DIM),
 //                                            getSpatialPosition(traj2.path_points[i+1], D_SPATIAL_DIM));
 //             }
@@ -1429,13 +1273,10 @@
 #include "motion_planning/utils/rviz_visualization.hpp"
 #include "motion_planning/state_space/thruster_statespace.hpp"
 
-// Helper function
 Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state, int D_spatial_dim) {
     return full_state.head(D_spatial_dim);
 }
 
-// Corrected, robust implementation of the trajectory combination logic.
-// This version correctly stitches the segments, which are already time-ordered by the steer function.
 ExecutionTrajectory combineExecutionTrajectories(const std::vector<ExecutionTrajectory>& segments) {
     ExecutionTrajectory final_traj;
     final_traj.is_valid = false;
@@ -1446,15 +1287,9 @@ ExecutionTrajectory combineExecutionTrajectories(const std::vector<ExecutionTraj
     std::vector<double> time_vec;
     std::vector<Eigen::RowVectorXd> x_vec, v_vec;
 
-    // The steer function already produces segments where time decreases (e.g., 90s -> 80s).
-    // The only task is to append them in order, avoiding duplicate connection points.
     for (size_t i = 0; i < segments.size(); ++i) {
         const auto& seg = segments[i];
         if (seg.Time.size() == 0) continue;
-
-        // For the first segment (i=0), copy all points.
-        // For all subsequent segments, skip the first point (j=0) because it's identical
-        // to the last point of the previous segment.
         long start_j = (i == 0) ? 0 : 1;
 
         for (long j = start_j; j < seg.Time.size(); ++j) {
@@ -1565,7 +1400,6 @@ int main(int argc, char** argv) {
         }
     }
 
-    // DEBUG PRINT: Print the contents of the final path before sending it.
     std::cout << "\n\n*********************************************\n";
     std::cout << "--- Final Path Data to be Sent to Manager ---\n";
     std::cout << "*********************************************\n";
@@ -1608,7 +1442,6 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-// //////////////////////////////////////////////////////////////////////////////////////
 
 // //////////////////////////////////////////////////////7D Many states backwards ///////////////////////////////////////////////////////////
 
@@ -1616,36 +1449,14 @@ int main(int argc, char** argv) {
 // #include <memory>
 // #include <vector>
 // #include <Eigen/Dense>
-// #include <cmath> // For M_PI
-// #include <tuple> // For std::get (if needed for fineGrain output)
-// #include "motion_planning/utils/params.hpp" // Using the provided Params header
+// #include <cmath> 
+// #include <tuple> 
+// #include "motion_planning/utils/params.hpp" 
 // #include "motion_planning/utils/ros2_manager_thruster.hpp"
 // #include "rclcpp/rclcpp.hpp"
 // #include "motion_planning/utils/rviz_visualization.hpp"
 // #include "motion_planning/state_space/thruster_statespace.hpp"
 
-// /**
-//  * @brief This program demonstrates and tests the ThrusterSteerStateSpace for 5D (2D pos/vel/time) and 7D (3D pos/vel/time).
-//  * It performs the following steps:
-//  * 1. Initializes a ROS2 node for visualization.
-//  * 2. Creates an instance of the ThrusterSteerStateSpace.
-//  * 3. Defines a start and an end state (position, velocity, time).
-//  * 4. Calls the `steer` function to compute the optimal kinodynamic trajectory.
-//  * 5. Visualizes the resulting path in RViz as a series of short line segments.
-//  *
-//  * To Compile:
-//  * You will need to link against rclcpp, visualization_msgs, and your other libraries.
-//  * Example in CMakeLists.txt (assuming similar structure to your Dubins test):
-//  *
-//  * find_package(rclcpp REQUIRED)
-//  * find_package(visualization_msgs REQUIRED)
-//  * ...
-//  * add_executable(test_thruster_steer test_thruster_steer.cpp ...)
-//  * ament_target_dependencies(test_thruster_steer rclcpp visualization_msgs ...)
-//  * target_link_libraries(test_thruster_steer ${your_motion_planning_library})
-//  */
-
-// // Helper function to print vectors for debugging
 // static void printVec(const Eigen::VectorXd& v) {
 //     std::cout << "[ ";
 //     for (int i = 0; i < v.size(); ++i) {
@@ -1654,7 +1465,6 @@ int main(int argc, char** argv) {
 //     std::cout << "]";
 // }
 
-// // Helper to extract spatial position (x,y,z) from full state vector [x,y,z,vx,vy,vz,t] or [x,y,vx,vy,t]
 // Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state, int D_spatial_dim) {
 //     return full_state.head(D_spatial_dim);
 // }
@@ -1704,7 +1514,6 @@ int main(int argc, char** argv) {
 
 
 // int main(int argc, char** argv) {
-//     // --- 1. Initialization ---
 //     rclcpp::init(argc, argv);
 //     auto node = std::make_shared<rclcpp::Node>("thruster_steer_test_node");
 //     auto visualizer = std::make_shared<RVizVisualization>(node);
@@ -1713,8 +1522,6 @@ int main(int argc, char** argv) {
 
 //     std::vector<Eigen::VectorXd> waypoints;
 
-//     // --- Configuration for 5D (2D position/velocity/time) ---
-//     // Uncomment this block to test 5D
 //     const int DIM = 7; // [x, y,z, vx, vy, vz, t]
 //     const double MAX_ACCEL = 5.0; // m/s^2 per dimension
 
@@ -1734,7 +1541,6 @@ int main(int argc, char** argv) {
 
 
 
-//     // --- 2. Create the Thruster State Space ---
 //     std::shared_ptr<StateSpace> thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
 //     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> all_path_segments_viz; 
 //     double total_cost = 0.0;
@@ -1774,9 +1580,7 @@ int main(int argc, char** argv) {
 
 //     // std::reverse(execution_segments,execution_segments.begin(),execution_segments.end()); // instead of this i reversed combined it in combineExection function below!
 
-//     //////////////////////////////
 //     auto combined = combineExecutionTrajectories(execution_segments);
-//     ///////////////////////////////
 //     Params params;
 //     params.setParam("thruster_state_dimension", DIM);
 //     params.setParam("simulation_time_step", 0.05);
@@ -1785,14 +1589,12 @@ int main(int argc, char** argv) {
 //     auto ros2_manager = std::make_shared<ROS2Manager>(visualizer, params);
 //     ros2_manager->setInitialState(waypoints[9]); // START AT P0
 //     ros2_manager->setPlannedThrusterTrajectory(combined);
-//     //////////////////////////////
-//     // --- 4. Visualize the Trajectory ---
 //     rclcpp::executors::MultiThreadedExecutor executor;
 //     executor.add_node(node);
 //     executor.add_node(ros2_manager);
 //     // executor.spin();
 
-//     rclcpp::WallRate loop_rate(60); // Publish once per second
+//     rclcpp::WallRate loop_rate(60); 
 //     while(rclcpp::ok()) {
 //         visualizer->visualizeEdges(all_path_segments_viz, "map", "0.0,1.0,0.0", "thruster_path"); // Green line
 //         visualizer->visualizeNodes(waypoints, "map", {1.0f, 0.0f, 0.0f}, "waypoint_nodes");

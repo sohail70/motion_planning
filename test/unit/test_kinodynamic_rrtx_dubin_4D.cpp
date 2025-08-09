@@ -1,3 +1,5 @@
+// Copyright 2025 Soheil E.nia
+
 #include "motion_planning/planners/planner_factory.hpp"
 #include "motion_planning/state_space/dubins_time_statespace.hpp" // Changed
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
@@ -30,7 +32,6 @@ struct LogEntry {
 };
 
 
-// Global running flag for signal handling
 std::atomic<bool> g_running{true};
 
 void sigint_handler(int sig) {
@@ -83,12 +84,11 @@ void resetAndPlaySimulation()
 }
 
 int main(int argc, char** argv) {
-    // --- 1. Initial Setup ---
+    // --- Initial Setup ---
     rclcpp::init(argc, argv);
     signal(SIGINT, sigint_handler);
 
 
-        // 1) Parse your flags
     int num_samples = 2000;
     double factor = 3.0;
     unsigned int seed = 42;
@@ -116,7 +116,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    // --- 2. Parameter Setup ---
+    // --- Parameter Setup ---
     // Encapsulate parameters for better organization
     Params manager_params;
     manager_params.setParam("use_sim_time", true);
@@ -136,11 +136,6 @@ int main(int argc, char** argv) {
     gazebo_params.setParam("kf_model_type", "cv");
     gazebo_params.setParam("fcl", false);
     gazebo_params.setParam("bullet", false);
-
-    // gazebo_params.setParam("inflation", 0.0); //2.0 meters --> this will be added to obstalce radius when obstalce checking --> minimum should be D-ball containing the robot
-    // This value is CRITICAL. If it's 0.0, your robot has no size.
-    // Set it to a value representing your robot's radius + a safety margin.
-    // For example, if your robot is 1 meter wide, a radius of 0.5m + a buffer of 1m = 1.5.
     gazebo_params.setParam("inflation", 0.5); // <-- VERIFY THIS IS A REASONABLE, NON-ZERO VALUE
     gazebo_params.setParam("persistent_static_obstacles", false);
 
@@ -156,13 +151,11 @@ int main(int argc, char** argv) {
     planner_params.setParam("obs_cache", false);
     planner_params.setParam("partial_plot", false);
     planner_params.setParam("use_heuristic", false);
-    planner_params.setParam("ignore_sample", false);
-    planner_params.setParam("prune", false);
     planner_params.setParam("kd_dim", 4); // 2 or 3 or 4 only dubin
     planner_params.setParam("mode", 2); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
 
 
-    // --- 3. Object Initialization ---
+    // --- Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("rrtx_dubins_visualizer",
         rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
@@ -175,7 +168,7 @@ int main(int argc, char** argv) {
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
-    // --- 4. Planner and Problem Definition (4D Dubins) ---
+    // --- Planner and Problem Definition (4D Dubins) ---
     const int dim = 4;
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
 
@@ -203,7 +196,7 @@ int main(int argc, char** argv) {
     kinodynamic_planner->setClock(sim_clock);
     planner->setup(planner_params, visualization);
 
-    // --- 5. Initial Plan ---
+    // --- Initial Plan ---
     std::vector<Eigen::VectorXd> current_executable_path;
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
     // obstacle_checker->getAtomicSnapshot();
@@ -216,12 +209,11 @@ int main(int argc, char** argv) {
     RCLCPP_INFO(vis_node->get_logger(), "Initial plan complete. Executing...");
     kinodynamic_planner->dumpTreeToCSV("rrtx_tree_nodes.csv");
 
-    // Visualization timer for the search tree
     auto tree_vis_timer = vis_node->create_wall_timer(
         std::chrono::milliseconds(100),
         [&]() { if (kinodynamic_planner) kinodynamic_planner->visualizeTree(); });
 
-    // --- 6. Executor Setup ---
+    // --- Executor Setup ---
     // rclcpp::executors::MultiThreadedExecutor executor;
     rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
 
@@ -230,7 +222,6 @@ int main(int argc, char** argv) {
 
     std::thread executor_thread([&executor]() { executor.spin(); });
 
-    // --- 7. Main Execution and Replanning Loop ---
     resetAndPlaySimulation();
     RCLCPP_INFO(vis_node->get_logger(), "Starting execution and monitoring loop. Press Ctrl+C to exit.");
     const double goal_tolerance = 3.0;
@@ -285,18 +276,6 @@ int main(int argc, char** argv) {
 
         const auto& snapshot = obstacle_checker->getAtomicSnapshot();
 
-        // --- TRIGGER 1 (Reactive): Is my current path predictively safe? ---
-        // Pass both the path and the robot's current state to the validator.
-        // if (!kinodynamic_planner->isPathStillValid(current_executable_path, current_sim_state)) {
-        //     RCLCPP_INFO(vis_node->get_logger(), "Current path is no longer predictively valid! Triggering replan.");
-        //     needs_replan = true;
-        // }
-
-        // --- TRIGGER 2 (Proactive): Have obstacles changed in a significant way? ---
-        // if (!needs_replan && kinodynamic_planner->updateObstacleSamples(snapshot.obstacles)) {
-        //     RCLCPP_INFO(vis_node->get_logger(), "Obstacle change detected! Proactively replanning...");
-        //     needs_replan = true;
-        // }
         auto start = std::chrono::steady_clock::now();
 
         kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
@@ -342,7 +321,6 @@ int main(int argc, char** argv) {
             log_data.push_back(entry);
             /////--------
 
-            // *** CORRECTED LOGIC TO HANDLE FAILURE ***
             if (new_executable_path.empty()) {
                 // FAILURE CASE: The planner could not find a valid path from the robot's current state.
                 RCLCPP_ERROR(vis_node->get_logger(), "Replanning failed! Commanding robot to STOP.");
@@ -385,7 +363,6 @@ int main(int argc, char** argv) {
     }
 
 
-    // *** NEW: REPLACE CSV SAVING LOGIC ***
     int num_of_samples_val = planner_params.getParam<int>("num_of_samples");
     std::time_t now_time = std::time(nullptr);
     std::tm* local_tm = std::localtime(&now_time);
@@ -422,7 +399,7 @@ int main(int argc, char** argv) {
 
 
 
-    // --- 8. Graceful Shutdown ---
+    // --- Graceful Shutdown ---
     RCLCPP_INFO(vis_node->get_logger(), "Shutting down.");
     g_running = false;
     executor.cancel();

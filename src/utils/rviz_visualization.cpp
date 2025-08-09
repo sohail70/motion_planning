@@ -278,7 +278,7 @@ void RVizVisualization::visualizeCylinder(
 
     visualization_msgs::msg::MarkerArray marker_array;
 
-    // ---> FIX: ADD THIS BLOCK TO CLEAR OLD MARKERS <---
+    // ---> ADD THIS BLOCK TO CLEAR OLD MARKERS <---
     visualization_msgs::msg::Marker clear_marker;
     clear_marker.header.frame_id = frame_id;
     clear_marker.header.stamp = node_->now();
@@ -377,14 +377,12 @@ void RVizVisualization::visualizeCube(
 {
     visualization_msgs::msg::MarkerArray marker_array;
 
-    // ---> FIX: ADD THIS BLOCK TO CLEAR OLD MARKERS <---
     visualization_msgs::msg::Marker clear_marker;
     clear_marker.header.frame_id = frame_id;
     clear_marker.header.stamp = node_->now();
     clear_marker.ns = ns;
     clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
     marker_array.markers.push_back(clear_marker);
-    // ---> END OF FIX <---
 
 
     int id = 0;
@@ -521,7 +519,7 @@ void RVizVisualization::visualizeCube(
 //             p.x = point.x();
 //             p.y = point.y();
 //             p.z = 0.0;
-//                         p.z = (point.size() > 2) ? point[2] : 0.0; // <--- MODIFIED (This one uses Vector2d as input, so point.size() will always be 2. It should be changed to VectorXd or remove the z access here)
+//                         p.z = (point.size() > 2) ? point[2] : 0.0; // <--- MODIFIED (This one uses Vector2d as input, so point.size() will always be It should be changed to VectorXd or remove the z access here)
 
 //             // p.z = (point.size() > 2) ? point.z() : 0.0; // <--- MODIFIED
 //             dots.points.push_back(p);
@@ -671,7 +669,7 @@ void RVizVisualization::visualizeTrajectories(const std::vector<std::vector<Eige
             p.x = point.x();
             p.y = point.y();
             p.z = 0.0;
-            p.z = (point.size() > 2) ? point[2] : 0.0; // <--- MODIFIED (This one uses Vector2d as input, so point.size() will always be 2. It should be changed to VectorXd or remove the z access here)
+            p.z = (point.size() > 2) ? point[2] : 0.0; // <--- MODIFIED (This one uses Vector2d as input, so point.size() will always be It should be changed to VectorXd or remove the z access here)
 
             // p.z = (point.size() > 2) ? point.z() : 0.0; // <--- MODIFIED
             dots.points.push_back(p);
@@ -723,7 +721,7 @@ void RVizVisualization::visualizeFutureGhosts(
 
         Eigen::Vector2d future_position = obstacle.position + obstacle.velocity * prediction_horizon;
 
-        // 1. Create the velocity vector (a line) marker
+        // Create the velocity vector (a line) marker
         visualization_msgs::msg::Marker vector_line;
         vector_line.header.frame_id = frame_id;
         vector_line.header.stamp = node_->now();
@@ -752,7 +750,7 @@ void RVizVisualization::visualizeFutureGhosts(
         vector_line.color.a = 0.8f; 
         all_markers.markers.push_back(vector_line);
         
-        // 2. Create the "Ghost" obstacle marker
+        // Create the "Ghost" obstacle marker
         visualization_msgs::msg::Marker ghost_marker;
         ghost_marker.header = vector_line.header;
         ghost_marker.ns = "ghost_obstacles";

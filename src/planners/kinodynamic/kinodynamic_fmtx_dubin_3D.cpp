@@ -159,8 +159,8 @@ void KinodynamicFMTX::plan() {
             //     cost_via_z = z->getCost() + edge_info_from_z.distance;
             // } 
             // This condition is the core of FMTX. It serves two purposes:
-            // 1. If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
-            // 2. If x is already connected, this condition acts as a "witness" that a better path *might* exist.
+            // If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
+            // If x is already connected, this condition acts as a "witness" that a better path *might* exist.
             //    It proves x's current cost is suboptimal and justifies the more expensive search that follows.
             if (x->getCost() > cost_via_z) {
                 checks++;
