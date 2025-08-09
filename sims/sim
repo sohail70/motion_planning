@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+# Configuration
+BINARY="./test_rrtx"
+RUNS=30
+BASE_SEED=42
+DURATION=30
+SAMPLE_COUNTS=(20000 10000 5000 2500)
+FACTORS=(1.0 1.5 2.0)
+ISOLATED_CPUS="6,7"  # Physical Core 3 (HT siblings)
+
+# Trap to clean up if interrupted
+trap "echo -e '\nInterrupted. Exiting...'; exit 1" SIGINT
+
+for FACTOR in "${FACTORS[@]}"; do
+  echo "###############################################################"
+  echo "Using FACTOR = ${FACTOR}"
+  echo "###############################################################"
+
+  for SAMPLES in "${SAMPLE_COUNTS[@]}"; do
+    echo "================================================================"
+    echo "Running ${RUNS} trials with --samples ${SAMPLES}"
+    echo "================================================================"
+
+    for (( i=0; i<RUNS; i++ )); do
+      SEED=$((BASE_SEED + i))
+      echo "--- Trial $((i+1))/${RUNS} (seed=${SEED}) ---"
+
+      # Run with taskset-only isolation
+      taskset -c "$ISOLATED_CPUS" \
+        "${BINARY}" \
+          --samples  "${SAMPLES}" \
+          --factor   "${FACTOR}" \
+          --seed     "${SEED}" \
+          --duration "${DURATION}" &
+
+      PLANNER_PID=$!
+
+      # Verify placement
+      sleep 0.1  # Brief delay for process start
+      echo "Process running on: $(taskset -cp $PLANNER_PID | awk '{print $NF}')"
+
+      wait $PLANNER_PID
+    done
+  done
+done
+
+echo "✅ All runs complete."
