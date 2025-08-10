@@ -132,7 +132,7 @@ An interesting insight from this work is the fundamental trade-off between `FMT*
 
 * **Computational Strategy**: `FMT*` variants tend to perform more intensive neighbor processing during their Bellman updates but execute fewer collision checks. In contrast, `RRT*` variants perform more frequent collision checks but have less computationally heavy rewiring cascades.
 
-* **Neighbor Search**: A key feature of `FMTX` is its ability to use a **k-NN** search for finding neighbors. This makes the size of the neighbor set more predictable and can speed up the planner, especially in dense regions. `RRTX`, on the other hand, is architecturally bound to a fixed-radius search due to its `cullNeighbors` function.
+* **Neighbor Search**: A key feature of `FMTX` is its ability to use a **k-NN** search for finding neighbors. This makes the size of the neighbor set more predictable and can speed up the planner, especially in dense regions. `RRTX`, on the other hand, is architecturally bound to a radius search due to its `cullNeighbors` function.
 
 * **Obstacle Checking**: The two algorithms also differ in their collision-checking philosophy. `RRTX` uses a **proactive** check, evaluating all edges in the vicinity of an obstacle change. `FMTX` defaults to a **lazy** (or delayed) check, only evaluating an edge's validity when it is a candidate for the optimal path. However, due to the flexible architecture of `FMTX`, I have also implemented a proactive mode. You can switch between these behaviors using the `mode` parameter (`mode 1` for lazy, `mode 2` for proactive).
 
