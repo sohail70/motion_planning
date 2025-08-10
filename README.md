@@ -31,7 +31,7 @@ The plots and tables generated for the associated research paper can be found he
     * **Lie Group Splitting KD-Tree**: An experimental feature that currently has performance limitations.
 
 * **ROS 2 and Gazebo Integration**:
-    * integrated with ROS 2 for visualization (`RViz`) and communication collision detection.
+    * integrated with ROS 2 for visualization (`RViz`) and communication and collision detection.
 
 * **Modular and Extensible**: The library is built with a modular design, making it easy to add and test new planners, state spaces, and robot models in dynamic environments. As a solo project, there are still many improvements and features I plan to add over time.
 
@@ -114,8 +114,8 @@ After building, you can run the planners. Open three separate terminals.
     ```bash
     # From the motion_planning/build directory
     # Geometric Examples:
-    ./test_rrtx --samples 1000 --factor 1.5 --seed 42 --duration 30
-    ./test_fmtx --samples 1000 --factor 1.5 --seed 42 --duration 30
+    ./test_rrtx --samples 10000 --factor 1.5 --seed 42 --duration 30
+    ./test_fmtx --samples 10000 --factor 1.5 --seed 42 --duration 30
 
     # Kinodynamic Examples:
     ./test_kinodynamic_fmtx_R2T --samples 5000 --factor 2.5 --seed 42
@@ -146,7 +146,7 @@ It's also important to acknowledge the inherent limitations of any replanning al
 ### Demos
 Here are some visualizations of the planners in action. These demonstrations feature challenging scenarios where obstacles move at high speeds (20-30 m/s), testing the robot's ability to react. The robot's maximum velocity is set to 15 m/s for the R2T and Thruster models, and 10 m/s for the Dubins model.
 
-**`./test_fmtx --samples 1000 --factor 1.5 --seed 42 --duration 30`** (Zero inflation)
+**`./test_fmtx --samples 10000 --factor 1.5 --seed 42 --duration 30`** (Zero inflation)
 <p align="center">
   <img src="./Geometric_S10000_C1_5_I0.gif" alt="Geometric_S10000_C1_5_I0">
 </p>
