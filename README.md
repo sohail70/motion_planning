@@ -81,7 +81,7 @@ make
 ```
 
 **3. Run a Simulation**
-After building, you can run the planners. Open three separate terminals.
+After building, you can run the planners. Open four separate terminals.
 
 * **Terminal 1: Start the ROS-Gazebo Bridge** (Provides the simulation clock to ROS)
     ```bash
