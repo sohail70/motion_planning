@@ -5,7 +5,7 @@ This repository contains a C++ library for advanced motion planning, created to 
 For those interested in the development process, the following links contain my exploratory MATLAB and Python files. Please note that these are development archives; the code is not organized and contains many experimental ideas for adapting FMT* to handle dynamic obstacles. The finalized, working solution is in this C++ repository.
 
 * **Initial Concept in MATLAB/Python**: [Development Files](https://drive.google.com/drive/folders/1BwNw0cQw3J7h2tKtNB-NLXXTFCvpezjT?usp=drive_link)
-* **Original `RRTX` Implementation**: [Student Project Files](https://drive.google.com/drive/folders/1K904_q35ITkBdSvvj18UvrUiA0Kab96B?usp=drive_link)
+* **My `RRTX` Implementation**: [Student Project Files](https://drive.google.com/drive/folders/1K904_q35ITkBdSvvj18UvrUiA0Kab96B?usp=drive_link)
 
 While the primary focus is `FMTX`, the library expanded to include implementations of several official static planners. This provides a baseline for future work and serves as a personal testbed for exploring other experimental concepts, such as my unofficial algorithms `AnyFMT` and `InformedAnyFMT`, which are not based on existing literature.
 
@@ -21,9 +21,9 @@ The plots and tables generated for the associated research paper can be found he
         * **FMT\* and Variants**: Fast Marching Tree (`FMT*`), Anytime FMT\* (`AnyFMT`), and FMT\* with an A* heuristic (`FMTA`), along with informed versions (`InformedAnyFMT`, `InformedAnyFMTA`).
           > **Note**: These anytime variants are my own unofficial concepts. While some papers have explored making `FMT*` an anytime planner, they often use incremental rewiring, which differs from the `FMTX` approach. I am open to discussion on this topic. I plan to explore these ideas more formally in the future.
         * **BIT\***: Batch Informed Trees, implemented to benchmark my single-queue concepts against its dual-queue structure.
-        * **Replanning Algorithms**: `FMTX` (my novel algorithm) and `RRTX` for robust navigation in dynamic environments.
+        * **Replanning Algorithms**: `FMTX` (my algorithm) and `RRTX` for navigation in dynamic environments.
     * **Kinodynamic Planners**: For state spaces where dynamics and time are critical.
-        * **Kinodynamic FMTX & RRTX**: Versions of the replanners tailored for complex state spaces like R2T (position + time), Dubins (car-like), and Thruster (position + velocity + time).
+        * **Kinodynamic FMTX & RRTX**: Versions of the replanners tailored for complex state spaces like R2T (position + time), Dubins (car-like), and Thruster (position + velocity + time), with the eventual goal of integrating this library into PX4 flight control simulations.
 
 * **Advanced Data Structures**:
     * **NanoFLANN**: For fast nearest-neighbor searches.
@@ -31,14 +31,13 @@ The plots and tables generated for the associated research paper can be found he
     * **Lie Group Splitting KD-Tree**: An experimental feature that currently has performance limitations.
 
 * **ROS 2 and Gazebo Integration**:
-    * Seamlessly integrates with ROS 2 for visualization (`RViz`) and communication.
-    * Includes a custom Gazebo-based obstacle checker (`gz_obs`) for realistic, physics-based collision detection.
+    * integrated with ROS 2 for visualization (`RViz`) and communication collision detection.
 
 * **Modular and Extensible**: The library is built with a modular design, making it easy to add and test new planners, state spaces, and robot models in dynamic environments. As a solo project, there are still many improvements and features I plan to add over time.
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Dependencies
 
@@ -100,7 +99,7 @@ After building, you can run the planners. Open three separate terminals.
     * For **kinodynamic** tests with constant velocity obstacles:
         ```bash
         # From the root of the repository
-        gz sim -s sim/worlds/<kinodynamic_world_name>.sdf
+        gz sim -s sim/dynamic_world_straight_box_circle_10.sdf.sdf
         ```
 
 * **Terminal 3: Launch RViz**
@@ -110,7 +109,7 @@ After building, you can run the planners. Open three separate terminals.
     ```
 
 * **Terminal 4: Run a Planner Test**
-    > **Important**: The test executables currently have hardcoded paths to the SDF world files for parsing obstacle dimensions. You will need to update these paths inside the test files to match your system. I plan to move these parameters to a YAML file in the future.
+    > **Important**: The test executables currently have hardcoded paths to the SDF world files for parsing obstacle dimensions. You will need to update these paths inside the test files to match your system. I plan to move these and other parameters to a YAML file in the future.
 
     ```bash
     # From the motion_planning/build directory
@@ -128,13 +127,24 @@ After building, you can run the planners. Open three separate terminals.
     ./test_kinodynamic_rrtx_thruster_5D --samples 1000 --factor 2.5 --seed 42
     ```
 
-### A Note on `FMT*` vs. `RRT*` Based Planners
-An interesting insight from this work is the "weighted trade-off" between `FMT*` and `RRT*` based algorithms. `FMT*` variants tend to have more neighbor processing loops during their Bellman updates but perform fewer obstacle checks. In contrast, `RRT*` variants perform more obstacle checks but have less intensive rewiring cascades. A key feature of `FMTX` is the ability to use a **k-NN** search for neighbors instead of a fixed radius, which makes the number of neighbors more predictable and can significantly speed up the planner. `RRTX`, due to its `cullNeighbors` function, is architecturally bound to a radius search.
+### A Note on Algorithmic Trade-Offs
+
+An interesting insight from this work is the fundamental trade-off between `FMT*`-based and `RRT*`-based algorithms. Here's a breakdown of their different approaches to computational challenges:
+
+* **Computational Strategy**: `FMT*` variants tend to perform more intensive neighbor processing during their Bellman updates but execute fewer collision checks. In contrast, `RRT*` variants perform more frequent collision checks but have less computationally heavy rewiring cascades.
+
+* **Neighbor Search**: A key feature of `FMTX` is its ability to use a **k-NN** search for finding neighbors. This makes the size of the neighbor set more predictable and can speed up the planner, especially in dense regions. `RRTX`, on the other hand, is architecturally bound to a fixed-radius search due to its `cullNeighbors` function.
+
+* **Obstacle Checking**: The two algorithms also differ in their collision-checking philosophy. `RRTX` uses a **proactive** check, evaluating all edges in the vicinity of an obstacle change. `FMTX` defaults to a **lazy** (or delayed) check, only evaluating an edge's validity when it is a candidate for the optimal path. However, due to the flexible architecture of `FMTX`, I have also implemented a proactive mode. You can switch between these behaviors using the `mode` parameter (`mode 1` for lazy, `mode 2` for proactive).
+
+* **Performance Optimizations**: `FMTX` also includes other features like **obstacle caching**, where collision information is cached and reused within a single planning cycle to avoid redundant checks.
+
+It's also important to acknowledge the inherent limitations of any replanning algorithm. As discussed in the original RRTX paper, inevitable collisions can occur if obstacles move too quickly or change their trajectories unpredictably. Parameters like **obstacle inflation** are crucial for safety, but they introduce their own trade-offs. A larger inflation margin creates a safer path but may prevent the robot from finding solutions in narrow passages, such as escaping a corridor between two obstacles. These challenges are fundamental to planning in dynamic environments and can be observed in simulations.
 
 ---
 
 ### Demos
-Here are some visualizations of the planners in action:
+Here are some visualizations of the planners in action. These demonstrations feature challenging scenarios where obstacles move at high speeds (20-30 m/s), testing the robot's ability to react. The robot's maximum velocity is set to 15 m/s for the R2T and Thruster models, and 10 m/s for the Dubins model.
 
 **`./test_fmtx --samples 1000 --factor 1.5 --seed 42 --duration 30`** (Zero inflation)
 <p align="center">
@@ -146,22 +156,22 @@ Here are some visualizations of the planners in action:
   <img src="./R2T_S5000_C2_5_I0_5.gif" alt="R2T_S5000_C2_5_I0_5">
 </p>
 
-**`./test_kinodynamic_fmtx_dubin_4D --samples 3000 --factor 2.5 --seed 42`**
+**`./test_kinodynamic_fmtx_dubin_4D --samples 3000 --factor 2.5 --seed 42`** (2.0m inflation)
 <p align="center">
   <img src="./Dubins_S3000_C2_5_I2_0.gif" alt="Dubins_S3000_C2_5_I2_0">
 </p>
 
-**`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 2.5 --seed 42`**
+**`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 2.5 --seed 42`** (0.5m inflation)
 <p align="center">
   <img src="./Thruster_S1000_C2_5_I0_5.gif" alt="Thruster_S1000_C2_5_I0_5">
 </p>
 
-**`./test_kinodynamic_fmtx_thruster_5D --samples 2000 --factor 2.5 --seed 42`**
+**`./test_kinodynamic_fmtx_thruster_5D --samples 2000 --factor 2.5 --seed 42`** (0.5m inflation)
 <p align="center">
   <img src="./Thruster_S2000_C2_5_I0_5.gif" alt="Thruster_S2000_C2_5_I0_5">
 </p>
 
-**`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 3.0 --seed 42`**
+**`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 3.0 --seed 42`** (0.5m inflation)
 <p align="center">
   <img src="./Thruster_S1000_C3_0_I0_5.gif" alt="Thruster_S1000_C3_0_I0_5">
 </p>
