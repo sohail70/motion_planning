@@ -1668,9 +1668,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
 
     ////////////////////////////////////////////////////
-        // ==============================================================================
-        // ================= CURRENT NODE VISUALIZATION CODE BLOCK ======================
-        // // ==============================================================================
+        // CURRENT NODE VISUALIZATION CODE BLOCK
         // if (visualization_) {
         //     // Create a vector to hold the 2D positions of the nodes near obstacles.
         //     std::vector<Eigen::VectorXd> positions_to_visualize;
@@ -1690,9 +1688,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         //                                  {0.0f, 1.0f, 1.0f},  // Cyan color
         //                                  "current_obstacle_nodes");
         // }
-        // ==============================================================================
-        // ======================= END OF VISUALIZATION CODE BLOCK ======================
-        // // // ==============================================================================    
+        // END OF VISUALIZATION CODE BLOCK
 
 
 
@@ -1785,9 +1781,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         // This set will hold nodes on the boundary of the "repaired" region, which need re-evaluation.
         std::unordered_set<FMTNode*> nodes_to_requeue;
 
-        // ==============================================================================
         // PASS 1: RE-VALIDATION (The "Remove" Effect)
-        // ==============================================================================
         for (const auto& [name, old_obs] : previous_obstacles_) {
             // Broad-phase: Use PREDICTIVE search to find nodes near the obstacle's PREVIOUS path.
             std::unordered_set<int> previously_affected_indices_unfiltered;
@@ -1849,9 +1843,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                 previously_affected_indices_unfiltered.insert(indices.begin(), indices.end());
             }
 
-            // ==========================================================
-            // =========== LOCAL BUBBLE FILTER ==========================
-            // ==========================================================
+            // LOCAL BUBBLE FILTER
             std::unordered_set<int> previously_affected_indices(
                 previously_affected_indices_unfiltered.begin(), 
                 previously_affected_indices_unfiltered.end()
@@ -1871,9 +1863,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                 }
             }
 
-            // ==========================================================
-            // =========== NARROW-PHASE RE-VALIDATION ===================
-            // ==========================================================
+            // NARROW-PHASE RE-VALIDATION
             for (int idx : previously_affected_indices) {
                 auto* node = tree_[idx].get();
                 if (!neighbor_precache) near(idx);
@@ -1901,9 +1891,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         }
 
 
-        // ==============================================================================
         // PASS 2: INVALIDATION (The "Add" Effect)
-        // ==============================================================================
         for (const auto& [name, current_obs] : current_obstacles) {
             // Find nodes near the obstacle's NEW predicted path.
             // Broad-phase: Use PREDICTIVE search to find nodes near the obstacle's FUTURE path.
@@ -1983,9 +1971,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
             }
         }
 
-        // ==============================================================================
         // PASS 3: FINALIZE (Process Orphans and Queue the Boundary)
-        // ==============================================================================
         if (!primary_orphan_indices.empty()) {
             std::unordered_set<int> final_orphan_nodes;
             for (int primary_idx : primary_orphan_indices) {

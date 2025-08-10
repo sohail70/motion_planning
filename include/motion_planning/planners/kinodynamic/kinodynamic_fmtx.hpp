@@ -22,52 +22,6 @@ class KinodynamicFMTX : public Planner {
                 return robot_node_;
             }
 
-            // bool isPathStillValid(const std::vector<Eigen::VectorXd>& path, const Eigen::VectorXd& current_robot_state) const {
-            //     if (path.size() < 2) {
-            //         return true; // An empty or single-point path is considered valid.
-            //     }
-
-            //     const double t_now = clock_->now().seconds();
-
-            //     // Get the robot's total time-to-go from the last element of its state vector.
-            //     // Use .size() - 1 to access the last element for compatibility with older Eigen versions.
-            //     const double robot_total_time_to_go = path.front()(path.front().size() - 1);
-
-            //     // Calculate the single, predicted global time of arrival for this entire path.
-            //     const double t_arrival = t_now + robot_total_time_to_go;
-
-            //     // Check every segment of the path.
-            //     for (size_t i = 0; i < path.size() - 1; ++i) {
-            //         const Eigen::VectorXd& segment_start_state = path[i];
-            //         const Eigen::VectorXd& segment_end_state = path[i+1];
-
-            //         Trajectory segment_traj;
-            //         segment_traj.path_points.push_back(segment_start_state);
-            //         segment_traj.path_points.push_back(segment_end_state);
-                    
-            //         // Calculate time duration using the last element of each state.
-            //         segment_traj.time_duration = segment_start_state(segment_start_state.size() - 1) - segment_end_state(segment_end_state.size() - 1);
-                    
-            //         if (segment_traj.time_duration <= 1e-6) {
-            //             RCLCPP_WARN(rclcpp::get_logger("fmtx_validator"), "Path invalidated by non-positive time duration on segment %zu.", i);
-            //             return false;
-            //         }
-
-            //         // Calculate the segment's global start time using the last element.
-            //         const double segment_global_start_time = t_arrival - segment_start_state(segment_start_state.size() - 1);
-
-            //         if (!obs_checker_->isTrajectorySafe(segment_traj, segment_global_start_time)) {
-            //             RCLCPP_WARN(rclcpp::get_logger("fmtx_validator"), "Path invalidated by predictive check on segment %zu.", i);
-            //             return false;
-            //         }
-            //     }
-
-            //     return true;
-            // }
-           /*********************************************************************************/
-            /* --- FINAL CORRECTED isPathStillValid ---                                      */
-            /*********************************************************************************/
-
             
             bool isPathStillValid(const std::vector<Eigen::VectorXd>& path, const Eigen::VectorXd& current_robot_state) const;
 
@@ -91,18 +45,9 @@ class KinodynamicFMTX : public Planner {
                 return true;
             }
 
-
             void printCacheStatus() const;
 
-
-
-            
-            /**
-             * Reconstructs the full, fine-grained execution trajectory from the robot to the goal.
-             * return A complete ExecutionTrajectory object containing Time, X, V, and A matrices.
-             */
             ExecutionTrajectory getFinalExecutionTrajectory() const;
-
 
             /**
              * Re-anchors the planner's search to the robot's current continuous state.
@@ -235,19 +180,6 @@ class KinodynamicFMTX : public Planner {
             ReplanMetrics last_replan_metrics_; 
             std::unordered_map<std::string, Obstacle> previous_obstacles_;
             // std::unordered_set<std::string> previous_obstacle_names_; // SAFE: Stores only names, prevents memory corruption
-
-            // //  ADD THIS TYPE DEFINITION
-            // using ObstacleMap = std::unordered_map<
-            //     std::string,
-            //     Obstacle,
-            //     std::hash<std::string>,
-            //     std::equal_to<std::string>,
-            //     Eigen::aligned_allocator<std::pair<const std::string, Obstacle>>
-            // >;
-
-            // //  CHANGE THE MEMBER VARIABLE TO USE THE NEW TYPE
-            // ObstacleMap previous_obstacles_;
-
 
             // std::unordered_map<std::pair<int, int>, bool, pair_hash> obstacle_check_cache_;
             // std::unordered_map<std::tuple<int, int, int>, bool, TupleHasher> obstacle_check_cache_;

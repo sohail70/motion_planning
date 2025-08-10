@@ -3,13 +3,13 @@
 #pragma once
 
 #include "motion_planning/state_space/statespace.hpp"
-#include "motion_planning/state_space/euclidean_state.hpp" // Re-use EuclideanState for state values
+#include "motion_planning/state_space/euclidean_state.hpp" 
 #include <Eigen/Dense>
 #include <vector>
 #include <cmath>
 #include <algorithm>
 #include <limits>
-#include <iostream> // For debug output
+#include <iostream> 
 #include "motion_planning/ds/edge_info.hpp"
 #include <omp.h> 
 

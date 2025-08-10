@@ -766,11 +766,9 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 //         double combined_radius = obs_radius + inflation;
 //         double combined_radius_sq = combined_radius * combined_radius;
         
-//         // ==================================================================
-//         // --- ADDED: Static Collision Check ---
+//         // --- Static Collision Check ---
 //         // This is a fast, geometric check that ignores obstacle velocity.
 //         // It provides an immediate layer of safety.
-//         // ==================================================================
 //         // We assume the helper function `distanceSqrdPointToSegment` exists in your class.
 //         double min_dist_sq_to_path = distanceSqrdPointToSegment(obs_snapshot.position, p_r0, p_rT);
 //         if (min_dist_sq_to_path <= combined_radius_sq) {

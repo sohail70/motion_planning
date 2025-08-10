@@ -1181,7 +1181,7 @@
 //     // int D_SPATIAL_DIM = 3;
 
 
-//     // --- Create the Thruster State Space ---
+//     // --- 2. Create the Thruster State Space ---
 //     std::shared_ptr<StateSpace> thruster_ss = std::make_shared<ThrusterSteerStateSpace>(DIM, MAX_ACCEL);
 
 //     std::cout << "Attempting to steer from: "; printVec(start_state); std::cout << "\n";

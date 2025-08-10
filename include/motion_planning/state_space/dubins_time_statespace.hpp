@@ -3,6 +3,9 @@
 #pragma once
 
 #include "motion_planning/state_space/dubins_statespace.hpp" // Inherit from the 3D Dubins class
+/**
+ * TODO: Fix the hover 
+ */
 
 enum class HoverDirection {
     RIGHT,
@@ -24,7 +27,6 @@ public:
 
     ~DubinsTimeStateSpace() override = default;
 
-    // --- Override virtual functions to handle the 4th dimension (time) ---
 
     /**
      * Calculates the shortest path between two 4D states, respecting Dubins

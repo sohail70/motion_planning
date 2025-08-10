@@ -1080,7 +1080,7 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
         // Generate sample in ellipsoid
         Eigen::VectorXd sample = sampleInEllipsoid(center, R, a, b);
 
-        // // ======== Stage 1: Geometric Feasibility Check ======== ----> I think ellipsoid already does this!
+        // // Stage 1: Geometric Feasibility Check ----> I think ellipsoid already does this!
         // if (has_solution) {
         //     // Quick straight-line lower bounds
         //     const double g_lower = (sample - start_pos).norm();

@@ -319,7 +319,6 @@ void RRTX::plan() {
 
 
 
-    // ===== Add this verification loop at the end =====
     bool has_inconsistency = false;
     int edge_counter = 0;
 
@@ -1038,9 +1037,7 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
             current_obstacles[obs.name] = obs;
         }
 
-        // ==============================================================================
         // PASS 1: RE-VALIDATION (The "Remove" Effect)
-        // ==============================================================================
         for (const auto& [name, old_obs] : previous_obstacles_) {
             double search_radius;
             if (old_obs.type == Obstacle::CIRCLE) {
@@ -1072,9 +1069,7 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
             }
         }
 
-        // ==============================================================================
         // PASS 2: INVALIDATION (The "Add" Effect)
-        // ==============================================================================
         for (const auto& [name, current_obs] : current_obstacles) {
             double search_radius;
             if (current_obs.type == Obstacle::CIRCLE) {
@@ -1130,9 +1125,7 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
             }
         }
 
-        // ==============================================================================
         // PASS 3: FINALIZE
-        // ==============================================================================
         propagateDescendants();
         if (vbot_node_) {
             verifyQueue(vbot_node_);

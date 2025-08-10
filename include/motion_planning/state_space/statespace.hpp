@@ -1,5 +1,7 @@
 // Copyright 2025 Soheil E.nia
-
+/**
+ * TODO: I cant remember because of what problem I used "Keep Alive" in this class, because to the best of my knowledge owner of the state is some other class so remove it later! 
+ */
 #pragma once
 
 #include "motion_planning/state_space/euclidean_state.hpp"

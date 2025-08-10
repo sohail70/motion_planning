@@ -81,10 +81,8 @@
 
 #     num_samples = len(plot_groups)
     
-#     # === THE FIX IS HERE ===
 #     # Set sharey=False to allow each subplot to have its own y-axis range.
 #     fig, axes = plt.subplots(1, num_samples, figsize=(6 * num_samples, 7), sharey=False, squeeze=False)
-#     # =======================
 
 #     fig.suptitle(title, fontsize=22, fontweight='bold')
 

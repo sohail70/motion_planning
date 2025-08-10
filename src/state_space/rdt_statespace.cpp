@@ -172,9 +172,7 @@ RDTStateSpace::RDTStateSpace(int euclidean_dimension, double min_velocity, doubl
 //     // Calculate the straight-line distance in space.
 //     double spatial_distance = (to_spatial - from_spatial).norm();
 
-//     // ====================================================================================
 //     // --- The Constant Velocity Model Logic ---
-//     // ====================================================================================
 
 //     // Calculate the time it would *actually* take our robot to travel this distance
 //     //    at its defined, constant velocity.
@@ -182,7 +180,7 @@ RDTStateSpace::RDTStateSpace(int euclidean_dimension, double min_velocity, doubl
 //                                       ? (spatial_distance / robot_velocity_)
 //                                       : std::numeric_limits<double>::infinity();
 
-//     // The connection is kinodynamically valid ONLY IF the robot can make it in time.
+//     // 2. The connection is kinodynamically valid ONLY IF the robot can make it in time.
 //     //    The time required at its constant speed must be less than or equal to the
 //     //    time allotted by the difference between the sampled nodes. This allows the robot
 //     //    to "wait" at a node if it arrives early, but it cannot go faster than its defined speed.
@@ -239,9 +237,7 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
     // Calculate the straight-line distance in space.
     double spatial_distance = (to_spatial - from_spatial).norm();
 
-    // =======================================================================
     // --- The Variable Velocity Model Logic ---
-    // =======================================================================
     // Calculate the speed *required* to connect the two states in the allotted time.
     double required_speed = spatial_distance / time_duration;
 

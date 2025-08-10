@@ -291,7 +291,6 @@ private:
             }
             is_in_collision_state_ = is_colliding_now;
         }
-        // =================================================================
 
         
         // --- Visualization ---

@@ -519,7 +519,7 @@ void RVizVisualization::visualizeCube(
 //             p.x = point.x();
 //             p.y = point.y();
 //             p.z = 0.0;
-//                         p.z = (point.size() > 2) ? point[2] : 0.0; // <--- MODIFIED (This one uses Vector2d as input, so point.size() will always be It should be changed to VectorXd or remove the z access here)
+//                         p.z = (point.size() > 2) ? point[2] : 0.0; // <--- MODIFIED (This one uses Vector2d as input, so point.size() will always be 2. It should be changed to VectorXd or remove the z access here)
 
 //             // p.z = (point.size() > 2) ? point.z() : 0.0; // <--- MODIFIED
 //             dots.points.push_back(p);
@@ -669,7 +669,7 @@ void RVizVisualization::visualizeTrajectories(const std::vector<std::vector<Eige
             p.x = point.x();
             p.y = point.y();
             p.z = 0.0;
-            p.z = (point.size() > 2) ? point[2] : 0.0; // <--- MODIFIED (This one uses Vector2d as input, so point.size() will always be It should be changed to VectorXd or remove the z access here)
+            p.z = (point.size() > 2) ? point[2] : 0.0; // <--- MODIFIED (This one uses Vector2d as input, so point.size() will always be 2. It should be changed to VectorXd or remove the z access here)
 
             // p.z = (point.size() > 2) ? point.z() : 0.0; // <--- MODIFIED
             dots.points.push_back(p);
@@ -688,9 +688,7 @@ void RVizVisualization::visualizeFutureGhosts(
     double prediction_horizon,
     const std::string& frame_id)
 {
-    // ==========================================================
     // --- Create a single MarkerArray for all our actions ---
-    // ==========================================================
     visualization_msgs::msg::MarkerArray all_markers;
 
     // // --- Add clearing markers FIRST ---
@@ -710,9 +708,7 @@ void RVizVisualization::visualizeFutureGhosts(
     // all_markers.markers.push_back(clear_vectors_marker);
 
 
-    // ==========================================================
     // --- Now, add the new markers to the SAME array ---
-    // ==========================================================
     int id = 0;
     for (const auto& obstacle : obstacles) {
         if (!obstacle.is_dynamic || obstacle.velocity.norm() < 0.01) {
@@ -750,7 +746,7 @@ void RVizVisualization::visualizeFutureGhosts(
         vector_line.color.a = 0.8f; 
         all_markers.markers.push_back(vector_line);
         
-        // Create the "Ghost" obstacle marker
+        // 2. Create the "Ghost" obstacle marker
         visualization_msgs::msg::Marker ghost_marker;
         ghost_marker.header = vector_line.header;
         ghost_marker.ns = "ghost_obstacles";

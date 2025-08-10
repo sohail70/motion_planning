@@ -776,9 +776,8 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
 
 
-    // // ==============================================================================
-    // // ======================== NEW VISUALIZATION CODE BLOCK ========================
-    // // ==============================================================================
+    // // VISUALIZATION CODE BLOCK
+    // //
     // if (visualization_) {
     //     // Create a vector to hold the 2D positions of the nodes near obstacles.
     //     std::vector<Eigen::VectorXd> positions_to_visualize;
@@ -798,9 +797,6 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     //                                  {0.0f, 1.0f, 1.0f},  // Cyan color
     //                                  "current_obstacle_nodes");
     // }
-    // // ==============================================================================
-    // // ======================= END OF VISUALIZATION CODE BLOCK ======================
-    // // ==============================================================================    
 
 
 

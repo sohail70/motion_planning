@@ -317,9 +317,7 @@ private:
         double time_after = state_after(2);
         double segment_duration = time_before - time_after;
 
-        // // =================================================================
-        // // =========== ADD THIS BLOCK TO CHECK THE SPEED ===================
-        // // =================================================================
+        // // ADD THIS BLOCK TO CHECK THE SPEED
         // { // Use a block to keep variables local
         //     double spatial_distance = (state_after.head<2>() - state_before.head<2>()).norm();
         //     double segment_speed = 0.0;
@@ -330,7 +328,6 @@ private:
         //     // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Current Segment Speed: %.2f m/s", segment_speed);
         //     std::cout<<"Current segment speed: "<<segment_speed<<"\n";
         // }
-        // // =================================================================
 
         Eigen::VectorXd current_robot_state(3);
         if (segment_duration <= 1e-9) {
@@ -343,9 +340,7 @@ private:
         }
         
         current_interpolated_state_ = current_robot_state;
-        // =================================================================
-        // =========== SIMPLIFIED: COLLISION COUNTING LOGIC ================
-        // =================================================================
+        // COLLISION COUNTING LOGIC
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
         if (gazebo_checker) {
             Eigen::Vector2d current_pos = current_robot_state.head<2>();

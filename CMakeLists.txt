@@ -146,10 +146,10 @@ target_link_libraries(test_fmtx motion_planning gz_obs)
 ament_target_dependencies(test_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_fmtx COMMAND test_fmtx)
 
-# add_executable(test_fmta test/unit/test_fmta.cpp)
-# target_link_libraries(test_fmta motion_planning gz_obs)
-# ament_target_dependencies(test_fmta rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-# add_test(NAME test_fmta COMMAND test_fmta)
+add_executable(test_fmta test/unit/test_fmta.cpp)
+target_link_libraries(test_fmta motion_planning gz_obs)
+ament_target_dependencies(test_fmta rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_fmta COMMAND test_fmta)
 
 add_executable(test_fmt test/unit/test_fmt.cpp)
 target_link_libraries(test_fmt motion_planning gz_obs)
@@ -162,10 +162,10 @@ ament_target_dependencies(test_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros
 add_test(NAME test_anyfmt COMMAND test_anyfmt)
 
 
-# add_executable(test_informed_anyfmt test/unit/test_informed_anyfmt.cpp)
-# target_link_libraries(test_informed_anyfmt motion_planning gz_obs)
-# ament_target_dependencies(test_informed_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-# add_test(NAME test_informed_anyfmt COMMAND test_informed_anyfmt)
+add_executable(test_informed_anyfmt test/unit/test_informed_anyfmt.cpp)
+target_link_libraries(test_informed_anyfmt motion_planning gz_obs)
+ament_target_dependencies(test_informed_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_informed_anyfmt COMMAND test_informed_anyfmt)
 
 add_executable(test_informed_anyfmta test/unit/test_informed_anyfmta.cpp)
 target_link_libraries(test_informed_anyfmta motion_planning gz_obs)
@@ -183,9 +183,9 @@ ament_target_dependencies(test_rrtx rclcpp nav_msgs visualization_msgs tf2_ros g
 add_test(NAME test_rrtx COMMAND test_rrtx)
 
 
-# add_executable(test_kdtree test/unit/test_kdtree.cpp)
-# target_link_libraries(test_kdtree motion_planning)
-# add_test(NAME test_kdtree COMMAND test_kdtree)
+add_executable(test_kdtree test/unit/test_kdtree.cpp)
+target_link_libraries(test_kdtree motion_planning)
+add_test(NAME test_kdtree COMMAND test_kdtree)
 
 add_executable(test_weighted_kdtree test/unit/test_weighted_kdtree.cpp)
 target_link_libraries(test_weighted_kdtree motion_planning)
@@ -206,34 +206,22 @@ ament_target_dependencies(test_gz rclcpp nav_msgs visualization_msgs tf2_ros geo
 add_test(NAME test_gz COMMAND test_gz)
 
 
+add_executable(test_state test/unit/test_state.cpp)
+target_link_libraries(test_state motion_planning)
+add_test(NAME test_state COMMAND test_state)
 
-
-
-
-
-
-
-
-
-# add_executable(test_state test/unit/test_state.cpp)
-# target_link_libraries(test_state motion_planning)
-# add_test(NAME test_state COMMAND test_state)
-
-# add_executable(test_visual test/unit/test_visual.cpp)
-# target_link_libraries(test_visual visualization)
-# ament_target_dependencies(test_visual rclcpp visualization_msgs nav2_msgs rclcpp_action)  
-# add_test(NAME test_visual COMMAND test_visual)
+add_executable(test_visual test/unit/test_visual.cpp)
+target_link_libraries(test_visual visualization)
+ament_target_dependencies(test_visual rclcpp visualization_msgs nav2_msgs rclcpp_action)  
+add_test(NAME test_visual COMMAND test_visual)
 
 # add_executable(test_occupancy test/unit/test_occupancy.cpp)
 # target_link_libraries(test_occupancy visualization motion_planning gz_obs)
 # ament_target_dependencies(test_occupancy rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action) 
 # add_test(NAME test_occupancy COMMAND test_occupancy)
 
-#################### KINODYNAMIC TESTS #############################
-# add_executable(test_kinodynamic_fmtx test/unit/test_kinodynamic_fmtx.cpp)
-# target_link_libraries(test_kinodynamic_fmtx motion_planning gz_obs)
-# ament_target_dependencies(test_kinodynamic_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-# add_test(NAME test_kinodynamic_fmtx COMMAND test_kinodynamic_fmtx)
+################### KINODYNAMIC TESTS #############################
+
 
 add_executable(test_kinodynamic_fmtx_R2T test/unit/test_kinodynamic_fmtx_R2T.cpp)
 target_link_libraries(test_kinodynamic_fmtx_R2T motion_planning gz_obs)
@@ -271,11 +259,6 @@ add_executable(test_kinodynamic_rrtx_thruster_5D test/unit/test_kinodynamic_rrtx
 target_link_libraries(test_kinodynamic_rrtx_thruster_5D motion_planning gz_obs)
 ament_target_dependencies(test_kinodynamic_rrtx_thruster_5D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_kinodynamic_rrtx_thruster_5D COMMAND test_kinodynamic_rrtx_thruster_5D)
-
-
-
-
-
 
 
 
