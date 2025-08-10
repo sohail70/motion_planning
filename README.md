@@ -10,7 +10,7 @@ For those interested in the development process, the following links contain my 
 While the primary focus is `FMTX`, the library expanded to include implementations of several official static planners. This provides a baseline for future work and serves as a personal testbed for exploring other experimental concepts, such as my unofficial algorithms `AnyFMT` and `InformedAnyFMT`, which are not based on existing literature.
 
 The data with which I created the plots and tables for the associated research paper can be found here:
-* **Research Paper Assets**: [Plots and Tables](https://drive.google.com/drive/folders/1U5jQpnKM32EV4fS4kByw6YucyPG08OkS?usp=drive_link)
+* **Research Paper Assets**: [Data](https://drive.google.com/drive/folders/1U5jQpnKM32EV4fS4kByw6YucyPG08OkS?usp=drive_link)
 
 ---
 
