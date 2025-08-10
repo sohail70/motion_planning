@@ -28,7 +28,6 @@ The plots and tables generated for the associated research paper can be found he
 * **Advanced Data Structures**:
     * **NanoFLANN**: For fast nearest-neighbor searches.
     * **Weighted NanoFLANN**: To prioritize certain state-space dimensions.
-    * **Lie Group Splitting KD-Tree**: An experimental feature that currently has performance limitations.
 
 * **ROS 2 and Gazebo Integration**:
     * integrated with ROS 2 for visualization (`RViz`) and communication and collision detection.
@@ -99,7 +98,7 @@ After building, you can run the planners. Open three separate terminals.
     * For **kinodynamic** tests with constant velocity obstacles:
         ```bash
         # From the root of the repository
-        gz sim -s sim/dynamic_world_straight_box_circle_10.sdf.sdf
+        gz sim -s sim/dynamic_world_straight_box_circle_10.sdf
         ```
 
 * **Terminal 3: Launch RViz**
@@ -139,7 +138,7 @@ An interesting insight from this work is the fundamental trade-off between `FMT*
 
 * **Performance Optimizations**: `FMTX` also includes other features like **obstacle caching**, where collision information is cached and reused within a single planning cycle to avoid redundant checks.
 
-It's also important to acknowledge the inherent limitations of any replanning algorithm. As discussed in the original RRTX paper, inevitable collisions can occur if obstacles move too quickly or change their trajectories unpredictably. Parameters like **obstacle inflation** are crucial for safety, but they introduce their own trade-offs. A larger inflation margin creates a safer path but may prevent the robot from finding solutions in narrow passages, such as escaping a corridor between two obstacles. These challenges are fundamental to planning in dynamic environments and can be observed in simulations.
+It's also important to acknowledge the inherent limitations of any replanning algorithm. As discussed in the RRTX paper, inevitable collisions can occur if obstacles move too quickly or change their trajectories unpredictably. Parameters like **obstacle inflation** are crucial for safety, but they introduce their own trade-offs. A larger inflation margin creates a safer path but may prevent the robot from finding solutions in narrow passages, such as escaping a corridor between two obstacles. These challenges are fundamental to planning in dynamic environments and can be observed in simulations.
 
 ---
 
