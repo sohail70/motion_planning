@@ -20,7 +20,7 @@ def analyze_data(base_dir):
     Returns:
         tuple: A tuple containing two DataFrames:
                1. A DataFrame where each row is the median of one trial.
-               A DataFrame with all the raw data from all trials combined.
+               2. A DataFrame with all the raw data from all trials combined.
     """
     state_spaces = ['R2T', 'dubins', 'thruster']
     obstacle_levels = ['10obs', '20obs']

@@ -707,7 +707,7 @@ int main(int argc, char** argv) {
     auto obstacle_info = parseSdfObstacles("dynamic_world_1_obs.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
 
-    // --- Define Robot's Path using ThrusterSteerStateSpace ---
+    // --- 2. Define Robot's Path using ThrusterSteerStateSpace ---
     const int dim = 5;
     const double max_acceleration = 2.0; // m/s^2
     auto thruster_ss = std::make_shared<ThrusterSteerStateSpace>(dim, max_acceleration);

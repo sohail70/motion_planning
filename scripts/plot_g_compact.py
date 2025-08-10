@@ -268,7 +268,7 @@ def main():
             metric_to_plot=DEFAULT_METRIC
         )
         
-    # Sensitivity to Obstacles (All Samples Grouped per C-value)
+    # 2. Sensitivity to Obstacles (All Samples Grouped per C-value)
     print("\n--- Generating Sensitivity to Obstacles (All Samples Grouped) Plots ---")
     for C_value in unique_C_values_found:
         plot_sensitivity_Obstacles_all_samples_grouped(
