@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
 
     Params planner_params;
     planner_params.setParam("num_of_samples", 0);
-    planner_params.setParam("num_batch", 2); // Adding samples (any time!)
+    planner_params.setParam("num_batch", 25); // Adding samples (any time!)
     planner_params.setParam("use_kdtree", true); // for now the false is not impelmented! maybe i should make it default! can't think of a case of not using it but i just wanted to see the performance without it for low sample cases.
     planner_params.setParam("kdtree_type", "NanoFlann");
     planner_params.setParam("obs_cache", false);
@@ -203,12 +203,22 @@ int main(int argc, char **argv) {
                 << " milliseconds\n";
 
 
+    bool limited = true; 
+    auto start_time = std::chrono::steady_clock::now();
+    auto time_limit = std::chrono::seconds(10);
 
-    rclcpp::Rate loop_rate(3000);
+    // rclcpp::Rate loop_rate(3000);
 
 
     // The main loop
     while (running && rclcpp::ok()) {
+        if (limited) {
+            auto now = std::chrono::steady_clock::now();
+            if (now - start_time > time_limit) {
+                std::cout << "[INFO] time_limit seconds have passed. Exiting loop.\n";
+                break;  // exit the loop
+            }
+        }
 
         if (ros2_manager->hasNewGoal()) {
             start_position = ros2_manager->getStartPosition(); 
@@ -239,7 +249,7 @@ int main(int argc, char **argv) {
         // dynamic_cast<ANYFMT*>(planner.get())->visualizeHeapAndUnvisited();
         dynamic_cast<ANYFMT*>(planner.get())->visualizeTree();
         rclcpp::spin_some(ros2_manager);
-        loop_rate.sleep();
+        // loop_rate.sleep();
     }
 
     

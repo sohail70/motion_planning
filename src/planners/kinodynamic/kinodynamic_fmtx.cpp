@@ -42,8 +42,6 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     use_heuristic= params.getParam<bool>("use_heuristic");
     partial_plot = params.getParam<bool>("partial_plot");
     static_obs_presence = params.getParam<bool>("static_obs_presence");
-    ignore_sample = params.getParam<bool>("ignore_sample");
-    prune = params.getParam<bool>("prune");
     obs_cache = params.getParam<bool>("obs_cache");
     lower_bounds_ = problem_->getLowerBound();
     upper_bounds_ = problem_->getUpperBound();

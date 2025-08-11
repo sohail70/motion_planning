@@ -142,38 +142,37 @@ It's also important to acknowledge the inherent limitations of any replanning al
 
 ---
 
-### Demos
-Here are some visualizations of the planners in action. These demonstrations feature challenging scenarios where obstacles move at high speeds (20-30 m/s), testing the robot's ability to react. The robot's maximum velocity is set to 15 m/s for the R2T and Thruster models, and 10 m/s for the Dubins model. 
+## 🕹️ Demos & Visualizations
 
-**Please Note**: For the kinodynamic planners (Dubins and Thruster), the visualized graph edges are simplified as straight lines and do not represent the true, curved trajectories between nodes. The robot visualization is also not to scale.
+Here are some visualizations of the planners in action. These demonstrations feature challenging scenarios where obstacles move at high speeds (20-30 m/s), testing the robot's ability to react. The robot's maximum velocity is set to 15 m/s for the R2T and Thruster models, and 10 m/s for the Dubins model.
 
+> **Please Note**: For the kinodynamic planners (Dubins and Thruster), the visualized graph edges are simplified as straight lines and do not represent the true, curved trajectories between nodes. The robot visualization is also not to scale.
 
-**`./test_fmtx --samples 10000 --factor 1.5 --seed 42 --duration 30`** (Zero inflation)
-<p align="center">
-  <img src="./Geometric_S10000_C1_5_I0.gif" alt="Geometric_S10000_C1_5_I0">
-</p>
+### FMTX Planner in Action
 
-**`./test_kinodynamic_fmtx_R2T --samples 5000 --factor 2.5 --seed 42`** (0.5m inflation)
-<p align="center">
-  <img src="./R2T_S5000_C2_5_I0_5.gif" alt="R2T_S5000_C2_5_I0_5">
-</p>
+| Scenario & Parameters                                                               | Result                                                                      |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| **Geometric**<br>`./test_fmtx --samples 10000 --factor 1.5 --seed 42 --duration 30` (Zero inflation) | <img src="./Geometric_S10000_C1_5_I0.gif" alt="Geometric_S10000_C1_5_I0"> |
+| **Kinodynamic (R2T)**<br>`./test_kinodynamic_fmtx_R2T --samples 5000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./R2T_S5000_C2_5_I0_5.gif" alt="R2T_S5000_C2_5_I0_5"> |
+| **Kinodynamic (Dubins)**<br>`./test_kinodynamic_fmtx_dubin_4D --samples 3000 --factor 2.5 --seed 42` (2.0m inflation) | <img src="./Dubins_S3000_C2_5_I2_0.gif" alt="Dubins_S3000_C2_5_I2_0"> |
+| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./Thruster_S1000_C2_5_I0_5.gif" alt="Thruster_S1000_C2_5_I0_5"> |
+| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_fmtx_thruster_5D --samples 2000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./Thruster_S2000_C2_5_I0_5.gif" alt="Thruster_S2000_C2_5_I0_5"> |
+| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 3.0 --seed 42` (0.5m inflation) | <img src="./Thruster_S1000_C3_0_I0_5.gif" alt="Thruster_S1000_C3_0_I0_5"> |
 
-**`./test_kinodynamic_fmtx_dubin_4D --samples 3000 --factor 2.5 --seed 42`** (2.0m inflation)
-<p align="center">
-  <img src="./Dubins_S3000_C2_5_I2_0.gif" alt="Dubins_S3000_C2_5_I2_0">
-</p>
+### RRTX Planner in Action
 
-**`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 2.5 --seed 42`** (0.5m inflation)
-<p align="center">
-  <img src="./Thruster_S1000_C2_5_I0_5.gif" alt="Thruster_S1000_C2_5_I0_5">
-</p>
+| Scenario & Parameters                                                                   | Result                                                                          |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Kinodynamic (R2T)**<br>`./test_kinodynamic_rrtx_R2T --samples 3000 --factor 2.0 --seed 42` (0.5m inflation) | <img src="./RRTX_R2T_S3000_C2_0_I0_5.gif" alt="RRTX_R2T_S3000_C2_0_I0_5"> |
+| **Kinodynamic (Dubins)**<br>`./test_kinodynamic_rrtx_dubin_4D --samples 2000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./RRTX_dubins_S2000_C2_5_I0_5.gif" alt="RRTX_dubins_S2000_C2_5_I0_5"> |
+| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_rrtx_thruster_5D --samples 2000 --factor 2.0 --seed 42` (0.5m inflation) | <img src="./RRTX_thruster_S2000_C2_0_I0_5.gif" alt="RRTX_thruster_S2000_C2_0_I0_5"> |
 
-**`./test_kinodynamic_fmtx_thruster_5D --samples 2000 --factor 2.5 --seed 42`** (0.5m inflation)
-<p align="center">
-  <img src="./Thruster_S2000_C2_5_I0_5.gif" alt="Thruster_S2000_C2_5_I0_5">
-</p>
+### Anytime Planner Comparison
 
-**`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 3.0 --seed 42`** (0.5m inflation)
-<p align="center">
-  <img src="./Thruster_S1000_C3_0_I0_5.gif" alt="Thruster_S1000_C3_0_I0_5">
-</p>
+The following demos show a 10-second benchmark comparison between `BIT*` and my experimental anytime planners.
+
+| Planner               | Final Path Cost | Result                                                                                    |
+| --------------------- | --------------- | ----------------------------------------------------------------------------------------- |
+| **Anytime FMT\*** | **100.973** | <img src="./anyfmt_B25_S10_C100_973.gif" alt="anyfmt_B25_S10_C100_973">                   |
+| **BIT\*** | **119.776** | <img src="./bitstar_B25_S10_C119_776.gif" alt="bitstar_B25_S10_C119_776">                   |
+| **Informed Anytime FMTA\*** | **118.629** | <img src="./informedanyfmta_B25_S10_C118_629.gif" alt="informedanyfmta_B25_S10_C118_629"> |

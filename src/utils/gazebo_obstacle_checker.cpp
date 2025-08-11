@@ -18,6 +18,7 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
     persistent_static_obstacles = params.getParam<bool>("persistent_static_obstacles");
     robot_position_ << params.getParam<double>("default_robot_x"), params.getParam<double>("default_robot_y");
     estimation = params.getParam<bool>("estimation");
+    std::cout<<"estimation " << estimation<<"\n";
     kf_model_type_ = params.getParam<std::string>("kf_model_type", "cv");
     use_fcl = params.getParam<bool>("fcl", false);
     use_bullet = params.getParam<bool>("bullet", false);

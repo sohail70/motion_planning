@@ -100,14 +100,14 @@ void BITStar::setup(const Params& params, std::shared_ptr<Visualization> visuali
 
 
 void BITStar::plan() {
-    if(std::abs(robot_node_->getCost() - tree_[root_state_index_]->getHeuristic()) <0.01 || robot_node_->getCost()<104.0) {
-        prune();
-        return;
-    }
+    // if(std::abs(robot_node_->getCost() - tree_[root_state_index_]->getHeuristic()) <0.01 || robot_node_->getCost()<104.0) {
+    //     prune();
+    //     return;
+    // }
 
 
     if (vertex_queue_.empty() && edge_queue_.empty()) {
-        std::cout<<"GGGGGGGGGGGGGGGGGGGGGGGGGGGG \n";
+        // std::cout<<"GGGGGGGGGGGGGGGGGGGGGGGGGGGG \n";
         for (auto s : samples_){
             s->is_new_ = false;
         }
@@ -932,7 +932,7 @@ void BITStar::visualizeTree() {
         nodes_sample_.push_back(node->getStateValue());
     }
     // visualization_->visualizeNodes(nodes_tree_,"map",std::vector<float>{0.0,1.0,0.0} , "nodes_tree");
-    visualization_->visualizeNodes(nodes_sample_,"map",std::vector<float>{0.0,0.0,1.0} , "nodes_sample");
+    // visualization_->visualizeNodes(nodes_sample_,"map",std::vector<float>{0.0,0.0,1.0} , "nodes_sample");
     visualization_->visualizeEdges(edges, "map");
 }
 

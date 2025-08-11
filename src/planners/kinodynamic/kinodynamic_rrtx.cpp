@@ -176,7 +176,6 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
 
     num_of_samples_ = params.getParam<int>("num_of_samples");
     partial_update = params.getParam<bool>("partial_update");
-    ignore_sample = params.getParam<bool>("ignore_sample");
     static_obs_presence = params.getParam<bool>("static_obs_presence");
 
     lower_bounds_ = problem_->getLowerBound();
@@ -723,7 +722,7 @@ std::unordered_set<int> KinodynamicRRTX::findSamplesNearObstacles(
 
         // --- Handle DYNAMIC Obstacles ---
         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
-            const double PREDICTION_HORIZON_SECONDS = 3.0;
+            const double PREDICTION_HORIZON_SECONDS = 1.0;
             const int num_intermediate_steps = 10;
 
             // Perform searches at multiple discrete time steps along the predicted path

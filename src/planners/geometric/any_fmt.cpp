@@ -277,7 +277,7 @@ void ANYFMT::addBatchOfSamples(int num_samples) {
 
 
     // std::cout<<v_open_heap_.getHeap().size()<<"\n";
-    visualizeHeapAndUnvisited();
+    // visualizeHeapAndUnvisited();
 }
 
 void ANYFMT::updateNeighbors(int node_index) {

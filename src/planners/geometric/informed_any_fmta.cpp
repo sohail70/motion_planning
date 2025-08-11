@@ -341,10 +341,10 @@ void InformedANYFMTA::setup(const Params& params, std::shared_ptr<Visualization>
 
 
 void InformedANYFMTA::plan() {
-    if(std::abs(robot_node_->getCost() - tree_[root_state_index_]->getHeuristic()) <0.01 || robot_node_->getCost()<104.0) {
-        prune();
-        return;
-    }
+    // if(std::abs(robot_node_->getCost() - tree_[root_state_index_]->getHeuristic()) <0.01 || robot_node_->getCost()<104.0) {
+    //     prune();
+    //     return;
+    // }
     // processed_edges_.clear();
     // duplicate_checks_ = 0;
     // total_checks_ = 0;
@@ -555,7 +555,7 @@ void InformedANYFMTA::plan() {
 
         visualizeTree();
     }
-    std::cout<<"ccccccccccc : "<<cc<<"\n";
+    // std::cout<<"ccccccccccc : "<<cc<<"\n";
 
 
     // for (auto& node : tree_) {
@@ -564,14 +564,14 @@ void InformedANYFMTA::plan() {
     //     }
     // }
 
-    // Add debug summary at end
-    std::cout << "\n--- Collision Check Report ---\n"
-              << "Total checks: " << total_checks_ << "\n"
-              << "Duplicate edges: " << duplicate_checks_ << " ("
-              << (duplicate_checks_ * 100.0 / total_checks_) << "%)\n"
-              << "Unique edges checked: " << processed_edges_.size() << "\n"
-              << "Tree size: " << tree_.size() << "\n"
-              << "Sample size: " << samples_.size() << "\n";
+    // // Add debug summary at end
+    // std::cout << "\n--- Collision Check Report ---\n"
+    //           << "Total checks: " << total_checks_ << "\n"
+    //           << "Duplicate edges: " << duplicate_checks_ << " ("
+    //           << (duplicate_checks_ * 100.0 / total_checks_) << "%)\n"
+    //           << "Unique edges checked: " << processed_edges_.size() << "\n"
+    //           << "Tree size: " << tree_.size() << "\n"
+    //           << "Sample size: " << samples_.size() << "\n";
 
     
 }
@@ -633,10 +633,10 @@ void InformedANYFMTA::processNode(
     
     // Debug: Check if edge was already processed
     if (processed_edges_.count(edge_id)) {
-        std::cout << "DUPLICATE EDGE: " 
-                  << x->getStateValue().transpose() << " <-> "
-                  << best_neighbor_node->getStateValue().transpose()
-                  << " | Total duplicates: " << ++duplicate_checks_ <<"| "<<x->getCost() <<" vs " <<min_cost <<"\n";
+        // std::cout << "DUPLICATE EDGE: " 
+        //           << x->getStateValue().transpose() << " <-> "
+        //           << best_neighbor_node->getStateValue().transpose()
+        //           << " | Total duplicates: " << ++duplicate_checks_ <<"| "<<x->getCost() <<" vs " <<min_cost <<"\n";
         if(x->getCost() == INFINITY) // Well if its a duplicate and the cost is inf then retrun because its blocked!--> it lowers the collision check but you need to undesrtand why we even this happens!!!
             return;
     } else {
@@ -1725,7 +1725,7 @@ void InformedANYFMTA::visualizeTree() {
         nodes_sample_.push_back(node->getStateValue());
     }
     // visualization_->visualizeNodes(nodes_tree_,"map",std::vector<float>{0.0,1.0,0.0} , "nodes_tree");
-    visualization_->visualizeNodes(nodes_sample_,"map",std::vector<float>{0.0,0.0,1.0} , "samples_tree");
+    // visualization_->visualizeNodes(nodes_sample_,"map",std::vector<float>{0.0,0.0,1.0} , "samples_tree");
     visualization_->visualizeEdges(edges, "map");
 }
 
