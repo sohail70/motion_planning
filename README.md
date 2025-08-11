@@ -143,7 +143,10 @@ It's also important to acknowledge the inherent limitations of any replanning al
 ---
 
 ### Demos
-Here are some visualizations of the planners in action. These demonstrations feature challenging scenarios where obstacles move at high speeds (20-30 m/s), testing the robot's ability to react. The robot's maximum velocity is set to 15 m/s for the R2T and Thruster models, and 10 m/s for the Dubins model.
+Here are some visualizations of the planners in action. These demonstrations feature challenging scenarios where obstacles move at high speeds (20-30 m/s), testing the robot's ability to react. The robot's maximum velocity is set to 15 m/s for the R2T and Thruster models, and 10 m/s for the Dubins model. 
+
+**Please Note**: For the kinodynamic planners (Dubins and Thruster), the visualized graph edges are simplified as straight lines and do not represent the true, curved trajectories between nodes. The robot visualization is also not to scale.
+
 
 **`./test_fmtx --samples 10000 --factor 1.5 --seed 42 --duration 30`** (Zero inflation)
 <p align="center">
