@@ -148,32 +148,37 @@ Here are some visualizations of the planners in action. These demonstrations fea
 
 > **Please Note**: For the kinodynamic planners (Dubins and Thruster), the visualized graph edges are simplified as straight lines and do not represent the true, curved trajectories between nodes. The robot visualization is also not to scale.
 
+## Demos & Visualizations
+
+Here are some visualizations of the planners in action. These demonstrations feature challenging scenarios where obstacles move at high speeds (20-30 m/s), testing the robot's ability to react. The robot's maximum velocity is set to 15 m/s for the R2T and Thruster models, and 10 m/s for the Dubins model.
+
+> **Please Note**: For the kinodynamic planners (Dubins and Thruster), the visualized graph edges are simplified as straight lines and do not represent the true, curved trajectories between nodes. The robot visualization is also not to scale.
+
 ### FMTX Planner
 
 | Scenario & Command | Visualization |
 | :--- | :--- |
-| **Geometric** <br> `./test_fmtx --samples 10000` <br> `--factor 1.5 --seed 42 --duration 30` <br> (Zero inflation) | <img src="./Geometric_S10000_C1_5_I0.gif" alt="Geometric Demo" width="80%"> |
-| **Kinodynamic (R2T)** <br> `./test_kinodynamic_fmtx_R2T` <br> `--samples 5000 --factor 2.5 --seed 42` <br> (0.5m inflation) | <img src="./R2T_S5000_C2_5_I0_5.gif" alt="R2T Demo" width="80%"> |
-| **Kinodynamic (Dubins)** <br> `./test_kinodynamic_fmtx_dubin_4D` <br> `--samples 3000 --factor 2.5 --seed 42` <br> (2.0m inflation) | <img src="./Dubins_S3000_C2_5_I2_0.gif" alt="Dubins Demo" width="80%"> |
-| **Kinodynamic (Thruster)** <br> `./test_kinodynamic_fmtx_thruster_5D` <br> `--samples 1000 --factor 2.5 --seed 42` <br> (0.5m inflation) | <img src="./Thruster_S1000_C2_5_I0_5.gif" alt="Thruster Demo 1" width="80%"> |
-| **Kinodynamic (Thruster)** <br> `./test_kinodynamic_fmtx_thruster_5D` <br> `--samples 2000 --factor 2.5 --seed 42` <br> (0.5m inflation) | <img src="./Thruster_S2000_C2_5_I0_5.gif" alt="Thruster Demo 2" width="80%"> |
-| **Kinodynamic (Thruster)** <br> `./test_kinodynamic_fmtx_thruster_5D` <br> `--samples 1000 --factor 3.0 --seed 42` <br> (0.5m inflation) | <img src="./Thruster_S1000_C3_0_I0_5.gif" alt="Thruster Demo 3" width="80%"> |
+| **Geometric** <br> `./test_fmtx --samples 10000` <br> `--factor 1.5 --seed 42 --duration 30` <br> (Zero inflation) | <p align="center"><img src="./Geometric_S10000_C1_5_I0.gif" alt="Geometric Demo" width="80%"></p> |
+| **Kinodynamic (R2T)** <br> `./test_kinodynamic_fmtx_R2T` <br> `--samples 5000 --factor 2.5 --seed 42` <br> (0.5m inflation) | <p align="center"><img src="./R2T_S5000_C2_5_I0_5.gif" alt="R2T Demo" width="80%"></p> |
+| **Kinodynamic (Dubins)** <br> `./test_kinodynamic_fmtx_dubin_4D` <br> `--samples 3000 --factor 2.5 --seed 42` <br> (2.0m inflation) | <p align="center"><img src="./Dubins_S3000_C2_5_I2_0.gif" alt="Dubins Demo" width="80%"></p> |
+| **Kinodynamic (Thruster)** <br> `./test_kinodynamic_fmtx_thruster_5D` <br> `--samples 1000 --factor 2.5 --seed 42` <br> (0.5m inflation) | <p align="center"><img src="./Thruster_S1000_C2_5_I0_5.gif" alt="Thruster Demo 1" width="80%"></p> |
+| **Kinodynamic (Thruster)** <br> `./test_kinodynamic_fmtx_thruster_5D` <br> `--samples 2000 --factor 2.5 --seed 42` <br> (0.5m inflation) | <p align="center"><img src="./Thruster_S2000_C2_5_I0_5.gif" alt="Thruster Demo 2" width="80%"></p> |
+| **Kinodynamic (Thruster)** <br> `./test_kinodynamic_fmtx_thruster_5D` <br> `--samples 1000 --factor 3.0 --seed 42` <br> (0.5m inflation) | <p align="center"><img src="./Thruster_S1000_C3_0_I0_5.gif" alt="Thruster Demo 3" width="80%"></p> |
 
 ### RRTX Planner
 
 | Scenario & Command | Visualization |
 | :--- | :--- |
-| **Kinodynamic (R2T)** <br> `./test_kinodynamic_rrtx_R2T` <br> `--samples 3000 --factor 2.0 --seed 42` <br> (0.5m inflation) | <img src="./RRTX_R2T_S3000_C2_0_I0_5.gif" alt="RRTX R2T Demo" width="80%"> |
-| **Kinodynamic (Dubins)** <br> `./test_kinodynamic_rrtx_dubin_4D` <br> `--samples 2000 --factor 2.5 --seed 42` <br> (0.5m inflation) | <img src="./RRTX_dubins_S2000_C2_5_I0_5.gif" alt="RRTX Dubins Demo" width="80%"> |
-| **Kinodynamic (Thruster)** <br> `./test_kinodynamic_rrtx_thruster_5D` <br> `--samples 2000 --factor 2.0 --seed 42` <br> (0.5m inflation) | <img src="./RRTX_thruster_S2000_C2_0_I0_5.gif" alt="RRTX Thruster Demo" width="80%"> |
-
+| **Kinodynamic (R2T)** <br> `./test_kinodynamic_rrtx_R2T` <br> `--samples 3000 --factor 2.0 --seed 42` <br> (0.5m inflation) | <p align="center"><img src="./RRTX_R2T_S3000_C2_0_I0_5.gif" alt="RRTX R2T Demo" width="80%"></p> |
+| **Kinodynamic (Dubins)** <br> `./test_kinodynamic_rrtx_dubin_4D` <br> `--samples 2000 --factor 2.5 --seed 42` <br> (0.5m inflation) | <p align="center"><img src="./RRTX_dubins_S2000_C2_5_I0_5.gif" alt="RRTX Dubins Demo" width="80%"></p> |
+| **Kinodynamic (Thruster)** <br> `./test_kinodynamic_rrtx_thruster_5D` <br> `--samples 2000 --factor 2.0 --seed 42` <br> (0.5m inflation) | <p align="center"><img src="./RRTX_thruster_S2000_C2_0_I0_5.gif" alt="RRTX Thruster Demo" width="80%"></p> |
 
 ### Anytime Planner Comparison
 
-The following demos show a 10-second benchmark comparison between `BIT*` and my experimental anytime planners. The informed Anytime FMT* variants and BIT* are shown here without extensive tuning; I haven’t yet explored why they currently perform slower than Anytime FMT*.
+The following demos show a 10-second benchmark comparison between `BIT*` and my experimental anytime planners.
 
-| Planner               | Visualization                                                                                    |
-| --------------------- | ----------------------------------------------------------------------------------------- |
-| **Anytime FMT\*** | <img src="./anyfmt_B25_S10_C100_973.gif" alt="anyfmt_B25_S10_C100_973">                   |
-| **BIT\*** | <img src="./bitstar_B25_S10_C119_776.gif" alt="bitstar_B25_S10_C119_776">                   |
-| **Informed Anytime FMTA\*** | <img src="./informedanyfmta_B25_S10_C118_629.gif" alt="informedanyfmta_B25_S10_C118_629"> |
+| Planner | Visualization |
+| :--- | :--- |
+| **Anytime FMT\*** | <p align="center"><img src="./anyfmt_B25_S10_C100_973.gif" alt="Anytime FMT* Demo" width="80%"></p> |
+| **BIT\*** | <p align="center"><img src="./bitstar_B25_S10_C119_776.gif" alt="BIT* Demo" width="80%"></p> |
+| **Informed Anytime FMTA\*** | <p align="center"><img src="./informedanyfmta_B25_S10_C118_629.gif" alt="Informed Anytime FMTA* Demo" width="80%"></p> |
