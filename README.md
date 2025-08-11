@@ -152,20 +152,21 @@ Here are some visualizations of the planners in action. These demonstrations fea
 
 | Scenario & Parameters                                                               | Visualization                                                                      |
 | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| **Geometric**<br>`./test_fmtx --samples 10000 --factor 1.5 --seed 42 --duration 30` (Zero inflation) | <img src="./Geometric_S10000_C1_5_I0.gif" alt="Geometric_S10000_C1_5_I0"> |
-| **Kinodynamic (R2T)**<br>`./test_kinodynamic_fmtx_R2T --samples 5000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./R2T_S5000_C2_5_I0_5.gif" alt="R2T_S5000_C2_5_I0_5"> |
-| **Kinodynamic (Dubins)**<br>`./test_kinodynamic_fmtx_dubin_4D --samples 3000 --factor 2.5 --seed 42` (2.0m inflation) | <img src="./Dubins_S3000_C2_5_I2_0.gif" alt="Dubins_S3000_C2_5_I2_0"> |
-| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./Thruster_S1000_C2_5_I0_5.gif" alt="Thruster_S1000_C2_5_I0_5"> |
-| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_fmtx_thruster_5D --samples 2000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./Thruster_S2000_C2_5_I0_5.gif" alt="Thruster_S2000_C2_5_I0_5"> |
-| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 3.0 --seed 42` (0.5m inflation) | <img src="./Thruster_S1000_C3_0_I0_5.gif" alt="Thruster_S1000_C3_0_I0_5"> |
+| **Geometric**<br>`./test_fmtx --samples 10000 --factor 1.5 --seed 42 --duration 30` (Zero inflation) | <img src="./Geometric_S10000_C1_5_I0.gif" alt="Geometric_S10000_C1_5_I0" width="80%"> |
+| **Kinodynamic (R2T)**<br>`./test_kinodynamic_fmtx_R2T --samples 5000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./R2T_S5000_C2_5_I0_5.gif" alt="R2T_S5000_C2_5_I0_5" width="80%"> |
+| **Kinodynamic (Dubins)**<br>`./test_kinodynamic_fmtx_dubin_4D --samples 3000 --factor 2.5 --seed 42` (2.0m inflation) | <img src="./Dubins_S3000_C2_5_I2_0.gif" alt="Dubins_S3000_C2_5_I2_0" width="80%"> |
+| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./Thruster_S1000_C2_5_I0_5.gif" alt="Thruster_S1000_C2_5_I0_5" width="80%"> |
+| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_fmtx_thruster_5D --samples 2000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./Thruster_S2000_C2_5_I0_5.gif" alt="Thruster_S2000_C2_5_I0_5" width="80%"> |
+| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_fmtx_thruster_5D --samples 1000 --factor 3.0 --seed 42` (0.5m inflation) | <img src="./Thruster_S1000_C3_0_I0_5.gif" alt="Thruster_S1000_C3_0_I0_5" width="80%"> |
 
 ### RRTX Planner
 
 | Scenario & Parameters                                                                   | Visualization                                                                          |
 | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| **Kinodynamic (R2T)**<br>`./test_kinodynamic_rrtx_R2T --samples 3000 --factor 2.0 --seed 42` (0.5m inflation) | <img src="./RRTX_R2T_S3000_C2_0_I0_5.gif" alt="RRTX_R2T_S3000_C2_0_I0_5"> |
-| **Kinodynamic (Dubins)**<br>`./test_kinodynamic_rrtx_dubin_4D --samples 2000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./RRTX_dubins_S2000_C2_5_I0_5.gif" alt="RRTX_dubins_S2000_C2_5_I0_5"> |
-| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_rrtx_thruster_5D --samples 2000 --factor 2.0 --seed 42` (0.5m inflation) | <img src="./RRTX_thruster_S2000_C2_0_I0_5.gif" alt="RRTX_thruster_S2000_C2_0_I0_5"> |
+| **Kinodynamic (R2T)**<br>`./test_kinodynamic_rrtx_R2T --samples 3000 --factor 2.0 --seed 42` (0.5m inflation) | <img src="./RRTX_R2T_S3000_C2_0_I0_5.gif" alt="RRTX_R2T_S3000_C2_0_I0_5" width="80%"> |
+| **Kinodynamic (Dubins)**<br>`./test_kinodynamic_rrtx_dubin_4D --samples 2000 --factor 2.5 --seed 42` (0.5m inflation) | <img src="./RRTX_dubins_S2000_C2_5_I0_5.gif" alt="RRTX_dubins_S2000_C2_5_I0_5" width="80%"> |
+| **Kinodynamic (Thruster)**<br>`./test_kinodynamic_rrtx_thruster_5D --samples 2000 --factor 2.0 --seed 42` (0.5m inflation) | <img src="./RRTX_thruster_S2000_C2_0_I0_5.gif" alt="RRTX_thruster_S2000_C2_0_I0_5" width="80%"> |
+
 
 ### Anytime Planner Comparison
 
