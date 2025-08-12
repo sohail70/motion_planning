@@ -5,7 +5,7 @@ This repository contains a C++ library for advanced motion planning, created to 
 For those interested in the development process, the following links contain my exploratory MATLAB and Python files. Please note that these are development archives; the code is not organized and contains many experimental ideas for adapting FMT* to handle dynamic obstacles. The finalized, working solution is in this C++ repository.
 
 * **Initial Concept in MATLAB/Python**: [Development Files](https://drive.google.com/drive/folders/1BwNw0cQw3J7h2tKtNB-NLXXTFCvpezjT?usp=drive_link)
-* **My `RRTX` Implementation**: [Student Project Files](https://drive.google.com/drive/folders/1K904_q35ITkBdSvvj18UvrUiA0Kab96B?usp=drive_link)
+* **My `RRTX` Implementation**: [Student Project Files](https://drive.google.com/drive/folders/1K904_q35ITkBdSvvj18UvrUiA0Kab96B?usp=drive_link), [ROS1](https://github.com/sohail70/RRTx)
 
 While the primary focus is `FMTX`, the library expanded to include implementations of several official static planners. This provides a baseline for future work and serves as a personal testbed for exploring other experimental concepts, such as my unofficial algorithms `AnyFMT` and `InformedAnyFMT`, which are not based on existing literature.
 
