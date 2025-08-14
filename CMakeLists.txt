@@ -22,7 +22,7 @@ set(CMAKE_BUILD_TYPE Release)
 find_package(Eigen3 REQUIRED)
 find_package(nanoflann REQUIRED)
 
-find_package(OpenMP REQUIRED)
+# find_package(OpenMP REQUIRED)
 
 
 find_package(ament_cmake REQUIRED)

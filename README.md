@@ -45,7 +45,6 @@ Before building, ensure you have the following dependencies installed. While `Bu
 * **Core Libraries**:
     * `Eigen3`
     * `nanoflann`
-    * `OpenMP`
     * `Bullet`
     * `FCL`
     * `ZeroMQ` & `Protobuf`
