@@ -11,7 +11,6 @@
 #include <limits>
 #include <iostream> 
 #include "motion_planning/ds/edge_info.hpp"
-#include <omp.h> 
 
 class ThrusterSteerStateSpace : public StateSpace {
 public:
