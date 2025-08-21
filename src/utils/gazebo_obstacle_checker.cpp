@@ -2142,6 +2142,8 @@ void GazeboObstacleChecker::poseInfoCallback(const gz::msgs::Pose_V& msg) {
         const auto& pose = msg.pose(i);
         const std::string name = pose.name();
         Eigen::Vector2d position(pose.position().x(), pose.position().y());
+        double position_z = pose.position().z();
+
 
         if (name == robot_model_name_) continue;
 

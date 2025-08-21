@@ -42,7 +42,7 @@
 <model name="moving_cylinder_6">
 <pose>15.0 35.0 0 0 0 0</pose>
     <link name="moving_link">
-  
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -77,7 +77,7 @@
 <model name="moving_cylinder_8">
   <pose>5.0 -45.0 0 0 0 0</pose>
   <link name="moving_link">
-   
+                   <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>4.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>0 0 1 1</ambient></material>
@@ -100,6 +100,7 @@
 <model name="moving_cylinder_11">
   <pose>10.0 30.0 0 0 0 0</pose>
   <link name="moving_link">
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -121,6 +122,7 @@
 <model name="moving_cylinder_11_5">
   <pose>10.0 0.0 0 0 0 0</pose>
   <link name="moving_link">
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -170,6 +172,7 @@
 <model name="moving_cylinder_13">
   <pose>30.0 18.0 0 0 0 0</pose>
   <link name="moving_link">
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -197,6 +200,7 @@
 <model name="moving_cylinder_14">
   <pose>10.0 -25.0 0 0 0 0</pose>
   <link name="moving_link">
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>3.5</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -214,6 +218,7 @@
 <model name="moving_cylinder_16">
   <pose>40.0 -10.0 0 0 0 0</pose>
   <link name="moving_link">
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -232,6 +237,7 @@
 <model name="moving_cylinder_18">
   <pose>15.0 15.0 0 0 0 0</pose>
   <link name="moving_link">
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>3.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -249,6 +255,7 @@
 <model name="moving_cylinder_19">
   <pose>-45.0 -5.0 0 0 0 0</pose>
   <link name="moving_link">
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>4.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -266,6 +273,7 @@
 <model name="moving_cylinder_20">
   <pose>10.0 -10.0 0 0 0 0</pose>
   <link name="moving_link">
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>6.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -283,6 +291,7 @@
 <model name="moving_cylinder_21">
   <pose>-25.0 -35.0 0 0 0 0</pose>
   <link name="moving_link">
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>2.5</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -319,6 +328,7 @@
 <model name="moving_cylinder_23">
   <pose>0.0 -15.0 0 0 0 0</pose>
   <link name="moving_link">
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>4.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -336,6 +346,7 @@
 <model name="moving_cylinder_23_5">
   <pose>-15.0 0.0 0 0 0 0</pose>
   <link name="moving_link">
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>4.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -356,6 +367,7 @@
   <static>true</static>
   <pose>-25 10 0.5 0 0 0.785</pose>
   <link name="link">
+                  <gravity>false</gravity>
     <collision name="collision">
       <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
     </collision>
@@ -370,6 +382,7 @@
   <static>true</static>
   <pose>30 -30 0.5 0 0 0.2</pose>
   <link name="link">
+                  <gravity>false</gravity>
     <collision name="collision">
       <geometry><cylinder><radius>1.5</radius><length>1.0</length></cylinder></geometry>
     </collision>
@@ -384,6 +397,7 @@
   <static>true</static>
   <pose>0 20 0.5 0 0 -0.5</pose>
   <link name="link">
+                  <gravity>false</gravity>
     <collision name="collision">
       <geometry><cylinder><radius>2.5</radius><length>1.0</length></cylinder></geometry>
     </collision>
@@ -398,6 +412,7 @@
   <static>true</static>
   <pose>-40 -40 0.5 0 0 1.57</pose>
   <link name="link">
+                  <gravity>false</gravity>
     <collision name="collision">
       <geometry><cylinder><radius>3.0</radius><length>1.0</length></cylinder></geometry>
     </collision>
@@ -412,6 +427,7 @@
   <static>true</static>
   <pose>45 40 0.5 0 0 0</pose>
   <link name="link">
+                  <gravity>false</gravity>
     <collision name="collision">
       <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
     </collision>
@@ -426,6 +442,7 @@
   <static>true</static>
   <pose>10 10 0.5 0 0 -1.1</pose>
   <link name="link">
+                  <gravity>false</gravity>
     <collision name="collision">
       <geometry><cylinder><radius>3.5</radius><length>1.0</length></cylinder></geometry>
     </collision>
@@ -440,6 +457,7 @@
   <static>true</static>
   <pose>-15 35 0.5 0 0 0.4</pose>
   <link name="link">
+                  <gravity>false</gravity>
     <collision name="collision">
       <geometry><cylinder><radius>2.5</radius><length>1.0</length></cylinder></geometry>
     </collision>
@@ -454,6 +472,7 @@
   <static>true</static>
   <pose>20 -5 0.5 0 0 0</pose>
   <link name="link">
+                  <gravity>false</gravity>
     <collision name="collision">
       <geometry><cylinder><radius>1.5</radius><length>1.0</length></cylinder></geometry>
     </collision>
@@ -468,6 +487,7 @@
   <static>true</static>
   <pose>-35 0 0.5 0 0 1.0</pose>
   <link name="link">
+                  <gravity>false</gravity>
     <collision name="collision">
       <geometry><cylinder><radius>3.0</radius><length>1.0</length></cylinder></geometry>
     </collision>
@@ -482,6 +502,7 @@
   <static>true</static>
   <pose>0 -30 0.5 0 0 -0.8</pose>
   <link name="link">
+                  <gravity>false</gravity>
     <collision name="collision">
       <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
     </collision>

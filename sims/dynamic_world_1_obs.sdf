@@ -38,6 +38,7 @@
 <model name="moving_cylinder_2">
 <pose>0.0 -35.0 0 0 0 0</pose>
     <link name="moving_link">
+                      <gravity>false</gravity>
     <kinematic>true</kinematic>
     <visual name="visual">
       <geometry>

@@ -38,7 +38,10 @@ struct Obstacle {
     Eigen::Vector2d acceleration;
     rclcpp::Time last_update_time;
     
-    double z = 0.0; // TODO: unfortunately right now i dont have time to integrate 3D to the position, velocity and acceleration so lets just use another varibale!
+    // Lets for easier simulation assume 3D obstalce has constant z and move in XY plane (or else i have to change lots of things)
+    bool is_3d = false; // If an obstalce lives in 3D space (x,y,z)
+    double z = 0.0; // TODO: unfortunately right now i dont have time to integrate 3D to the position, velocity and acceleration so lets just use another varibale
+
     // The union has been replaced with this struct.
     ObstacleDimensions dimensions;
 

@@ -1,0 +1,299 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+  
+    <physics type="ode">
+      <max_step_size>0.01</max_step_size>
+      <real_time_update_rate>60</real_time_update_rate>
+    </physics>  
+  
+    <!-- A simple ground plane -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- =============================================================== -->
+    <!-- MOVING SPHERES AT DIFFERENT HEIGHTS (Z-VALUES)                  -->
+    <!-- =============================================================== -->
+
+    <model name="moving_circle_1">
+      <!-- Pose: x, y, z, roll, pitch, yaw -->
+      <pose>-55.0 30.0 5.0 0 0 0</pose>
+
+      <link name="moving_link">
+	<gravity>false</gravity>
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>4.0</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0 0 1 1</ambient> <!-- Blue -->
+          </material>
+        </visual>
+      </link>
+      <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+        <link_name>moving_link</link_name>
+        <direction>1 0 0</direction>
+        <amplitude>110.0</amplitude>
+        <speed>23.0</speed>
+        <turnaround_threshold>0.5</turnaround_threshold>
+      </plugin>
+    </model>
+
+    <model name="moving_circle_2">
+      <pose>-55.0 15.0 10.0 0 0 0</pose>
+
+      <link name="moving_link">
+	<gravity>false</gravity>
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>4.0</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0 1 0 1</ambient> <!-- Green -->
+          </material>
+        </visual>
+      </link>
+      <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+        <link_name>moving_link</link_name>
+        <direction>1 0 0</direction>
+        <amplitude>110.0</amplitude>
+        <speed>20.0</speed>
+        <turnaround_threshold>0.5</turnaround_threshold>
+      </plugin>
+    </model>
+
+    <model name="moving_circle_3">
+      <pose>-55.0 0.0 15.0 0 0 0</pose>
+
+      <link name="moving_link">
+	<gravity>false</gravity>
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>4.0</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0 0 1 1</ambient> <!-- Blue -->
+          </material>
+        </visual>
+      </link>
+      <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+        <link_name>moving_link</link_name>
+        <direction>1 0 0</direction>
+        <amplitude>110.0</amplitude>
+        <speed>24.0</speed>
+        <turnaround_threshold>0.5</turnaround_threshold>
+      </plugin>
+    </model>
+
+    <model name="moving_circle_4">
+      <pose>-55.0 -15.0 8.0 0 0 0</pose>
+
+      <link name="moving_link">
+	<gravity>false</gravity>
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>4.0</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0 1 0 1</ambient> <!-- Green -->
+          </material>
+        </visual>
+      </link>
+      <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+        <link_name>moving_link</link_name>
+        <direction>1 0 0</direction>
+        <amplitude>110.0</amplitude>
+        <speed>28.0</speed>
+        <turnaround_threshold>0.5</turnaround_threshold>
+      </plugin>
+    </model>
+
+    <model name="moving_circle_5">
+      <pose>-55.0 -30.0 12.0 0 0 0</pose>
+
+      <link name="moving_link">
+	<gravity>false</gravity>
+        <visual name="visual">
+          <geometry>
+            <sphere>
+              <radius>4.0</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0 0 1 1</ambient> <!-- Blue -->
+          </material>
+        </visual>
+      </link>
+      <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+        <link_name>moving_link</link_name>
+        <direction>1 0 0</direction>
+        <amplitude>110.0</amplitude>
+        <speed>30.0</speed>
+        <turnaround_threshold>0.5</turnaround_threshold>
+      </plugin>
+    </model>
+
+    <!-- =============================================================== -->
+    <!-- MOVING CUBES AT DIFFERENT HEIGHTS (Z-VALUES)                    -->
+    <!-- =============================================================== -->
+
+    <model name="moving_box_6">
+      <pose>-30.0 -55.0 7.0 0 0 0</pose>
+
+      <link name="moving_link">
+	<gravity>false</gravity>
+        <visual name="visual">
+          <geometry>
+            <box><size>8.0 8.0 8.0</size></box> <!-- Equal sides for a cube -->
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient> <!-- Red -->
+          </material>
+        </visual>
+      </link>
+      <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+        <link_name>moving_link</link_name>
+        <direction>0 1 0</direction>
+        <amplitude>110.0</amplitude>
+        <speed>27.0</speed>
+        <turnaround_threshold>0.5</turnaround_threshold>
+      </plugin>
+    </model>
+
+    <model name="moving_box_7">
+      <pose>-15.0 -55.0 14.0 0 0 0</pose>
+
+      <link name="moving_link">
+              <gravity>false</gravity>
+        <visual name="visual">
+          <geometry>
+            <box><size>8.0 8.0 8.0</size></box>
+          </geometry>
+          <material>
+            <ambient>1 1 0 1</ambient> <!-- Yellow -->
+          </material>
+        </visual>
+      </link>
+      <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+        <link_name>moving_link</link_name>
+        <direction>0 1 0</direction>
+        <amplitude>110.0</amplitude>
+        <speed>22.0</speed>
+        <turnaround_threshold>0.5</turnaround_threshold>
+      </plugin>
+    </model>
+
+    <model name="moving_box_8">
+      <pose>0.0 -55.0 4.0 0 0 0</pose>
+
+      <link name="moving_link">
+	<gravity>false</gravity>
+        <visual name="visual">
+          <geometry>
+            <box><size>8.0 8.0 8.0</size></box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient> <!-- Red -->
+          </material>
+        </visual>
+      </link>
+      <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+        <link_name>moving_link</link_name>
+        <direction>0 1 0</direction>
+        <amplitude>110.0</amplitude>
+        <speed>24.0</speed>
+        <turnaround_threshold>0.5</turnaround_threshold>
+      </plugin>
+    </model>
+
+    <model name="moving_box_9">
+      <pose>15.0 -55.0 11.0 0 0 0</pose>
+
+      <link name="moving_link">
+        <gravity>false</gravity>
+        <visual name="visual">
+          <geometry>
+            <box><size>8.0 8.0 8.0</size></box>
+          </geometry>
+          <material>
+            <ambient>1 1 0 1</ambient> <!-- Yellow -->
+          </material>
+        </visual>
+      </link>
+      <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+        <link_name>moving_link</link_name>
+        <direction>0 1 0</direction>
+        <amplitude>110.0</amplitude>
+        <speed>28.0</speed>
+        <turnaround_threshold>0.5</turnaround_threshold>
+      </plugin>
+    </model>
+
+    <model name="moving_box_10">
+      <pose>30.0 -55.0 6.0 0 0 0</pose>
+
+      <link name="moving_link">
+              <gravity>false</gravity>
+        <visual name="visual">
+          <geometry>
+            <box><size>8.0 8.0 8.0</size></box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient> <!-- Red -->
+          </material>
+        </visual>
+      </link>
+      <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+        <link_name>moving_link</link_name>
+        <direction>0 1 0</direction>
+        <amplitude>110.0</amplitude>
+        <speed>30.0</speed>
+        <turnaround_threshold>0.5</turnaround_threshold>
+      </plugin>
+    </model>
+
+    <!-- Your Robot Model -->
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+    </include>
+
+  </world>
+</sdf>

@@ -37,7 +37,7 @@
 <model name="moving_cylinder_1">
 <pose>25.0 25.0 0 0 0 0</pose>
     <link name="moving_link">
-  
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -62,7 +62,7 @@
 <model name="moving_cylinder_2">
 <pose>-15.0 -15.0 0 0 0 0</pose>
     <link name="moving_link">
-  
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -88,7 +88,7 @@
 <model name="moving_cylinder_3">
 <pose>-35.0 -35.0 0 0 0 0</pose>
     <link name="moving_link">
- 
+               <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -114,7 +114,7 @@
 <model name="moving_cylinder_4">
 <pose>35.0 35.0 0 0 0 0</pose>
     <link name="moving_link">
-
+              <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -139,7 +139,7 @@
 <model name="moving_cylinder_5">
 <pose>-35.0 -35.0 0 0 0 0</pose>
     <link name="moving_link">
-
+              <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -165,7 +165,7 @@
 <model name="moving_cylinder_6">
 <pose>15.0 35.0 0 0 0 0</pose>
     <link name="moving_link">
-  
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -194,7 +194,7 @@
 
   <pose>10.0 -33.0 0 0 0 0</pose>
   <link name="moving_link">
-   
+                 <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <box>
@@ -221,7 +221,7 @@
 
   <pose>-35.1 32.5 0 0 0 0</pose>
   <link name="moving_link">
-   
+                 <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <box>
@@ -249,7 +249,7 @@
 
   <pose>10.7 27.1 0 0 0 0.707</pose>
   <link name="moving_link">
-   
+                 <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <box>
@@ -276,7 +276,7 @@
 
   <pose>40.0 -25.5 0 0 0 0.707</pose>
   <link name="moving_link">
-    
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <box>
@@ -308,7 +308,7 @@
 <model name="moving_cylinder_7">
   <pose>-40.0 15.0 0 0 0 0</pose>
   <link name="moving_link">
-   
+                 <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>5.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>0 0 1 1</ambient></material>
@@ -325,7 +325,7 @@
 <model name="moving_cylinder_8">
   <pose>5.0 -45.0 0 0 0 0</pose>
   <link name="moving_link">
-   
+                 <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>4.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>0 0 1 1</ambient></material>
@@ -342,7 +342,7 @@
 <model name="moving_cylinder_9">
   <pose>-15.0 15.0 0 0 0 0</pose>
   <link name="moving_link">
-   
+                 <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>6.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>0 0 1 1</ambient></material>
@@ -359,6 +359,7 @@
 <model name="moving_cylinder_10">
   <pose>45.0 -5.0 0 0 0 0</pose>
   <link name="moving_link">
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>3.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>0 0 1 1</ambient></material>
@@ -376,7 +377,7 @@
 <model name="moving_box_5">
   <pose>45.0 15.0 0 0 0 0</pose>
   <link name="moving_link">
-    
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry><box><size>10.0 10.0 1.0</size></box></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -393,7 +394,7 @@
 <model name="moving_box_6">
   <pose>0.0 40.0 0 0 0 0.3</pose>
   <link name="moving_link">
-   
+                 <gravity>false</gravity>
     <visual name="visual">
       <geometry><box><size>10.0 10.0 1.0</size></box></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -410,7 +411,7 @@
 <model name="moving_box_7">
   <pose>-25.0 -20.0 0 0 0 0.5</pose>
   <link name="moving_link">
-   
+                 <gravity>false</gravity>
     <visual name="visual">
       <geometry><box><size>10.0 10.0 1.0</size></box></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -427,7 +428,7 @@
 <model name="moving_box_8">
   <pose>25.0 -35.0 0 0 0 0.9</pose>
   <link name="moving_link">
-    
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry><box><size>10.0 10.0 1.0</size></box></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -444,7 +445,7 @@
 <model name="moving_box_9">
   <pose>-10.0 -40.0 0 0 0 0</pose>
   <link name="moving_link">
-    
+                  <gravity>false</gravity>
     <visual name="visual">
       <geometry><box><size>10.0 10.0 1.0</size></box></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -461,7 +462,7 @@
 <model name="moving_box_10">
   <pose>-40.0 0.0 0 0 0 0.4</pose>
   <link name="moving_link">
-   
+                 <gravity>false</gravity>
     <visual name="visual">
       <geometry><box><size>10.0 10.0 1.0</size></box></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -481,6 +482,7 @@
 <model name="moving_cylinder_11">
   <pose>20.0 -30.0 0 0 0 0</pose>
   <link name="moving_link">
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -502,6 +504,7 @@
 <model name="moving_cylinder_12">
   <pose>-28.0 -22.0 0 0 0 0</pose>
   <link name="moving_link">
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -523,6 +526,7 @@
 <model name="moving_cylinder_13">
   <pose>30.0 18.0 0 0 0 0</pose>
   <link name="moving_link">
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -544,6 +548,7 @@
 <model name="moving_cylinder_14">
   <pose>-40.0 -20.0 0 0 0 0</pose>
   <link name="moving_link">
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -565,6 +570,7 @@
 <model name="moving_cylinder_15">
   <pose>36.0 -36.0 0 0 0 0</pose>
   <link name="moving_link">
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry>
         <cylinder>
@@ -587,6 +593,7 @@
 <model name="moving_box_11">
   <pose>15.0 40.0 0 0 0 0</pose>
   <link name="moving_link">
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry><box><size>10.0 10.0 1.0</size></box></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -603,6 +610,7 @@
 <model name="moving_box_12">
   <pose>-40.0 12.0 0 0 0 0.5</pose>
   <link name="moving_link">
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry><box><size>10.0 10.0 1.0</size></box></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -619,6 +627,7 @@
 <model name="moving_box_13">
   <pose>25.0 -40.0 0 0 0 0.3</pose>
   <link name="moving_link">
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry><box><size>10.0 10.0 1.0</size></box></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -635,6 +644,7 @@
 <model name="moving_box_14">
   <pose>-20.0 -30.0 0 0 0 0.2</pose>
   <link name="moving_link">
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry><box><size>10.0 10.0 1.0</size></box></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -651,6 +661,7 @@
 <model name="moving_box_15">
   <pose>30.0 30.0 0 0 0 0.1</pose>
   <link name="moving_link">
+                <gravity>false</gravity>
     <visual name="visual">
       <geometry><box><size>10.0 10.0 1.0</size></box></geometry>
       <material><ambient>1 0 0 1</ambient></material>

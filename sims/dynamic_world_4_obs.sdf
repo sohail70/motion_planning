@@ -38,6 +38,7 @@
 <model name="moving_cylinder_2">
 <pose>0.0 -35.0 0 0 0 0</pose>
     <link name="moving_link">
+                      <gravity>false</gravity>
     <kinematic>true</kinematic>
     <visual name="visual">
       <geometry>
@@ -65,6 +66,7 @@
 <model name="moving_cylinder_16">
   <pose>40.0 -10.0 0 0 0 0</pose>
   <link name="moving_link">
+                    <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>2.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -83,6 +85,7 @@
 <model name="moving_cylinder_18">
   <pose>15.0 15.0 0 0 0 0</pose>
   <link name="moving_link">
+                    <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>3.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>1 0 0 1</ambient></material>
@@ -100,6 +103,7 @@
 <model name="moving_cylinder_19">
   <pose>-45.0 -5.0 0 0 0 0</pose>
   <link name="moving_link">
+                    <gravity>false</gravity>
     <visual name="visual">
       <geometry><cylinder><radius>4.0</radius><length>1.0</length></cylinder></geometry>
       <material><ambient>1 0 0 1</ambient></material>
