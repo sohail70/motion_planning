@@ -1,6 +1,7 @@
 // Copyright 2025 Soheil E.nia
 /**
  * TODO: I cant remember because of what problem I used "Keep Alive" in this class, because to the best of my knowledge owner of the state is some other class so remove it later! 
+ * TODO: Make the steer to use node's pointer instead of Eigen! for that i need to put the different planner's node in the same interface. With this way I can make the steer in min snap to be integrated in the upper interface
  */
 #pragma once
 
@@ -26,9 +27,28 @@ class StateSpace {
     virtual bool isValid(const std::shared_ptr<State>& state) const = 0;
 
 
-    // Pure virtual steer function for kinodynamic planning
+    // This is the fundamental steer function that ALL state spaces MUST implement.
     virtual Trajectory steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const = 0;
 
+    // Add the advanced steer function for the main planning loop.
+    virtual Trajectory steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to,
+                             const Eigen::VectorXd& to_vel, const Eigen::VectorXd& to_accel) const {
+        // By default, a simple state space just ignores the extra derivative info
+        // and calls its own basic steer function.
+        return steer(from, to);
+    }
+
+    // Add the steer function for bridging the robot to the tree.
+    virtual Trajectory steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to,
+                             const Eigen::VectorXd& from_vel, const Eigen::VectorXd& from_accel,
+                             const Eigen::VectorXd& to_vel, const Eigen::VectorXd& to_accel) const {
+        // By default, this also falls back to the simpler version above.
+        return steer(from, to, to_vel, to_accel);
+    }
+
+
+
+    virtual bool prefersLazyNear() const { return false; } // Default to proactive (i.e., caching and not lazy)
 
 
 

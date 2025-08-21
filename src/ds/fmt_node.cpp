@@ -12,7 +12,13 @@ FMTNode::FMTNode(std::shared_ptr<State> state, int index)
       in_queue_(false),
       heap_index_(-1),
       in_unvisited_(false),
-      parent_(nullptr) {}
+      parent_(nullptr) {
+
+        // For min-snap
+        const int num_axes = 4; // Or get from StateSpace
+        final_velocity_ = Eigen::VectorXd::Zero(num_axes);
+        final_acceleration_ = Eigen::VectorXd::Zero(num_axes);
+      }
 
 const Eigen::VectorXd& FMTNode::getStateValue() const { 
     return state_->getValue(); 
@@ -138,3 +144,14 @@ bool FMTNode::isHeuristicCached() const { return heuristic_cached_; }
 
 double FMTNode::getTimeToGoal() const noexcept { return time_to_goal_; }
 void FMTNode::setTimeToGoal(double time) noexcept { time_to_goal_ = time; }
+
+void FMTNode::setFinalDerivatives(const Eigen::VectorXd& vel, const Eigen::VectorXd& accel) {
+    final_velocity_ = vel;
+    final_acceleration_ = accel;
+}
+const Eigen::VectorXd& FMTNode::getFinalVelocity() const {
+    return final_velocity_;
+}
+const Eigen::VectorXd& FMTNode::getFinalAcceleration() const {
+    return final_acceleration_;
+}

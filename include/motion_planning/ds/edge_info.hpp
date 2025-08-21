@@ -1,6 +1,7 @@
 // Copyright 2025 Soheil E.nia
 /**
  * TODO: Clean this file later! The critical parts are Trajectory struct without the manuver data and ExecutionTrajectory which i use in thruster 
+ * TODO: Maybe I can have speicific planner to have speicific trajetories instead of having them to use one big Trajectory Struct
  */
 #pragma once
 
@@ -46,6 +47,11 @@ struct Trajectory {
 
     // // Data for Analytical Collision Checking 
     // std::vector<AnalyticalSegment> analytical_segments; // Why the hassle when I couldnt make it more performant!
+
+    Eigen::VectorXd final_velocity; // For min snap
+    Eigen::VectorXd final_acceleration; // for min snap
+    //  This will store the polynomial coefficients for each axis.
+    std::vector<Eigen::VectorXd> coeffs_per_axis;  // for min snap
     
     // Helper fields to pass info from base to derived steer function --> Well I guess I dont need these also because they are used for dubins analytical data used in (commented out) getCollidingObstalce function!
     std::string maneuver_type;

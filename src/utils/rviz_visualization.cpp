@@ -347,7 +347,8 @@ void RVizVisualization::visualizeRobotArrow(
     // Set position for the arrow (robot position)
     marker.pose.position.x = robot_position[0];
     marker.pose.position.y = robot_position[1];
-    marker.pose.position.z = 0.0;  // Keep it 2D for now (z = 0)
+    // marker.pose.position.z = 0.0;  // Keep it 2D for now (z = 0)
+    marker.pose.position.z = robot_position[2];
 
     // Set orientation from the quaternion (robot_orientation)
     marker.pose.orientation.x = robot_orientation[0];
@@ -369,6 +370,102 @@ void RVizVisualization::visualizeRobotArrow(
     // Publish the marker (robot as an arrow)
     marker_pub_->publish(marker);
 }
+
+
+
+void RVizVisualization::visualizeQuadcopter(
+    const Eigen::Vector3d& position,
+    const Eigen::VectorXd& orientation_quat,
+    const std::string& frame_id,
+    const std::vector<float>& color,
+    const std::string& ns)
+{
+    visualization_msgs::msg::MarkerArray marker_array;
+    
+    // Clear previous markers in this namespace
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id;
+    clear_marker.header.stamp = node_->now();
+    clear_marker.ns = ns;
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    marker_array.markers.push_back(clear_marker);
+
+    // Robot parameters
+    const double arm_length = 6.0;
+    const double arm_width = 0.4;
+    const double body_size = 2.4;
+
+    // Convert Eigen Quaternion to geometry_msgs::Quaternion
+    geometry_msgs::msg::Quaternion orientation_msg;
+    orientation_msg.x = orientation_quat[0];
+    orientation_msg.y = orientation_quat[1];
+    orientation_msg.z = orientation_quat[2];
+    orientation_msg.w = orientation_quat[3];
+
+    // --- 1. Central Body ---
+    visualization_msgs::msg::Marker body_marker;
+    body_marker.header.frame_id = frame_id;
+    body_marker.header.stamp = node_->now();
+    body_marker.ns = ns;
+    body_marker.id = 0;
+    body_marker.type = visualization_msgs::msg::Marker::CUBE;
+    body_marker.action = visualization_msgs::msg::Marker::ADD;
+    body_marker.pose.position.x = position.x();
+    body_marker.pose.position.y = position.y();
+    body_marker.pose.position.z = position.z();
+    body_marker.pose.orientation = orientation_msg;
+    body_marker.scale.x = body_size;
+    body_marker.scale.y = body_size;
+    body_marker.scale.z = 0.08;
+    body_marker.color.r = color[0];
+    body_marker.color.g = color[1];
+    body_marker.color.b = color[2];
+    body_marker.color.a = 1.0;
+    marker_array.markers.push_back(body_marker);
+
+    // --- 2. Arms ---
+    // Define arm positions relative to the body center
+    std::vector<Eigen::Vector3d> arm_offsets = {
+        {arm_length / 2.0, arm_length / 2.0, 0},
+        {arm_length / 2.0, -arm_length / 2.0, 0},
+        {-arm_length / 2.0, arm_length / 2.0, 0},
+        {-arm_length / 2.0, -arm_length / 2.0, 0}
+    };
+
+    Eigen::Quaterniond q(orientation_quat[3], orientation_quat[0], orientation_quat[1], orientation_quat[2]);
+
+    for (int i = 0; i < 4; ++i) {
+        visualization_msgs::msg::Marker arm_marker;
+        arm_marker.header = body_marker.header;
+        arm_marker.ns = ns;
+        arm_marker.id = i + 1;
+        arm_marker.type = visualization_msgs::msg::Marker::CUBE;
+        arm_marker.action = visualization_msgs::msg::Marker::ADD;
+
+        // Rotate the offset by the quad's orientation and add to the main position
+        Eigen::Vector3d rotated_offset = q * arm_offsets[i];
+        arm_marker.pose.position.x = position.x() + rotated_offset.x();
+        arm_marker.pose.position.y = position.y() + rotated_offset.y();
+        arm_marker.pose.position.z = position.z() + rotated_offset.z();
+        
+        // The arms should also have the same orientation as the body
+        arm_marker.pose.orientation = orientation_msg;
+
+        arm_marker.scale.x = arm_width;
+        arm_marker.scale.y = arm_width;
+        arm_marker.scale.z = 0.02;
+        
+        // Make arms a slightly different color
+        arm_marker.color.r = color[0] * 0.7f;
+        arm_marker.color.g = color[1] * 0.7f;
+        arm_marker.color.b = color[2] * 0.7f;
+        arm_marker.color.a = 1.0;
+        marker_array.markers.push_back(arm_marker);
+    }
+
+    marker_pub_2_->publish(marker_array);
+}
+
 void RVizVisualization::visualizeCube(
     const std::vector<std::tuple<Eigen::Vector2d, double, double, double>>& box_obstacles,
     const std::string& frame_id,

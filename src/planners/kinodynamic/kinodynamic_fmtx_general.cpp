@@ -62,13 +62,14 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
                 weights << 1.0, 1.0; // Weights for x, y,
                 break;
             case 3: // (x, y, time)
-                weights << 1.0, 1.0, 1.0; // Weights for x, y, time
+                {
+                    weights << 1.0, 1.0, 1.0; // Weights for x, y, time
+                }
                 break;
             case 4: // (x, y, theta, time) - From your Dubins example
-                weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
-                break;
-            case 5:
-                weights << 1.0, 1.0, 1.0, 1.0, 1.0; // Weights for x, y, z, yaw, time
+                {
+                    weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
+                }
                 break;
             default: 
                 RCLCPP_ERROR(rclcpp::get_logger("Planner_Obstacle_Update"), "Unsupported k-d tree dimension : %d", kd_dim);
@@ -195,13 +196,12 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
         int spatial_dimension = kd_dim; // For (x, y) or (x, y, time) or (x, y, theta, time)
         // For a future Dubins (x, y, theta, time) planner, this would still be 2.
 
-        // // Use .leftCols() to create a new matrix with only the spatial data.
-        // //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
-        // Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(spatial_dimension).eval();
+        // Use .leftCols() to create a new matrix with only the spatial data.
+        //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
+        Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(spatial_dimension).eval();
         
         // Pass the 2D spatial matrix to the KD-tree.
-        // kdtree_->addPoints(spatial_samples_only);
-        kdtree_->addPoints(all_samples);
+        kdtree_->addPoints(spatial_samples_only);
         
         // Build the tree all at once after we fill the data.
         kdtree_->buildTree();
@@ -630,31 +630,6 @@ void KinodynamicFMTX::plan() {
             //     }
             // }
 
-            // --- LAZY COMPUTATION (for Min-Snap) ---
-            if (statespace_->prefersLazyNear() && !edge_info_from_x.is_trajectory_computed) {
-                // If this is a lazy state space, compute the true trajectory from x to z now.
-                edge_info_from_x.cached_trajectory = statespace_->steer(
-                    x->getStateValue(), z->getStateValue(), 
-                    z->getFinalVelocity(), z->getFinalAcceleration()
-                );
-
-                // std::cout<<x->getStateValue()<<"\n";
-                // std::cout<<"-----\n";
-                // std::cout<<z->getStateValue()<<"\n";
-                // std::cout<<"-----\n";
-                // std::cout<<z->getFinalVelocity()<<"\n";
-                // std::cout<<"-----\n";
-                // std::cout<<z->getFinalAcceleration()<<"\n";
-                // std::cout<<"-----\n";
-                // for (auto& p : edge_info_from_x.cached_trajectory.path_points)
-                //     std::cout<<p.transpose()<<"\n";
-
-
-                edge_info_from_x.is_trajectory_computed = true;
-                // Update the distance with the true cost
-                edge_info_from_x.distance = edge_info_from_x.cached_trajectory.cost;
-            }
-
 
 
 
@@ -696,7 +671,7 @@ void KinodynamicFMTX::plan() {
                 double min_cost_for_x = std::numeric_limits<double>::infinity();
                 FMTNode* best_parent_for_x = nullptr;
                 // Trajectory best_traj_for_x;
-                Trajectory best_traj_for_x;
+                const Trajectory* best_traj_for_x = nullptr;
 
                 
                 for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
@@ -716,32 +691,14 @@ void KinodynamicFMTX::plan() {
                         //         y->backwardNeighbors().at(x).cached_trajectory = edge_info_xy.cached_trajectory;
                         //     }
                         // }
-
-                        Trajectory traj_xy; // Holds the trajectory to be evaluated
-                        double cost_via_y;
-
-                        if (statespace_->prefersLazyNear()) {
-                            // LAZY: Compute trajectory on the fly for accurate comparison
-                            traj_xy = statespace_->steer(
-                                x->getStateValue(), y->getStateValue(), 
-                                y->getFinalVelocity(), y->getFinalAcceleration()
-                            );
-                            if (traj_xy.is_valid) {
-                                cost_via_y = y->getCost() + traj_xy.cost;
-                            } else {
-                                cost_via_y = std::numeric_limits<double>::infinity();
+                        if (edge_info_xy.cached_trajectory.is_valid) {
+                            // double cost_via_y = y->getCost() + edge_info_xy.cached_trajectory.cost;
+                            double cost_via_y = y->getCost() + edge_info_xy.distance;
+                            if (cost_via_y < min_cost_for_x) {
+                                min_cost_for_x = cost_via_y;
+                                best_parent_for_x = y;
+                                best_traj_for_x = &edge_info_xy.cached_trajectory;
                             }
-                        } else {
-                            // PROACTIVE: Use the pre-computed trajectory and cost
-                            traj_xy = edge_info_xy.cached_trajectory;
-                            cost_via_y = y->getCost() + edge_info_xy.distance;
-                        }
-
-                        // Correction 2: Use the locally computed cost_via_y for comparison
-                        if (cost_via_y < min_cost_for_x) {
-                            min_cost_for_x = cost_via_y;
-                            best_parent_for_x = y;
-                            best_traj_for_x = traj_xy; // Correction 3: Store the actual trajectory object
                         }
                     }
                     
@@ -758,7 +715,7 @@ void KinodynamicFMTX::plan() {
 
                 // --- STAGE 3: UPDATE (if a better parent was found) ---
                 if (best_parent_for_x != nullptr) {
-                    double min_time_for_x = best_parent_for_x->getTimeToGoal() + best_traj_for_x.time_duration;
+                    double min_time_for_x = best_parent_for_x->getTimeToGoal() + best_traj_for_x->time_duration;
 
 
 
@@ -846,7 +803,7 @@ void KinodynamicFMTX::plan() {
                             } else {
                                 // Cache miss: Compute the safety and store it with the time-aware key.
                                 bool safe = obs_checker_->isTrajectorySafe(
-                                    best_traj_for_x, global_edge_start_time);
+                                    *best_traj_for_x, global_edge_start_time);
                                 obstacle_check_cache_[key] = safe;
                                 obstacle_free = safe;
                                 // ++uncached;
@@ -854,7 +811,7 @@ void KinodynamicFMTX::plan() {
                             }
                         } else {
                             obstacle_free = obs_checker_->isTrajectorySafe(
-                                best_traj_for_x, global_edge_start_time);
+                                *best_traj_for_x, global_edge_start_time);
                             // ++uncached;
                             last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
                         }
@@ -928,10 +885,8 @@ void KinodynamicFMTX::plan() {
                         // std::cout<<"cost: "<<min_cost_for_x<<"\n";
                         // std::cout<<"-------\n";
                         x->setCost(min_cost_for_x);
-                        x->setParent(best_parent_for_x, best_traj_for_x);
+                        x->setParent(best_parent_for_x, *best_traj_for_x);
                         x->setTimeToGoal(min_time_for_x);
-                        x->setFinalDerivatives(best_traj_for_x.final_velocity, best_traj_for_x.final_acceleration);
-
 
                         // double h_value = use_heuristic ? heuristic(x->getIndex()) : 0.0;
                         // double priorityCost = min_cost_for_x + h_value;
@@ -1027,12 +982,14 @@ void KinodynamicFMTX::plan() {
 //     node->neighbors_cached_ = true;
 // }
 
+
 void KinodynamicFMTX::near(int node_index) {
     auto node = tree_[node_index].get();
     if (node->neighbors_cached_) return;
 
-    // --- Get candidate neighbors (common to both strategies) ---
     std::vector<size_t> candidate_indices;
+
+    // --- Unified Logic: Choose which search to perform ---
     if (use_knn) {
         if (k_neighbors_ > 0) {
             candidate_indices = kdtree_->knnSearch(node->getStateValue().head(kd_dim), k_neighbors_);
@@ -1043,48 +1000,41 @@ void KinodynamicFMTX::near(int node_index) {
         }
     }
 
-    // --- Populate maps based on the state space's PREFERRED strategy ---
-    if (statespace_->prefersLazyNear()) {
-       // --- LAZY STRATEGY (for Min-Snap) ---
-        for (int idx : candidate_indices) {
-            if (idx == node_index) continue;
-            FMTNode* neighbor = tree_[idx].get();
+    // --- Common Connection Logic ---
+    for (int idx : candidate_indices) {
+        if (idx == node_index) continue;
+        FMTNode* neighbor = tree_[idx].get();
 
-            EdgeInfo placeholder_edge; // is_trajectory_computed is false by default
-            placeholder_edge.distance = std::numeric_limits<double>::infinity();
-
-            node->forwardNeighbors()[neighbor] = placeholder_edge;
-            node->backwardNeighbors()[neighbor] = placeholder_edge;
-            neighbor->forwardNeighbors()[node] = placeholder_edge;
-            neighbor->backwardNeighbors()[node] = placeholder_edge;
+        // Test FORWARD connection
+        Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+        
+        bool is_forward_valid = traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_);
+        
+        if (is_forward_valid) {
+            node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, false, traj_forward, true};
+            neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, false, traj_forward, true};
+            
+            // --- UPDATE MAX LENGTH ---
+            max_length_ = std::max(max_length_, traj_forward.cost);
         }
-    } else {
-        // --- PROACTIVE STRATEGY (for RDT, etc.) ---
-        for (int idx : candidate_indices) {
-            if (idx == node_index) continue;
-            FMTNode* neighbor = tree_[idx].get();
 
-            // Test FORWARD connection
-            Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
-            if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_)) {
-                node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
-                neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
-                max_length_ = std::max(max_length_, traj_forward.cost);
-            }
+        // Test BACKWARD connection
+        Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
+        
+        bool is_backward_valid = traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_);
+        
+        if (is_backward_valid) {
+            node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, false, traj_backward, true};
+            neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, false, traj_backward, true};
 
-            // Test BACKWARD connection
-            Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-            if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_)) {
-                node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
-                neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
-                max_length_ = std::max(max_length_, traj_backward.cost);
-            }
+            // --- UPDATE MAX LENGTH ---
+            max_length_ = std::max(max_length_, traj_backward.cost);
         }
     }
-    
-    // This should be outside the if/else to apply to both cases
     node->neighbors_cached_ = true;
 }
+
+
 // // for lazy steer eval because caching does call steer twice as much! but caching gives faster time performance 
 // void KinodynamicFMTX::near(int node_index) {
 //     auto node = tree_[node_index].get();
@@ -1376,10 +1326,6 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
                             }
                         }
                         break;
-                    case 5: // (x, y, z, yaw, time)
-                        // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                        query_point << predicted_pos_2d, obstacle.z, robot_current_heading, robot_current_timestamp;
-                        break;
                     default:
                         continue; // Skip unsupported dimensions
                 }
@@ -1410,10 +1356,6 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
                     } else { // kd_tree_dim == 4
                         query_point << obstacle.position, robot_current_heading, robot_current_timestamp;
                     }
-                    break;
-                case 5: // (x, y, z, yaw, time)
-                    // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                    query_point << obstacle.position, obstacle.z, robot_current_heading, robot_current_timestamp;
                     break;
                 default:
                     continue;
@@ -1872,10 +1814,6 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                         case 4:
                             query_point << predicted_pos_2d, robot_current_heading, robot_current_timestamp;
                             break;
-                        case 5: // (x, y, z, yaw, time)
-                            // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                            query_point << predicted_pos_2d, old_obs.z, robot_current_heading, robot_current_timestamp;
-                            break;
                         default:
                             continue;
                     }
@@ -1895,10 +1833,6 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                         break;
                     case 4:
                         query_point << old_obs.position.head<2>(), robot_current_heading, robot_current_timestamp;
-                        break;
-                    case 5: // (x, y, z, yaw, time)
-                        // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                        query_point << old_obs.position.head<2>(), old_obs.z, robot_current_heading, robot_current_timestamp;
                         break;
                     default:
                         continue;
@@ -1987,10 +1921,6 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                     case 4: // (x, y, theta, time)
                         // Correctly build the 4D query point
                         query_point << predicted_pos_2d, robot_current_heading, robot_current_timestamp;
-                        break;
-                    case 5: // (x, y, z, yaw, time)
-                        // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                        query_point << predicted_pos_2d, current_obs.z, robot_current_heading, robot_current_timestamp;
                         break;
                     default:
                         continue; // Skip unsupported dimensions
@@ -2990,137 +2920,6 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     }
 }
 
-
-
-void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_pos, const Eigen::VectorXd& robot_vel, const Eigen::VectorXd& robot_accel) {
-    robot_continuous_state_ = robot_pos;
-    robot_continuous_velocity_ = robot_vel;
-    robot_continuous_acceleration_ = robot_accel;
-
-    // auto min_snap_space = std::dynamic_pointer_cast<MinSnapStateSpace>(statespace_);
-    // if (!min_snap_space) {
-    //     RCLCPP_ERROR(rclcpp::get_logger("FMTX"), "StateSpace is not of type MinSnapStateSpace!");
-    //     return;
-    // }
-
-    const double hysteresis_factor = 0.95; 
-    double cost_of_current_path = std::numeric_limits<double>::infinity();
-
-    if (robot_node_ && robot_node_->getCost() != INFINITY) {
-        // --- CORRECTED STEER CALL --- (steer_with_initial_and_final)
-        Trajectory bridge_to_current_anchor = statespace_->steer(
-            robot_pos, robot_node_->getStateValue(),
-            robot_vel, robot_accel,
-            robot_node_->getFinalVelocity(), robot_node_->getFinalAcceleration()
-        );
-        if (bridge_to_current_anchor.is_valid && obs_checker_->isTrajectorySafe(bridge_to_current_anchor, clock_->now().seconds())) {
-            cost_of_current_path = bridge_to_current_anchor.cost + robot_node_->getCost();
-        }
-    }
-
-    FMTNode* best_candidate_node = nullptr;
-    Trajectory best_candidate_bridge;
-    double best_candidate_cost = std::numeric_limits<double>::infinity();
-    double current_search_radius = neighborhood_radius_;
-    const int max_attempts = 10;
-    const double radius_multiplier = 1.5;
-
-    for (int attempt = 1; attempt <= max_attempts; ++attempt) {
-        auto nearby_indices = kdtree_->radiusSearch(robot_pos.head(kd_dim), current_search_radius);
-        double min_cost_in_radius = std::numeric_limits<double>::infinity();
-
-        for (auto idx : nearby_indices) {
-            FMTNode* candidate = tree_[idx].get();
-            if (candidate->getCost() == INFINITY) continue;
-
-            // --- CORRECTED STEER CALL ---steer_with_initial_and_final
-            Trajectory bridge = statespace_->steer(
-                robot_pos, candidate->getStateValue(),
-                robot_vel, robot_accel,
-                candidate->getFinalVelocity(), candidate->getFinalAcceleration()
-            );
-
-            if (!bridge.is_valid || !obs_checker_->isTrajectorySafe(bridge, clock_->now().seconds())) continue;
-
-            double cost = bridge.cost + candidate->getCost();
-            if (cost < min_cost_in_radius) {
-                min_cost_in_radius = cost;
-                best_candidate_node = candidate;
-                best_candidate_bridge = bridge;
-                best_candidate_cost = cost;
-            }
-        }
-
-        if (best_candidate_node) break;
-        current_search_radius *= radius_multiplier;
-    }
-
-    if (best_candidate_node && best_candidate_cost < cost_of_current_path * hysteresis_factor) {
-        robot_node_ = best_candidate_node;
-        robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
-    } else if (robot_node_) {
-        // --- CORRECTED STEER CALL --- steer_with_initial_and_final
-        Trajectory bridge_to_kept_anchor = statespace_->steer(
-             robot_pos, robot_node_->getStateValue(),
-             robot_vel, robot_accel,
-             robot_node_->getFinalVelocity(), robot_node_->getFinalAcceleration()
-        );
-        if (bridge_to_kept_anchor.is_valid) {
-             robot_current_time_to_goal_ = bridge_to_kept_anchor.time_duration + robot_node_->getTimeToGoal();
-        }
-    } else {
-        robot_node_ = best_candidate_node;
-        if (robot_node_) {
-             robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
-        } else {
-             robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
-        }
-    }
-}
-std::vector<Trajectory> KinodynamicFMTX::getPathAsTrajectories() const
-{
-    std::vector<Trajectory> segments;
-    if (!robot_node_ || robot_node_->getCost() == INFINITY) {
-        RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"), "Robot has no valid anchor node. Cannot build path.");
-        return segments;
-    }
-
-    // auto min_snap_space = std::dynamic_pointer_cast<MinSnapStateSpace>(statespace_);
-
-    // --- CORRECTED STEER CALL --- steer_with_initial_and_final
-    Trajectory bridge_traj = statespace_->steer(
-        robot_continuous_state_,              // "from" state is the robot
-        robot_node_->getStateValue(),         // "to" state is the anchor node
-        robot_continuous_velocity_,           // The robot's current derivatives
-        robot_continuous_acceleration_,
-        robot_node_->getFinalVelocity(),      // The known derivatives at the anchor node
-        robot_node_->getFinalAcceleration()
-    );
-
-    if (!bridge_traj.is_valid) {
-        RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"), "Failed to steer from robot's continuous state to the anchor node.");
-        return {};
-    }
-
-    // The path is built backward: [Bridge(Robot->Anchor), Seg(Anchor->Parent), Seg(Parent->Grandparent), ...]
-    segments.push_back(bridge_traj);
-
-    FMTNode* child = robot_node_;
-    FMTNode* parent = child->getParent();
-
-    while (parent) {
-        // const auto& cached_traj = child->neighbors().at(parent).cached_trajectory;
-        // const auto& cached_traj = child->forwardNeighbors().at(parent).cached_trajectory;
-        const Trajectory& cached_traj = child->getParentTrajectory();
-        segments.push_back(cached_traj);
-        child = parent;
-        parent = child->getParent();
-    }
-    return segments;
-}
-
-
-
 ExecutionTrajectory KinodynamicFMTX::getFinalExecutionTrajectory() const {
     ExecutionTrajectory final_traj;
     final_traj.is_valid = false; // Default to invalid
@@ -3148,10 +2947,7 @@ ExecutionTrajectory KinodynamicFMTX::getFinalExecutionTrajectory() const {
 
     while (parent_node) {
         // Retrieve the pre-computed, cached trajectory for this tree edge.
-        // const auto& cached_traj = child_node->neighbors().at(parent_node).cached_trajectory;
-        // const auto& cached_traj = child_node->forwardNeighbors().at(parent_node).cached_trajectory;
-        const Trajectory& cached_traj = child_node->getParentTrajectory();
-
+        const auto& cached_traj = child_node->neighbors().at(parent_node).cached_trajectory;
         const auto& exec_data = cached_traj.execution_data;
 
         if (!cached_traj.is_valid || exec_data.Time.size() <= 1) {
@@ -3309,13 +3105,6 @@ void KinodynamicFMTX::setStart(const Eigen::VectorXd& start) {
     node->setCost(0);
     node->setTimeToGoal(0);
     // QueueElement2 new_element ={0,0};
-
-    // The root of the tree (our destination) is at rest.
-    // Initialize its derivatives to zero vectors of the correct size.
-    // Assuming 4 axes (x, y, z, yaw) for MinSnap.
-    int num_axes = 4;
-    node->setFinalDerivatives(Eigen::VectorXd::Zero(num_axes), Eigen::VectorXd::Zero(num_axes));
-
     v_open_heap_.add(node.get(),0);
     // node->in_queue_ = true;
 
@@ -3634,7 +3423,7 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::smoothPath(const std::vector<Eigen
 // }
 
 
-// Edge + Nodes --> straight line
+// Edge + Nodes
 void KinodynamicFMTX::visualizeTree() {
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
     if (!tree_.empty()) {
@@ -3653,7 +3442,7 @@ void KinodynamicFMTX::visualizeTree() {
         FMTNode* child_node = node_ptr.get();
         FMTNode* parent_node = child_node->getParent();
 
-        tree_nodes.push_back(node_ptr->getStateValue().head(2)); // TODO: For min snap it needs to be 3!!! I need spatial dim variable!
+        tree_nodes.push_back(node_ptr->getStateValue().head(2));
 
         if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
             connected_nodes_count++;
@@ -3685,48 +3474,6 @@ void KinodynamicFMTX::visualizeTree() {
     visualization_->visualizeEdges(edges, "map");
 }
 
-void KinodynamicFMTX::visualizeTreeReal() {
-    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-    if (!tree_.empty()) {
-        edges.reserve(tree_.size() * 50); 
-    }
-    
-    std::vector<Eigen::VectorXd> tree_nodes;
-    tree_nodes.reserve(tree_.size());
-
-    int connected_nodes_count = 0;
-    
-    for (const auto& node_ptr : tree_) {
-        FMTNode* child_node = node_ptr.get();
-        FMTNode* parent_node = child_node->getParent();
-
-        tree_nodes.push_back(child_node->getStateValue().head(3));
-
-        if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
-            connected_nodes_count++;
-        }
-
-        if (parent_node) {
-
-            const Trajectory& traj = child_node->getParentTrajectory();
-
-            if (traj.is_valid && traj.path_points.size() > 1) {
-                
-                for (size_t i = 0; i < traj.path_points.size() - 1; ++i) {
-                    edges.emplace_back(traj.path_points[i].head(3), traj.path_points[i+1].head(3));
-                }
-            } else {
-                edges.emplace_back(parent_node->getStateValue().head(3), child_node->getStateValue().head(3));
-            }
-        }
-    }
-
-    
-    // Visualization calls
-    // visualization_->visualizeNodes(tree_nodes, "map", {0.0f, 1.0f, 0.0f}, "tree_nodes");
-    // visualization_->visualizeEdges(edges, "map", "1.0,1.0,1.0", "tree_edges");
-    visualization_->visualizeEdges(edges, "map");
-}
 
 
 // // Edge + Nodes + Time Of Arrival
@@ -3890,34 +3637,6 @@ void KinodynamicFMTX::visualizePath(const std::vector<Eigen::VectorXd>& path_way
     }
 }
 
-
-void KinodynamicFMTX::visualizePath(const std::vector<Trajectory>& path_segments) {
-    if (path_segments.empty()) {
-        return;
-    }
-
-    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-    
-    // Iterate through each trajectory segment in the path
-    for (const auto& segment : path_segments) {
-        // The 'path_points' member of a Trajectory object contains the
-        // finely-sampled points from the true polynomial curve.
-        if (segment.path_points.size() < 2) {
-            continue; // Skip segments with too few points
-        }
-
-        // Create edges between the finely-sampled points within this segment
-        for (size_t i = 0; i < segment.path_points.size() - 1; ++i) {
-            const Eigen::VectorXd& start_point = segment.path_points[i];
-            const Eigen::VectorXd& end_point = segment.path_points[i+1];
-            edges.emplace_back(start_point, end_point);
-        }
-    }
-
-    if (visualization_) {
-        visualization_->visualizeEdges(edges, "map", "0.0,1.0,0.0", "executable_path");
-    }
-}
 
 void KinodynamicFMTX::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_) {
     // Extract nodes and edges from the smoothed path

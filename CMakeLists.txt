@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.10)
 project(MotionPlanning)
 # add_compile_options(-g -O0)  # Force debug symbols and disable optimizations
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_BUILD_TYPE Release)
-# set(CMAKE_BUILD_TYPE RelWithDebInfo)
+# set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
 # set(CMAKE_BUILD_TYPE Debug)
 
 
@@ -21,6 +21,7 @@ set(CMAKE_BUILD_TYPE Release)
 
 find_package(Eigen3 REQUIRED)
 find_package(nanoflann REQUIRED)
+find_package(qpOASES REQUIRED)
 
 # find_package(OpenMP REQUIRED)
 
@@ -121,6 +122,7 @@ add_library(motion_planning
     src/state_space/dubins_statespace.cpp
     src/state_space/dubins_time_statespace.cpp
     src/state_space/thruster_statespace.cpp
+    src/state_space/min_snap_statespace.cpp
     src/ds/fmt_node.cpp
     src/ds/ifmt_node.cpp
     src/ds/bit_node.cpp
@@ -132,7 +134,7 @@ add_library(motion_planning
 
 target_precompile_headers(motion_planning PRIVATE include/motion_planning/pch.hpp)
 target_include_directories(motion_planning PUBLIC include) 
-target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann visualization)
+target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann visualization qpOASES)
 if(OpenMP_CXX_FOUND)
   target_compile_options(motion_planning PUBLIC "${OpenMP_CXX_FLAGS}")
   target_link_libraries(motion_planning PUBLIC OpenMP::OpenMP_CXX)
@@ -240,6 +242,10 @@ ament_target_dependencies(test_kinodynamic_fmtx_thruster_5D rclcpp nav_msgs visu
 add_test(NAME test_kinodynamic_fmtx_thruster_5D COMMAND test_kinodynamic_fmtx_thruster_5D)
 
 
+add_executable(test_kinodynamic_fmtx_min_snap_5D test/unit/test_kinodynamic_fmtx_min_snap_5D.cpp)
+target_link_libraries(test_kinodynamic_fmtx_min_snap_5D motion_planning gz_obs)
+ament_target_dependencies(test_kinodynamic_fmtx_min_snap_5D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_kinodynamic_fmtx_min_snap_5D COMMAND test_kinodynamic_fmtx_min_snap_5D)
 
 
 add_executable(test_kinodynamic_rrtx_R2T test/unit/test_kinodynamic_rrtx_R2T.cpp)
@@ -272,6 +278,11 @@ target_link_libraries(test_thruster motion_planning gz_obs)
 ament_target_dependencies(test_thruster rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_thruster COMMAND test_thruster)
 
+
+add_executable(test_min_snap test/unit/test_min_snap.cpp) # <-- CREATE A NEW FILE WITH THIS NAME
+target_link_libraries(test_min_snap motion_planning gz_obs)
+ament_target_dependencies(test_min_snap rclcpp visualization_msgs)
+add_test(NAME test_min_snap COMMAND test_min_snap)
 
 
 add_executable(test_collision test/unit/test_collision.cpp)

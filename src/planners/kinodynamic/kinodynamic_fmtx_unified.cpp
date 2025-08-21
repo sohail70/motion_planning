@@ -62,13 +62,18 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
                 weights << 1.0, 1.0; // Weights for x, y,
                 break;
             case 3: // (x, y, time)
-                weights << 1.0, 1.0, 1.0; // Weights for x, y, time
+                {
+                    weights << 1.0, 1.0, 1.0; // Weights for x, y, time
+                }
                 break;
             case 4: // (x, y, theta, time) - From your Dubins example
-                weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
-                break;
+                {
+                    weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
+                }
             case 5:
-                weights << 1.0, 1.0, 1.0, 1.0, 1.0; // Weights for x, y, z, yaw, time
+                {
+                    weights << 1.0, 1.0, 1.0, 1.0, 1.0; // Weights for x, y, z, yaw, time
+                }
                 break;
             default: 
                 RCLCPP_ERROR(rclcpp::get_logger("Planner_Obstacle_Update"), "Unsupported k-d tree dimension : %d", kd_dim);
@@ -195,13 +200,12 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
         int spatial_dimension = kd_dim; // For (x, y) or (x, y, time) or (x, y, theta, time)
         // For a future Dubins (x, y, theta, time) planner, this would still be 2.
 
-        // // Use .leftCols() to create a new matrix with only the spatial data.
-        // //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
-        // Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(spatial_dimension).eval();
+        // Use .leftCols() to create a new matrix with only the spatial data.
+        //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
+        Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(spatial_dimension).eval();
         
         // Pass the 2D spatial matrix to the KD-tree.
-        // kdtree_->addPoints(spatial_samples_only);
-        kdtree_->addPoints(all_samples);
+        kdtree_->addPoints(spatial_samples_only);
         
         // Build the tree all at once after we fill the data.
         kdtree_->buildTree();
@@ -1376,10 +1380,6 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
                             }
                         }
                         break;
-                    case 5: // (x, y, z, yaw, time)
-                        // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                        query_point << predicted_pos_2d, obstacle.z, robot_current_heading, robot_current_timestamp;
-                        break;
                     default:
                         continue; // Skip unsupported dimensions
                 }
@@ -1410,10 +1410,6 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
                     } else { // kd_tree_dim == 4
                         query_point << obstacle.position, robot_current_heading, robot_current_timestamp;
                     }
-                    break;
-                case 5: // (x, y, z, yaw, time)
-                    // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                    query_point << obstacle.position, obstacle.z, robot_current_heading, robot_current_timestamp;
                     break;
                 default:
                     continue;
@@ -1872,10 +1868,6 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                         case 4:
                             query_point << predicted_pos_2d, robot_current_heading, robot_current_timestamp;
                             break;
-                        case 5: // (x, y, z, yaw, time)
-                            // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                            query_point << predicted_pos_2d, old_obs.z, robot_current_heading, robot_current_timestamp;
-                            break;
                         default:
                             continue;
                     }
@@ -1895,10 +1887,6 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                         break;
                     case 4:
                         query_point << old_obs.position.head<2>(), robot_current_heading, robot_current_timestamp;
-                        break;
-                    case 5: // (x, y, z, yaw, time)
-                        // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                        query_point << old_obs.position.head<2>(), old_obs.z, robot_current_heading, robot_current_timestamp;
                         break;
                     default:
                         continue;
@@ -1987,10 +1975,6 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                     case 4: // (x, y, theta, time)
                         // Correctly build the 4D query point
                         query_point << predicted_pos_2d, robot_current_heading, robot_current_timestamp;
-                        break;
-                    case 5: // (x, y, z, yaw, time)
-                        // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                        query_point << predicted_pos_2d, current_obs.z, robot_current_heading, robot_current_timestamp;
                         break;
                     default:
                         continue; // Skip unsupported dimensions
@@ -3110,8 +3094,7 @@ std::vector<Trajectory> KinodynamicFMTX::getPathAsTrajectories() const
 
     while (parent) {
         // const auto& cached_traj = child->neighbors().at(parent).cached_trajectory;
-        // const auto& cached_traj = child->forwardNeighbors().at(parent).cached_trajectory;
-        const Trajectory& cached_traj = child->getParentTrajectory();
+        const auto& cached_traj = child->forwardNeighbors().at(parent).cached_trajectory;
         segments.push_back(cached_traj);
         child = parent;
         parent = child->getParent();
@@ -3149,8 +3132,7 @@ ExecutionTrajectory KinodynamicFMTX::getFinalExecutionTrajectory() const {
     while (parent_node) {
         // Retrieve the pre-computed, cached trajectory for this tree edge.
         // const auto& cached_traj = child_node->neighbors().at(parent_node).cached_trajectory;
-        // const auto& cached_traj = child_node->forwardNeighbors().at(parent_node).cached_trajectory;
-        const Trajectory& cached_traj = child_node->getParentTrajectory();
+        const auto& cached_traj = child_node->forwardNeighbors().at(parent_node).cached_trajectory;
 
         const auto& exec_data = cached_traj.execution_data;
 
@@ -3686,6 +3668,9 @@ void KinodynamicFMTX::visualizeTree() {
 }
 
 void KinodynamicFMTX::visualizeTreeReal() {
+    // --- DEBUG POINT 1: Confirm the function is being called ---
+    std::cout << "\n[DEBUG] visualizeTreeReal() called." << std::endl;
+
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
     if (!tree_.empty()) {
         edges.reserve(tree_.size() * 50); 
@@ -3707,25 +3692,35 @@ void KinodynamicFMTX::visualizeTreeReal() {
         }
 
         if (parent_node) {
+            // --- DEBUG POINT 2: Check which parent-child edge is being processed ---
+            std::cout << "  [DEBUG] Processing edge from child " << child_node->getIndex() 
+                      << " to parent " << parent_node->getIndex() << std::endl;
 
             const Trajectory& traj = child_node->getParentTrajectory();
 
+            // --- DEBUG POINT 3: This is the MOST IMPORTANT check. Are we using the curve or the straight line? ---
             if (traj.is_valid && traj.path_points.size() > 1) {
+                std::cout << "    [SUCCESS] Trajectory is VALID with " << traj.path_points.size() 
+                          << " points. Creating curved segments." << std::endl;
                 
                 for (size_t i = 0; i < traj.path_points.size() - 1; ++i) {
                     edges.emplace_back(traj.path_points[i].head(3), traj.path_points[i+1].head(3));
                 }
             } else {
+                std::cout << "    [FALLBACK] Trajectory is INVALID or has too few points. Drawing a straight line." << std::endl;
                 edges.emplace_back(parent_node->getStateValue().head(3), child_node->getStateValue().head(3));
             }
         }
     }
 
+    // --- DEBUG POINT 4: See the final counts ---
+    std::cout << "[DEBUG] Total nodes: " << tree_.size()
+              << " | Connected: " << connected_nodes_count << std::endl;
+    std::cout << "[DEBUG] Total line segments created for visualization: " << edges.size() << std::endl;
     
     // Visualization calls
-    // visualization_->visualizeNodes(tree_nodes, "map", {0.0f, 1.0f, 0.0f}, "tree_nodes");
-    // visualization_->visualizeEdges(edges, "map", "1.0,1.0,1.0", "tree_edges");
-    visualization_->visualizeEdges(edges, "map");
+    visualization_->visualizeNodes(tree_nodes, "map", {0.0f, 1.0f, 0.0f}, "tree_nodes");
+    visualization_->visualizeEdges(edges, "map", "1.0,1.0,1.0", "tree_edges");
 }
 
 

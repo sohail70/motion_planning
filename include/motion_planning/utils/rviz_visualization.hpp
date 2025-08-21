@@ -27,6 +27,7 @@ public:
     void visualizeCylinder(const std::vector<Eigen::VectorXd>& obstacles, const std::vector<double>& radii, const std::string& frame_id , const std::vector<float>& color , const std::string& ns);
 
     void visualizeRobotArrow( const Eigen::VectorXd& robot_position, const Eigen::VectorXd& robot_orientation, const std::string& frame_id, const std::vector<float>& color,const std::string& ns);
+    void visualizeQuadcopter( const Eigen::Vector3d& position, const Eigen::VectorXd& orientation_quat, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);
     void visualizeCube(const std::vector<std::tuple<Eigen::Vector2d, double, double, double>>& box_obstacles, const std::string& frame_id, const std::vector<float>& color, const std::string& ns) ;
 
 

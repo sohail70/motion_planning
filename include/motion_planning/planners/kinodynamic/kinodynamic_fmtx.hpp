@@ -6,8 +6,9 @@
 #include "motion_planning/ds/fmt_node.hpp"
 #include "motion_planning/utils/visualization.hpp"
 #include "motion_planning/ds/priority_queue.hpp"
-#include <omp.h> 
 
+
+#include "motion_planning/state_space/min_snap_statespace.hpp" // TODO: put the steer with initial in state space virtual method!
 class KinodynamicFMTX : public Planner {
  public:
             KinodynamicFMTX(std::shared_ptr<StateSpace> statespace , std::shared_ptr<ProblemDefinition> problem_def , std::shared_ptr<ObstacleChecker> obs_checker);
@@ -57,13 +58,18 @@ class KinodynamicFMTX : public Planner {
              */
             void setRobotState(const Eigen::VectorXd& robot_state);
 
+            void setRobotState(const Eigen::VectorXd& robot_pos, const Eigen::VectorXd& robot_vel, const Eigen::VectorXd& robot_accel);
+
+
 
 
             void near(int node_index);
 
             void visualizeTree();
+            void visualizeTreeReal();
             void visualizeHeapAndUnvisited();
             void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
+            void visualizePath(const std::vector<Trajectory>& path_segments);
             void visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_);
             std::vector<Eigen::VectorXd> getSmoothedPathPositions(int num_intermediates, int smoothing_window ) const;
             std::vector<Eigen::VectorXd> smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const;
@@ -104,6 +110,9 @@ class KinodynamicFMTX : public Planner {
 
             const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
             double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
+
+            std::vector<Trajectory> getPathAsTrajectories() const;
+
 
 
  private:
@@ -170,6 +179,8 @@ class KinodynamicFMTX : public Planner {
 
             // Member variable to store the robot's continuous state
             Eigen::VectorXd robot_continuous_state_;
+            Eigen::VectorXd robot_continuous_velocity_;
+            Eigen::VectorXd robot_continuous_acceleration_;
             double robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
 
 

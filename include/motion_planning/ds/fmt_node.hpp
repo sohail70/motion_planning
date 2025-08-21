@@ -84,6 +84,10 @@ public:
     const Trajectory& getParentTrajectory() const;
 
 
+    void setFinalDerivatives(const Eigen::VectorXd& vel, const Eigen::VectorXd& accel);
+    const Eigen::VectorXd& getFinalVelocity() const;
+    const Eigen::VectorXd& getFinalAcceleration() const;
+
 
     bool in_queue_;
     size_t heap_index_;  // Tracks position in the priority queue
@@ -129,6 +133,8 @@ private:
     //     return std::find(children.begin(), children.end(), node) != children.end();
     // }
 
+    Eigen::VectorXd final_velocity_; // For min-snap
+    Eigen::VectorXd final_acceleration_; // For min-snap
 
 
 };

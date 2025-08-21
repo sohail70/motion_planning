@@ -38,6 +38,7 @@ struct Obstacle {
     Eigen::Vector2d acceleration;
     rclcpp::Time last_update_time;
     
+    double z = 0.0; // TODO: unfortunately right now i dont have time to integrate 3D to the position, velocity and acceleration so lets just use another varibale!
     // The union has been replaced with this struct.
     ObstacleDimensions dimensions;
 
