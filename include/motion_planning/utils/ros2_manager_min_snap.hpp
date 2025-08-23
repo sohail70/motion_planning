@@ -13,7 +13,6 @@
 #include <vector>
 #include <atomic>
 
-// --- Utility Functions ---
 
 // Normalizes an angle to the range [-PI, PI].
 inline double normalizeAngle(double angle);
@@ -32,7 +31,6 @@ static inline Eigen::RowVectorXd basis(int deriv, double tau, int num_coeffs) {
     return r;
 }
 
-// --- Class Definition ---
 
 class MinSnapROS2Manager : public rclcpp::Node {
 public:
@@ -56,8 +54,14 @@ public:
 
         simulation_time_step_ = params.getParam<double>("simulation_time_step", -0.02);
         int sim_frequency_hz = params.getParam<int>("sim_frequency_hz", 50);
+        int vis_frequency_hz = params.getParam<int>("vis_frequency_hz", 30);
+
 
         RCLCPP_INFO(this->get_logger(), "Initialized MinSnap ROS2Manager.");
+
+        vis_timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(1000 / vis_frequency_hz),
+            std::bind(&MinSnapROS2Manager::visualizationLoop, this));
 
         if (params.getParam<bool>("follow_path", true)){
             sim_timer_ = this->create_wall_timer(
@@ -102,42 +106,40 @@ public:
         current_sim_time_ = state(4);
     }
 
-// In MinSnapROS2Manager class
-void setPlannedTrajectory(const std::vector<Trajectory>& path_segments) {
-    std::lock_guard<std::mutex> lock(path_mutex_);
-    if (path_segments.empty()) {
-        RCLCPP_WARN(this->get_logger(), "[SET_PATH] Rejected: Received an empty path vector.");
-        is_path_set_ = false;
-        planned_path_segments_.clear();
-        return;
-    }
-
-    // Validate each segment before accepting the path
-    for (size_t i = 0; i < path_segments.size(); ++i) {
-        const auto& segment = path_segments[i];
-        if (!segment.is_valid || segment.path_points.empty()) {
-            RCLCPP_ERROR(this->get_logger(),
-                         "[SET_PATH] Rejected: Path contains an invalid segment at index %zu.", i);
+    void setPlannedTrajectory(const std::vector<Trajectory>& path_segments) {
+        std::lock_guard<std::mutex> lock(path_mutex_);
+        if (path_segments.empty()) {
+            RCLCPP_WARN(this->get_logger(), "[SET_PATH] Rejected: Received an empty path vector.");
+            is_path_set_ = false;
+            planned_path_segments_.clear();
             return;
         }
+
+        // Validate each segment before accepting the path
+        for (size_t i = 0; i < path_segments.size(); ++i) {
+            const auto& segment = path_segments[i];
+            if (!segment.is_valid || segment.path_points.empty()) {
+                RCLCPP_ERROR(this->get_logger(),
+                            "[SET_PATH] Rejected: Path contains an invalid segment at index %zu.", i);
+                return;
+            }
+        }
+        
+        // If all segments are valid, update the path
+        planned_path_segments_ = path_segments;
+        current_segment_idx_ = 0;
+        
+        // Only initialize the simulation clock if a path was NOT already set.
+        // This is the stable approach that prevents the time-warp loop on every replan.
+        if (!is_path_set_) {
+            // Start time is the time of the FIRST point of the FIRST segment.
+            const double new_path_start_time = planned_path_segments_.front().path_points.front()(4);
+            current_sim_time_ = new_path_start_time;
+            // RCLCPP_INFO(this->get_logger(), "First valid path received. Initializing sim time to: %.2f", current_sim_time_);
+        }
+        
+        is_path_set_ = true;
     }
-    
-    // If all segments are valid, update the path
-    planned_path_segments_ = path_segments;
-    current_segment_idx_ = 0;
-    
-    // [✓ FINAL FIX] Only initialize the simulation clock if a path was NOT already set.
-    // This is the stable approach that prevents the time-warp loop on every replan.
-    if (!is_path_set_) {
-        // The time of the last point of the first segment is the start time.
-        // NOTE: This assumes the path segments are ordered correctly (which they now are).
-        const double new_path_start_time = planned_path_segments_.front().path_points.back()(4);
-        current_sim_time_ = new_path_start_time;
-        // RCLCPP_INFO(this->get_logger(), "First valid path received. Initializing sim time to: %.2f", current_sim_time_);
-    }
-    
-    is_path_set_ = true;
-}
 
     Eigen::VectorXd getCurrentPosition() const {
         std::lock_guard<std::mutex> lock(path_mutex_);
@@ -162,6 +164,7 @@ private:
     std::shared_ptr<ObstacleChecker> obstacle_checker_;
     std::shared_ptr<RVizVisualization> visualizer_;
     rclcpp::TimerBase::SharedPtr sim_timer_;
+    rclcpp::TimerBase::SharedPtr vis_timer_;
     mutable std::mutex path_mutex_;
 
     std::vector<Trajectory> planned_path_segments_;
@@ -176,78 +179,105 @@ private:
     double current_sim_time_;
     double simulation_time_step_;
     std::atomic<int> collision_count_{0};
+    bool is_in_collision_state_{false};
+
+
+    void visualizationLoop() {
+        if (!obstacle_checker_ || !visualizer_) return;
+        
+        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+        if (!gazebo_checker) return;
+
+        gazebo_checker->processLatestPoseInfo();
+        const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
+        
+        // Prepare containers for visualization data
+        std::vector<Eigen::VectorXd> sphere_positions_for_viz;
+        std::vector<double> sphere_radii;
+        std::vector<std::tuple<Eigen::Vector3d, Eigen::Vector3d, double>> box_data_for_viz;
+        std::vector<Eigen::Vector3d> dynamic_obstacle_positions_3d;
+        std::vector<Eigen::Vector2d> dynamic_obstacle_velocities_2d;
+
+        for (const auto& obstacle : all_obstacles) {
+            Eigen::Vector3d obs_pos_3d(obstacle.position.x(), obstacle.position.y(), obstacle.z);
+
+            if (obstacle.type == Obstacle::CIRCLE) {
+                sphere_positions_for_viz.push_back(obs_pos_3d);
+                // CORRECTED: Using physical radius without inflation
+                sphere_radii.push_back(obstacle.dimensions.radius);
+            } else if (obstacle.type == Obstacle::BOX) {
+                // CORRECTED: Using physical dimensions without inflation
+                Eigen::Vector3d dims(
+                    obstacle.dimensions.width,
+                    obstacle.dimensions.height,
+                    obstacle.dimensions.height // Assuming depth = height
+                );
+                box_data_for_viz.emplace_back(obs_pos_3d, dims, obstacle.dimensions.rotation);
+            }
+            
+            if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
+                // Correctly using 3D position for velocity vectors
+                dynamic_obstacle_positions_3d.push_back(obs_pos_3d);
+                dynamic_obstacle_velocities_2d.push_back(obstacle.velocity);
+            }
+        }
+
+        // Send data to the visualizer
+        if (!sphere_positions_for_viz.empty()) {
+            visualizer_->visualizeSpheres(sphere_positions_for_viz, sphere_radii, "map", {0.0f, 0.4f, 1.0f}, "sphere_obstacles");
+        }
+        if (!box_data_for_viz.empty()) {
+            visualizer_->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
+        }
+        if (!dynamic_obstacle_positions_3d.empty()) {
+            visualizer_->visualizeVelocityVectors(dynamic_obstacle_positions_3d, dynamic_obstacle_velocities_2d, "map", {1.0f, 0.5f, 0.0f}, "velocity_vectors");
+        }
+    }
+
+
 
     void simulationLoop() {
         std::lock_guard<std::mutex> lock(path_mutex_);
+        if (!is_path_set_ || planned_path_segments_.empty()) return;
 
-        if (!is_path_set_ || planned_path_segments_.empty()) {
-            return;
-        }
-
-        // --- DEBUG PRINT: Show time progression ---
-        // std::cout << "\n--- [SIM_LOOP] Tick --- Current Sim Time (t_goal): " << current_sim_time_ << "s ---\n";
-
-        // Advance the continuous simulation time
         current_sim_time_ += simulation_time_step_;
 
-        // --- DEBUG PRINT: Show segment finding logic ---
-        int initial_segment_idx = current_segment_idx_;
-        // This loop fast-forwards to find the correct segment for the current time.
+        // This loop now correctly finds the current segment based on the non-reversed path points.
         while (current_segment_idx_ < (int)planned_path_segments_.size() - 1) {
-            const Trajectory& segment_for_check = planned_path_segments_[current_segment_idx_];
-            // The "parent time" is the time-to-goal of the node *after* the current segment
-            double segment_parent_time = segment_for_check.path_points.front()(4);
-
-            // std::cout << "[Segment Check] Comparing t_goal " << current_sim_time_
-            //           << " with parent_time " << segment_parent_time
-            //           << " for segment " << current_segment_idx_ << ".\n";
+            const auto& segment_for_check = planned_path_segments_[current_segment_idx_];
+            // Parent/end time is at the BACK of the path_points vector
+            double segment_parent_time = segment_for_check.path_points.back()(4);
 
             if (current_sim_time_ < segment_parent_time) {
                 current_segment_idx_++;
-                // std::cout << "    ---> Time is less. Moving to next segment: " << current_segment_idx_ << "\n";
             } else {
-                // std::cout << "    ---> Time is greater. Sticking with segment " << current_segment_idx_ << ".\n";
                 break;
             }
         }
-        if (initial_segment_idx != current_segment_idx_){
-            //  std::cout << "[Segment Switch] Changed from segment " << initial_segment_idx << " to " << current_segment_idx_ << ".\n";
-        }
-        // --- END DEBUG ---
 
-        const Trajectory& final_segment_in_path = planned_path_segments_.back();
-        double final_path_end_time = final_segment_in_path.path_points.front()(4);
+        const auto& final_segment = planned_path_segments_.back();
+        double final_time = final_segment.path_points.back()(4);
 
-        if (current_sim_time_ < final_path_end_time) {
+        if (current_sim_time_ < final_time) {
              RCLCPP_INFO(this->get_logger(), "Simulation finished: Path complete.");
              is_path_set_ = false;
-             current_pos_ = final_segment_in_path.path_points.front();
+             current_pos_ = final_segment.path_points.back();
              visualizeRobot();
              return;
         }
 
-        const Trajectory& segment_to_execute = planned_path_segments_[current_segment_idx_];
+        const auto& segment_to_execute = planned_path_segments_[current_segment_idx_];
         const double T = segment_to_execute.time_duration;
-        const double segment_start_time = segment_to_execute.path_points.back()(4);
+        // Segment start time is at the FRONT of the path_points vector
+        const double segment_start_time = segment_to_execute.path_points.front()(4);
 
-        // --- DEBUG PRINTS: Expose the tau calculation bug ---
-        // This is the original, incorrect calculation
-        const double original_tau = (T > 1e-6) ? ((current_sim_time_ - segment_start_time) / T) : 1.0;
-        
-        // This is the corrected calculation
-        const double corrected_tau = (T > 1e-6) ? ((segment_start_time - current_sim_time_) / T) : 1.0;
-        double clamped_tau = std::max(0.0, std::min(1.0, corrected_tau));
-        const double evaluation_tau = clamped_tau;
-
-        // std::cout << "[Tau Calc] Executing on segment " << current_segment_idx_ << " (Duration: " << T << "s, Start t_goal: " << segment_start_time << "s)\n";
-        // std::cout << "    [FIX] Corrected Tau (Time progress): " << clamped_tau << "\n";
-        // std::cout << "    >>> Using Evaluation Tau (Position on curve): " << evaluation_tau << "\n";
-
+        // This tau calculation is now correct with the fixed start time.
+        const double tau = (T > 1e-6) ? ((segment_start_time - current_sim_time_) / T) : 1.0;
+        const double evaluation_tau = std::clamp(tau, 0.0, 1.0);
 
         const int num_coeffs = segment_to_execute.coeffs_per_axis[0].size();
         const int num_axes = 4;
 
-        // Evaluate the polynomial for each axis to get the current state
         for (int axis = 0; axis < num_axes; ++axis) {
             const auto& coeffs = segment_to_execute.coeffs_per_axis[axis];
             current_pos_(axis) = (coeffs.transpose() * basis(0, evaluation_tau, num_coeffs).transpose())(0);
@@ -257,11 +287,32 @@ private:
         current_pos_(3) = normalizeAngle(current_pos_(3));
         current_pos_(4) = current_sim_time_;
 
-        // --- DEBUG PRINT: Show final calculated state ---
-        // std::cout << "[State Update] New Position (x,y,t): " << current_pos_(0) << ", " << current_pos_(1) << ", " << current_pos_(4) << "\n";
+        ////////////////////////////////////
+        // 3D collision check for counting.
+        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+        if (gazebo_checker) {
+            // Get the full 3D position and yaw from the current state.
+            Eigen::Vector3d current_pos_3d = current_pos_.head<3>();
+            double current_yaw = current_pos_(3);
+            
+            // Call the NEW, overloaded 3D collision check function.
+            bool is_colliding_now = gazebo_checker->checkRobotCollision(current_pos_3d, current_yaw);
+
+            if (is_colliding_now && !is_in_collision_state_) {
+                collision_count_++;
+                RCLCPP_FATAL(this->get_logger(), "COLLISION DETECTED! Total Failures: %d", collision_count_.load());
+            }
+            is_in_collision_state_ = is_colliding_now;
+        }
+        //////////////////////////////////////
+
 
         visualizeRobot();
+        
+        // Update previous_pos_ at the end of the loop to correctly calculate yaw for the next frame.
+        previous_pos_ = current_pos_.head<3>();
     }
+
     void visualizeRobot() {
         Eigen::Vector3d pos_3d = current_pos_.head<3>();
         

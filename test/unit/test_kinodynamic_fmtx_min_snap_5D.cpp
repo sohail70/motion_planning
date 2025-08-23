@@ -158,8 +158,9 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("estimation", true);
     gazebo_params.setParam("inflation", 0.5); // A larger inflation makes the robot fatter to the planner, which might prevent it from finding paths through narrow gaps.
     gazebo_params.setParam("persistent_static_obstacles", false);
-    gazebo_params.setParam("fcl", false);
-    gazebo_params.setParam("bullet", false);
+    gazebo_params.setParam("fcl", false); //TODO: Implement this for 3D min-snap too!
+    gazebo_params.setParam("bullet", true);
+    gazebo_params.setParam("spatial_dim", 3);
 
     Params planner_params;
     planner_params.setParam("num_of_samples", num_samples);
@@ -182,11 +183,7 @@ int main(int argc, char **argv) {
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
     auto sim_clock = vis_node->get_clock();
 
-    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
-    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
-    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box.sdf");
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf");
-    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10_3D.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
     // --- Planner and Problem Definition (5D MinSnap) ---
@@ -202,13 +199,13 @@ int main(int argc, char **argv) {
     Eigen::VectorXd robot_initial_state(dim);
     // Increased time budget for the larger travel distance.
     double time_budget = 40.0;
-    robot_initial_state << 48.0, 48.0, 10.0, -M_PI / 2.0, time_budget;
+    robot_initial_state << 48.0, 48.0, 48.0, -M_PI / 2.0, time_budget;
     problem_def->setGoal(robot_initial_state);
 
     // Define the new, larger state space bounds.
     Eigen::VectorXd lower_bounds(dim), upper_bounds(dim);
-    lower_bounds << -48.0, -48.0, -20.0, -M_PI, 0.0;
-    upper_bounds << 48.0, 48.0, 20.0, M_PI, time_budget;
+    lower_bounds << -48.0, -48.0, 0.0, -M_PI, 0.0;
+    upper_bounds << 48.0, 48.0, 48.0, M_PI, time_budget;
     problem_def->setBounds(lower_bounds, upper_bounds);
 
     // Create the MinSnap state space
@@ -294,12 +291,16 @@ int main(int argc, char **argv) {
             auto snapshot = obstacle_checker->getAtomicSnapshot();
             auto start = std::chrono::steady_clock::now();
             kinodynamic_planner->updateObstacleSamples(snapshot.obstacles); 
-            // Run the core planning algorithm to repair/update the tree.
-            planner->plan();
-
             auto end = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            std::cout << "Time taken for replan: " << duration.count() << " ms\n";
+            std::cout << "Time taken for update: " << duration.count() << " ms\n";
+            // Run the core planning algorithm to repair/update the tree.
+            start = std::chrono::steady_clock::now();
+            planner->plan();
+
+            end = std::chrono::steady_clock::now();
+            duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+            std::cout << "Time taken for plan: " << duration.count() << " ms\n";
             
             // ... logging logic ...
 

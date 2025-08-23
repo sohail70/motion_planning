@@ -529,6 +529,67 @@ void RVizVisualization::visualizeCube(
     // Publish all box markers
     marker_pub_2_->publish(marker_array);
 }
+void RVizVisualization::visualizeCube(
+    const std::vector<std::tuple<Eigen::Vector3d, Eigen::Vector3d, double>>& box_obstacles,
+    const std::string& frame_id,
+    const std::vector<float>& color,
+    const std::string& ns) 
+{
+    visualization_msgs::msg::MarkerArray marker_array;
+
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id;
+    clear_marker.header.stamp = node_->now();
+    clear_marker.ns = ns;
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    marker_array.markers.push_back(clear_marker);
+
+    int id = 0;
+
+    for (const auto& box : box_obstacles) {
+        visualization_msgs::msg::Marker marker;
+        marker.header.frame_id = frame_id;
+        marker.header.stamp = node_->now();
+        marker.ns = ns;
+        marker.id = id++;
+        marker.type = visualization_msgs::msg::Marker::CUBE;
+        marker.action = visualization_msgs::msg::Marker::ADD;
+
+        const Eigen::Vector3d& position = std::get<0>(box);
+        const Eigen::Vector3d& dimensions = std::get<1>(box);
+        double rotation = std::get<2>(box);
+
+        marker.pose.position.x = position.x();
+        marker.pose.position.y = position.y();
+        marker.pose.position.z = position.z();
+
+        // =========================================================================================
+        // CORRECTED: Manually convert yaw to quaternion, removing the tf2 dependency.
+        // =========================================================================================
+        double cy = cos(rotation * 0.5);
+        double sy = sin(rotation * 0.5);
+        // A pure yaw rotation is around the Z-axis, so X and Y components are 0.
+        marker.pose.orientation.x = 0.0;
+        marker.pose.orientation.y = 0.0;
+        marker.pose.orientation.z = sy;
+        marker.pose.orientation.w = cy;
+        // =========================================================================================
+
+        marker.scale.x = dimensions.x();
+        marker.scale.y = dimensions.y();
+        marker.scale.z = dimensions.z();
+
+        marker.color.r = color[0];
+        marker.color.g = color[1];
+        marker.color.b = color[2];
+        marker.color.a = 0.5;
+
+        marker_array.markers.push_back(marker);
+    }
+    
+    marker_pub_2_->publish(marker_array);
+}
+
 
 
 
@@ -953,6 +1014,65 @@ void RVizVisualization::visualizeVelocityVectors(
     marker_pub_2_->publish(marker_array);
 }
 
+void RVizVisualization::visualizeVelocityVectors(
+    const std::vector<Eigen::Vector3d>& positions, 
+    const std::vector<Eigen::Vector2d>& velocities,
+    const std::string& frame_id,
+    const std::vector<float>& color,
+    const std::string& ns)
+{
+    if (positions.size() != velocities.size()) {
+        RCLCPP_ERROR(node_->get_logger(), "Mismatch between positions and velocities for vector visualization.");
+        return;
+    }
+
+    visualization_msgs::msg::MarkerArray marker_array;
+
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id;
+    clear_marker.header.stamp = node_->now();
+    clear_marker.ns = ns;
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    marker_array.markers.push_back(clear_marker);
+
+    int id = 0;
+    for (size_t i = 0; i < positions.size(); ++i) {
+        visualization_msgs::msg::Marker arrow_marker;
+        arrow_marker.header.frame_id = frame_id;
+        arrow_marker.header.stamp = node_->now();
+        arrow_marker.ns = ns;
+        arrow_marker.id = id++;
+        arrow_marker.type = visualization_msgs::msg::Marker::ARROW;
+        arrow_marker.action = visualization_msgs::msg::Marker::ADD;
+
+        geometry_msgs::msg::Point start_point;
+        start_point.x = positions[i].x();
+        start_point.y = positions[i].y();
+        start_point.z = positions[i].z(); 
+
+        geometry_msgs::msg::Point end_point;
+        end_point.x = positions[i].x() + velocities[i].x(); // Predict 1 second ahead
+        end_point.y = positions[i].y() + velocities[i].y();
+        end_point.z = positions[i].z(); 
+
+        arrow_marker.points.push_back(start_point);
+        arrow_marker.points.push_back(end_point);
+
+        arrow_marker.scale.x = 0.2;
+        arrow_marker.scale.y = 0.4;
+        arrow_marker.scale.z = 0.4;
+
+        arrow_marker.color.r = color[0];
+        arrow_marker.color.g = color[1];
+        arrow_marker.color.b = color[2];
+        arrow_marker.color.a = 1.0;
+
+        marker_array.markers.push_back(arrow_marker);
+    }
+
+    marker_pub_2_->publish(marker_array);
+}
+
 
 void RVizVisualization::visualizeCircle(
     const Eigen::Vector2d& center,
@@ -1053,6 +1173,64 @@ void RVizVisualization::visualizeText(
         text_marker.color.a = 1.0; // Opaque white
 
         marker_array.markers.push_back(text_marker);
+    }
+
+    marker_pub_2_->publish(marker_array);
+}
+
+
+void RVizVisualization::visualizeSpheres(
+    const std::vector<Eigen::VectorXd>& obstacles_positions, 
+    const std::vector<double>& radii, 
+    const std::string& frame_id,
+    const std::vector<float>& color,
+    const std::string& ns) 
+{
+    if (obstacles_positions.size() != radii.size()) {
+        RCLCPP_ERROR(node_->get_logger(), 
+                     "Mismatch between number of obstacles (%zu) and radii (%zu).", 
+                     obstacles_positions.size(), radii.size());
+        return;
+    }
+
+    visualization_msgs::msg::MarkerArray marker_array;
+
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id;
+    clear_marker.header.stamp = node_->now();
+    clear_marker.ns = ns;
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    marker_array.markers.push_back(clear_marker);
+
+    int id = 0;
+    for (size_t i = 0; i < obstacles_positions.size(); ++i) {
+        const auto& obstacle_pos = obstacles_positions[i];
+        double radius = radii[i];
+
+        visualization_msgs::msg::Marker marker;
+        marker.header.frame_id = frame_id;
+        marker.header.stamp = node_->now();
+        marker.ns = ns;
+        marker.id = id++;
+        marker.type = visualization_msgs::msg::Marker::SPHERE; // Use SPHERE type
+        marker.action = visualization_msgs::msg::Marker::ADD;
+
+        marker.pose.position.x = obstacle_pos.x();
+        marker.pose.position.y = obstacle_pos.y();
+        // Use the Z coordinate from the passed vector
+        marker.pose.position.z = (obstacle_pos.size() > 2) ? obstacle_pos.z() : 0.0;
+
+        // For a SPHERE, scale is the diameter in all dimensions
+        marker.scale.x = 2 * radius;
+        marker.scale.y = 2 * radius;
+        marker.scale.z = 2 * radius;
+
+        marker.color.r = color[0];
+        marker.color.g = color[1];
+        marker.color.b = color[2];
+        marker.color.a = 0.6; // A bit more solid than before
+
+        marker_array.markers.push_back(marker);
     }
 
     marker_pub_2_->publish(marker_array);

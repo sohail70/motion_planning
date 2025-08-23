@@ -111,18 +111,22 @@ int main(int argc, char** argv) {
     // --- Visualization and Simulation ---
     if (path_is_valid) {
         std::cout << "\nSUCCESS: Full path planned! Visualizing and starting simulation...\n";
-         
-        // 1. Assemble path for VISUALIZATION (A -> D)
         std::vector<Eigen::VectorXd> full_path_for_viz;
         for(const auto& seg : all_traj_segments) {
+            // Create a temporary copy of the points to be reversed for visualization.
+            auto reversed_points = seg.path_points;
+            std::reverse(reversed_points.begin(), reversed_points.end());
+
             if (full_path_for_viz.empty()) {
-                full_path_for_viz.insert(full_path_for_viz.end(), seg.path_points.begin(), seg.path_points.end());
+                // For the first segment, add all its (now correctly ordered) points.
+                full_path_for_viz.insert(full_path_for_viz.end(), reversed_points.begin(), reversed_points.end());
             } else {
-                full_path_for_viz.insert(full_path_for_viz.end(), seg.path_points.begin() + 1, seg.path_points.end());
+                // For subsequent segments, skip the first point to avoid duplication.
+                full_path_for_viz.insert(full_path_for_viz.end(), reversed_points.begin() + 1, reversed_points.end());
             }
         }
         
-        // 2. Visualize the static path
+        // 2. Visualize the static path (this part is now correct)
         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> viz_segments;
         if(full_path_for_viz.size() > 1) {
             for(size_t j=0; j < full_path_for_viz.size() - 1; ++j) {
@@ -132,7 +136,7 @@ int main(int argc, char** argv) {
         visualizer->visualizeNodes(waypoints, "map", {1.0f, 0.0f, 0.0f}, "waypoints");
         visualizer->visualizeEdges(viz_segments, "map", "0.0,1.0,0.0", "min_snap_path");
 
-        // 3. Set up the manager for SIMULATION (needs segments D -> A)
+        // 3. Set up the manager for SIMULATION (this logic was already correct)
         std::reverse(all_traj_segments.begin(), all_traj_segments.end());
         manager->setInitialState(waypoints.back());
         manager->setPlannedTrajectory(all_traj_segments);
@@ -144,6 +148,7 @@ int main(int argc, char** argv) {
     } else {
         std::cout << "\nFAILURE: Could not connect all waypoints.\n";
     }
+
 
     rclcpp::shutdown();
     return 0;

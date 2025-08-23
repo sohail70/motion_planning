@@ -25,10 +25,12 @@ public:
     void visualizeEdges(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id, const std::string& color_str,const std::string& ns) override;
 
     void visualizeCylinder(const std::vector<Eigen::VectorXd>& obstacles, const std::vector<double>& radii, const std::string& frame_id , const std::vector<float>& color , const std::string& ns);
+    void visualizeSpheres( const std::vector<Eigen::VectorXd>& obstacles_positions, const std::vector<double>& radii, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);
 
     void visualizeRobotArrow( const Eigen::VectorXd& robot_position, const Eigen::VectorXd& robot_orientation, const std::string& frame_id, const std::vector<float>& color,const std::string& ns);
     void visualizeQuadcopter( const Eigen::Vector3d& position, const Eigen::VectorXd& orientation_quat, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);
     void visualizeCube(const std::vector<std::tuple<Eigen::Vector2d, double, double, double>>& box_obstacles, const std::string& frame_id, const std::vector<float>& color, const std::string& ns) ;
+    void visualizeCube( const std::vector<std::tuple<Eigen::Vector3d, Eigen::Vector3d, double>>& box_obstacles, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);
 
 
     void visualizeTrajectories(const std::vector<std::vector<Eigen::Vector2d>>& trajectories, 
@@ -44,12 +46,8 @@ public:
 
     void visualizeFutureGhosts( const ObstacleVector& obstacles, double prediction_horizon, const std::string& frame_id);
 
-    void visualizeVelocityVectors(
-        const std::vector<Eigen::Vector2d>& positions,
-        const std::vector<Eigen::Vector2d>& velocities,
-        const std::string& frame_id,
-        const std::vector<float>& color,
-        const std::string& ns);
+    void visualizeVelocityVectors( const std::vector<Eigen::Vector2d>& positions, const std::vector<Eigen::Vector2d>& velocities, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);
+    void visualizeVelocityVectors( const std::vector<Eigen::Vector3d>& positions, const std::vector<Eigen::Vector2d>& velocities, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);
 
 
     void visualizeCircle( const Eigen::Vector2d& center, double radius, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);

@@ -157,8 +157,6 @@ private:
         gazebo_checker->processLatestPoseInfo();
         const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
         
-        // --- MODIFIED SECTION START ---
-        
         // Prepare containers for visualization data
         std::vector<Eigen::VectorXd> cylinder_positions;
         std::vector<double> cylinder_radii;
@@ -203,8 +201,6 @@ private:
         if (!dynamic_obstacle_positions.empty()) {
             visualizer_->visualizeVelocityVectors(dynamic_obstacle_positions, dynamic_obstacle_velocities, "map", {1.0f, 0.5f, 0.0f}, "velocity_vectors");
         }
-        
-        // --- MODIFIED SECTION END ---
     }
 
     void simulationLoop() {

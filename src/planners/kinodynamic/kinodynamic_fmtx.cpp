@@ -189,19 +189,13 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
         // Get the full 3D (or 4D) samples from the state space.
         Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
 
-        // Define how many spatial dimensions you have.
-        //    This makes the code robust for future changes (e.g., to 3D space).
-        //    Assuming (x, y, time), the spatial dimension is 2.
-        int spatial_dimension = kd_dim; // For (x, y) or (x, y, time) or (x, y, theta, time)
-        // For a future Dubins (x, y, theta, time) planner, this would still be 2.
-
-        // // Use .leftCols() to create a new matrix with only the spatial data.
+        // // Use .leftCols() to create a new matrix with only the kd_dim data.
         // //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
-        // Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(spatial_dimension).eval();
+        Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(kd_dim).eval();
         
         // Pass the 2D spatial matrix to the KD-tree.
-        // kdtree_->addPoints(spatial_samples_only);
-        kdtree_->addPoints(all_samples);
+        kdtree_->addPoints(spatial_samples_only);
+        // kdtree_->addPoints(all_samples);
         
         // Build the tree all at once after we fill the data.
         kdtree_->buildTree();
@@ -630,7 +624,7 @@ void KinodynamicFMTX::plan() {
             //     }
             // }
 
-            // --- LAZY COMPUTATION (for Min-Snap) ---
+            // LAZY COMPUTATION (for Min-Snap) ---
             if (statespace_->prefersLazyNear() && !edge_info_from_x.is_trajectory_computed) {
                 // If this is a lazy state space, compute the true trajectory from x to z now.
                 edge_info_from_x.cached_trajectory = statespace_->steer(
@@ -638,23 +632,17 @@ void KinodynamicFMTX::plan() {
                     z->getFinalVelocity(), z->getFinalAcceleration()
                 );
 
-                // std::cout<<x->getStateValue()<<"\n";
-                // std::cout<<"-----\n";
-                // std::cout<<z->getStateValue()<<"\n";
-                // std::cout<<"-----\n";
-                // std::cout<<z->getFinalVelocity()<<"\n";
-                // std::cout<<"-----\n";
-                // std::cout<<z->getFinalAcceleration()<<"\n";
-                // std::cout<<"-----\n";
-                // for (auto& p : edge_info_from_x.cached_trajectory.path_points)
-                //     std::cout<<p.transpose()<<"\n";
-
-
                 edge_info_from_x.is_trajectory_computed = true;
                 // Update the distance with the true cost
                 edge_info_from_x.distance = edge_info_from_x.cached_trajectory.cost;
-            }
 
+                // Add symmetric caching ---
+                // Update the corresponding forward neighbor entry in node 'x' to prevent re-computation.
+                if (x->forwardNeighbors().count(z)) {
+                    // Assign the entire updated EdgeInfo struct to ensure all fields are synchronized.
+                    x->forwardNeighbors().at(z) = edge_info_from_x;
+                }
+            }
 
 
 
@@ -664,7 +652,7 @@ void KinodynamicFMTX::plan() {
                 continue;
             }
 
-            // --- THE TRIGGER CONDITION ---
+            // TRIGGER CONDITION
             // Calculate the potential cost for 'x' if it were to connect through 'z'.
             // double cost_via_z = z->getCost() + traj_xz.cost;
             double cost_via_z = z->getCost() + edge_info_from_x.distance;
@@ -690,7 +678,7 @@ void KinodynamicFMTX::plan() {
 
                 // total_neighbor_iterations += x->forwardNeighbors().size();
 
-                // --- STAGE 2: SEARCH FOR THE TRUE BEST PARENT ---
+                // STAGE 2: SEARCH FOR THE TRUE BEST PARENT ---
                 // 'x' is suboptimal. We now search for its true best parent among ALL its neighbors
                 // that are currently in the open set.
                 double min_cost_for_x = std::numeric_limits<double>::infinity();
@@ -698,53 +686,38 @@ void KinodynamicFMTX::plan() {
                 // Trajectory best_traj_for_x;
                 Trajectory best_traj_for_x;
 
-                
+                                
                 for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
-                    // std::cout<<y->getIndex()<<"\n";
-                    // std::cout<<"----\n";
                     if (y->in_queue_) { // We only consider parents that are in V_open.
-                        // // --- LAZY STEERING WITH SYMMETRIC CACHING ---
-                        // if (!edge_info_xy.is_trajectory_computed) {
-                        //     // Compute the trajectory on-demand
-                        //     edge_info_xy.cached_trajectory = statespace_->steer(x->getStateValue(), y->getStateValue());
-                        //     edge_info_xy.is_trajectory_computed = true;
 
-                        //     // *** Update the neighbor's map to prevent re-computation ***
-                        //     // This ensures that if we later check the edge from y->x, we know it's handled.
-                        //     if (y->backwardNeighbors().count(x)) {
-                        //         y->backwardNeighbors().at(x).is_trajectory_computed = true;
-                        //         y->backwardNeighbors().at(x).cached_trajectory = edge_info_xy.cached_trajectory;
-                        //     }
-                        // }
-
-                        Trajectory traj_xy; // Holds the trajectory to be evaluated
-                        double cost_via_y;
-
-                        if (statespace_->prefersLazyNear()) {
-                            // LAZY: Compute trajectory on the fly for accurate comparison
-                            traj_xy = statespace_->steer(
+                        // Check if the trajectory is already computed ---
+                        if (statespace_->prefersLazyNear() && !edge_info_xy.is_trajectory_computed) {
+                            // If not, compute it ONCE and cache it symmetrically.
+                            edge_info_xy.cached_trajectory = statespace_->steer(
                                 x->getStateValue(), y->getStateValue(), 
                                 y->getFinalVelocity(), y->getFinalAcceleration()
                             );
-                            if (traj_xy.is_valid) {
-                                cost_via_y = y->getCost() + traj_xy.cost;
-                            } else {
-                                cost_via_y = std::numeric_limits<double>::infinity();
-                            }
-                        } else {
-                            // PROACTIVE: Use the pre-computed trajectory and cost
-                            traj_xy = edge_info_xy.cached_trajectory;
-                            cost_via_y = y->getCost() + edge_info_xy.distance;
-                        }
+                            edge_info_xy.is_trajectory_computed = true;
 
-                        // Correction 2: Use the locally computed cost_via_y for comparison
-                        if (cost_via_y < min_cost_for_x) {
-                            min_cost_for_x = cost_via_y;
-                            best_parent_for_x = y;
-                            best_traj_for_x = traj_xy; // Correction 3: Store the actual trajectory object
+                            // Symmetrically cache for the other direction to prevent re-computation later.
+                            if (y->backwardNeighbors().count(x)) {
+                                auto& symmetric_edge = y->backwardNeighbors().at(x);
+                                symmetric_edge.cached_trajectory = edge_info_xy.cached_trajectory;
+                                symmetric_edge.is_trajectory_computed = true;
+                            }
+                        }
+                        
+                        const Trajectory& traj_xy = edge_info_xy.cached_trajectory;
+                        
+                        if (traj_xy.is_valid) {
+                            double cost_via_y = y->getCost() + traj_xy.cost;
+                            if (cost_via_y < min_cost_for_x) {
+                                min_cost_for_x = cost_via_y;
+                                best_parent_for_x = y;
+                                best_traj_for_x = traj_xy;
+                            }
                         }
                     }
-                    
                 }
 
 
@@ -761,10 +734,15 @@ void KinodynamicFMTX::plan() {
                     double min_time_for_x = best_parent_for_x->getTimeToGoal() + best_traj_for_x.time_duration;
 
 
+                    // This is the time offset between the robot's current path and the edge being checked.
+                    double time_offset = robot_current_time_to_goal_ - min_time_for_x;
+                    // The absolute world time when this edge is predicted to start.
+                    const double global_edge_start_time = t_now + time_offset;
+
 
                     ///////////////////------------------
-                    // Calculate the global time this edge is SCHEDULED to start, based on our fixed prediction.
-                    const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
+                    // // Calculate the global time this edge is SCHEDULED to start, based on our fixed prediction.
+                    // const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
 
 
                     // The global start time for the edge x->y is based on the PURE time-to-goal
@@ -844,19 +822,24 @@ void KinodynamicFMTX::plan() {
                                 obstacle_free = it->second;
                                 // ++cached;
                             } else {
-                                // Cache miss: Compute the safety and store it with the time-aware key.
-                                bool safe = obs_checker_->isTrajectorySafe(
+                                // Only check edges that are relevant (not too far in the future and not in the past).
+                                if (time_offset >=-0.1 && time_offset < 5.0){
+                                    // Cache miss: Compute the safety and store it with the time-aware key.
+                                    bool safe = obs_checker_->isTrajectorySafe(
+                                        best_traj_for_x, global_edge_start_time);
+                                    obstacle_check_cache_[key] = safe;
+                                    obstacle_free = safe;
+                                    // ++uncached;
+                                    last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
+                                }
+                            }
+                        } else {
+                            if (time_offset >=-0.1 && time_offset < 5.0){
+                                obstacle_free = obs_checker_->isTrajectorySafe(
                                     best_traj_for_x, global_edge_start_time);
-                                obstacle_check_cache_[key] = safe;
-                                obstacle_free = safe;
                                 // ++uncached;
                                 last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
                             }
-                        } else {
-                            obstacle_free = obs_checker_->isTrajectorySafe(
-                                best_traj_for_x, global_edge_start_time);
-                            // ++uncached;
-                            last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
                         }
                     }
                     ///////////////////////////////////////////////////////
@@ -1030,8 +1013,7 @@ void KinodynamicFMTX::plan() {
 void KinodynamicFMTX::near(int node_index) {
     auto node = tree_[node_index].get();
     if (node->neighbors_cached_) return;
-
-    // --- Get candidate neighbors (common to both strategies) ---
+    //  Get candidate neighbors (common to both strategies)
     std::vector<size_t> candidate_indices;
     if (use_knn) {
         if (k_neighbors_ > 0) {

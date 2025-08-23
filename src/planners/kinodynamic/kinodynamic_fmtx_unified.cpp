@@ -62,18 +62,13 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
                 weights << 1.0, 1.0; // Weights for x, y,
                 break;
             case 3: // (x, y, time)
-                {
-                    weights << 1.0, 1.0, 1.0; // Weights for x, y, time
-                }
+                weights << 1.0, 1.0, 1.0; // Weights for x, y, time
                 break;
             case 4: // (x, y, theta, time) - From your Dubins example
-                {
-                    weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
-                }
+                weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
+                break;
             case 5:
-                {
-                    weights << 1.0, 1.0, 1.0, 1.0, 1.0; // Weights for x, y, z, yaw, time
-                }
+                weights << 1.0, 1.0, 1.0, 1.0, 1.0; // Weights for x, y, z, yaw, time
                 break;
             default: 
                 RCLCPP_ERROR(rclcpp::get_logger("Planner_Obstacle_Update"), "Unsupported k-d tree dimension : %d", kd_dim);
@@ -194,18 +189,13 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
         // Get the full 3D (or 4D) samples from the state space.
         Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
 
-        // Define how many spatial dimensions you have.
-        //    This makes the code robust for future changes (e.g., to 3D space).
-        //    Assuming (x, y, time), the spatial dimension is 2.
-        int spatial_dimension = kd_dim; // For (x, y) or (x, y, time) or (x, y, theta, time)
-        // For a future Dubins (x, y, theta, time) planner, this would still be 2.
-
-        // Use .leftCols() to create a new matrix with only the spatial data.
-        //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
-        Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(spatial_dimension).eval();
+        // // Use .leftCols() to create a new matrix with only the kd_dim data.
+        // //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
+        Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(kd_dim).eval();
         
         // Pass the 2D spatial matrix to the KD-tree.
         kdtree_->addPoints(spatial_samples_only);
+        // kdtree_->addPoints(all_samples);
         
         // Build the tree all at once after we fill the data.
         kdtree_->buildTree();
@@ -634,7 +624,7 @@ void KinodynamicFMTX::plan() {
             //     }
             // }
 
-            // --- LAZY COMPUTATION (for Min-Snap) ---
+            // LAZY COMPUTATION (for Min-Snap) ---
             if (statespace_->prefersLazyNear() && !edge_info_from_x.is_trajectory_computed) {
                 // If this is a lazy state space, compute the true trajectory from x to z now.
                 edge_info_from_x.cached_trajectory = statespace_->steer(
@@ -642,23 +632,17 @@ void KinodynamicFMTX::plan() {
                     z->getFinalVelocity(), z->getFinalAcceleration()
                 );
 
-                // std::cout<<x->getStateValue()<<"\n";
-                // std::cout<<"-----\n";
-                // std::cout<<z->getStateValue()<<"\n";
-                // std::cout<<"-----\n";
-                // std::cout<<z->getFinalVelocity()<<"\n";
-                // std::cout<<"-----\n";
-                // std::cout<<z->getFinalAcceleration()<<"\n";
-                // std::cout<<"-----\n";
-                // for (auto& p : edge_info_from_x.cached_trajectory.path_points)
-                //     std::cout<<p.transpose()<<"\n";
-
-
                 edge_info_from_x.is_trajectory_computed = true;
                 // Update the distance with the true cost
                 edge_info_from_x.distance = edge_info_from_x.cached_trajectory.cost;
-            }
 
+                // Add symmetric caching ---
+                // Update the corresponding forward neighbor entry in node 'x' to prevent re-computation.
+                if (x->forwardNeighbors().count(z)) {
+                    // Assign the entire updated EdgeInfo struct to ensure all fields are synchronized.
+                    x->forwardNeighbors().at(z) = edge_info_from_x;
+                }
+            }
 
 
 
@@ -694,7 +678,7 @@ void KinodynamicFMTX::plan() {
 
                 // total_neighbor_iterations += x->forwardNeighbors().size();
 
-                // --- STAGE 2: SEARCH FOR THE TRUE BEST PARENT ---
+                // STAGE 2: SEARCH FOR THE TRUE BEST PARENT ---
                 // 'x' is suboptimal. We now search for its true best parent among ALL its neighbors
                 // that are currently in the open set.
                 double min_cost_for_x = std::numeric_limits<double>::infinity();
@@ -702,53 +686,38 @@ void KinodynamicFMTX::plan() {
                 // Trajectory best_traj_for_x;
                 Trajectory best_traj_for_x;
 
-                
+                                
                 for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
-                    // std::cout<<y->getIndex()<<"\n";
-                    // std::cout<<"----\n";
                     if (y->in_queue_) { // We only consider parents that are in V_open.
-                        // // --- LAZY STEERING WITH SYMMETRIC CACHING ---
-                        // if (!edge_info_xy.is_trajectory_computed) {
-                        //     // Compute the trajectory on-demand
-                        //     edge_info_xy.cached_trajectory = statespace_->steer(x->getStateValue(), y->getStateValue());
-                        //     edge_info_xy.is_trajectory_computed = true;
 
-                        //     // *** Update the neighbor's map to prevent re-computation ***
-                        //     // This ensures that if we later check the edge from y->x, we know it's handled.
-                        //     if (y->backwardNeighbors().count(x)) {
-                        //         y->backwardNeighbors().at(x).is_trajectory_computed = true;
-                        //         y->backwardNeighbors().at(x).cached_trajectory = edge_info_xy.cached_trajectory;
-                        //     }
-                        // }
-
-                        Trajectory traj_xy; // Holds the trajectory to be evaluated
-                        double cost_via_y;
-
-                        if (statespace_->prefersLazyNear()) {
-                            // LAZY: Compute trajectory on the fly for accurate comparison
-                            traj_xy = statespace_->steer(
+                        // Check if the trajectory is already computed ---
+                        if (statespace_->prefersLazyNear() && !edge_info_xy.is_trajectory_computed) {
+                            // If not, compute it ONCE and cache it symmetrically.
+                            edge_info_xy.cached_trajectory = statespace_->steer(
                                 x->getStateValue(), y->getStateValue(), 
                                 y->getFinalVelocity(), y->getFinalAcceleration()
                             );
-                            if (traj_xy.is_valid) {
-                                cost_via_y = y->getCost() + traj_xy.cost;
-                            } else {
-                                cost_via_y = std::numeric_limits<double>::infinity();
-                            }
-                        } else {
-                            // PROACTIVE: Use the pre-computed trajectory and cost
-                            traj_xy = edge_info_xy.cached_trajectory;
-                            cost_via_y = y->getCost() + edge_info_xy.distance;
-                        }
+                            edge_info_xy.is_trajectory_computed = true;
 
-                        // Correction 2: Use the locally computed cost_via_y for comparison
-                        if (cost_via_y < min_cost_for_x) {
-                            min_cost_for_x = cost_via_y;
-                            best_parent_for_x = y;
-                            best_traj_for_x = traj_xy; // Correction 3: Store the actual trajectory object
+                            // Symmetrically cache for the other direction to prevent re-computation later.
+                            if (y->backwardNeighbors().count(x)) {
+                                auto& symmetric_edge = y->backwardNeighbors().at(x);
+                                symmetric_edge.cached_trajectory = edge_info_xy.cached_trajectory;
+                                symmetric_edge.is_trajectory_computed = true;
+                            }
+                        }
+                        
+                        const Trajectory& traj_xy = edge_info_xy.cached_trajectory;
+                        
+                        if (traj_xy.is_valid) {
+                            double cost_via_y = y->getCost() + traj_xy.cost;
+                            if (cost_via_y < min_cost_for_x) {
+                                min_cost_for_x = cost_via_y;
+                                best_parent_for_x = y;
+                                best_traj_for_x = traj_xy;
+                            }
                         }
                     }
-                    
                 }
 
 
@@ -765,10 +734,15 @@ void KinodynamicFMTX::plan() {
                     double min_time_for_x = best_parent_for_x->getTimeToGoal() + best_traj_for_x.time_duration;
 
 
+                    // This is the time offset between the robot's current path and the edge being checked.
+                    double time_offset = robot_current_time_to_goal_ - min_time_for_x;
+                    // The absolute world time when this edge is predicted to start.
+                    const double global_edge_start_time = t_now + time_offset;
+
 
                     ///////////////////------------------
-                    // Calculate the global time this edge is SCHEDULED to start, based on our fixed prediction.
-                    const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
+                    // // Calculate the global time this edge is SCHEDULED to start, based on our fixed prediction.
+                    // const double global_edge_start_time = t_arrival_predicted - min_time_for_x;
 
 
                     // The global start time for the edge x->y is based on the PURE time-to-goal
@@ -848,19 +822,24 @@ void KinodynamicFMTX::plan() {
                                 obstacle_free = it->second;
                                 // ++cached;
                             } else {
-                                // Cache miss: Compute the safety and store it with the time-aware key.
-                                bool safe = obs_checker_->isTrajectorySafe(
+                                // Only check edges that are relevant (not too far in the future and not in the past).
+                                if (time_offset >=-0.1 && time_offset < 5.0){
+                                    // Cache miss: Compute the safety and store it with the time-aware key.
+                                    bool safe = obs_checker_->isTrajectorySafe(
+                                        best_traj_for_x, global_edge_start_time);
+                                    obstacle_check_cache_[key] = safe;
+                                    obstacle_free = safe;
+                                    // ++uncached;
+                                    last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
+                                }
+                            }
+                        } else {
+                            if (time_offset >=-0.1 && time_offset < 5.0){
+                                obstacle_free = obs_checker_->isTrajectorySafe(
                                     best_traj_for_x, global_edge_start_time);
-                                obstacle_check_cache_[key] = safe;
-                                obstacle_free = safe;
                                 // ++uncached;
                                 last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
                             }
-                        } else {
-                            obstacle_free = obs_checker_->isTrajectorySafe(
-                                best_traj_for_x, global_edge_start_time);
-                            // ++uncached;
-                            last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
                         }
                     }
                     ///////////////////////////////////////////////////////
@@ -1034,8 +1013,7 @@ void KinodynamicFMTX::plan() {
 void KinodynamicFMTX::near(int node_index) {
     auto node = tree_[node_index].get();
     if (node->neighbors_cached_) return;
-
-    // --- Get candidate neighbors (common to both strategies) ---
+    //  Get candidate neighbors (common to both strategies)
     std::vector<size_t> candidate_indices;
     if (use_knn) {
         if (k_neighbors_ > 0) {
@@ -1380,6 +1358,10 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
                             }
                         }
                         break;
+                    case 5: // (x, y, z, yaw, time)
+                        // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
+                        query_point << predicted_pos_2d, obstacle.z, robot_current_heading, robot_current_timestamp;
+                        break;
                     default:
                         continue; // Skip unsupported dimensions
                 }
@@ -1410,6 +1392,10 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
                     } else { // kd_tree_dim == 4
                         query_point << obstacle.position, robot_current_heading, robot_current_timestamp;
                     }
+                    break;
+                case 5: // (x, y, z, yaw, time)
+                    // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
+                    query_point << obstacle.position, obstacle.z, robot_current_heading, robot_current_timestamp;
                     break;
                 default:
                     continue;
@@ -1868,6 +1854,10 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                         case 4:
                             query_point << predicted_pos_2d, robot_current_heading, robot_current_timestamp;
                             break;
+                        case 5: // (x, y, z, yaw, time)
+                            // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
+                            query_point << predicted_pos_2d, old_obs.z, robot_current_heading, robot_current_timestamp;
+                            break;
                         default:
                             continue;
                     }
@@ -1887,6 +1877,10 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                         break;
                     case 4:
                         query_point << old_obs.position.head<2>(), robot_current_heading, robot_current_timestamp;
+                        break;
+                    case 5: // (x, y, z, yaw, time)
+                        // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
+                        query_point << old_obs.position.head<2>(), old_obs.z, robot_current_heading, robot_current_timestamp;
                         break;
                     default:
                         continue;
@@ -1975,6 +1969,10 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                     case 4: // (x, y, theta, time)
                         // Correctly build the 4D query point
                         query_point << predicted_pos_2d, robot_current_heading, robot_current_timestamp;
+                        break;
+                    case 5: // (x, y, z, yaw, time)
+                        // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
+                        query_point << predicted_pos_2d, current_obs.z, robot_current_heading, robot_current_timestamp;
                         break;
                     default:
                         continue; // Skip unsupported dimensions
@@ -3094,7 +3092,8 @@ std::vector<Trajectory> KinodynamicFMTX::getPathAsTrajectories() const
 
     while (parent) {
         // const auto& cached_traj = child->neighbors().at(parent).cached_trajectory;
-        const auto& cached_traj = child->forwardNeighbors().at(parent).cached_trajectory;
+        // const auto& cached_traj = child->forwardNeighbors().at(parent).cached_trajectory;
+        const Trajectory& cached_traj = child->getParentTrajectory();
         segments.push_back(cached_traj);
         child = parent;
         parent = child->getParent();
@@ -3132,7 +3131,8 @@ ExecutionTrajectory KinodynamicFMTX::getFinalExecutionTrajectory() const {
     while (parent_node) {
         // Retrieve the pre-computed, cached trajectory for this tree edge.
         // const auto& cached_traj = child_node->neighbors().at(parent_node).cached_trajectory;
-        const auto& cached_traj = child_node->forwardNeighbors().at(parent_node).cached_trajectory;
+        // const auto& cached_traj = child_node->forwardNeighbors().at(parent_node).cached_trajectory;
+        const Trajectory& cached_traj = child_node->getParentTrajectory();
 
         const auto& exec_data = cached_traj.execution_data;
 
@@ -3668,9 +3668,6 @@ void KinodynamicFMTX::visualizeTree() {
 }
 
 void KinodynamicFMTX::visualizeTreeReal() {
-    // --- DEBUG POINT 1: Confirm the function is being called ---
-    std::cout << "\n[DEBUG] visualizeTreeReal() called." << std::endl;
-
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
     if (!tree_.empty()) {
         edges.reserve(tree_.size() * 50); 
@@ -3692,35 +3689,25 @@ void KinodynamicFMTX::visualizeTreeReal() {
         }
 
         if (parent_node) {
-            // --- DEBUG POINT 2: Check which parent-child edge is being processed ---
-            std::cout << "  [DEBUG] Processing edge from child " << child_node->getIndex() 
-                      << " to parent " << parent_node->getIndex() << std::endl;
 
             const Trajectory& traj = child_node->getParentTrajectory();
 
-            // --- DEBUG POINT 3: This is the MOST IMPORTANT check. Are we using the curve or the straight line? ---
             if (traj.is_valid && traj.path_points.size() > 1) {
-                std::cout << "    [SUCCESS] Trajectory is VALID with " << traj.path_points.size() 
-                          << " points. Creating curved segments." << std::endl;
                 
                 for (size_t i = 0; i < traj.path_points.size() - 1; ++i) {
                     edges.emplace_back(traj.path_points[i].head(3), traj.path_points[i+1].head(3));
                 }
             } else {
-                std::cout << "    [FALLBACK] Trajectory is INVALID or has too few points. Drawing a straight line." << std::endl;
                 edges.emplace_back(parent_node->getStateValue().head(3), child_node->getStateValue().head(3));
             }
         }
     }
 
-    // --- DEBUG POINT 4: See the final counts ---
-    std::cout << "[DEBUG] Total nodes: " << tree_.size()
-              << " | Connected: " << connected_nodes_count << std::endl;
-    std::cout << "[DEBUG] Total line segments created for visualization: " << edges.size() << std::endl;
     
     // Visualization calls
-    visualization_->visualizeNodes(tree_nodes, "map", {0.0f, 1.0f, 0.0f}, "tree_nodes");
-    visualization_->visualizeEdges(edges, "map", "1.0,1.0,1.0", "tree_edges");
+    // visualization_->visualizeNodes(tree_nodes, "map", {0.0f, 1.0f, 0.0f}, "tree_nodes");
+    // visualization_->visualizeEdges(edges, "map", "1.0,1.0,1.0", "tree_edges");
+    visualization_->visualizeEdges(edges, "map");
 }
 
 

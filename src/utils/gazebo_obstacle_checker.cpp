@@ -21,6 +21,7 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
     kf_model_type_ = params.getParam<std::string>("kf_model_type", "cv");
     use_fcl = params.getParam<bool>("fcl", false);
     use_bullet = params.getParam<bool>("bullet", false);
+    spatial_dim_ = params.getParam<int>("spatial_dim", 2); // Defaults to 2 for backward compatibility
     // Subscribe to the robot pose topic
     std::string robot_pose_topic = "/model/" + robot_model_name_ + "/tf";
     if (!gz_node_.Subscribe(robot_pose_topic, &GazeboObstacleChecker::robotPoseCallback, this)) {
@@ -1310,130 +1311,247 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
     const Trajectory& trajectory,
     double global_start_time
 ) const {
+    // auto start = std::chrono::steady_clock::now();
+
     if (trajectory.path_points.size() < 2) {
         return std::nullopt;
     }
+    // bool debug_mode_ = true;
+    //  3D spatial Collision check
+    if (spatial_dim_ == 3) {
+        // if (debug_mode_) {
+        //     RCLCPP_INFO(rclcpp::get_logger("CollisionCheck3D"), "\n--- Checking 3D Trajectory (Current Sim Time: %.2f) ---", global_start_time);
+        // }
 
-    auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
-    auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
-    auto get_vxy = [](const Eigen::VectorXd& state) { return state.segment<2>(2); };
+        auto get_xyz = [](const Eigen::VectorXd& state) { return state.head<3>(); };
+        auto get_time = [](const Eigen::VectorXd& state) { return state.tail<1>()[0]; };
+        double time_into_full_trajectory = 0.0;
 
-    double time_into_full_trajectory = 0.0;
-    const int state_dim = trajectory.path_points[0].size();
-
-    for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
-        const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
-        const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
-
-        const double T_segment = get_time(segment_start_state) - get_time(segment_end_state);
-        if (T_segment <= 1e-9) continue;
-        
-        const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
-        /*
-            Because the time duration (T_segment) of this sub-segment is so small, two things are true:
-            The tiny curved path is almost indistinguishable from a straight line.
-            The change in velocity over this tiny interval is almost zero.
-            So maybe its faster to always use the else part!
-        */ 
-        if (state_dim == 5) {
-        // if (false) {
-            // ACCELERATION MODEL (5D): Approximate the CURVED path as one line 
-            const Eigen::Vector2d p_r0_seg = get_xy(segment_start_state);
-            const Eigen::Vector2d v_r0_seg = get_vxy(segment_start_state);
-            const Eigen::Vector2d v_r1_seg = get_vxy(segment_end_state);
-            const Eigen::Vector2d a_r_seg = (v_r1_seg - v_r0_seg) / T_segment;
+        for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+            const auto& start_state = trajectory.path_points[i];
+            const auto& end_state = trajectory.path_points[i+1];
+            const double T = get_time(start_state) - get_time(end_state);
+            if (T <= 1e-9) continue;
             
-            // Calculate the end point of the curved segment and the average velocity
-            const Eigen::Vector2d p_r1_seg = p_r0_seg + v_r0_seg * T_segment + 0.5 * a_r_seg * T_segment * T_segment;
-            const Eigen::Vector2d v_r_seg = (p_r1_seg - p_r0_seg) / T_segment;
+            const double seg_start_time = global_start_time + time_into_full_trajectory;
+            const Eigen::Vector3d p_r0 = get_xyz(start_state);
+            const Eigen::Vector3d p_r1 = get_xyz(end_state);
+            const Eigen::Vector3d v_r = (p_r1 - p_r0) / T;
+
+            // if (debug_mode_) {
+            //     RCLCPP_INFO(rclcpp::get_logger("CollisionCheck3D"), "  [Seg %zu] T=%.2fs, Robot Start: (%.1f, %.1f, %.1f), Vel: (%.1f, %.1f, %.1f)", i, T, p_r0.x(), p_r0.y(), p_r0.z(), v_r.x(), v_r.y(), v_r.z());
+            // }
 
             for (const auto& obs : obstacle_snapshot_) {
+                Eigen::Vector3d obs_pos(obs.position.x(), obs.position.y(), obs.z);
+                Eigen::Vector3d obs_vel(obs.velocity.x(), obs.velocity.y(), 0.0);
+
+                // if (debug_mode_ && obs.is_dynamic) {
+                //     RCLCPP_INFO(rclcpp::get_logger("CollisionCheck3D"), "    -> vs Obstacle '%s'", obs.name.c_str());
+                //     double dt_extrapolate = std::max(0.0, seg_start_time - obs.last_update_time.seconds());
+                //     Eigen::Vector3d p_o0 = obs_pos + obs_vel * dt_extrapolate;
+
+                //     RCLCPP_INFO(rclcpp::get_logger("CollisionCheck3D"), "       - Snap Pos: (%.1f, %.1f, %.1f) @ t=%.2f", obs_pos.x(), obs_pos.y(), obs_pos.z(), obs.last_update_time.seconds());
+                //     RCLCPP_INFO(rclcpp::get_logger("CollisionCheck3D"), "       - Seg Start Time: %.2f -> Extrapolation dt: %.2f", seg_start_time, dt_extrapolate);
+                //     RCLCPP_INFO(rclcpp::get_logger("CollisionCheck3D"), "       - Extrapolated Obs Pos: (%.1f, %.1f, %.1f)", p_o0.x(), p_o0.y(), p_o0.z());
+                // }
+
                 if (obs.type == Obstacle::CIRCLE) {
-                    const double R = obs.dimensions.radius + inflation;
-                    const double R_sq = R * R;
+                    const double R_sq = std::pow(obs.dimensions.radius + inflation, 2);
                     if (obs.is_dynamic) {
-                        const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
-                        const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
-                        const Eigen::Vector2d p_rel_start = p_r0_seg - p_o0;
-                        const Eigen::Vector2d v_rel = v_r_seg - obs.velocity;
-                        const double a = v_rel.dot(v_rel);
-                        const double b = 2.0 * p_rel_start.dot(v_rel);
-                        const double c = p_rel_start.dot(p_rel_start) - R_sq;
-                        if (std::abs(a) < 1e-9) { if (c <= 0) return obs; continue; }
-                        const double disc = b * b - 4 * a * c;
-                        if (disc >= 0) {
-                            const double t1 = (-b - std::sqrt(disc)) / (2.0 * a);
-                            const double t2 = (-b + std::sqrt(disc)) / (2.0 * a);
-                            if (std::max(0.0, t1) <= std::min(T_segment, t2)) return obs;
-                        }
-                    } else {
-                        if (distanceSqrdPointToSegment(obs.position, p_r0_seg, p_r1_seg) <= R_sq) return obs;
-                    }
-                } else if (obs.type == Obstacle::BOX) {
-                    const double w = obs.dimensions.width + 2 * inflation;
-                    const double h = obs.dimensions.height + 2 * inflation;
-                    if (obs.is_dynamic) {
-                        const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
-                        const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
-                        // Since boxes don't rotate, we can call with 'consider_rotation' as false for max performance.
-                        if (sweptBoxIntersection(p_r0_seg, v_r_seg, p_o0, obs.velocity, w, h, T_segment, obs.dimensions.rotation, false)) {
-                            return obs;
-                        }
-                    } else {
-                         if (lineIntersectsRectangle(p_r0_seg, p_r1_seg, obs.position, w, h, obs.dimensions.rotation)) return obs;
-                    }
-                }
-            }
-        } else {
-            // CONSTANT VELOCITY MODEL (Already a straight line)
-            const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
-            const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
-            const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
+                        const double dt = std::max(0.0, seg_start_time - obs.last_update_time.seconds());
+                        const Eigen::Vector3d p_o0 = obs_pos + obs_vel * dt;
+                        const Eigen::Vector3d p_rel = p_r0 - p_o0;
+                        const Eigen::Vector3d v_rel = v_r - obs_vel;
+                        const double a = v_rel.dot(v_rel), b = 2*p_rel.dot(v_rel), c = p_rel.dot(p_rel) - R_sq;
+                        const double disc = b*b - 4*a*c;
+                        
+                        // if (debug_mode_) {
+                        //     RCLCPP_INFO(rclcpp::get_logger("CollisionCheck3D"), "       - Sphere Check: a=%.2f, b=%.2f, c=%.2f, disc=%.2f", a, b, c, disc);
+                        // }
 
-            for (const auto& obs : obstacle_snapshot_) {
-                 if (obs.type == Obstacle::CIRCLE) {
-                    const double R = obs.dimensions.radius + inflation;
-                    const double R_sq = R * R;
-                    if (obs.is_dynamic) {
-                        const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
-                        const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
-                        const Eigen::Vector2d p_rel_start = p_r0 - p_o0;
-                        const Eigen::Vector2d v_rel = v_r - obs.velocity;
-                        const double a = v_rel.dot(v_rel);
-                        const double b = 2.0 * p_rel_start.dot(v_rel);
-                        const double c = p_rel_start.dot(p_rel_start) - R_sq;
-                        if (std::abs(a) < 1e-9) { if (c <= 0) return obs; continue; }
-                        const double disc = b * b - 4 * a * c;
                         if (disc >= 0) {
-                            const double sqrt_disc = std::sqrt(disc);
-                            const double t1 = (-b - sqrt_disc) / (2.0 * a);
-                            const double t2 = (-b + sqrt_disc) / (2.0 * a);
-                            if (std::max(0.0, t1) <= std::min(T_segment, t2)) return obs;
+                            const double t1 = (-b-sqrt(disc))/(2*a);
+                            const double t2 = (-b+sqrt(disc))/(2*a);
+                            // if (debug_mode_) {
+                            //     RCLCPP_INFO(rclcpp::get_logger("CollisionCheck3D"), "       - Collision interval: [%.2f, %.2f] vs Segment duration: [0.00, %.2f]", t1, t2, T);
+                            // }
+                            if (std::max(0.0, t1) <= std::min(T, t2)) {
+                                // RCLCPP_WARN(rclcpp::get_logger("CollisionCheck3D"), "       - !!!!! COLLISION DETECTED !!!!!");
+                                return obs;
+                            }
                         }
-                    } else {
-                        if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) return obs;
+                    } else { // Static sphere
+                        if (distanceSqrdPointToSegment3D(obs_pos, p_r0, p_r1) <= R_sq) return obs;
                     }
-                } else if (obs.type == Obstacle::BOX) {
-                    const double w = obs.dimensions.width + 2 * inflation;
-                    const double h = obs.dimensions.height + 2 * inflation;
+                }  else if (obs.type == Obstacle::BOX) {
+                    const double w = obs.dimensions.width+2*inflation, h = obs.dimensions.height+2*inflation, d = obs.dimensions.height+2*inflation;
+                    const Eigen::Vector3d box_half_sizes(w / 2.0, h / 2.0, d / 2.0);
+
                     if (obs.is_dynamic) {
-                        const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
-                        const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
-                        // Since boxes don't rotate, we can call with 'consider_rotation' as false for max performance.
-                        if (sweptBoxIntersection(p_r0, v_r, p_o0, obs.velocity, w, h, T_segment, obs.dimensions.rotation, false)) {
-                            return obs;
+                        // Define the robot's size for the Minkowski sum.
+                        // For now, we assume a point robot (zero size) to match the original line-vs-box logic.
+                        // For a more robust check, replace with your robot's actual bounding box half-sizes.
+                        const Eigen::Vector3d robot_half_sizes(0.0, 0.0, 0.0); 
+
+                        // The effective "inflated" obstacle dimensions for the check
+                        const Eigen::Vector3d minkowski_half_sizes = box_half_sizes + robot_half_sizes;
+
+                        // Calculate the obstacle's predicted start position for this trajectory segment
+                        const double dt = std::max(0.0, seg_start_time - obs.last_update_time.seconds());
+                        const Eigen::Vector3d p_o0 = obs_pos + obs_vel * dt;
+
+                        // Define the robot's trajectory segment in the obstacle's relative frame.
+                        // This treats the obstacle as a stationary box at the origin.
+                        const Eigen::Vector3d p_start_relative = p_r0 - p_o0;
+                        const Eigen::Vector3d p_end_relative = p_r1 - (p_o0 + obs_vel * T);
+
+
+
+                        // if (sweptBoxIntersection3D(p_r0, v_r, p_o0, obs_vel, w, h, d, T, obs.dimensions.rotation)) return obs;
+                        if (fastLineAABBIntersection(p_start_relative, p_end_relative, Eigen::Vector3d::Zero(), minkowski_half_sizes)) {
+                            return obs; // COLLISION!
                         }
                     } else {
-                        if (lineIntersectsRectangle(p_r0, p_r1, obs.position, w, h, obs.dimensions.rotation)) return obs;
+                        // if (lineIntersectsBox3D(p_r0, p_r1, obs_pos, w, h, d, obs.dimensions.rotation)) return obs;
+                        if (fastLineAABBIntersection(p_r0, p_r1, obs_pos, box_half_sizes)) {
+                            return obs; // Collision detected!
+                        }
                     }
                 }
             }
+            time_into_full_trajectory += T;
         }
-        
-        time_into_full_trajectory += T_segment;
+        // auto end = std::chrono::steady_clock::now();
+        // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+        // std::cout << "Time taken for collision check: " << duration.count() << " micro s\n";
+        return std::nullopt;
+    }
+    else { // The spatial part here is 2D
+        auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
+        auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
+        auto get_vxy = [](const Eigen::VectorXd& state) { return state.segment<2>(2); };
+
+        double time_into_full_trajectory = 0.0;
+        const int state_dim = trajectory.path_points[0].size();
+
+        for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+            const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
+            const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
+
+            const double T_segment = get_time(segment_start_state) - get_time(segment_end_state);
+            if (T_segment <= 1e-9) continue;
+            
+            const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
+            /*
+                Because the time duration (T_segment) of this sub-segment is so small, two things are true:
+                The tiny curved path is almost indistinguishable from a straight line.
+                The change in velocity over this tiny interval is almost zero.
+                So maybe its faster to always use the else part!
+            */ 
+            if (state_dim == 5) {
+            // if (false) {
+                // ACCELERATION MODEL (5D): Approximate the CURVED path as one line 
+                const Eigen::Vector2d p_r0_seg = get_xy(segment_start_state);
+                const Eigen::Vector2d v_r0_seg = get_vxy(segment_start_state);
+                const Eigen::Vector2d v_r1_seg = get_vxy(segment_end_state);
+                const Eigen::Vector2d a_r_seg = (v_r1_seg - v_r0_seg) / T_segment;
+                
+                // Calculate the end point of the curved segment and the average velocity
+                const Eigen::Vector2d p_r1_seg = p_r0_seg + v_r0_seg * T_segment + 0.5 * a_r_seg * T_segment * T_segment;
+                const Eigen::Vector2d v_r_seg = (p_r1_seg - p_r0_seg) / T_segment;
+
+                for (const auto& obs : obstacle_snapshot_) {
+                    if (obs.type == Obstacle::CIRCLE) {
+                        const double R = obs.dimensions.radius + inflation;
+                        const double R_sq = R * R;
+                        if (obs.is_dynamic) {
+                            const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+                            const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+                            const Eigen::Vector2d p_rel_start = p_r0_seg - p_o0;
+                            const Eigen::Vector2d v_rel = v_r_seg - obs.velocity;
+                            const double a = v_rel.dot(v_rel);
+                            const double b = 2.0 * p_rel_start.dot(v_rel);
+                            const double c = p_rel_start.dot(p_rel_start) - R_sq;
+                            if (std::abs(a) < 1e-9) { if (c <= 0) return obs; continue; }
+                            const double disc = b * b - 4 * a * c;
+                            if (disc >= 0) {
+                                const double t1 = (-b - std::sqrt(disc)) / (2.0 * a);
+                                const double t2 = (-b + std::sqrt(disc)) / (2.0 * a);
+                                if (std::max(0.0, t1) <= std::min(T_segment, t2)) return obs;
+                            }
+                        } else {
+                            if (distanceSqrdPointToSegment(obs.position, p_r0_seg, p_r1_seg) <= R_sq) return obs;
+                        }
+                    } else if (obs.type == Obstacle::BOX) {
+                        const double w = obs.dimensions.width + 2 * inflation;
+                        const double h = obs.dimensions.height + 2 * inflation;
+                        if (obs.is_dynamic) {
+                            const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+                            const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+                            // Since boxes don't rotate, we can call with 'consider_rotation' as false for max performance.
+                            if (sweptBoxIntersection(p_r0_seg, v_r_seg, p_o0, obs.velocity, w, h, T_segment, obs.dimensions.rotation, false)) {
+                                return obs;
+                            }
+                        } else {
+                            if (lineIntersectsRectangle(p_r0_seg, p_r1_seg, obs.position, w, h, obs.dimensions.rotation)) return obs;
+                        }
+                    }
+                }
+            } else {
+                // CONSTANT VELOCITY MODEL (Already a straight line)
+                const Eigen::Vector2d p_r0 = get_xy(segment_start_state);
+                const Eigen::Vector2d p_r1 = get_xy(segment_end_state);
+                const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
+
+                for (const auto& obs : obstacle_snapshot_) {
+                    if (obs.type == Obstacle::CIRCLE) {
+                        const double R = obs.dimensions.radius + inflation;
+                        const double R_sq = R * R;
+                        if (obs.is_dynamic) {
+                            const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+                            const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+                            const Eigen::Vector2d p_rel_start = p_r0 - p_o0;
+                            const Eigen::Vector2d v_rel = v_r - obs.velocity;
+                            const double a = v_rel.dot(v_rel);
+                            const double b = 2.0 * p_rel_start.dot(v_rel);
+                            const double c = p_rel_start.dot(p_rel_start) - R_sq;
+                            if (std::abs(a) < 1e-9) { if (c <= 0) return obs; continue; }
+                            const double disc = b * b - 4 * a * c;
+                            if (disc >= 0) {
+                                const double sqrt_disc = std::sqrt(disc);
+                                const double t1 = (-b - sqrt_disc) / (2.0 * a);
+                                const double t2 = (-b + sqrt_disc) / (2.0 * a);
+                                if (std::max(0.0, t1) <= std::min(T_segment, t2)) return obs;
+                            }
+                        } else {
+                            if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) return obs;
+                        }
+                    } else if (obs.type == Obstacle::BOX) {
+                        const double w = obs.dimensions.width + 2 * inflation;
+                        const double h = obs.dimensions.height + 2 * inflation;
+                        if (obs.is_dynamic) {
+                            const double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+                            const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+                            // Since boxes don't rotate, we can call with 'consider_rotation' as false for max performance.
+                            if (sweptBoxIntersection(p_r0, v_r, p_o0, obs.velocity, w, h, T_segment, obs.dimensions.rotation, false)) {
+                                return obs;
+                            }
+                        } else {
+                            if (lineIntersectsRectangle(p_r0, p_r1, obs.position, w, h, obs.dimensions.rotation)) return obs;
+                        }
+                    }
+                }
+            }
+            
+            time_into_full_trajectory += T_segment;
+        }
+
+        return std::nullopt;
     }
 
-    return std::nullopt;
+
+
 }
 
 
@@ -1685,6 +1803,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
     const Trajectory& trajectory,
     double global_start_time
 ) const {
+
     // --- Initial Setup & Validation ---
     if (trajectory.path_points.size() < 2) {
         return std::nullopt;
@@ -1700,104 +1819,200 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
         );
     }
 
-    // Helper lambdas for cleaner code
-    auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
-    auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
-    auto get_vxy = [](const Eigen::VectorXd& state) { return state.segment<2>(2); };
-    auto to_btVector3 = [](const Eigen::Vector2d& vec) { return btVector3(vec.x(), vec.y(), 0); };
 
-    double time_into_full_trajectory = 0.0;
-    const int state_dim = trajectory.path_points[0].size();
-    btSphereShape robot_shape(inflation);
 
-    // OPTIMIZATION: Create the callback object once and reuse it.
-    btCollisionWorld::ClosestConvexResultCallback result_callback(btVector3(0,0,0), btVector3(0,0,0));
+    if(spatial_dim_==3){
+        // --- NEW: 3D Helper lambdas ---
+        auto get_xyz = [](const Eigen::VectorXd& state) { return state.head<3>(); };
+        auto get_time = [](const Eigen::VectorXd& state) { return state.tail<1>()[0]; };
+        auto to_btVector3_3d = [](const Eigen::Vector3d& vec) { return btVector3(vec.x(), vec.y(), vec.z()); };
 
-    // 2. --- Iterate Through Trajectory Segments ---
-    for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
-        const Eigen::VectorXd& start_state = trajectory.path_points[i];
-        const Eigen::VectorXd& end_state = trajectory.path_points[i + 1];
+        double time_into_full_trajectory = 0.0;
+        btSphereShape robot_shape(inflation); // Robot is a sphere in 3D
 
-        const double T_segment = get_time(start_state) - get_time(end_state);
-        if (T_segment <= 1e-9) continue;
+        // Re-use the callback object for efficiency
+        btCollisionWorld::ClosestConvexResultCallback result_callback(btVector3(0,0,0), btVector3(0,0,0));
 
-        const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
+        // --- Iterate Through 3D Trajectory Segments ---
+        for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+            const Eigen::VectorXd& start_state = trajectory.path_points[i];
+            const Eigen::VectorXd& end_state = trajectory.path_points[i + 1];
 
-        // Calculate robot's start and end positions for this segment
-        Eigen::Vector2d p_r0, p_r1;
-        if (state_dim == 5) { // 5D state space
-            const Eigen::Vector2d v_r0 = get_vxy(start_state);
-            const Eigen::Vector2d v_r1 = get_vxy(end_state);
-            const Eigen::Vector2d a_r = (v_r1 - v_r0) / T_segment;
-            p_r0 = get_xy(start_state);
-            p_r1 = p_r0 + v_r0 * T_segment + 0.5 * a_r * T_segment * T_segment;
-        } else { // 3D/4D state space
-            p_r0 = get_xy(start_state);
-            p_r1 = get_xy(end_state);
+            const double T_segment = get_time(start_state) - get_time(end_state);
+            if (T_segment <= 1e-9) continue;
+
+            const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
+
+            // Get robot's start and end positions in 3D
+            const Eigen::Vector3d p_r0 = get_xyz(start_state);
+            const Eigen::Vector3d p_r1 = get_xyz(end_state);
+
+            // Define robot's start and end transforms in 3D
+            btTransform robot_tf_start, robot_tf_end;
+            robot_tf_start.setIdentity();
+            robot_tf_start.setOrigin(to_btVector3_3d(p_r0));
+            robot_tf_end.setIdentity();
+            robot_tf_end.setOrigin(to_btVector3_3d(p_r1));
+
+            // --- Check Against Each Obstacle in 3D ---
+            for (const auto& obs : obstacle_snapshot_) {
+                auto shape_it = bullet_shape_cache_.find(obs.name);
+                if (shape_it == bullet_shape_cache_.end()) continue; // Shape not found in cache
+                btConvexShape* obs_shape = shape_it->second.get();
+
+                // Predict the obstacle's 3D start and end transforms
+                btTransform obs_tf_start, obs_tf_end;
+                obs_tf_start.setIdentity();
+                obs_tf_end.setIdentity();
+
+                Eigen::Vector3d obs_pos(obs.position.x(), obs.position.y(), obs.z);
+                Eigen::Vector3d obs_vel(obs.velocity.x(), obs.velocity.y(), 0.0); // Assume 2D obstacle velocity
+
+                Eigen::Vector3d obs_pos_start = obs_pos;
+                if (obs.is_dynamic) {
+                    double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+                    obs_pos_start = obs_pos + obs_vel * delta_t;
+                    Eigen::Vector3d obs_pos_end = obs_pos_start + obs_vel * T_segment;
+                    obs_tf_end.setOrigin(to_btVector3_3d(obs_pos_end));
+                } else {
+                    obs_tf_end.setOrigin(to_btVector3_3d(obs_pos_start)); // Static obstacle does not move
+                }
+                obs_tf_start.setOrigin(to_btVector3_3d(obs_pos_start));
+                
+                if(obs.type == Obstacle::BOX) {
+                    btQuaternion q;
+                    q.setEuler(obs.dimensions.rotation, 0, 0); // Yaw, Pitch, Roll
+                    obs_tf_start.setRotation(q);
+                    obs_tf_end.setRotation(q);
+                }
+
+                btCollisionObject obs_co;
+                obs_co.setCollisionShape(obs_shape);
+                obs_co.setWorldTransform(obs_tf_start);
+                bullet_world_->addCollisionObject(&obs_co);
+
+                // Calculate robot's end transform relative to the obstacle's motion
+                btTransform robot_tf_end_relative = robot_tf_end;
+                btVector3 obstacle_displacement = obs_tf_end.getOrigin() - obs_tf_start.getOrigin();
+                robot_tf_end_relative.getOrigin() -= obstacle_displacement;
+
+                // Reset callback state and perform the sweep test
+                result_callback.m_closestHitFraction = 1.0f;
+                result_callback.m_hitCollisionObject = nullptr;
+                bullet_world_->convexSweepTest(&robot_shape, robot_tf_start, robot_tf_end_relative, result_callback, 0.0f);
+
+                bullet_world_->removeCollisionObject(&obs_co);
+
+                if (result_callback.hasHit()) {
+                    return obs; // Collision detected!
+                }
+            }
+            time_into_full_trajectory += T_segment;
         }
 
-        btTransform robot_tf_start, robot_tf_end;
-        robot_tf_start.setIdentity();
-        robot_tf_start.setOrigin(to_btVector3(p_r0));
-        robot_tf_end.setIdentity();
-        robot_tf_end.setOrigin(to_btVector3(p_r1));
+        return std::nullopt; // Trajectory is safe
+    }
+    else{
+        // Helper lambdas for cleaner code
+        auto get_xy = [](const Eigen::VectorXd& state) { return state.head<2>(); };
+        auto get_time = [](const Eigen::VectorXd& state) { return state(state.size() - 1); };
+        auto get_vxy = [](const Eigen::VectorXd& state) { return state.segment<2>(2); };
+        auto to_btVector3 = [](const Eigen::Vector2d& vec) { return btVector3(vec.x(), vec.y(), 0); };
 
-        // --- Check Against Each Obstacle ---
-        for (const auto& obs : obstacle_snapshot_) {
-            // OPTIMIZATION: Get the pre-cached shape instead of creating a new one.
-            auto shape_it = bullet_shape_cache_.find(obs.name);
-            if (shape_it == bullet_shape_cache_.end()) continue; // Shape not found
-            btConvexShape* obs_shape = shape_it->second.get();
+        double time_into_full_trajectory = 0.0;
+        const int state_dim = trajectory.path_points[0].size();
+        btSphereShape robot_shape(inflation);
 
-            // Predict the obstacle's start and end transforms
-            btTransform obs_tf_start, obs_tf_end;
-            obs_tf_start.setIdentity();
-            obs_tf_end.setIdentity();
+        // OPTIMIZATION: Create the callback object once and reuse it.
+        btCollisionWorld::ClosestConvexResultCallback result_callback(btVector3(0,0,0), btVector3(0,0,0));
 
-            Eigen::Vector2d obs_pos_start = obs.position;
-            if (obs.is_dynamic) {
-                double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
-                obs_pos_start = obs.position + obs.velocity * delta_t;
-                Eigen::Vector2d obs_pos_end = obs_pos_start + obs.velocity * T_segment;
-                obs_tf_end.setOrigin(to_btVector3(obs_pos_end));
-            } else {
-                obs_tf_end.setOrigin(to_btVector3(obs_pos_start));
+        // 2. --- Iterate Through Trajectory Segments ---
+        for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+            const Eigen::VectorXd& start_state = trajectory.path_points[i];
+            const Eigen::VectorXd& end_state = trajectory.path_points[i + 1];
+
+            const double T_segment = get_time(start_state) - get_time(end_state);
+            if (T_segment <= 1e-9) continue;
+
+            const double global_time_at_segment_start = global_start_time + time_into_full_trajectory;
+
+            // Calculate robot's start and end positions for this segment
+            Eigen::Vector2d p_r0, p_r1;
+            if (state_dim == 5) { // 5D state space
+                const Eigen::Vector2d v_r0 = get_vxy(start_state);
+                const Eigen::Vector2d v_r1 = get_vxy(end_state);
+                const Eigen::Vector2d a_r = (v_r1 - v_r0) / T_segment;
+                p_r0 = get_xy(start_state);
+                p_r1 = p_r0 + v_r0 * T_segment + 0.5 * a_r * T_segment * T_segment;
+            } else { // 3D/4D state space
+                p_r0 = get_xy(start_state);
+                p_r1 = get_xy(end_state);
             }
-            obs_tf_start.setOrigin(to_btVector3(obs_pos_start));
-            
-            if(obs.type == Obstacle::BOX) {
-                btQuaternion q;
-                q.setEuler(obs.dimensions.rotation, 0, 0);
-                obs_tf_start.setRotation(q);
-                obs_tf_end.setRotation(q);
+
+            btTransform robot_tf_start, robot_tf_end;
+            robot_tf_start.setIdentity();
+            robot_tf_start.setOrigin(to_btVector3(p_r0));
+            robot_tf_end.setIdentity();
+            robot_tf_end.setOrigin(to_btVector3(p_r1));
+
+            // --- Check Against Each Obstacle ---
+            for (const auto& obs : obstacle_snapshot_) {
+                // OPTIMIZATION: Get the pre-cached shape instead of creating a new one.
+                auto shape_it = bullet_shape_cache_.find(obs.name);
+                if (shape_it == bullet_shape_cache_.end()) continue; // Shape not found
+                btConvexShape* obs_shape = shape_it->second.get();
+
+                // Predict the obstacle's start and end transforms
+                btTransform obs_tf_start, obs_tf_end;
+                obs_tf_start.setIdentity();
+                obs_tf_end.setIdentity();
+
+                Eigen::Vector2d obs_pos_start = obs.position;
+                if (obs.is_dynamic) {
+                    double delta_t = std::max(0.0, global_time_at_segment_start - obs.last_update_time.seconds());
+                    obs_pos_start = obs.position + obs.velocity * delta_t;
+                    Eigen::Vector2d obs_pos_end = obs_pos_start + obs.velocity * T_segment;
+                    obs_tf_end.setOrigin(to_btVector3(obs_pos_end));
+                } else {
+                    obs_tf_end.setOrigin(to_btVector3(obs_pos_start));
+                }
+                obs_tf_start.setOrigin(to_btVector3(obs_pos_start));
+                
+                if(obs.type == Obstacle::BOX) {
+                    btQuaternion q;
+                    q.setEuler(obs.dimensions.rotation, 0, 0);
+                    obs_tf_start.setRotation(q);
+                    obs_tf_end.setRotation(q);
+                }
+
+                // Create a temporary collision object on the stack
+                btCollisionObject obs_co;
+                obs_co.setCollisionShape(obs_shape);
+                obs_co.setWorldTransform(obs_tf_start);
+                bullet_world_->addCollisionObject(&obs_co);
+
+                btTransform robot_tf_end_relative = robot_tf_end;
+                btVector3 obstacle_displacement = obs_tf_end.getOrigin() - obs_tf_start.getOrigin();
+                robot_tf_end_relative.getOrigin() -= obstacle_displacement;
+
+                // OPTIMIZATION: Reset the state of the reused callback object.
+                result_callback.m_closestHitFraction = 1.0f;
+                result_callback.m_hitCollisionObject = nullptr;
+                
+                bullet_world_->convexSweepTest(&robot_shape, robot_tf_start, robot_tf_end_relative, result_callback, 0.0f);
+
+                bullet_world_->removeCollisionObject(&obs_co);
+
+                if (result_callback.hasHit()) {
+                    return obs;
+                }
             }
-
-            // Create a temporary collision object on the stack
-            btCollisionObject obs_co;
-            obs_co.setCollisionShape(obs_shape);
-            obs_co.setWorldTransform(obs_tf_start);
-            bullet_world_->addCollisionObject(&obs_co);
-
-            btTransform robot_tf_end_relative = robot_tf_end;
-            btVector3 obstacle_displacement = obs_tf_end.getOrigin() - obs_tf_start.getOrigin();
-            robot_tf_end_relative.getOrigin() -= obstacle_displacement;
-
-            // OPTIMIZATION: Reset the state of the reused callback object.
-            result_callback.m_closestHitFraction = 1.0f;
-            result_callback.m_hitCollisionObject = nullptr;
-            
-            bullet_world_->convexSweepTest(&robot_shape, robot_tf_start, robot_tf_end_relative, result_callback, 0.0f);
-
-            bullet_world_->removeCollisionObject(&obs_co);
-
-            if (result_callback.hasHit()) {
-                return obs;
-            }
+            time_into_full_trajectory += T_segment;
         }
-        time_into_full_trajectory += T_segment;
+
+        return std::nullopt;
     }
 
-    return std::nullopt;
 }
 
 
@@ -2497,7 +2712,7 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
     // Get the current simulation time from the stored clock
     rclcpp::Time now = clock_->now();
 
-    // Update robot position
+    // Update robot position (TODO: make it 3D later for range check)
     for (int i = 0; i < msg.pose_size(); ++i) {
         const auto& pose = msg.pose(i);
         if (pose.name() == robot_model_name_) {
@@ -2511,7 +2726,7 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
         const auto& pose = msg.pose(i);
         const std::string name = pose.name();
         Eigen::Vector2d position(pose.position().x(), pose.position().y());
-
+        double position_z = pose.position().z();
         if (name == robot_model_name_) continue;
 
         bool is_cylinder = name.find("cylinder") != std::string::npos;
@@ -2543,6 +2758,7 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
             double yaw = calculateYawFromQuaternion(quat);
             obstacle = Obstacle(position, width, height, yaw, inflation, is_moving);
         }
+        obstacle.z = position_z; // Manual! TODO: Later make the KF to estimate the full 3D coords
         obstacle.name = name;
         obstacle.is_dynamic = is_moving;
 
@@ -2679,37 +2895,68 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
                              current_dynamic_obstacles.end());
 
 
+    // if (use_bullet) {
+    //     // Use a set to track which obstacles are currently active in the scene
+    //     std::unordered_set<std::string> active_obstacle_names;
+
+    //     // --- UPDATE/CREATE LOOP ---
+    //     // Iterate through the latest snapshot of all obstacles
+    //     for (const auto& obs : obstacle_positions_) {
+    //         active_obstacle_names.insert(obs.name);
+
+    //         // If the obstacle is new, create and cache its shape.
+    //         if (bullet_shape_cache_.find(obs.name) == bullet_shape_cache_.end()) {
+    //             if (obs.type == Obstacle::BOX) {
+    //                 bullet_shape_cache_[obs.name] = std::make_unique<btBoxShape>(btVector3(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0, 1.0));
+    //             } else { // CIRCLE
+    //                 bullet_shape_cache_[obs.name] = std::make_unique<btSphereShape>(obs.dimensions.radius);
+    //             }
+    //         }
+    //     }
+
+    //     // --- CLEANUP LOOP ---
+    //     // Iterate through the cache and remove shapes for obstacles that are no longer active.
+    //     for (auto it = bullet_shape_cache_.begin(); it != bullet_shape_cache_.end(); ) {
+    //         if (active_obstacle_names.find(it->first) == active_obstacle_names.end()) {
+    //             // This obstacle has disappeared. Erase its shape from the cache.
+    //             // The unique_ptr will automatically handle memory deallocation.
+    //             it = bullet_shape_cache_.erase(it);
+    //         } else {
+    //             ++it;
+    //         }
+    //     }
+    // }
     if (use_bullet) {
         // Use a set to track which obstacles are currently active in the scene
         std::unordered_set<std::string> active_obstacle_names;
 
         // --- UPDATE/CREATE LOOP ---
-        // Iterate through the latest snapshot of all obstacles
         for (const auto& obs : obstacle_positions_) {
             active_obstacle_names.insert(obs.name);
 
-            // If the obstacle is new, create and cache its shape.
+            // If the obstacle is new, create and cache its proper 3D shape.
             if (bullet_shape_cache_.find(obs.name) == bullet_shape_cache_.end()) {
                 if (obs.type == Obstacle::BOX) {
-                    bullet_shape_cache_[obs.name] = std::make_unique<btBoxShape>(btVector3(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0, 1.0));
-                } else { // CIRCLE
+                    // *** FIX: Use height for depth to create a proper 3D box shape ***
+                    const double half_depth = obs.dimensions.height / 2.0; 
+                    bullet_shape_cache_[obs.name] = std::make_unique<btBoxShape>(btVector3(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0, half_depth));
+                } else { // CIRCLE (Sphere in 3D)
                     bullet_shape_cache_[obs.name] = std::make_unique<btSphereShape>(obs.dimensions.radius);
                 }
             }
         }
 
-        // --- CLEANUP LOOP ---
-        // Iterate through the cache and remove shapes for obstacles that are no longer active.
+        // --- CLEANUP LOOP (no changes needed here) ---
         for (auto it = bullet_shape_cache_.begin(); it != bullet_shape_cache_.end(); ) {
             if (active_obstacle_names.find(it->first) == active_obstacle_names.end()) {
-                // This obstacle has disappeared. Erase its shape from the cache.
-                // The unique_ptr will automatically handle memory deallocation.
                 it = bullet_shape_cache_.erase(it);
             } else {
                 ++it;
             }
         }
     }
+
+
 
 }
 
@@ -2937,4 +3184,254 @@ bool GazeboObstacleChecker::checkCircularCollisionHelper(const Eigen::Vector2d& 
         }
     }
     return false;
+}
+
+bool GazeboObstacleChecker::lineIntersectsBox3D(const Eigen::Vector3d& start, const Eigen::Vector3d& end, const Eigen::Vector3d& center, double w, double h, double d, double rot) const{
+    // 1. Transform the line segment into the box's local coordinate system,
+    // where the box is an Axis-Aligned Bounding Box (AABB) centered at the origin.
+    Eigen::Vector3d p_start_local = start - center;
+    Eigen::Vector3d p_end_local = end - center;
+    Eigen::Rotation2Dd rot2d(-rot);
+    p_start_local.head<2>() = rot2d * p_start_local.head<2>();
+    p_end_local.head<2>() = rot2d * p_end_local.head<2>();
+
+    // 2. Perform the Slab Test intersection algorithm.
+    double t_near = 0.0;
+    double t_far = 1.0; // The parameter `t` for the segment goes from 0.0 to 1.0
+    Eigen::Vector3d delta = p_end_local - p_start_local;
+    const double half_dims[3] = {w / 2.0, h / 2.0, d / 2.0};
+
+    for (int i = 0; i < 3; ++i) { // Iterate over x, y, and z axes
+        if (std::abs(delta[i]) < 1e-9) {
+            // The line segment is parallel to the slab.
+            // If it's outside the slab boundaries, there is no collision.
+            if (p_start_local[i] < -half_dims[i] || p_start_local[i] > half_dims[i]) {
+                return false;
+            }
+        } else {
+            // Calculate intersection times of the line with the two slab planes.
+            double t1 = (-half_dims[i] - p_start_local[i]) / delta[i];
+            double t2 = ( half_dims[i] - p_start_local[i]) / delta[i];
+
+            if (t1 > t2) std::swap(t1, t2); // Ensure t1 is the entry point
+
+            // Update the overall intersection interval.
+            t_near = std::max(t_near, t1);
+            t_far = std::min(t_far, t2);
+
+            // If the interval is invalid at any point, the line misses the box.
+            if (t_near > t_far) {
+                return false;
+            }
+        }
+    }
+    
+    // If the loop completes, the line segment intersects the AABB.
+    return true;
+}
+
+
+bool GazeboObstacleChecker::sweptBoxIntersection3D(const Eigen::Vector3d& p_r0, const Eigen::Vector3d& v_r, const Eigen::Vector3d& p_o0, const Eigen::Vector3d& v_o, double w, double h, double d, double T, double rot) const{
+    const Eigen::Vector3d v_rel = v_r - v_o;
+    Eigen::Vector3d p_rel_start = p_r0 - p_o0;
+    Eigen::Vector3d v_local = v_rel;
+    Eigen::Rotation2Dd rot2d(-rot);
+    p_rel_start.head<2>() = rot2d * p_rel_start.head<2>();
+    v_local.head<2>() = rot2d * v_local.head<2>();
+    double t_near = 0.0, t_far = T;
+    const double half_dims[3] = {w/2.0, h/2.0, d/2.0};
+    for (int i = 0; i < 3; ++i) {
+        if (std::abs(v_local[i]) < 1e-9) {
+            if (p_rel_start[i] < -half_dims[i] || p_rel_start[i] > half_dims[i]) return false;
+        } else {
+            double t1 = (-half_dims[i] - p_rel_start[i]) / v_local[i];
+            double t2 = ( half_dims[i] - p_rel_start[i]) / v_local[i];
+            if (t1 > t2) std::swap(t1, t2);
+            t_near = std::max(t_near, t1);
+            t_far = std::min(t_far, t2);
+            if (t_near > t_far) return false;
+        }
+    }
+    return t_near <= T && t_far >= 0.0;
+}
+
+
+// NEW: Overloaded 3D collision checking function
+bool GazeboObstacleChecker::checkRobotCollision(const Eigen::Vector3d& position, double yaw) const {
+    // For Min-Snap, the robot is best approximated by a cylinder (a circle with height).
+    const double ROBOT_HEIGHT_3D = 0.5;
+    const double ROBOT_RADIUS_3D = 1.0; 
+
+    // Correctly switch between footprint types, just like the 2D version.
+    if (footprint_type_ == "rectangular") {
+        return checkRectangularCollisionHelper3D(position, yaw);
+    } else { // "circular"
+        return checkCircularCollisionHelper3D(position, ROBOT_RADIUS_3D, ROBOT_HEIGHT_3D);
+    }
+}
+
+// NEW: Helper for 3D circular (cylinder-sphere/cylinder-box) collision
+bool GazeboObstacleChecker::checkCircularCollisionHelper3D(const Eigen::Vector3d& robot_pos, double robot_radius, double robot_height) const {
+    for (const auto& obs : obstacle_snapshot_) {
+        Eigen::Vector3d obs_pos_3d(obs.position.x(), obs.position.y(), obs.z);
+
+        if (obs.type == Obstacle::CIRCLE) { // Obstacle is a Sphere
+            double combined_radius = robot_radius + obs.dimensions.radius;
+            if ((robot_pos.head<2>() - obs_pos_3d.head<2>()).squaredNorm() < combined_radius * combined_radius) {
+                double robot_z_min = robot_pos.z() - robot_height / 2.0;
+                double robot_z_max = robot_pos.z() + robot_height / 2.0;
+                double obs_z_min = obs_pos_3d.z() - obs.dimensions.radius;
+                double obs_z_max = obs_pos_3d.z() + obs.dimensions.radius;
+
+                if (std::max(robot_z_min, obs_z_min) <= std::min(robot_z_max, obs_z_max)) {
+                    return true; // Collision
+                }
+            }
+        } else { // Obstacle is a Box
+            Eigen::Rotation2Dd rot(-obs.dimensions.rotation);
+            Eigen::Vector3d local_robot_pos = robot_pos - obs_pos_3d;
+            local_robot_pos.head<2>() = rot * local_robot_pos.head<2>();
+
+            double closest_x = std::max(-obs.dimensions.width / 2.0, std::min(local_robot_pos.x(), obs.dimensions.width / 2.0));
+            double closest_y = std::max(-obs.dimensions.height / 2.0, std::min(local_robot_pos.y(), obs.dimensions.height / 2.0));
+            double closest_z = std::max(-obs.dimensions.height / 2.0, std::min(local_robot_pos.z(), obs.dimensions.height / 2.0)); // Assume depth = height
+
+            Eigen::Vector3d closest_point_on_box(closest_x, closest_y, closest_z);
+            if ((local_robot_pos - closest_point_on_box).squaredNorm() < robot_radius * robot_radius) {
+                 return true; // Collision
+            }
+        }
+    }
+    return false;
+}
+
+
+// // NEW: Implementation for the 3D rectangular footprint check
+// bool GazeboObstacleChecker::checkRectangularCollisionHelper3D(const Eigen::Vector3d& position, double yaw) const {
+//     const Eigen::Rotation2Dd rot2d(yaw);
+
+//     // This check is simplified and treats the 3D footprint as a series of vertical lines.
+//     // This is a common and effective approximation for quadcopter-like robots.
+//     for (const auto& local_footprint_point : rectangular_footprint_) {
+//         Eigen::Vector2d world_xy = position.head<2>() + rot2d * local_footprint_point;
+        
+//         // Define the top and bottom of the vertical line representing a corner of the robot
+//         Eigen::Vector3d line_top(world_xy.x(), world_xy.y(), position.z() + 0.25); // Assuming 0.5m height
+//         Eigen::Vector3d line_bottom(world_xy.x(), world_xy.y(), position.z() - 0.25);
+
+//         for (const auto& obs : obstacle_snapshot_) {
+//              Eigen::Vector3d obs_pos_3d(obs.position.x(), obs.position.y(), obs.z);
+//             if (obs.type == Obstacle::CIRCLE) { // Sphere vs Line
+//                 double R_sq = std::pow(obs.dimensions.radius, 2);
+//                 if (distanceSqrdPointToSegment3D(obs_pos_3d, line_bottom, line_top) <= R_sq) {
+//                     return true;
+//                 }
+//             } else { // Box vs Line
+//                 double w = obs.dimensions.width;
+//                 double h = obs.dimensions.height;
+//                 double d = h; // Assume depth = height
+//                 if (lineIntersectsBox3D(line_bottom, line_top, obs_pos_3d, w, h, d, obs.dimensions.rotation)) {
+//                     return true;
+//                 }
+//             }
+//         }
+//     }
+//     return false;
+// }
+
+bool GazeboObstacleChecker::checkRectangularCollisionHelper3D(const Eigen::Vector3d& position, double yaw) const {
+    const Eigen::Rotation2Dd rot2d(yaw);
+
+    // Define the z-range of the robot's body
+    // Assuming the robot is 0.5m tall, centered at 'position.z()'
+    const double robot_z_min = position.z() - 0.25;
+    const double robot_z_max = position.z() + 0.25;
+
+    for (const auto& local_footprint_point : rectangular_footprint_) {
+        // Get the world coordinates of the corner of the robot's footprint
+        Eigen::Vector2d world_xy = position.head<2>() + rot2d * local_footprint_point;
+
+        for (const auto& obs : obstacle_snapshot_) {
+            if (obs.type == Obstacle::BOX) { // Cube Obstacle
+                const double half_width = obs.dimensions.width / 2.0;
+                const Eigen::Vector2d obs_pos_2d = obs.position.head<2>();
+
+                // --- Step 1: 2D AABB Check ---
+                if (world_xy.x() >= obs_pos_2d.x() - half_width &&
+                    world_xy.x() <= obs_pos_2d.x() + half_width &&
+                    world_xy.y() >= obs_pos_2d.y() - half_width &&
+                    world_xy.y() <= obs_pos_2d.y() + half_width) {
+                    
+                    // --- Step 2: Z-Axis Overlap Check ---
+                    const double obs_z_min = obs.z - half_width;
+                    const double obs_z_max = obs.z + half_width;
+
+                    if (robot_z_max > obs_z_min && robot_z_min < obs_z_max) {
+                        return true; // Collision!
+                    }
+                }
+            } else { // Spherical Obstacle (the original check is efficient enough)
+                const Eigen::Vector3d obs_pos_3d(obs.position.x(), obs.position.y(), obs.z);
+                const Eigen::Vector3d line_top(world_xy.x(), world_xy.y(), robot_z_max);
+                const Eigen::Vector3d line_bottom(world_xy.x(), world_xy.y(), robot_z_min);
+                const double r_sq = obs.dimensions.radius * obs.dimensions.radius;
+
+                if (distanceSqrdPointToSegment3D(obs_pos_3d, line_bottom, line_top) <= r_sq) {
+                    return true; // Collision!
+                }
+            }
+        }
+    }
+
+    return false; // No collision
+}
+
+
+
+/**
+ * This transforms the problem from "does a moving robot collide with a moving box?" to "does the robot's relative path intersect a stationary box? Using relative motion
+ * 
+ * @brief Performs a fast intersection test between a 3D line segment and an Axis-Aligned Bounding Box (AABB).
+ * This is much faster than a general-purpose Oriented Bounding Box (OBB) test when rotation is zero.
+ * @param p0 The start point of the line segment.
+ * @param p1 The end point of the line segment.
+ * @param box_center The center of the AABB.
+ * @param box_half_sizes The half-dimensions (half-width, half-height, half-depth) of the box.
+ * @return True if the line segment intersects the box, false otherwise.
+ */
+bool GazeboObstacleChecker::fastLineAABBIntersection(const Eigen::Vector3d& p0, const Eigen::Vector3d& p1,
+                              const Eigen::Vector3d& box_center, const Eigen::Vector3d& box_half_sizes) const{
+    const Eigen::Vector3d box_min = box_center - box_half_sizes;
+    const Eigen::Vector3d box_max = box_center + box_half_sizes;
+    const Eigen::Vector3d dir = p1 - p0;
+
+    double tmin = 0.0;
+    double tmax = 1.0; // We are checking a segment, so t is in [0, 1]
+
+    for (int i = 0; i < 3; ++i) {
+        if (std::abs(dir(i)) < 1e-9) { // Ray is parallel to the slab
+            // If the ray's origin is not inside the slab, it will never intersect
+            if (p0(i) < box_min(i) || p0(i) > box_max(i)) {
+                return false;
+            }
+        } else {
+            // Compute intersection t value of ray with near and far plane of slab
+            double t1 = (box_min(i) - p0(i)) / dir(i);
+            double t2 = (box_max(i) - p0(i)) / dir(i);
+
+            // Make t1 the smaller value
+            if (t1 > t2) std::swap(t1, t2);
+
+            // Update the overall intersection interval
+            tmin = std::max(tmin, t1);
+            tmax = std::min(tmax, t2);
+
+            // If the interval is invalid, there is no collision
+            if (tmin > tmax) {
+                return false;
+            }
+        }
+    }
+    // If the interval is valid, a collision occurs
+    return true;
 }

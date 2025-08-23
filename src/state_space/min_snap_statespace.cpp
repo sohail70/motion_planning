@@ -108,8 +108,8 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
         traj.path_points.push_back(point);
     }
     
-    // Reverse path points to be intuitive (parent -> child)
-    std::reverse(traj.path_points.begin(), traj.path_points.end());
+    // // Reverse path points to be intuitive (parent -> child)
+    // std::reverse(traj.path_points.begin(), traj.path_points.end());
 
     traj.geometric_distance = (from.head<3>() - to.head<3>()).norm();
     traj.cost = std::sqrt(T*T + traj.geometric_distance*traj.geometric_distance);
@@ -228,8 +228,8 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
         result.path_points.push_back(pt);
     }
     
-    // Reverse path points to be intuitive (parent -> child) ---
-    std::reverse(result.path_points.begin(), result.path_points.end());
+    // // Reverse path points to be intuitive (parent -> child) ---
+    // std::reverse(result.path_points.begin(), result.path_points.end());
     
     result.geometric_distance = (from.head<3>() - to.head<3>()).norm();
     result.cost = std::sqrt(T*T + result.geometric_distance*result.geometric_distance);
@@ -352,7 +352,7 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
         result_traj.path_points.push_back(point);
     }
     
-    std::reverse(result_traj.path_points.begin(), result_traj.path_points.end());
+    // std::reverse(result_traj.path_points.begin(), result_traj.path_points.end());
 
     result_traj.geometric_distance = (from.head<3>() - to.head<3>()).norm();
     result_traj.cost = std::sqrt(T*T + result_traj.geometric_distance*result_traj.geometric_distance);
@@ -508,8 +508,8 @@ Trajectory MinSnapStateSpace::steer_with_initial(const Eigen::VectorXd& from, co
         result.path_points.push_back(pt);
     }
     
-    // Reverse path points to be intuitive (parent -> child) ---
-    std::reverse(result.path_points.begin(), result.path_points.end());
+    // // Reverse path points to be intuitive (parent -> child) ---
+    // std::reverse(result.path_points.begin(), result.path_points.end());
     
     result.geometric_distance = (from.head<3>() - to.head<3>()).norm();
     result.cost = std::sqrt(T*T + result.geometric_distance*result.geometric_distance);
@@ -631,7 +631,7 @@ Trajectory MinSnapStateSpace::steer_with_initial_and_final(const Eigen::VectorXd
         result_traj.path_points.push_back(point);
     }
     
-    std::reverse(result_traj.path_points.begin(), result_traj.path_points.end());
+    // std::reverse(result_traj.path_points.begin(), result_traj.path_points.end());
 
     result_traj.geometric_distance = (from.head<3>() - to.head<3>()).norm();
     result_traj.cost = std::sqrt(T*T + result_traj.geometric_distance*result_traj.geometric_distance);

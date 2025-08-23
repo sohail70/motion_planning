@@ -66,8 +66,9 @@ bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory,
     std::optional<Obstacle> getCollidingObstacleFCL(const Trajectory& trajectory, double start_node_cost) const override;
     std::optional<Obstacle> getCollidingObstacleBullet(const Trajectory& trajectory, double start_node_cost) const override;
 
-    bool sweptBoxIntersection( const Eigen::Vector2d& p_r0, const Eigen::Vector2d& v_r, const Eigen::Vector2d& p_o0, const Eigen::Vector2d& v_o, double w, double h, double T_segment, double rotation, bool consider_rotation) const;
-    
+    bool sweptBoxIntersection(const Eigen::Vector2d& p_r0, const Eigen::Vector2d& v_r, const Eigen::Vector2d& p_o0, const Eigen::Vector2d& v_o, double w, double h, double T_segment, double rotation, bool consider_rotation) const;
+    bool sweptBoxIntersection3D(const Eigen::Vector3d& p_r0, const Eigen::Vector3d& v_r, const Eigen::Vector3d& p_o0, const Eigen::Vector3d& v_o, double w, double h, double d, double T, double rot) const;
+ 
     /**
      * return TRUE if the path is clear, FALSE if a collision is predicted.
      */
@@ -186,82 +187,91 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
 
 
     // Calculates the squared distance from a point 'p' to a line segment defined by 'a' and 'b'.
-double distanceSqrdPointToSegment(const Eigen::Vector2d& p, const Eigen::Vector2d& a, const Eigen::Vector2d& b) const {
-    const Eigen::Vector2d ab = b - a;
-    const Eigen::Vector2d ap = p - a;
+    double distanceSqrdPointToSegment(const Eigen::Vector2d& p, const Eigen::Vector2d& a, const Eigen::Vector2d& b) const {
+        const Eigen::Vector2d ab = b - a;
+        const Eigen::Vector2d ap = p - a;
 
-    // Get the squared length of the segment.
-    const double ab_len_sq = ab.squaredNorm();
+        // Get the squared length of the segment.
+        const double ab_len_sq = ab.squaredNorm();
 
-    // --- HARDENING: Handle zero-length segments ---
-    if (ab_len_sq < 1e-9) {
-        // If the segment is just a point, return the squared distance to that point.
-        return ap.squaredNorm();
+        // --- HARDENING: Handle zero-length segments ---
+        if (ab_len_sq < 1e-9) {
+            // If the segment is just a point, return the squared distance to that point.
+            return ap.squaredNorm();
+        }
+        // ---------------------------------------------
+
+        const double t = ap.dot(ab) / ab_len_sq;
+
+        if (t < 0.0) {
+            return ap.squaredNorm(); // Closest point is 'a'
+        }
+        if (t > 1.0) {
+            return (p - b).squaredNorm(); // Closest point is 'b'
+        }
+
+        const Eigen::Vector2d closest_point = a + t * ab;
+        return (p - closest_point).squaredNorm();
     }
-    // ---------------------------------------------
 
-    const double t = ap.dot(ab) / ab_len_sq;
-
-    if (t < 0.0) {
-        return ap.squaredNorm(); // Closest point is 'a'
+    double distanceSqrdPointToSegment3D(const Eigen::Vector3d& p, const Eigen::Vector3d& a, const Eigen::Vector3d& b) const{
+        const Eigen::Vector3d ab = b - a;
+        const Eigen::Vector3d ap = p - a;
+        const double ab_len_sq = ab.squaredNorm();
+        if (ab_len_sq < 1e-9) { return ap.squaredNorm(); }
+        const double t = std::max(0.0, std::min(1.0, ap.dot(ab) / ab_len_sq));
+        return (p - (a + t * ab)).squaredNorm();
     }
-    if (t > 1.0) {
-        return (p - b).squaredNorm(); // Closest point is 'b'
+
+
+    inline double normalizeAngle(double angle) const {
+        // Use fmod to bring the angle into the [-2*PI, 2*PI] range
+        angle = std::fmod(angle + M_PI, 2.0 * M_PI);
+        if (angle < 0.0) {
+            angle += 2.0 * M_PI;
+        }
+        return angle - M_PI;
     }
+    // Calculates the squared distance from a point to a circular arc segment.
+    double distanceSqrdPointToArc(
+        const Eigen::Vector2d& p,
+        const Eigen::Vector2d& start,
+        const Eigen::Vector2d& end,
+        const Eigen::Vector2d& center,
+        double radius,
+        bool is_clockwise) const
+    {
+        // Vector from point to circle center
+        Eigen::Vector2d to_center = p - center;
+        double dist_to_center_sq = to_center.squaredNorm();
 
-    const Eigen::Vector2d closest_point = a + t * ab;
-    return (p - closest_point).squaredNorm();
-}
+        // Find the closest point on the full circle to p
+        Eigen::Vector2d closest_point_on_circle = center + radius * to_center.normalized();
 
+        // Check if this closest point lies within the arc segment
+        double start_angle = atan2(start.y() - center.y(), start.x() - center.x());
+        double end_angle = atan2(end.y() - center.y(), end.x() - center.x());
+        double point_angle = atan2(closest_point_on_circle.y() - center.y(), closest_point_on_circle.x() - center.x());
 
-inline double normalizeAngle(double angle) const {
-    // Use fmod to bring the angle into the [-2*PI, 2*PI] range
-    angle = std::fmod(angle + M_PI, 2.0 * M_PI);
-    if (angle < 0.0) {
-        angle += 2.0 * M_PI;
+        // Normalize angles to be relative to the start angle
+        double relative_end_angle = normalizeAngle(end_angle - start_angle);
+        double relative_point_angle = normalizeAngle(point_angle - start_angle);
+
+        if (is_clockwise && relative_end_angle > 0) relative_end_angle -= 2 * M_PI;
+        if (!is_clockwise && relative_end_angle < 0) relative_end_angle += 2 * M_PI;
+
+        bool is_within_arc = is_clockwise
+            ? (relative_point_angle <= 0 && relative_point_angle >= relative_end_angle)
+            : (relative_point_angle >= 0 && relative_point_angle <= relative_end_angle);
+
+        if (is_within_arc) {
+            // The closest point is on the arc itself.
+            return std::pow(std::sqrt(dist_to_center_sq) - radius, 2);
+        } else {
+            // The closest point is one of the endpoints.
+            return std::min((p - start).squaredNorm(), (p - end).squaredNorm());
+        }
     }
-    return angle - M_PI;
-}
-// Calculates the squared distance from a point to a circular arc segment.
-double distanceSqrdPointToArc(
-    const Eigen::Vector2d& p,
-    const Eigen::Vector2d& start,
-    const Eigen::Vector2d& end,
-    const Eigen::Vector2d& center,
-    double radius,
-    bool is_clockwise) const
-{
-    // Vector from point to circle center
-    Eigen::Vector2d to_center = p - center;
-    double dist_to_center_sq = to_center.squaredNorm();
-
-    // Find the closest point on the full circle to p
-    Eigen::Vector2d closest_point_on_circle = center + radius * to_center.normalized();
-
-    // Check if this closest point lies within the arc segment
-    double start_angle = atan2(start.y() - center.y(), start.x() - center.x());
-    double end_angle = atan2(end.y() - center.y(), end.x() - center.x());
-    double point_angle = atan2(closest_point_on_circle.y() - center.y(), closest_point_on_circle.x() - center.x());
-
-    // Normalize angles to be relative to the start angle
-    double relative_end_angle = normalizeAngle(end_angle - start_angle);
-    double relative_point_angle = normalizeAngle(point_angle - start_angle);
-
-    if (is_clockwise && relative_end_angle > 0) relative_end_angle -= 2 * M_PI;
-    if (!is_clockwise && relative_end_angle < 0) relative_end_angle += 2 * M_PI;
-
-    bool is_within_arc = is_clockwise
-        ? (relative_point_angle <= 0 && relative_point_angle >= relative_end_angle)
-        : (relative_point_angle >= 0 && relative_point_angle <= relative_end_angle);
-
-    if (is_within_arc) {
-        // The closest point is on the arc itself.
-        return std::pow(std::sqrt(dist_to_center_sq) - radius, 2);
-    } else {
-        // The closest point is one of the endpoints.
-        return std::min((p - start).squaredNorm(), (p - end).squaredNorm());
-    }
-}
 
 
 
@@ -299,6 +309,8 @@ double distanceSqrdPointToArc(
     void processLatestPoseInfo();
 
     bool checkRobotCollision(const Eigen::Vector2d& position, double yaw) const;
+    bool checkRobotCollision(const Eigen::Vector3d& position, double yaw) const;
+
 
 
 private:
@@ -329,6 +341,8 @@ private:
                                         double width, double height,
                                         double rotation);
 
+    bool lineIntersectsBox3D(const Eigen::Vector3d& start, const Eigen::Vector3d& end, const Eigen::Vector3d& center, double w, double h, double d, double rot) const;
+
 
     std::string robot_model_name_;
     std::string world_name_;
@@ -348,7 +362,7 @@ private:
     bool estimation;
     bool use_fcl;
     bool use_bullet;
-
+    int spatial_dim_;
 
     std::unordered_map<std::string, Obstacle> static_obstacle_positions_;
 
@@ -383,6 +397,11 @@ private:
 
     bool checkCircularCollisionHelper(const Eigen::Vector2d& robot_position, double robot_radius) const;
     bool checkRectangularCollisionHelper(const Eigen::Vector2d& position, double yaw) const;
+    bool checkCircularCollisionHelper3D(const Eigen::Vector3d& robot_position, double robot_radius, double robot_height) const;
+    bool checkRectangularCollisionHelper3D(const Eigen::Vector3d& position, double yaw) const;
+
+    
+    bool fastLineAABBIntersection(const Eigen::Vector3d& p0, const Eigen::Vector3d& p1, const Eigen::Vector3d& box_center, const Eigen::Vector3d& box_half_sizes) const;
 
     
 
