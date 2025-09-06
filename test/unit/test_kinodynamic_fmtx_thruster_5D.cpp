@@ -176,7 +176,7 @@ int main(int argc, char **argv) {
     planner_params.setParam("use_knn", false);
     planner_params.setParam("mode", 1); //1: prune false 2: prune true
 
-    // --- Object Initialization ---
+    // Object Initialization
     auto vis_node = std::make_shared<rclcpp::Node>("fmtx_thruster_visualizer",
         rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
@@ -304,7 +304,6 @@ int main(int argc, char **argv) {
         // if (!is_path_still_safe) {
             // RCLCPP_WARN(vis_node->get_logger(), "Collision predicted on current path! Triggering replan...");
             
-            // *** THIS IS THE CRITICAL FIX ***
             // Before replanning, update the planner's internal map of obstacles.
             // This invalidates the colliding edges so the planner can route around them.
             auto snapshot = obstacle_checker->getAtomicSnapshot();
@@ -412,7 +411,7 @@ int main(int argc, char **argv) {
 
 
 
-    // --- Graceful Shutdown ---
+    // Graceful Shutdown
     RCLCPP_INFO(vis_node->get_logger(), "Shutting down.");
     g_running = false;
     executor.cancel();

@@ -141,9 +141,8 @@ int main(int argc, char **argv) {
 
     // Create Params for ROS2Manager
     Params manager_params;
-    manager_params.setParam("use_sim_time", true);
+    manager_params.setParam("use_sim_time", false); // TF doesnt work if i use true
     manager_params.setParam("simulation_time_step", -0.04); // 50 Hz simulation loop
-    manager_params.setParam("thruster_state_dimension", 5);
     manager_params.setParam("sim_frequency_hz", 50);  // Smoothness of arrow
     manager_params.setParam("vis_frequency_hz", 10);  // Obstacle visualization rate
     manager_params.setParam("follow_path", true);
@@ -156,7 +155,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("use_range", false); 
     gazebo_params.setParam("sensor_range", 20.0);
     gazebo_params.setParam("estimation", true);
-    gazebo_params.setParam("inflation", 0.5); // A larger inflation makes the robot fatter to the planner, which might prevent it from finding paths through narrow gaps.
+    gazebo_params.setParam("inflation", 1.5); // A larger inflation makes the robot fatter to the planner, which might prevent it from finding paths through narrow gaps.
     gazebo_params.setParam("persistent_static_obstacles", false);
     gazebo_params.setParam("fcl", false); //TODO: Implement this for 3D min-snap too!
     gazebo_params.setParam("bullet", true);
@@ -192,27 +191,27 @@ int main(int argc, char **argv) {
 
     // GOAL for the robot is the ROOT of the search tree.
     Eigen::VectorXd tree_root_state(dim);
-    tree_root_state << -48.0, -48.0, -10.0, M_PI / 2.0, 0.0;
+    tree_root_state << -48.0, -48.0, 0.0, M_PI / 2.0, 0.0;
     problem_def->setStart(tree_root_state);
 
     // Robot's INITIAL state is the GOAL of the search tree.
     Eigen::VectorXd robot_initial_state(dim);
     // Increased time budget for the larger travel distance.
-    double time_budget = 40.0;
-    robot_initial_state << 48.0, 48.0, 48.0, -M_PI / 2.0, time_budget;
+    double time_budget = 30.0;
+    robot_initial_state << 48.0, 48.0, 30.0, -M_PI / 2.0, time_budget - 5.0;
     problem_def->setGoal(robot_initial_state);
 
     // Define the new, larger state space bounds.
     Eigen::VectorXd lower_bounds(dim), upper_bounds(dim);
     lower_bounds << -48.0, -48.0, 0.0, -M_PI, 0.0;
-    upper_bounds << 48.0, 48.0, 48.0, M_PI, time_budget;
+    upper_bounds << 48.0, 48.0, 30.0, M_PI, time_budget;
     problem_def->setBounds(lower_bounds, upper_bounds);
 
     // Create the MinSnap state space
     // Increased dynamic limits to make trajectories in the larger space more feasible.
     double v_max = 20.0; // m/s
     double a_max = 7.0;  // m/s^2
-    const double w_vel = 0.1;
+    const double w_vel = 0.2;
     const double w_acc = 0.5;
     const double w_snap = 1.0;
     auto statespace = std::make_shared<MinSnapStateSpace>(5, v_max, a_max, w_vel, w_acc, w_snap, seed);
@@ -224,19 +223,23 @@ int main(int argc, char **argv) {
     kinodynamic_planner->setClock(sim_clock);
     planner->setup(planner_params, visualization);
 
-    // --- Initial Plan ---
+    // Initial Plan
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
+    auto start = std::chrono::steady_clock::now();
     planner->plan();
+    auto end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "Time taken for initial plan: " << duration.count() << " ms\n";
 
-    // [MODIFICATION] The first call to setRobotState uses the initial position and assumes rest (zero vel/accel).
+    // The first call to setRobotState uses the initial position and assumes rest (zero vel/accel).
     Eigen::VectorXd initial_vel = Eigen::VectorXd::Zero(4); // 4 axes: x, y, z, yaw
     Eigen::VectorXd initial_accel = Eigen::VectorXd::Zero(4);
     kinodynamic_planner->setRobotState(robot_initial_state, initial_vel, initial_accel);
 
-    // [MODIFICATION] Get the full trajectory segments, not just sampled points.
+    // Get the full trajectory segments, not just sampled points.
     auto path_segments = kinodynamic_planner->getPathAsTrajectories();
     if (!path_segments.empty()) {
-        // [MODIFICATION] Pass the vector of Trajectory objects to the manager.
+        // Pass the vector of Trajectory objects to the manager.
         ros_manager->setPlannedTrajectory(path_segments);
         // Set the robot's starting state in the manager to initialize its clock.
         ros_manager->setInitialState(robot_initial_state);
@@ -249,11 +252,13 @@ int main(int argc, char **argv) {
         [&]() { if (kinodynamic_planner) kinodynamic_planner->visualizeTreeReal(); });
 
     rclcpp::executors::StaticSingleThreadedExecutor executor;
+    // rclcpp::executors::MultiThreadedExecutor executor;
+
     executor.add_node(ros_manager);
     executor.add_node(vis_node);
     std::thread executor_thread([&executor]() { executor.spin(); });
 
-    // --- Main Execution and Replanning Loop ---
+    // Main Execution and Replanning Loop
     resetAndPlaySimulation();
     const double goal_tolerance = 3.0;
     rclcpp::Rate loop_rate(20);
@@ -269,12 +274,12 @@ int main(int argc, char **argv) {
             break;
         }
 
-        // [MODIFICATION] Get the robot's full kinodynamic state from the simulator.
+        // Get the robot's full kinodynamic state from the simulator.
         Eigen::VectorXd current_pos = ros_manager->getCurrentPosition();
         Eigen::VectorXd current_vel = ros_manager->getCurrentVelocity();
         Eigen::VectorXd current_accel = ros_manager->getCurrentAcceleration();
 
-        // [MODIFICATION] Pass the full state to the planner to find the best anchor node.
+        // Pass the full state to the planner to find the best anchor node.
         kinodynamic_planner->setRobotState(current_pos, current_vel, current_accel);
 
         // Check if the goal has been reached.
@@ -285,8 +290,7 @@ int main(int argc, char **argv) {
             break;
         }
         
-        // This loop now performs replanning on every cycle to test performance.
-        // In a real application, you would wrap this in a condition like `if(!is_path_still_safe)`.
+        // This loop now performs replanning on every cycle to test performance --> Put it in a condtion later
         {
             auto snapshot = obstacle_checker->getAtomicSnapshot();
             auto start = std::chrono::steady_clock::now();
@@ -304,15 +308,14 @@ int main(int argc, char **argv) {
             
             // ... logging logic ...
 
-            // [MODIFICATION] After planning, set the state again to find the best anchor in the *updated* tree.
+            // After planning, set the state again to find the best anchor in the updated tree.
             kinodynamic_planner->setRobotState(ros_manager->getCurrentPosition(), ros_manager->getCurrentVelocity(), ros_manager->getCurrentAcceleration());
 
-            // [MODIFICATION] Get the new path as a vector of Trajectory objects.
+            // Get the new path as a vector of Trajectory objects.
             auto new_path_segments = kinodynamic_planner->getPathAsTrajectories();
 
             if (!new_path_segments.empty()) {
-                // std::reverse(new_path_segments.begin(), new_path_segments.end());
-                // [MODIFICATION] Pass the new trajectory segments to the manager.
+                // Pass the new trajectory segments to the manager.
                 ros_manager->setPlannedTrajectory(new_path_segments);
                 
                 // // For visualization, extract the sampled points from the segments.

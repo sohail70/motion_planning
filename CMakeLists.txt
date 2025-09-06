@@ -279,9 +279,9 @@ ament_target_dependencies(test_thruster rclcpp nav_msgs visualization_msgs tf2_r
 add_test(NAME test_thruster COMMAND test_thruster)
 
 
-add_executable(test_min_snap test/unit/test_min_snap.cpp) # <-- CREATE A NEW FILE WITH THIS NAME
+add_executable(test_min_snap test/unit/test_min_snap.cpp) 
 target_link_libraries(test_min_snap motion_planning gz_obs)
-ament_target_dependencies(test_min_snap rclcpp visualization_msgs)
+ament_target_dependencies(test_min_snap rclcpp visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 add_test(NAME test_min_snap COMMAND test_min_snap)
 
 
