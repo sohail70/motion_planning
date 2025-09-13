@@ -2,6 +2,11 @@
 
 This repository contains a C++ library for advanced motion planning, created to develop and showcase my **FMTX** algorithm. FMTX is a sampling-based replanning method, derived from FMT*, designed for efficient navigation in dynamic environments. The initial concept for `FMTX` emerged during my studies while implementing Michael Otte's `RRTX` algorithm. I first explored `FMTX` in MATLAB, but I encountered challenges with FMT*'s inherent constraints. After some time, I revisited the problem and developed the complete solution presented in this library.
 
+## Publication
+
+[FMTx: An Efficient and Asymptotically Optimal Extension of the Fast Marching Tree for Dynamic Replanning](https://arxiv.org/abs/2509.08521)  
+
+
 For those interested in the development process, the following links contain my exploratory MATLAB and Python files. Please note that these are development archives; the code is not organized and contains many experimental ideas for adapting FMT* to handle dynamic obstacles. The finalized, working solution is in this C++ repository.
 
 * **Initial Concept in MATLAB/Python**: [Development Files](https://drive.google.com/drive/folders/1BwNw0cQw3J7h2tKtNB-NLXXTFCvpezjT?usp=drive_link)
