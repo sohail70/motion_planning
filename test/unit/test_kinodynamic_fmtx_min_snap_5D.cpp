@@ -211,9 +211,22 @@ int main(int argc, char **argv) {
     // Increased dynamic limits to make trajectories in the larger space more feasible.
     double v_max = 20.0; // m/s
     double a_max = 7.0;  // m/s^2
-    const double w_vel = 0.2;
-    const double w_acc = 0.5;
-    const double w_snap = 1.0;
+    // const double w_vel = 0.2;
+    // const double w_acc = 0.5;
+    // const double w_snap = 1.0;
+
+    // Define the per-axis weights
+    Eigen::VectorXd w_vel(4), w_acc(4), w_snap(4);
+
+    // Weights for x, y, z axes (axes 0, 1, 2)
+    w_vel.head<3>().setConstant(0.2);
+    w_acc.head<3>().setConstant(0.5);
+    w_snap.head<3>().setConstant(1.0);
+
+    w_vel(3) = 20.0; // HEAVY PENALTY FOR YAW VELOCITY (axis 3)
+    w_acc(3) = 0.5;
+    w_snap(3) = 1.0;
+
     auto statespace = std::make_shared<MinSnapStateSpace>(5, v_max, a_max, w_vel, w_acc, w_snap, seed);
     // Use the new MinSnap ROS manager
     auto ros_manager = std::make_shared<MinSnapROS2Manager>(obstacle_checker, visualization, manager_params);

@@ -398,7 +398,6 @@ public:
           is_path_set_(false),
           current_segment_idx_(-1) { 
         
-        // --- ADDITION 1 of 3: Initialize the TF broadcaster ---
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
 
 
@@ -436,6 +435,9 @@ public:
           is_path_set_(false),
           current_segment_idx_(-1) { // Initialize index to invalid
         
+        tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+
+
         current_pos_ = Eigen::VectorXd::Zero(5);
         previous_pos_ = Eigen::Vector3d::Zero();
         current_vel_ = Eigen::VectorXd::Zero(4);
@@ -532,7 +534,6 @@ private:
     std::atomic<int> collision_count_{0};
     bool is_in_collision_state_{false};
 
-    // --- YOUR ORIGINAL WORKING FUNCTIONS (UNCHANGED) ---
     void visualizationLoop() {
         if (!obstacle_checker_ || !visualizer_) return;
         
@@ -542,6 +543,38 @@ private:
         gazebo_checker->processLatestPoseInfo();
         const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
         
+        Eigen::Vector3d current_pos_3d = current_pos_.head<3>();
+
+        // if (!all_obstacles.empty()) {
+        //     double min_dist_sq = std::numeric_limits<double>::max();
+        //     Eigen::Vector3d nearest_obs_pos;
+
+        //     for (const auto& obstacle : all_obstacles) {
+        //         Eigen::Vector3d obs_pos_3d(obstacle.position.x(), obstacle.position.y(), obstacle.z);
+        //         double dist_sq = (current_pos_3d - obs_pos_3d).squaredNorm();
+        //         if (dist_sq < min_dist_sq) {
+        //             min_dist_sq = dist_sq;
+        //             nearest_obs_pos = obs_pos_3d;
+        //         }
+        //     }
+            
+        //     double min_dist = std::sqrt(min_dist_sq);
+
+        //     const double red_threshold = 3.0; // Danger zone
+        //     const double yellow_threshold = 8.0; // Caution zone
+
+        //     std::vector<float> line_color;
+        //     if (min_dist < red_threshold) {
+        //         line_color = {1.0f, 0.0f, 0.0f}; // Red for imminent danger
+        //     } else if (min_dist < yellow_threshold) {
+        //         line_color = {1.0f, 1.0f, 0.0f}; // Yellow for caution
+        //     } else {
+        //         line_color = {0.0f, 1.0f, 0.0f}; // Green for safe
+        //     }
+        //     int num_dots = 20;
+        //     visualizer_->visualizeDottedLineToNearest(current_pos_3d, nearest_obs_pos, num_dots, "map", line_color, "nearest_obstacle_line");
+        // }
+
         std::vector<Eigen::VectorXd> sphere_positions_for_viz;
         std::vector<double> sphere_radii;
         std::vector<std::tuple<Eigen::Vector3d, Eigen::Vector3d, double>> box_data_for_viz;
@@ -630,41 +663,31 @@ private:
 
     void visualizeRobot() {
         Eigen::Vector3d pos_3d = current_pos_.head<3>();
-        double yaw = 0.0;
         
-        Eigen::Vector3d velocity_vector = pos_3d - previous_pos_;
-        if (velocity_vector.head<2>().norm() > 0.001) {
-            yaw = std::atan2(-velocity_vector.y(), -velocity_vector.x());
-        } else {
-            yaw = current_pos_(3);
-        }
+        // Directly use the yaw from the planned state vector.
+        // This is the smooth yaw that was optimized by the planner.
+        double yaw = current_pos_(3);
         
+        // The rest of the function remains the same.
         Eigen::Quaterniond q(Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()));
         Eigen::VectorXd quat(4);
         quat << q.x(), q.y(), q.z(), q.w();
         
+        // Your visualization now uses the correct, smooth orientation.
         visualizer_->visualizeQuadcopter(pos_3d, quat, "map", {0.8f, 0.1f, 0.8f}, "simulated_robot");
         
-        // --- ADDITION 3 of 3: Broadcast the transform ---
+        // The TF broadcast will also use the correct orientation.
         geometry_msgs::msg::TransformStamped t;
-
-        // The timestamp MUST be the current "forward" ROS time for TF2 to work correctly.
         t.header.stamp = this->get_clock()->now();
         t.header.frame_id = "map";
         t.child_frame_id = "quadcopter";
-
-        // Set the translation from the current position
         t.transform.translation.x = pos_3d.x();
         t.transform.translation.y = pos_3d.y();
         t.transform.translation.z = pos_3d.z();
-
-        // Set the rotation from the quaternion calculated above
         t.transform.rotation.x = q.x();
         t.transform.rotation.y = q.y();
         t.transform.rotation.z = q.z();
         t.transform.rotation.w = q.w();
-
-        // Send the transform
         tf_broadcaster_->sendTransform(t);
     }
 };

@@ -1027,7 +1027,13 @@ int main(int argc, char** argv) {
     auto obstacle_info = parseSdfObstacles("dynamic_world_1_obs_3D.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
 
-    auto min_snap_ss = std::make_shared<MinSnapStateSpace>(5, 20.0, 7.0, 0.1, 0.5, 1.0, 42);
+    Eigen::VectorXd w_vel(4), w_accel(4), w_snap(4);
+    w_vel << 0.1, 0.1, 0.1, 0.1; // Set weights for x, y, z, yaw
+    w_accel << 0.5, 0.5, 0.5, 0.5;
+    w_snap << 1.0, 1.0, 1.0, 1.0;
+
+    auto min_snap_ss = std::make_shared<MinSnapStateSpace>(5, 20.0, 7.0, w_vel, w_accel, w_snap, 42);
+
 
     Eigen::VectorXd start_node(5);
     start_node << 15.0, 15.0, 2.0, 0.0, 20.0;

@@ -1235,3 +1235,109 @@ void RVizVisualization::visualizeSpheres(
 
     marker_pub_2_->publish(marker_array);
 }
+
+void RVizVisualization::visualizeLineToNearest(
+    const Eigen::Vector3d& robot_pos,
+    const Eigen::Vector3d& nearest_obs_pos,
+    const std::string& frame_id,
+    const std::vector<float>& color,
+    const std::string& ns)
+{
+    visualization_msgs::msg::MarkerArray marker_array;
+
+    // Clear previous line
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id;
+    clear_marker.header.stamp = node_->now();
+    clear_marker.ns = ns;
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    marker_array.markers.push_back(clear_marker);
+
+    // Create the line marker
+    visualization_msgs::msg::Marker line_marker;
+    line_marker.header.frame_id = frame_id;
+    line_marker.header.stamp = node_->now();
+    line_marker.ns = ns;
+    line_marker.id = 0;
+    line_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    line_marker.action = visualization_msgs::msg::Marker::ADD;
+
+    // Line thickness
+    line_marker.scale.x = 0.1;
+
+    // Line color
+    line_marker.color.r = color[0];
+    line_marker.color.g = color[1];
+    line_marker.color.b = color[2];
+    line_marker.color.a = 0.8;
+
+    // Define start and end points
+    geometry_msgs::msg::Point start_p, end_p;
+    start_p.x = robot_pos.x();
+    start_p.y = robot_pos.y();
+    start_p.z = robot_pos.z();
+    end_p.x = nearest_obs_pos.x();
+    end_p.y = nearest_obs_pos.y();
+    end_p.z = nearest_obs_pos.z();
+
+    line_marker.points.push_back(start_p);
+    line_marker.points.push_back(end_p);
+    
+    marker_array.markers.push_back(line_marker);
+    marker_pub_2_->publish(marker_array);
+}
+
+void RVizVisualization::visualizeDottedLineToNearest(
+    const Eigen::Vector3d& robot_pos,
+    const Eigen::Vector3d& nearest_obs_pos,
+    int num_points, // How many dots to draw
+    const std::string& frame_id,
+    const std::vector<float>& color,
+    const std::string& ns)
+{
+    visualization_msgs::msg::MarkerArray marker_array;
+
+    // Clear previous line/dots
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id;
+    clear_marker.header.stamp = node_->now();
+    clear_marker.ns = ns;
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    marker_array.markers.push_back(clear_marker);
+
+    // Create the points marker
+    visualization_msgs::msg::Marker points_marker;
+    points_marker.header.frame_id = frame_id;
+    points_marker.header.stamp = node_->now();
+    points_marker.ns = ns;
+    points_marker.id = 0;
+    // --- CHANGE: Use POINTS type ---
+    points_marker.type = visualization_msgs::msg::Marker::POINTS;
+    points_marker.action = visualization_msgs::msg::Marker::ADD;
+
+    // Size of each dot
+    points_marker.scale.x = 0.2;
+    points_marker.scale.y = 0.2;
+
+    // Color of the dots
+    points_marker.color.r = color[0];
+    points_marker.color.g = color[1];
+    points_marker.color.b = color[2];
+    points_marker.color.a = 1.0;
+
+    // Calculate the points along the line
+    Eigen::Vector3d direction_vec = nearest_obs_pos - robot_pos;
+    for (int i = 0; i <= num_points; ++i) {
+        // Interpolate to find the position of the next dot
+        Eigen::Vector3d point_pos = robot_pos + direction_vec * (static_cast<double>(i) / num_points);
+        
+        geometry_msgs::msg::Point p;
+        p.x = point_pos.x();
+        p.y = point_pos.y();
+        p.z = point_pos.z();
+        points_marker.points.push_back(p);
+    }
+    
+    marker_array.markers.push_back(points_marker);
+    marker_pub_2_->publish(marker_array);
+}

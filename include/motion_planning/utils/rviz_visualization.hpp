@@ -54,6 +54,9 @@ public:
 
     void visualizeText( const std::vector<Eigen::Vector3d>& points, const std::vector<std::string>& texts, const std::string& frame_id, const std::string& ns) override;
 
+    void visualizeLineToNearest( const Eigen::Vector3d& robot_pos, const Eigen::Vector3d& nearest_obs_pos, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);
+
+    void visualizeDottedLineToNearest( const Eigen::Vector3d& robot_pos, const Eigen::Vector3d& nearest_obs_pos, int num_points, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);
 
 private:
     rclcpp::Node::SharedPtr node_;

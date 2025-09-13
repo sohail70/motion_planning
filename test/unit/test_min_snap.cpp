@@ -37,21 +37,49 @@ int main(int argc, char** argv) {
     std::cout << "--- MinSnapStateSpace Multi-Point Backward Planning (from Root) Test ---\n";
 
     // --- Create the Min-Snap State Space ---
-    const double v_max = 5.0; // m/s
-    const double a_max = 2.0;  // m/s^2
+    const double v_max = 20.0; // m/s
+    const double a_max = 7.0;  // m/s^2
     const double seed = 42;
-    const double w_vel = 0.0;
-    const double w_acc = 0.0;
-    const double w_snap = 1.0;
+    // const double w_vel = 0.0;
+    // const double w_acc = 0.0;
+    // const double w_snap = 1.0;
+
+    // Define the per-axis weights
+    Eigen::VectorXd w_vel(4), w_acc(4), w_snap(4);
+
+    // Weights for x, y, z axes (axes 0, 1, 2)
+    w_vel.head<3>().setConstant(0.5);
+    w_acc.head<3>().setConstant(0.5);
+    w_snap.head<3>().setConstant(1.0);
+
+    w_vel(3) = 20.0; // HEAVY PENALTY FOR YAW VELOCITY (axis 3)
+    w_acc(3) = 0.5;
+    w_snap(3) = 1.0;
+
     auto min_snap_ss = std::make_shared<MinSnapStateSpace>(5, v_max, a_max, w_vel, w_acc, w_snap, seed);
 
-    // --- Define 5D Waypoints (x, y, z, yaw, time) ---
+    // // --- Define 5D Waypoints (x, y, z, yaw, time) ---
     std::vector<Eigen::VectorXd> waypoints;
-    waypoints.push_back((Eigen::VectorXd(5) <<  0.0,   0.0,  5.0,  0.0,         10.0).finished()); // A (Root)
-    waypoints.push_back((Eigen::VectorXd(5) << 20.0,  15.0,  27.0,  M_PI,  30.0).finished()); // B
-    waypoints.push_back((Eigen::VectorXd(5) << 40.0,   0.0,  4.0, -M_PI / 4.0,  50.0).finished()); // C
-    waypoints.push_back((Eigen::VectorXd(5) << 20.0, -15.0,  7.0, -M_PI * 0.75, 70.0).finished()); // D (Goal)
-    // waypoints.push_back((Eigen::VectorXd(5) <<  0.0,   0.0,  5.0,  M_PI,        90.0).finished()); // E (Goal) - REMOVED
+    // waypoints.push_back((Eigen::VectorXd(5) <<  0.0,   0.0,  5.0,  0.0,         10.0).finished()); // A (Root)
+    // waypoints.push_back((Eigen::VectorXd(5) << 20.0,  15.0,  27.0,  M_PI,  30.0).finished()); // B
+    // waypoints.push_back((Eigen::VectorXd(5) << 40.0,   0.0,  4.0, -M_PI / 4.0,  50.0).finished()); // C
+    // waypoints.push_back((Eigen::VectorXd(5) << 20.0, -15.0,  7.0, -M_PI * 0.75, 70.0).finished()); // D (Goal)
+    // // waypoints.push_back((Eigen::VectorXd(5) <<  0.0,   0.0,  5.0,  M_PI,        90.0).finished()); // E (Goal) - REMOVED
+
+// Start at rest at t=0.
+waypoints.push_back((Eigen::VectorXd(5) <<   0.0,   0.0,  5.0, 0.0,          0.0).finished()); // A (Root)
+
+// Blast forward 100m in just 8 seconds. This will force high acceleration and velocity.
+waypoints.push_back((Eigen::VectorXd(5) << 100.0,   0.0, 10.0, 0.0,          8.0).finished()); // B
+
+// Make a wide, high-speed turn back towards the start, climbing aggressively.
+// Covering ~122m in 9 seconds requires maintaining high speed through the turn.
+waypoints.push_back((Eigen::VectorXd(5) <<  20.0, -50.0, 25.0, -M_PI * 0.75, 17.0).finished()); // C
+
+// Final approach and stop at the goal point. 7 seconds to decelerate and land.
+waypoints.push_back((Eigen::VectorXd(5) <<   0.0, -60.0,  5.0, -M_PI,        24.0).finished()); // D (Goal)
+
+
 
     // --- Data Storage ---
     std::vector<Trajectory> all_traj_segments; // Segments stored in planning order (A->B, B->C, etc.)
