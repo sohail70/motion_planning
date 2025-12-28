@@ -50,6 +50,10 @@ class StateSpace {
 
     virtual bool prefersLazyNear() const { return false; } // Default to proactive (i.e., caching and not lazy)
 
+    virtual double getMaxVelocity() const { return 0.0; }
+    virtual double getMaxAcceleration() const { return 0.0; }
+
+
 
 
     const Eigen::MatrixXd& getSamples() const { return states_;} // This one might have zeros in it because of doubling the capacity in the addState function

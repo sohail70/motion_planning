@@ -57,6 +57,12 @@ public:
     Trajectory createHoverPath(const Eigen::VectorXd& hover_state, double duration, HoverDirection direction) const;
 
 
+
+    double getMaxVelocity() const override { return max_velocity_; }
+    double getMaxAcceleration() const override { return 0.0; } // Dubins is typically 1st-order velocity
+
+
+
 private:
     double min_velocity_;
     double max_velocity_;

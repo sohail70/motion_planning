@@ -125,7 +125,7 @@ int main(int argc, char** argv)
     Params manager_params;
     manager_params.setParam("use_sim_time", true);
     manager_params.setParam("sim_time_step", -0.04); // Time-to-go consumed per sim step
-    manager_params.setParam("sim_frequency_hz", 50);  // Smoothness of arrow
+    manager_params.setParam("sim_frequency_hz", 25);  // Smoothness of arrow
     manager_params.setParam("vis_frequency_hz", 10);  // Obstacle visualization rate
     manager_params.setParam("follow_path", true);
 
@@ -183,12 +183,12 @@ int main(int argc, char** argv)
     problem_def->setStart(tree_root_state); // "Start" of the backward search
 
     Eigen::VectorXd robot_initial_state(3);
-    robot_initial_state << 48.0, 48.0, 30.0; // Initial robot state: x, y, total time budget
+    robot_initial_state << 48.0, 48.0, 25.0; // Initial robot state: x, y, total time budget
     problem_def->setGoal(robot_initial_state); // "Goal" of the backward search
 
     Eigen::VectorXd lower_bounds(3), upper_bounds(3);
     lower_bounds << -50.0, -50.0, 0.0;
-    upper_bounds << 50.0, 50.0, 30.0; // Max time-to-go for any sample
+    upper_bounds << 50.0, 50.0, 25.0; // Max time-to-go for any sample
     problem_def->setBounds(lower_bounds, upper_bounds);
 
 

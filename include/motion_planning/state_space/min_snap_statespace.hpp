@@ -59,6 +59,14 @@ private:
     // double w_accel_;
     // double w_snap_;
     Eigen::VectorXd w_vel_, w_accel_, w_snap_;
+
+
+    // Pre-computed Hessian templates for performance
+    Eigen::MatrixXd H_vel_template_;
+    Eigen::MatrixXd H_accel_template_;
+    Eigen::MatrixXd H_jerk_template_;
+    Eigen::MatrixXd H_snap_template_;
+
     unsigned int seed_;
 
 };

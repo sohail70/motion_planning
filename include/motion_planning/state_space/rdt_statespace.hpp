@@ -26,6 +26,9 @@ public:
     void sampleUniform(double min, double max, int k) override;
     std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const override;
 
+    double getMaxVelocity() const override { return max_velocity_; }
+    double getMaxAcceleration() const override { return 0.0; } // R2T is 1st-order (constant velocity)
+
 
 private:
     int euclidean_dim_;

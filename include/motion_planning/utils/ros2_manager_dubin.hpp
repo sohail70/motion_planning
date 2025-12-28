@@ -33,9 +33,11 @@ public:
 
 
 
-        simulation_time_step_ = params.getParam<double>("sim_time_step", -0.02);
+        // simulation_time_step_ = params.getParam<double>("sim_time_step", -0.02);
         int sim_frequency_hz = params.getParam<int>("sim_frequency_hz", 50);
         int vis_frequency_hz = params.getParam<int>("vis_frequency_hz", 30);
+        // Sim Speed - Frequency (Hz) * Time Step Size (s) 
+        simulation_time_step_ = -1.0 / static_cast<double>(sim_frequency_hz);
 
         RCLCPP_INFO(this->get_logger(), "Initialized DubinsROS2Manager (Full Constructor).");
 
@@ -85,32 +87,57 @@ public:
     //     }
     //     is_path_set_ = true;
     // }
-void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
-    std::lock_guard<std::mutex> lock(path_mutex_);
 
-    if (new_path_from_main.empty()) {
-        is_path_set_ = false;
-        current_path_.clear();
-        return;
+    // void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+    //     std::lock_guard<std::mutex> lock(path_mutex_);
+
+    //     if (new_path_from_main.empty()) {
+    //         is_path_set_ = false;
+    //         current_path_.clear();
+    //         return;
+    //     }
+        
+    //     // Update to the new path
+    //     current_path_ = new_path_from_main;
+        
+    //     // --- THE FIX ---
+    //     // ALWAYS re-synchronize the simulation time to the start of the new path.
+    //     // This ensures the simulation starts executing the new trajectory from its beginning.
+
+    //     // current_sim_time_ = current_path_.front()(3); // The last element is time
+    //     current_sim_time_ = current_path_.front()(current_path_.front().size() - 1);
+
+        
+    //     // It's also good practice to clear the visual trace when the path changes dramatically.
+    //     robot_spatial_trace_.clear();
+        
+    //     is_path_set_ = true;
+    // }
+
+
+    void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+        std::lock_guard<std::mutex> lock(path_mutex_);
+
+        if (new_path_from_main.empty()) {
+            is_path_set_ = false;
+            current_path_.clear();
+            return;
+        }
+        
+        current_path_ = new_path_from_main;
+        
+        // --- FIX: Only clear trace/time on the FIRST path set ---
+        // This prevents erasing the history when the planner sends an update/replan.
+        if (!is_path_set_) {
+            // Get time index (last element)
+            int time_idx = current_path_.front().size() - 1;
+            current_sim_time_ = current_path_.front()(time_idx);
+            
+            robot_spatial_trace_.clear();
+        }
+        
+        is_path_set_ = true;
     }
-    
-    // Update to the new path
-    current_path_ = new_path_from_main;
-    
-    // --- THE FIX ---
-    // ALWAYS re-synchronize the simulation time to the start of the new path.
-    // This ensures the simulation starts executing the new trajectory from its beginning.
-
-    // current_sim_time_ = current_path_.front()(3); // The last element is time
-    current_sim_time_ = current_path_.front()(current_path_.front().size() - 1);
-
-    
-    // It's also good practice to clear the visual trace when the path changes dramatically.
-    robot_spatial_trace_.clear();
-    
-    is_path_set_ = true;
-}
-
 
 
 
@@ -131,12 +158,21 @@ void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
         current_interpolated_state_ = state;
         current_sim_time_ = state(3);
         robot_spatial_trace_.clear();
-        robot_spatial_trace_.push_back(state.head<3>());
+        robot_spatial_trace_.push_back(state.head<2>());
     }
 
 
     int getCollisionCount() const {
         return collision_count_.load();
+    }
+
+    void updateThreats(const std::vector<Obstacle>& culprits) {
+        // This just updates the set. The visualizationLoop (running on timer)
+        // will pick this up in the next frame.
+        current_threat_names_.clear();
+        for (const auto& obs : culprits) {
+            current_threat_names_.insert(obs.name);
+        }
     }
 
     
@@ -148,7 +184,7 @@ private:
     rclcpp::TimerBase::SharedPtr sim_timer_;
     std::mutex path_mutex_;
     std::vector<Eigen::VectorXd> current_path_;
-    std::vector<Eigen::Vector3d> robot_spatial_trace_;
+    std::vector<Eigen::VectorXd> robot_spatial_trace_;
     double current_sim_time_;
     double simulation_time_step_;
     bool is_path_set_;
@@ -157,6 +193,8 @@ private:
     std::atomic<int> collision_count_{0};
     bool is_in_collision_state_{false};
 
+    std::set<std::string> current_threat_names_;
+
 
     // Methods...
     double normalizeAngle(double angle) {
@@ -164,7 +202,67 @@ private:
         if (angle < 0.0) angle += 2.0 * M_PI;
         return angle - M_PI;
     }
+    // OLD VERSION
+    // void visualizationLoop() {
+    //     if (!obstacle_checker_ || !visualizer_) return;
+        
+    //     auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+    //     if (!gazebo_checker) return;
 
+    //     gazebo_checker->processLatestPoseInfo();
+    //     const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
+        
+    //     // --- MODIFIED SECTION START ---
+        
+    //     // Prepare containers for visualization data
+    //     std::vector<Eigen::VectorXd> cylinder_positions;
+    //     std::vector<double> cylinder_radii;
+        
+    //     // Create the specific data structure your visualizeCube function needs
+    //     std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_data_for_viz;
+
+    //     std::vector<Eigen::Vector2d> dynamic_obstacle_positions;
+    //     std::vector<Eigen::Vector2d> dynamic_obstacle_velocities;
+
+    //     // Process each obstacle and sort it into the correct container
+    //     for (const auto& obstacle : all_obstacles) {
+    //         if (obstacle.type == Obstacle::CIRCLE) {
+    //             Eigen::VectorXd pos(2);
+    //             pos << obstacle.position.x(), obstacle.position.y();
+    //             cylinder_positions.push_back(pos);
+    //             cylinder_radii.push_back(obstacle.dimensions.radius);
+    //         } else if (obstacle.type == Obstacle::BOX) {
+    //             // Populate the vector of tuples directly
+    //             box_data_for_viz.emplace_back(
+    //                 obstacle.position,
+    //                 obstacle.dimensions.width,
+    //                 obstacle.dimensions.height,
+    //                 obstacle.dimensions.rotation
+    //             );
+    //         }
+            
+    //         if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
+    //             dynamic_obstacle_positions.push_back(obstacle.position);
+    //             dynamic_obstacle_velocities.push_back(obstacle.velocity);
+    //         }
+    //     }
+
+    //     // Send data to the visualizer
+    //     if (!cylinder_positions.empty()) {
+    //         visualizer_->visualizeCylinder(cylinder_positions, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "cylinder_obstacles");
+    //     }
+    //     if (!box_data_for_viz.empty()) {
+    //         //  Call your actual visualizeCube function with the correct data structure
+    //         visualizer_->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
+    //     }
+    //     if (!dynamic_obstacle_positions.empty()) {
+    //         visualizer_->visualizeVelocityVectors(dynamic_obstacle_positions, dynamic_obstacle_velocities, "map", {1.0f, 0.5f, 0.0f}, "velocity_vectors");
+    //     }
+        
+    //     // --- MODIFIED SECTION END ---
+    // }
+
+    // OPTIMIZED VERSION
     void visualizationLoop() {
         if (!obstacle_checker_ || !visualizer_) return;
         
@@ -174,54 +272,48 @@ private:
         gazebo_checker->processLatestPoseInfo();
         const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
         
-        // --- MODIFIED SECTION START ---
-        
-        // Prepare containers for visualization data
-        std::vector<Eigen::VectorXd> cylinder_positions;
-        std::vector<double> cylinder_radii;
-        
-        // Create the specific data structure your visualizeCube function needs
-        std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_data_for_viz;
+        std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos;
+        std::vector<double> safe_cyl_rad, threat_cyl_rad;
+        std::vector<std::tuple<Eigen::Vector2d, double, double, double>> safe_boxes, threat_boxes;
+        std::vector<Eigen::Vector2d> safe_vel_pos, safe_vel_val, threat_vel_pos, threat_vel_val;
 
-        std::vector<Eigen::Vector2d> dynamic_obstacle_positions;
-        std::vector<Eigen::Vector2d> dynamic_obstacle_velocities;
-
-        // Process each obstacle and sort it into the correct container
         for (const auto& obstacle : all_obstacles) {
+            bool is_threat = current_threat_names_.count(obstacle.name);
+
             if (obstacle.type == Obstacle::CIRCLE) {
-                Eigen::VectorXd pos(2);
-                pos << obstacle.position.x(), obstacle.position.y();
-                cylinder_positions.push_back(pos);
-                cylinder_radii.push_back(obstacle.dimensions.radius);
+                Eigen::VectorXd p(2); p << obstacle.position.x(), obstacle.position.y();
+                if (is_threat) {
+                    threat_cyl_pos.push_back(p);
+                    threat_cyl_rad.push_back(obstacle.dimensions.radius);
+                } else {
+                    safe_cyl_pos.push_back(p);
+                    safe_cyl_rad.push_back(obstacle.dimensions.radius);
+                }
             } else if (obstacle.type == Obstacle::BOX) {
-                // Populate the vector of tuples directly
-                box_data_for_viz.emplace_back(
-                    obstacle.position,
-                    obstacle.dimensions.width,
-                    obstacle.dimensions.height,
-                    obstacle.dimensions.rotation
-                );
+                auto b = std::make_tuple(obstacle.position, obstacle.dimensions.width, obstacle.dimensions.height, obstacle.dimensions.rotation);
+                if (is_threat) threat_boxes.push_back(b);
+                else safe_boxes.push_back(b);
             }
-            
+
             if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
-                dynamic_obstacle_positions.push_back(obstacle.position);
-                dynamic_obstacle_velocities.push_back(obstacle.velocity);
+                if (is_threat) {
+                    threat_vel_pos.push_back(obstacle.position);
+                    threat_vel_val.push_back(obstacle.velocity);
+                } else {
+                    safe_vel_pos.push_back(obstacle.position);
+                    safe_vel_val.push_back(obstacle.velocity);
+                }
             }
         }
 
-        // Send data to the visualizer
-        if (!cylinder_positions.empty()) {
-            visualizer_->visualizeCylinder(cylinder_positions, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "cylinder_obstacles");
-        }
-        if (!box_data_for_viz.empty()) {
-            //  Call your actual visualizeCube function with the correct data structure
-            visualizer_->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
-        }
-        if (!dynamic_obstacle_positions.empty()) {
-            visualizer_->visualizeVelocityVectors(dynamic_obstacle_positions, dynamic_obstacle_velocities, "map", {1.0f, 0.5f, 0.0f}, "velocity_vectors");
-        }
-        
-        // --- MODIFIED SECTION END ---
+        visualizer_->publishObstacleFrame(
+            safe_cyl_pos, safe_cyl_rad,
+            threat_cyl_pos, threat_cyl_rad,
+            safe_boxes, threat_boxes,
+            safe_vel_pos, safe_vel_val,
+            threat_vel_pos, threat_vel_val,
+            "map"
+        );
     }
 
 
@@ -298,10 +390,18 @@ private:
         orientation_quat << q.x(), q.y(), q.z(), q.w();
 
         visualizer_->visualizeRobotArrow(robot_pos_3d, orientation_quat, "map", {0.8f, 0.1f, 0.8f}, "simulated_robot");
-        if (robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - robot_pos_3d).norm() > 0.1) {
-             robot_spatial_trace_.push_back(robot_pos_3d);
+        Eigen::VectorXd current_pos_xd = new_state.head<2>();
+        
+        if (robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - current_pos_xd).norm() > 0.1) {
+             robot_spatial_trace_.push_back(current_pos_xd);
         }
-        // visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 0.5f, 0.0f}, "robot_trace");
+        
+
+        // static int trace_pub_throttle = 0;
+        // if (++trace_pub_throttle % 5 == 0) {
+        //     visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 1.0f, 0.0f}, "robot_trace");
+        // }
+
     }
 };
 

@@ -1313,6 +1313,13 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
 ) const {
     // auto start = std::chrono::steady_clock::now();
 
+    auto recordCulprit = [&](const Obstacle& obs) {
+            if (culprit_names_.find(obs.name) == culprit_names_.end()) {
+                culprit_names_.insert(obs.name);
+                culprit_cache_.push_back(obs);
+            }
+    };
+
     if (trajectory.path_points.size() < 2) {
         return std::nullopt;
     }
@@ -1378,11 +1385,14 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
                             // }
                             if (std::max(0.0, t1) <= std::min(T, t2)) {
                                 // RCLCPP_WARN(rclcpp::get_logger("CollisionCheck3D"), "       - !!!!! COLLISION DETECTED !!!!!");
+                                recordCulprit(obs);
                                 return obs;
                             }
                         }
                     } else { // Static sphere
-                        if (distanceSqrdPointToSegment3D(obs_pos, p_r0, p_r1) <= R_sq) return obs;
+                        if (distanceSqrdPointToSegment3D(obs_pos, p_r0, p_r1) <= R_sq) 
+                        recordCulprit(obs);
+                        return obs;
                     }
                 }  else if (obs.type == Obstacle::BOX) {
                     const double w = obs.dimensions.width+2*inflation, h = obs.dimensions.height+2*inflation, d = obs.dimensions.height+2*inflation;
@@ -1410,11 +1420,13 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
 
                         // if (sweptBoxIntersection3D(p_r0, v_r, p_o0, obs_vel, w, h, d, T, obs.dimensions.rotation)) return obs;
                         if (fastLineAABBIntersection(p_start_relative, p_end_relative, Eigen::Vector3d::Zero(), minkowski_half_sizes)) {
+                            recordCulprit(obs);
                             return obs; // COLLISION!
                         }
                     } else {
                         // if (lineIntersectsBox3D(p_r0, p_r1, obs_pos, w, h, d, obs.dimensions.rotation)) return obs;
                         if (fastLineAABBIntersection(p_r0, p_r1, obs_pos, box_half_sizes)) {
+                            recordCulprit(obs);
                             return obs; // Collision detected!
                         }
                     }
@@ -1473,15 +1485,24 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
                             const double a = v_rel.dot(v_rel);
                             const double b = 2.0 * p_rel_start.dot(v_rel);
                             const double c = p_rel_start.dot(p_rel_start) - R_sq;
-                            if (std::abs(a) < 1e-9) { if (c <= 0) return obs; continue; }
+                            if (std::abs(a) < 1e-9) { 
+                                if (c <= 0) { recordCulprit(obs); return obs; } 
+                                continue; 
+                            }
                             const double disc = b * b - 4 * a * c;
                             if (disc >= 0) {
                                 const double t1 = (-b - std::sqrt(disc)) / (2.0 * a);
                                 const double t2 = (-b + std::sqrt(disc)) / (2.0 * a);
-                                if (std::max(0.0, t1) <= std::min(T_segment, t2)) return obs;
+                                if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
+                                    recordCulprit(obs);
+                                    return obs;
+                                }
                             }
                         } else {
-                            if (distanceSqrdPointToSegment(obs.position, p_r0_seg, p_r1_seg) <= R_sq) return obs;
+                            if (distanceSqrdPointToSegment(obs.position, p_r0_seg, p_r1_seg) <= R_sq) {
+                                recordCulprit(obs);
+                                return obs;
+                            }
                         }
                     } else if (obs.type == Obstacle::BOX) {
                         const double w = obs.dimensions.width + 2 * inflation;
@@ -1491,10 +1512,14 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
                             const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
                             // Since boxes don't rotate, we can call with 'consider_rotation' as false for max performance.
                             if (sweptBoxIntersection(p_r0_seg, v_r_seg, p_o0, obs.velocity, w, h, T_segment, obs.dimensions.rotation, false)) {
+                                recordCulprit(obs);
                                 return obs;
                             }
                         } else {
-                            if (lineIntersectsRectangle(p_r0_seg, p_r1_seg, obs.position, w, h, obs.dimensions.rotation)) return obs;
+                            if (lineIntersectsRectangle(p_r0_seg, p_r1_seg, obs.position, w, h, obs.dimensions.rotation)) {
+                                recordCulprit(obs);
+                                return obs;
+                            }
                         }
                     }
                 }
@@ -1516,16 +1541,25 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
                             const double a = v_rel.dot(v_rel);
                             const double b = 2.0 * p_rel_start.dot(v_rel);
                             const double c = p_rel_start.dot(p_rel_start) - R_sq;
-                            if (std::abs(a) < 1e-9) { if (c <= 0) return obs; continue; }
+                            if (std::abs(a) < 1e-9) { 
+                                if (c <= 0) { recordCulprit(obs); return obs; } 
+                                continue; 
+                            }
                             const double disc = b * b - 4 * a * c;
                             if (disc >= 0) {
                                 const double sqrt_disc = std::sqrt(disc);
                                 const double t1 = (-b - sqrt_disc) / (2.0 * a);
                                 const double t2 = (-b + sqrt_disc) / (2.0 * a);
-                                if (std::max(0.0, t1) <= std::min(T_segment, t2)) return obs;
+                                if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
+                                    recordCulprit(obs);
+                                    return obs;
+                                }
                             }
                         } else {
-                            if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) return obs;
+                            if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
+                                recordCulprit(obs);
+                                return obs;
+                            }
                         }
                     } else if (obs.type == Obstacle::BOX) {
                         const double w = obs.dimensions.width + 2 * inflation;
@@ -1535,10 +1569,14 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
                             const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
                             // Since boxes don't rotate, we can call with 'consider_rotation' as false for max performance.
                             if (sweptBoxIntersection(p_r0, v_r, p_o0, obs.velocity, w, h, T_segment, obs.dimensions.rotation, false)) {
+                                recordCulprit(obs);
                                 return obs;
                             }
                         } else {
-                            if (lineIntersectsRectangle(p_r0, p_r1, obs.position, w, h, obs.dimensions.rotation)) return obs;
+                            if (lineIntersectsRectangle(p_r0, p_r1, obs.position, w, h, obs.dimensions.rotation)) {
+                                recordCulprit(obs);
+                                return obs;
+                            }
                         }
                     }
                 }
@@ -1567,6 +1605,13 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
     if (trajectory.path_points.size() < 2) {
         return std::nullopt;
     }
+
+    auto recordCulprit = [&](const Obstacle& obs) {
+        if (culprit_names_.find(obs.name) == culprit_names_.end()) {
+            culprit_names_.insert(obs.name);
+            culprit_cache_.push_back(obs);
+        }
+    };
 
     // Create the robot's collision geometry (a sphere representing the safety bubble).
     auto robot_geom = std::make_shared<fcl::Sphered>(inflation);
@@ -1651,6 +1696,7 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
                 // std::cout << "      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
                 //           << "      !!!!!! FCL RESULT: COLLISION DETECTED !!!!!!\n"
                 //           << "      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+                recordCulprit(obs);
                 return obs;
             } else {
                 // // --- DEBUG: Announce no collision ---
@@ -1798,7 +1844,6 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleFCL(
 //     return std::nullopt; // No collision found
 // }
 
-
 std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
     const Trajectory& trajectory,
     double global_start_time
@@ -1904,6 +1949,11 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
                 bullet_world_->removeCollisionObject(&obs_co);
 
                 if (result_callback.hasHit()) {
+                    // recordCulprit(obs);
+                    if (culprit_names_.find(obs.name) == culprit_names_.end()) {
+                        culprit_names_.insert(obs.name);
+                        culprit_cache_.push_back(obs);
+                    }
                     return obs; // Collision detected!
                 }
             }
@@ -2004,6 +2054,11 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
                 bullet_world_->removeCollisionObject(&obs_co);
 
                 if (result_callback.hasHit()) {
+                    // recordCulprit(obs);
+                    if (culprit_names_.find(obs.name) == culprit_names_.end()) {
+                        culprit_names_.insert(obs.name);
+                        culprit_cache_.push_back(obs);
+                    }
                     return obs;
                 }
             }
@@ -2014,6 +2069,130 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
     }
 
 }
+
+// std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacleBullet(
+//     const Trajectory& trajectory,
+//     double global_start_time
+// ) const {
+//     // --- Initial Setup & Validation ---
+//     if (trajectory.path_points.size() < 2 || trajectory.coeffs_per_axis.empty()) {
+//         return std::nullopt; // Not a valid trajectory to check
+//     }
+
+//     // Lazy initialization of the Bullet world.
+//     if (!bullet_world_) {
+//         bullet_collision_config_ = std::make_unique<btDefaultCollisionConfiguration>();
+//         bullet_dispatcher_ = std::make_unique<btCollisionDispatcher>(bullet_collision_config_.get());
+//         bullet_broadphase_ = std::make_unique<btDbvtBroadphase>();
+//         bullet_world_ = std::make_unique<btCollisionWorld>(
+//             bullet_dispatcher_.get(), bullet_broadphase_.get(), bullet_collision_config_.get()
+//         );
+//     }
+    
+//     // Create the robot's collision shape once with its effective radius.
+//     btSphereShape robot_shape(inflation);
+
+//     // Re-use the callback object for all sweep tests to improve efficiency.
+//     btCollisionWorld::ClosestConvexResultCallback result_callback(btVector3(0,0,0), btVector3(0,0,0));
+
+//     // --- The "basis" function, copied from MinSnapROS2Manager for evaluating the polynomial ---
+//     auto basis = [&](int deriv, double tau, int num_coeffs) -> Eigen::RowVectorXd {
+//         Eigen::RowVectorXd r = Eigen::RowVectorXd::Zero(num_coeffs);
+//         for (int i = deriv; i < num_coeffs; ++i) {
+//             double c = 1.0; for (int k = 0; k < deriv; ++k) c *= (i - k);
+//             r(i) = c * std::pow(tau, i - deriv);
+//         }
+//         return r;
+//     };
+    
+//     // --- Main Loop: Check each segment of the trajectory ---
+//     // A full trajectory from the planner is composed of one or more of these segments (e.g., A->S, S->B).
+//     const double T_segment = trajectory.time_duration;
+//     if (T_segment <= 1e-9) {
+//         return std::nullopt; // Cannot check a zero-duration segment
+//     }
+
+//     const double global_time_at_segment_start = global_start_time;
+
+//     // --- High-Resolution Sub-division of the Curved Path ---
+//     const int num_subdivisions = 10; // Increase for more accuracy, decrease for more speed. 10 is a good start.
+//     const int num_coeffs = trajectory.coeffs_per_axis[0].size();
+    
+//     Eigen::Vector3d p_sub_start_3d = trajectory.path_points.front().head<3>();
+
+//     for (int j = 1; j <= num_subdivisions; ++j) {
+//         double tau = static_cast<double>(j) / num_subdivisions;
+
+//         // Evaluate the polynomial at time `tau` to get the true 3D position at the end of the sub-segment.
+//         Eigen::Vector3d p_sub_end_3d;
+//         p_sub_end_3d.x() = (trajectory.coeffs_per_axis[0].transpose() * basis(0, tau, num_coeffs).transpose())(0);
+//         p_sub_end_3d.y() = (trajectory.coeffs_per_axis[1].transpose() * basis(0, tau, num_coeffs).transpose())(0);
+//         p_sub_end_3d.z() = (trajectory.coeffs_per_axis[2].transpose() * basis(0, tau, num_coeffs).transpose())(0);
+
+//         // Define the robot's motion for this short, near-linear sub-segment.
+//         btTransform robot_tf_start, robot_tf_end;
+//         robot_tf_start.setIdentity();
+//         robot_tf_start.setOrigin(btVector3(p_sub_start_3d.x(), p_sub_start_3d.y(), p_sub_start_3d.z()));
+//         robot_tf_end.setIdentity();
+//         robot_tf_end.setOrigin(btVector3(p_sub_end_3d.x(), p_sub_end_3d.y(), p_sub_end_3d.z()));
+
+//         // --- Check this sub-segment against every obstacle ---
+//         for (const auto& obs : obstacle_snapshot_) {
+//             auto shape_it = bullet_shape_cache_.find(obs.name);
+//             if (shape_it == bullet_shape_cache_.end()) continue;
+//             btConvexShape* obs_shape = shape_it->second.get();
+
+//             // Predict obstacle motion over the DURATION of the sub-segment.
+//             const double T_sub_segment = T_segment / num_subdivisions;
+//             const double time_at_sub_segment_start = global_time_at_segment_start + (T_segment * (j - 1) / num_subdivisions);
+
+//             btTransform obs_tf_start, obs_tf_end;
+//             obs_tf_start.setIdentity();
+//             obs_tf_end.setIdentity();
+
+//             Eigen::Vector3d obs_pos(obs.position.x(), obs.position.y(), obs.z);
+//             Eigen::Vector3d obs_vel(obs.velocity.x(), obs.velocity.y(), 0.0); // Assumes constant Z
+
+//             Eigen::Vector3d obs_pos_start = obs_pos;
+//             if (obs.is_dynamic) {
+//                 double delta_t = std::max(0.0, time_at_sub_segment_start - obs.last_update_time.seconds());
+//                 obs_pos_start = obs_pos + obs_vel * delta_t;
+//                 Eigen::Vector3d obs_pos_end = obs_pos_start + obs_vel * T_sub_segment;
+//                 obs_tf_end.setOrigin(btVector3(obs_pos_end.x(), obs_pos_end.y(), obs_pos_end.z()));
+//             } else {
+//                 obs_tf_end.setOrigin(btVector3(obs_pos_start.x(), obs_pos_start.y(), obs_pos_start.z()));
+//             }
+//             obs_tf_start.setOrigin(btVector3(obs_pos_start.x(), obs_pos_start.y(), obs_pos_start.z()));
+            
+//             // --- Perform the Relative Motion Sweep Test ---
+//             btCollisionObject obs_co;
+//             obs_co.setCollisionShape(obs_shape);
+//             obs_co.setWorldTransform(obs_tf_start);
+//             bullet_world_->addCollisionObject(&obs_co);
+
+//             btTransform robot_tf_end_relative = robot_tf_end;
+//             btVector3 obstacle_displacement = obs_tf_end.getOrigin() - obs_tf_start.getOrigin();
+//             robot_tf_end_relative.getOrigin() -= obstacle_displacement;
+
+//             result_callback.m_closestHitFraction = 1.0f;
+//             result_callback.m_hitCollisionObject = nullptr;
+            
+//             bullet_world_->convexSweepTest(&robot_shape, robot_tf_start, robot_tf_end_relative, result_callback, 0.0f);
+
+//             bullet_world_->removeCollisionObject(&obs_co);
+
+//             if (result_callback.hasHit()) {
+//                 return obs; // COLLISION DETECTED!
+//             }
+//         }
+        
+//         // The end of this sub-segment is the start of the next one.
+//         p_sub_start_3d = p_sub_end_3d;
+//     }
+
+//     return std::nullopt; // Trajectory is safe
+// }
+
 
 
 
@@ -3260,7 +3439,7 @@ bool GazeboObstacleChecker::sweptBoxIntersection3D(const Eigen::Vector3d& p_r0, 
 bool GazeboObstacleChecker::checkRobotCollision(const Eigen::Vector3d& position, double yaw) const {
     // For Min-Snap, the robot is best approximated by a cylinder (a circle with height).
     const double ROBOT_HEIGHT_3D = 0.5;
-    const double ROBOT_RADIUS_3D = 1.0; 
+    const double ROBOT_RADIUS_3D = inflation; 
 
     // Correctly switch between footprint types, just like the 2D version.
     if (footprint_type_ == "rectangular") {
@@ -3434,4 +3613,11 @@ bool GazeboObstacleChecker::fastLineAABBIntersection(const Eigen::Vector3d& p0, 
     }
     // If the interval is valid, a collision occurs
     return true;
+}
+
+void GazeboObstacleChecker::recordCulprit(const Obstacle& obs) const {
+    // if (collision_culprits_names_.find(obs.name) == collision_culprits_names_.end()) {
+    //     collision_culprits_names_.insert(obs.name);
+    //     collision_culprits_data_.push_back(obs);
+    // }
 }

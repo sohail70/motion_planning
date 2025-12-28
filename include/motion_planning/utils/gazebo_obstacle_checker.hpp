@@ -25,11 +25,19 @@
 class GazeboObstacleChecker : public ObstacleChecker {
 public:
 
+
     GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
                         const Params& params,
                         const std::unordered_map<std::string, ObstacleInfo>& obstacle_info);
 
     ~GazeboObstacleChecker();
+
+    std::vector<Obstacle> getAndClearCulprits() const {
+        std::vector<Obstacle> temp = culprit_cache_;
+        culprit_cache_.clear();
+        culprit_names_.clear();
+        return temp;
+    }
 
     bool isObstacleFree(const Eigen::VectorXd& start, 
                        const Eigen::VectorXd& end) const override;
@@ -183,6 +191,14 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
         // std::lock_guard<std::mutex> lock(snapshot_mutex_);
         obstacle_snapshot_ = obstacle_positions_;  // Atomic copy --> obstacle snapshot is gonna be used in isObstacleFree or isTrajectorySafe, because obstalce_positions_ is live updating while you are in a plan() function
         return {robot_position_, obstacle_snapshot_};
+    }
+
+    const ObstacleVector& getLatestSnapshot() const {
+        return obstacle_snapshot_;
+    }
+    ObstacleVector getCurrentObstacles() {
+        processLatestPoseInfo();
+        return obstacle_positions_;
     }
 
 
@@ -445,5 +461,12 @@ private:
 
 
 
+
+        // Inside the private section:
+    mutable std::vector<Obstacle> culprit_cache_;
+    mutable std::set<std::string> culprit_names_;
+
+
+    void recordCulprit(const Obstacle& obs) const;
 
 };

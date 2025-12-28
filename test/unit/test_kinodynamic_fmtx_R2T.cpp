@@ -285,120 +285,238 @@ int main(int argc, char** argv)
     // Start profiling
     int counter = 0;
 
+    
+    // CALLGRIND_START_INSTRUMENTATION;
+    // while (g_running && rclcpp::ok())
+    // {
+    //     // if (counter > 200)
+    //     //     break;
+    //     // counter++;
+    //     /////////////
+    //     if (limited) {
+    //         auto now = std::chrono::steady_clock::now();
+    //         if (now - start_time > time_limit) {
+    //             std::cout << "[INFO] time_limit seconds have passed. Exiting loop.\n";
+    //             // break;  // exit the loop
+    //         }
+    //     }
+    //     /////////////
+
+    //     bool needs_replan = false;
+        
+    //     // Get the robot's current state ONCE per cycle.
+    //     Eigen::VectorXd current_sim_state = ros_manager->getCurrentSimulatedState();
+    //     kinodynamic_planner->setRobotState(current_sim_state);
+    //     if (current_sim_state.size() == 0) { // Wait for the simulation to initialize
+    //          loop_rate.sleep();
+    //          continue;
+    //     }
+    //     // Calculate the 2D distance to the goal using the tree_root_state variable.
+    //     double distance_to_goal = (current_sim_state.head<2>() - tree_root_state.head<2>()).norm();
+
+    //     if (distance_to_goal < goal_tolerance) {
+    //         RCLCPP_INFO(vis_node->get_logger(), "Goal Reached! Mission Accomplished.");
+    //         g_running = false; // Set the flag to cleanly exit the loop.
+    //         continue;          // Skip the rest of this loop iteration.
+    //     }
+
+    //     const auto& snapshot = obstacle_checker->getAtomicSnapshot();
+
+    //     auto start = std::chrono::steady_clock::now();
+    //     kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
+    //     // if (needs_replan) {
+    //         // Get the robot's current state to plan FROM.
+    //         // current_sim_state = ros_manager->getCurrentSimulatedState();
+    //         // kinodynamic_planner->setRobotState(current_sim_state);
+    //         planner->plan();
+    //         auto end = std::chrono::steady_clock::now();
+    //         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    //         if (duration.count() > 0) {
+    //             std::cout << "time taken for the update : " << duration.count() 
+    //                     << " milliseconds\n";
+    //         }
+    //         sim_durations.push_back(duration.count());
+    //         double elapsed_s = std::chrono::duration<double>(start - global_start).count();
+    //         double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
+    //         sim_duration_2.emplace_back(elapsed_s, duration_ms);
+
+    //         ///////---------
+    //         LogEntry entry;
+    //         entry.elapsed_s = std::chrono::duration<double>(start - global_start).count();
+    //         entry.duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
+    //         //////---------
+  
+
+    //         current_sim_state = ros_manager->getCurrentSimulatedState();
+    //         kinodynamic_planner->setRobotState(current_sim_state);
+    //         auto new_executable_path = kinodynamic_planner->getPathPositions();
+            
+    //         ////----------
+    //         // Get the complete metrics struct AFTER plan and setRobotState are done
+    //         const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
+
+    //         // Populate the log entry
+    //         entry.obstacle_checks = metrics.obstacle_checks;
+    //         entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
+    //         entry.orphaned_nodes = metrics.orphaned_nodes;
+    //         entry.path_cost = metrics.path_cost; // <-- Get cost directly from metrics
+    //         entry.time_to_goal = kinodynamic_planner->getRobotTimeToGo(); // This is still separate and correct
+
+    //         log_data.push_back(entry);
+    //         ////-----------
+
+
+
+    //         if (new_executable_path.empty()) {
+    //             // FAILURE CASE: The planner could not find a valid path from the robot's current state.
+    //             RCLCPP_ERROR(vis_node->get_logger(), "Replanning failed! Commanding robot to STOP.");
+                
+    //             // Create a "stop" path containing only the robot's current state.
+    //             std::vector<Eigen::VectorXd> stop_path;
+    //             stop_path.push_back(current_sim_state);
+                
+    //             // Update the current path and send it to the manager to halt execution.
+    //             current_executable_path = stop_path;
+    //             ros_manager->setPath(current_executable_path);
+
+    //         } else {
+    //             // SUCCESS CASE: A new path was found.
+    //             // Check if the newly generated path is actually different from the one we're already on.
+    //             if (kinodynamic_planner->arePathsSimilar(current_executable_path, new_executable_path, 0.1)) { // Increased tolerance
+    //                 // RCLCPP_INFO(vis_node->get_logger(), "Replanning resulted in a similar path. No update needed.");
+    //             } else {
+    //                 // RCLCPP_INFO(vis_node->get_logger(), "New optimal path found. Updating trajectory.");
+    //                 // If the path is meaningfully new, update our stored path and send it to the manager.
+    //                 current_executable_path = new_executable_path;
+    //                 ros_manager->setPath(current_executable_path);
+    //             }
+    //         }
+    //     // }
+
+    //     kinodynamic_planner->visualizePath(current_executable_path);
+    //     // We visualize the tree in every frame, regardless of replanning.
+    //     // kinodynamic_planner->visualizeTree();
+    //     loop_rate.sleep();
+    // }
+    // // Stop profiling
+    // CALLGRIND_STOP_INSTRUMENTATION;
+
+// Start profiling
     CALLGRIND_START_INSTRUMENTATION;
+    
     while (g_running && rclcpp::ok())
     {
-        // if (counter > 200)
-        //     break;
-        // counter++;
-        /////////////
+        // --- 1. TIME LIMIT CHECK ---
         if (limited) {
             auto now = std::chrono::steady_clock::now();
             if (now - start_time > time_limit) {
                 std::cout << "[INFO] time_limit seconds have passed. Exiting loop.\n";
-                // break;  // exit the loop
+                // Optionally break here if you want to stop
             }
         }
-        /////////////
 
-        bool needs_replan = false;
-        
-        // Get the robot's current state ONCE per cycle.
+        // --- 2. GET STATE ---
+        // Get the robot's current state from the simulator manager
         Eigen::VectorXd current_sim_state = ros_manager->getCurrentSimulatedState();
-        kinodynamic_planner->setRobotState(current_sim_state);
-        if (current_sim_state.size() == 0) { // Wait for the simulation to initialize
+        
+        // Wait for initialization
+        if (current_sim_state.size() == 0) { 
              loop_rate.sleep();
              continue;
         }
-        // Calculate the 2D distance to the goal using the tree_root_state variable.
+
+        // --- 3. GOAL CHECK ---
         double distance_to_goal = (current_sim_state.head<2>() - tree_root_state.head<2>()).norm();
 
         if (distance_to_goal < goal_tolerance) {
             RCLCPP_INFO(vis_node->get_logger(), "Goal Reached! Mission Accomplished.");
-            g_running = false; // Set the flag to cleanly exit the loop.
-            continue;          // Skip the rest of this loop iteration.
+            
+            // [FIX] Clear any Red Threats before exiting
+            ros_manager->updateThreats({}); 
+            
+            g_running = false; 
+            continue;         
         }
 
+        // --- 4. PREPARE PLANNER ---
+        // Update the planner with the current robot state
+        kinodynamic_planner->setRobotState(current_sim_state);
+
+        // Update the planner with the latest obstacles from Gazebo
         const auto& snapshot = obstacle_checker->getAtomicSnapshot();
-
-        auto start = std::chrono::steady_clock::now();
         kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
-        // if (needs_replan) {
-            // Get the robot's current state to plan FROM.
-            // current_sim_state = ros_manager->getCurrentSimulatedState();
-            // kinodynamic_planner->setRobotState(current_sim_state);
-            planner->plan();
-            auto end = std::chrono::steady_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            if (duration.count() > 0) {
-                std::cout << "time taken for the update : " << duration.count() 
-                        << " milliseconds\n";
-            }
-            sim_durations.push_back(duration.count());
-            double elapsed_s = std::chrono::duration<double>(start - global_start).count();
-            double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
-            sim_duration_2.emplace_back(elapsed_s, duration_ms);
 
-            ///////---------
-            LogEntry entry;
-            entry.elapsed_s = std::chrono::duration<double>(start - global_start).count();
-            entry.duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
-            //////---------
-  
+        // --- 5. PLAN ---
+        auto start = std::chrono::steady_clock::now();
+        
+        // This runs the FMT* search and populates the obstacle checker's culprit cache
+        planner->plan();
+        
+        auto end = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        double duration_ms = duration.count();
 
-            current_sim_state = ros_manager->getCurrentSimulatedState();
-            kinodynamic_planner->setRobotState(current_sim_state);
-            auto new_executable_path = kinodynamic_planner->getPathPositions();
+        // --- [NEW] 6. SYNC THREATS ---
+        // 1. Get the obstacles that caused collisions during this specific plan
+        std::vector<Obstacle> culprits = obstacle_checker->getAndClearCulprits();
+        
+        // 2. Send them to the R2T Manager. 
+        // The manager's background timer will see these and draw them as RED.
+        ros_manager->updateThreats(culprits);
+
+        // -----------------------------
+
+        // --- 7. LOGGING ---
+        if (duration_ms > 0) {
+            std::cout << "Update time: " << duration_ms << "ms | Culprits: " << culprits.size() << "\n";
+        }
+        
+        LogEntry entry;
+        entry.elapsed_s = std::chrono::duration<double>(start - global_start).count();
+        entry.duration_ms = duration_ms;
+        const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
+        entry.obstacle_checks = metrics.obstacle_checks;
+        entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
+        entry.orphaned_nodes = metrics.orphaned_nodes;
+        entry.path_cost = metrics.path_cost;
+        entry.time_to_goal = kinodynamic_planner->getRobotTimeToGo();
+        log_data.push_back(entry);
+
+
+        // --- 8. EXECUTION UPDATES ---
+        auto new_executable_path = kinodynamic_planner->getPathPositions();
+
+        if (new_executable_path.empty()) {
+            // FAILURE: Stop the robot
+            RCLCPP_WARN(vis_node->get_logger(), "Replanning failed! Path blocked.");
             
-            ////----------
-            // Get the complete metrics struct AFTER plan and setRobotState are done
-            const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
+            // Send a path consisting only of the current state to stop motion
+            std::vector<Eigen::VectorXd> stop_path;
+            stop_path.push_back(current_sim_state);
+            ros_manager->setPath(stop_path);
 
-            // Populate the log entry
-            entry.obstacle_checks = metrics.obstacle_checks;
-            entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
-            entry.orphaned_nodes = metrics.orphaned_nodes;
-            entry.path_cost = metrics.path_cost; // <-- Get cost directly from metrics
-            entry.time_to_goal = kinodynamic_planner->getRobotTimeToGo(); // This is still separate and correct
-
-            log_data.push_back(entry);
-            ////-----------
-
-
-
-            if (new_executable_path.empty()) {
-                // FAILURE CASE: The planner could not find a valid path from the robot's current state.
-                RCLCPP_ERROR(vis_node->get_logger(), "Replanning failed! Commanding robot to STOP.");
-                
-                // Create a "stop" path containing only the robot's current state.
-                std::vector<Eigen::VectorXd> stop_path;
-                stop_path.push_back(current_sim_state);
-                
-                // Update the current path and send it to the manager to halt execution.
-                current_executable_path = stop_path;
+        } else {
+            // SUCCESS: Update trajectory
+            // Optional: Check similarity to avoid sending minor updates
+            if (!kinodynamic_planner->arePathsSimilar(current_executable_path, new_executable_path, 0.1)) {
+                current_executable_path = new_executable_path;
                 ros_manager->setPath(current_executable_path);
-
-            } else {
-                // SUCCESS CASE: A new path was found.
-                // Check if the newly generated path is actually different from the one we're already on.
-                if (kinodynamic_planner->arePathsSimilar(current_executable_path, new_executable_path, 0.1)) { // Increased tolerance
-                    // RCLCPP_INFO(vis_node->get_logger(), "Replanning resulted in a similar path. No update needed.");
-                } else {
-                    // RCLCPP_INFO(vis_node->get_logger(), "New optimal path found. Updating trajectory.");
-                    // If the path is meaningfully new, update our stored path and send it to the manager.
-                    current_executable_path = new_executable_path;
-                    ros_manager->setPath(current_executable_path);
-                }
             }
-        // }
+        }
 
+        // --- 9. VISUALIZATION ---
         kinodynamic_planner->visualizePath(current_executable_path);
-        // We visualize the tree in every frame, regardless of replanning.
-        // kinodynamic_planner->visualizeTree();
+        
         loop_rate.sleep();
     }
     // Stop profiling
     CALLGRIND_STOP_INSTRUMENTATION;
+
+
+
+
+
+
 
     const int final_collision_count = ros_manager->getCollisionCount();
     RCLCPP_FATAL(vis_node->get_logger(), "SIMULATION COMPLETE. TOTAL DETECTED COLLISIONS: %d", final_collision_count);

@@ -10,6 +10,43 @@ MinSnapStateSpace::MinSnapStateSpace(int dimension, double v_max, double a_max, 
       w_snap_(w_snap),
       seed_(seed) {
     std::srand(seed_);
+
+    // Pre-compute H_vel_template_
+    H_vel_template_ = Eigen::MatrixXd::Zero(num_coeffs_, num_coeffs_);
+    for (int i = 1; i < num_coeffs_; ++i) {
+        for (int j = 1; j < num_coeffs_; ++j) {
+            H_vel_template_(i, j) = (double(i * j) / (i + j - 1.0));
+        }
+    }
+
+    // Pre-compute H_accel_template_
+    H_accel_template_ = Eigen::MatrixXd::Zero(num_coeffs_, num_coeffs_);
+    for (int i = 2; i < num_coeffs_; ++i) {
+        for (int j = 2; j < num_coeffs_; ++j) {
+            H_accel_template_(i, j) = (i * (i - 1.) * j * (j - 1.)) / (i + j - 3.0);
+        }
+    }
+
+    H_jerk_template_ = Eigen::MatrixXd::Zero(num_coeffs_, num_coeffs_);
+    for (int i = 3; i < num_coeffs_; ++i) {
+        for (int j = 3; j < num_coeffs_; ++j) {
+            double ci = i * (i - 1.) * (i - 2.);
+            double cj = j * (j - 1.) * (j - 2.);
+            H_jerk_template_(i, j) = (ci * cj) / (i + j - 5.0);
+        }
+    }
+
+    // Pre-compute H_snap_template_
+    H_snap_template_ = Eigen::MatrixXd::Zero(num_coeffs_, num_coeffs_);
+    for (int i = 4; i < num_coeffs_; ++i) {
+        for (int j = 4; j < num_coeffs_; ++j) {
+            double ci = i * (i - 1.) * (i - 2.) * (i - 3.);
+            double cj = j * (j - 1.) * (j - 2.) * (j - 3.);
+            H_snap_template_(i, j) = (ci * cj) / (i + j - 7.0);
+        }
+    }
+
+
 }
 
 
@@ -410,6 +447,38 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
     return result_traj;
 }
 
+// Eigen::MatrixXd MinSnapStateSpace::calculateCombinedHessian(double T, int axis) const {
+//     // NOTE: For minimum snap, it's common to only penalize jerk and snap.
+//     // However, we include all terms here to match your configuration.
+//     // You can set weights to zero in the calling code to disable penalties.
+//     const double w_vel = w_vel_(axis);
+//     const double w_accel = w_accel_(axis);
+//     const double w_jerk = 1.0; // A reasonable default weight for the new jerk term
+//     const double w_snap = w_snap_(axis);
+    
+//     Eigen::MatrixXd H_total = Eigen::MatrixXd::Zero(num_coeffs_, num_coeffs_);
+
+//     // Fast, loop-free Hessian construction using the pre-computed templates
+//     if (w_vel > 1e-6) {
+//         H_total += (w_vel / T) * H_vel_template_;
+//     }
+//     if (w_accel > 1e-6) {
+//         H_total += (w_accel / std::pow(T, 3)) * H_accel_template_;
+//     }
+//     if (w_jerk > 1e-6) {
+//         H_total += (w_jerk / std::pow(T, 5)) * H_jerk_template_; // <-- THE FIX
+//     }
+//     if (w_snap > 1e-6) {
+//         H_total += (w_snap / std::pow(T, 7)) * H_snap_template_;
+//     }
+
+//     // Add a small identity matrix for numerical stability
+//     H_total += 1e-9 * Eigen::MatrixXd::Identity(num_coeffs_, num_coeffs_);
+    
+//     return H_total;
+// }
+
+
 
 Eigen::MatrixXd MinSnapStateSpace::calculateCombinedHessian(double T,  int axis) const {
     double w_vel = w_vel_(axis);
@@ -449,7 +518,7 @@ Eigen::MatrixXd MinSnapStateSpace::calculateCombinedHessian(double T,  int axis)
     H_total += 1e-9 * Eigen::MatrixXd::Identity(num_coeffs_, num_coeffs_);
     return H_total;
 }
-// //////////////////////////////////
+//////////////////////////////////
 
 // // Steer function with known derivatives at the PARENT ('to') node
 // Trajectory MinSnapStateSpace::steer_with_initial(const Eigen::VectorXd& from, const Eigen::VectorXd& to, const Eigen::VectorXd& v0, const Eigen::VectorXd& a0) const {

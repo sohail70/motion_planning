@@ -35,9 +35,11 @@ public:
         }
         current_interpolated_state_ = initial_sim_state;
         
-        simulation_time_step_ = params.getParam<double>("sim_time_step", -0.04);
+        // simulation_time_step_ = params.getParam<double>("sim_time_step", -0.04);
         int sim_frequency_hz = params.getParam<int>("sim_frequency_hz", 50);
         int vis_frequency_hz = params.getParam<int>("vis_frequency_hz", 30);
+        // Sim Speed - Frequency (Hz) * Time Step Size (s) 
+        simulation_time_step_ = -1.0 / static_cast<double>(sim_frequency_hz);
         
         RCLCPP_INFO(this->get_logger(), "Initialized R2TRO2SManager.");
 
@@ -118,6 +120,13 @@ public:
         return collision_count_.load();
     }
 
+    void updateThreats(const std::vector<Obstacle>& culprits) {
+        current_threat_names_.clear();
+        for (const auto& obs : culprits) {
+            current_threat_names_.insert(obs.name);
+        }
+    }
+
 
 private:
     std::shared_ptr<ObstacleChecker> obstacle_checker_;
@@ -137,65 +146,124 @@ private:
 
     std::atomic<int> collision_count_{0};
     bool is_in_collision_state_{false};
+    std::set<std::string> current_threat_names_;
 
-    void visualizationLoop() {
-        if (!obstacle_checker_ || !visualizer_) return;
+    // OLD VERSION
+    // void visualizationLoop() {
+    //     if (!obstacle_checker_ || !visualizer_) return;
         
-        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
-        if (!gazebo_checker) return;
+    //     auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+    //     if (!gazebo_checker) return;
 
-        gazebo_checker->processLatestPoseInfo();
-        const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
+    //     gazebo_checker->processLatestPoseInfo();
+    //     const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
         
-        // --- MODIFIED SECTION START ---
+    //     // --- MODIFIED SECTION START ---
         
-        // Prepare containers for visualization data
-        std::vector<Eigen::VectorXd> cylinder_positions;
-        std::vector<double> cylinder_radii;
+    //     // Prepare containers for visualization data
+    //     std::vector<Eigen::VectorXd> cylinder_positions;
+    //     std::vector<double> cylinder_radii;
         
-        //  Create the specific data structure your visualizeCube function needs
-        std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_data_for_viz;
+    //     //  Create the specific data structure your visualizeCube function needs
+    //     std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_data_for_viz;
 
-        std::vector<Eigen::Vector2d> dynamic_obstacle_positions;
-        std::vector<Eigen::Vector2d> dynamic_obstacle_velocities;
+    //     std::vector<Eigen::Vector2d> dynamic_obstacle_positions;
+    //     std::vector<Eigen::Vector2d> dynamic_obstacle_velocities;
 
-        // Process each obstacle and sort it into the correct container
-        for (const auto& obstacle : all_obstacles) {
-            if (obstacle.type == Obstacle::CIRCLE) {
-                Eigen::VectorXd pos(2);
-                pos << obstacle.position.x(), obstacle.position.y();
-                cylinder_positions.push_back(pos);
-                cylinder_radii.push_back(obstacle.dimensions.radius);
-            } else if (obstacle.type == Obstacle::BOX) {
-                // Populate the vector of tuples directly
-                box_data_for_viz.emplace_back(
-                    obstacle.position,
-                    obstacle.dimensions.width,
-                    obstacle.dimensions.height,
-                    obstacle.dimensions.rotation
-                );
-            }
+    //     // Process each obstacle and sort it into the correct container
+    //     for (const auto& obstacle : all_obstacles) {
+    //         if (obstacle.type == Obstacle::CIRCLE) {
+    //             Eigen::VectorXd pos(2);
+    //             pos << obstacle.position.x(), obstacle.position.y();
+    //             cylinder_positions.push_back(pos);
+    //             cylinder_radii.push_back(obstacle.dimensions.radius);
+    //         } else if (obstacle.type == Obstacle::BOX) {
+    //             // Populate the vector of tuples directly
+    //             box_data_for_viz.emplace_back(
+    //                 obstacle.position,
+    //                 obstacle.dimensions.width,
+    //                 obstacle.dimensions.height,
+    //                 obstacle.dimensions.rotation
+    //             );
+    //         }
             
-            if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
-                dynamic_obstacle_positions.push_back(obstacle.position);
-                dynamic_obstacle_velocities.push_back(obstacle.velocity);
-            }
-        }
+    //         if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
+    //             dynamic_obstacle_positions.push_back(obstacle.position);
+    //             dynamic_obstacle_velocities.push_back(obstacle.velocity);
+    //         }
+    //     }
 
-        // Send data to the visualizer
-        if (!cylinder_positions.empty()) {
-            visualizer_->visualizeCylinder(cylinder_positions, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "cylinder_obstacles");
-        }
-        if (!box_data_for_viz.empty()) {
-            // Call your actual visualizeCube function with the correct data structure
-            visualizer_->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
-        }
-        if (!dynamic_obstacle_positions.empty()) {
-            visualizer_->visualizeVelocityVectors(dynamic_obstacle_positions, dynamic_obstacle_velocities, "map", {1.0f, 0.5f, 0.0f}, "velocity_vectors");
-        }
+    //     // Send data to the visualizer
+    //     if (!cylinder_positions.empty()) {
+    //         visualizer_->visualizeCylinder(cylinder_positions, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "cylinder_obstacles");
+    //     }
+    //     if (!box_data_for_viz.empty()) {
+    //         // Call your actual visualizeCube function with the correct data structure
+    //         visualizer_->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
+    //     }
+    //     if (!dynamic_obstacle_positions.empty()) {
+    //         visualizer_->visualizeVelocityVectors(dynamic_obstacle_positions, dynamic_obstacle_velocities, "map", {1.0f, 0.5f, 0.0f}, "velocity_vectors");
+    //     }
         
-        // --- MODIFIED SECTION END ---
-    }
+    //     // --- MODIFIED SECTION END ---
+    // }
+
+    // Optimized version
+    void visualizationLoop() { if (!obstacle_checker_ || !visualizer_) return; auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); if (!gazebo_checker) return; gazebo_checker->processLatestPoseInfo(); const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; std::vector<double> safe_cyl_radii, threat_cyl_radii;
+            std::vector<std::tuple<Eigen::Vector2d, double, double, double>> safe_boxes, threat_boxes;
+
+            std::vector<Eigen::Vector2d> safe_vel_pos, safe_vel_val;
+            std::vector<Eigen::Vector2d> threat_vel_pos, threat_vel_val;
+
+            for (const auto& obstacle : all_obstacles) {
+                bool is_threat = current_threat_names_.count(obstacle.name);
+
+                if (obstacle.type == Obstacle::CIRCLE) {
+                    Eigen::VectorXd pos(2);
+                    pos << obstacle.position.x(), obstacle.position.y();
+                    
+                    if (is_threat) {
+                        threat_cyl_pos.push_back(pos);
+                        threat_cyl_radii.push_back(obstacle.dimensions.radius);
+                    } else {
+                        safe_cyl_pos.push_back(pos);
+                        safe_cyl_radii.push_back(obstacle.dimensions.radius);
+                    }
+                } else if (obstacle.type == Obstacle::BOX) {
+                    auto box_tuple = std::make_tuple(
+                        obstacle.position,
+                        obstacle.dimensions.width,
+                        obstacle.dimensions.height,
+                        obstacle.dimensions.rotation
+                    );
+                    
+                    if (is_threat) {
+                        threat_boxes.push_back(box_tuple);
+                    } else {
+                        safe_boxes.push_back(box_tuple);
+                    }
+                }
+                
+                if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
+                    if (is_threat) {
+                        threat_vel_pos.push_back(obstacle.position);
+                        threat_vel_val.push_back(obstacle.velocity);
+                    } else {
+                        safe_vel_pos.push_back(obstacle.position);
+                        safe_vel_val.push_back(obstacle.velocity);
+                    }
+                }
+            }
+
+            visualizer_->publishObstacleFrame(
+                safe_cyl_pos, safe_cyl_radii,
+                threat_cyl_pos, threat_cyl_radii,
+                safe_boxes, threat_boxes,
+                safe_vel_pos, safe_vel_val,
+                threat_vel_pos, threat_vel_val,
+                "map"
+            );
+        }
 
 
 
@@ -374,6 +442,13 @@ private:
         if(robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - robot_pos_3d.head<2>()).norm() > 0.1) {
              robot_spatial_trace_.push_back(robot_pos_3d.head<2>());
         }
+
+        // static int trace_pub_throttle = 0;
+        // if (++trace_pub_throttle % 5 == 0) {
+        //     visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 1.0f, 0.0f}, "robot_trace");
+        // }
+
+
     }
 
 

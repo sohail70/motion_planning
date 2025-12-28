@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("use_range", false); 
     gazebo_params.setParam("sensor_range", 20.0);
     gazebo_params.setParam("estimation", true);
-    gazebo_params.setParam("inflation", 1.5); // A larger inflation makes the robot fatter to the planner, which might prevent it from finding paths through narrow gaps.
+    gazebo_params.setParam("inflation", 2.5); // A larger inflation makes the robot fatter to the planner, which might prevent it from finding paths through narrow gaps.
     gazebo_params.setParam("persistent_static_obstacles", false);
     gazebo_params.setParam("fcl", false); //TODO: Implement this for 3D min-snap too!
     gazebo_params.setParam("bullet", true);

@@ -406,9 +406,11 @@ public:
         current_vel_ = Eigen::VectorXd::Zero(4);
         current_accel_ = Eigen::VectorXd::Zero(4);
 
-        simulation_time_step_ = params.getParam<double>("simulation_time_step", -0.02);
+        // simulation_time_step_ = params.getParam<double>("simulation_time_step", -0.02);
         int sim_frequency_hz = params.getParam<int>("sim_frequency_hz", 50);
         int vis_frequency_hz = params.getParam<int>("vis_frequency_hz", 30);
+        // Sim Speed - Frequency (Hz) * Time Step Size (s) 
+        simulation_time_step_ = -1.0 / static_cast<double>(sim_frequency_hz);
 
 
         RCLCPP_INFO(this->get_logger(), "Initialized MinSnap ROS2Manager.");
@@ -650,11 +652,79 @@ private:
             Eigen::Vector3d current_pos_3d = current_pos_.head<3>();
             double current_yaw = current_pos_(3);
             bool is_colliding_now = gazebo_checker->checkRobotCollision(current_pos_3d, current_yaw);
-            if (is_colliding_now && !is_in_collision_state_) {
-                collision_count_++;
-                RCLCPP_FATAL(this->get_logger(), "COLLISION DETECTED! Total Failures: %d", collision_count_.load());
+            // if (is_colliding_now && !is_in_collision_state_) {
+            //     collision_count_++;
+            //     RCLCPP_FATAL(this->get_logger(), "COLLISION DETECTED! Total Failures: %d", collision_count_.load());
+            // }
+
+            /////////////////////////////////////////////////////////////////
+            // REPLACE the existing if-statement with this block:
+            // REPLACE the existing if-statement with this complete block:
+            if (is_colliding_now) {
+                if (!is_in_collision_state_) {
+                    collision_count_++;
+                    
+                    // --- NEW COMPREHENSIVE DEBUG LOG ---
+                    RCLCPP_FATAL(this->get_logger(), "\n\n--- FATAL COLLISION! ---");
+                    RCLCPP_FATAL(this->get_logger(), "Total Failures: %d at Sim Time: %.3f",
+                        collision_count_.load(), this->get_clock()->now().seconds());
+                    RCLCPP_FATAL(this->get_logger(), "Robot State [x,y,z,yaw]: [%.2f, %.2f, %.2f, %.2f]",
+                        current_pos_(0), current_pos_(1), current_pos_(2), current_pos_(3));
+
+
+                    // Get the ground truth by taking a fresh snapshot of the world RIGHT NOW.
+                    ObstacleVector ground_truth_snapshot = gazebo_checker->getCurrentObstacles();
+
+
+                    // Get the planner's belief by retrieving the LAST snapshot it used.
+                    const ObstacleVector& planner_belief_snapshot = gazebo_checker->getLatestSnapshot();
+
+                    // Find the colliding obstacle in the ground truth
+                    for (const auto& truth_obs : ground_truth_snapshot) {
+                        // Check distance between robot center and obstacle center
+                        double dist_sq = (truth_obs.position - current_pos_.head<2>()).squaredNorm();
+                        double obs_radius = (truth_obs.type == Obstacle::CIRCLE) 
+                                        ? truth_obs.dimensions.radius 
+                                        : std::hypot(truth_obs.dimensions.width/2.0, truth_obs.dimensions.height/2.0);
+                        
+                        // If the robot's center is within the obstacle's radius, it's the culprit
+                        if (dist_sq <= obs_radius * obs_radius) {
+                            RCLCPP_FATAL(this->get_logger(), "--- COLLISION ANALYSIS ---");
+                            RCLCPP_FATAL(this->get_logger(), "Collided with Obstacle: '%s'", truth_obs.name.c_str());
+                            RCLCPP_FATAL(this->get_logger(), " -> Ground Truth Pos:   [%.3f, %.3f, %.3f]", 
+                                truth_obs.position.x(), truth_obs.position.y(), truth_obs.z);
+
+                            // Now find the same obstacle in the planner's belief snapshot
+                            bool belief_found = false;
+                            for (const auto& belief_obs : planner_belief_snapshot) {
+                                if (belief_obs.name == truth_obs.name) {
+                                    RCLCPP_FATAL(this->get_logger(), " -> Planner Belief Pos: [%.3f, %.3f, %.3f] (at time %.3f)", 
+                                        belief_obs.position.x(), belief_obs.position.y(), belief_obs.z, belief_obs.last_update_time.seconds());
+                                    
+                                    Eigen::Vector3d error_vec(
+                                        truth_obs.position.x() - belief_obs.position.x(),
+                                        truth_obs.position.y() - belief_obs.position.y(),
+                                        truth_obs.z - belief_obs.z
+                                    );
+                                    RCLCPP_FATAL(this->get_logger(), " -> Prediction Error Dist: %.3f meters", error_vec.norm());
+                                    belief_found = true;
+                                    break;
+                                }
+                            }
+                            if (!belief_found) {
+                                RCLCPP_FATAL(this->get_logger(), " -> Planner Belief: Obstacle was NOT in the last snapshot.");
+                            }
+                            break; // Stop after finding the first colliding obstacle
+                        }
+                    }
+                    RCLCPP_FATAL(this->get_logger(), "--------------------------\n\n");
+                }
+                is_in_collision_state_ = true;
+            } else {
+                is_in_collision_state_ = false;
             }
-            is_in_collision_state_ = is_in_collision_state_;
+
+            /////////////////////////////////////////////////////////////////
         }
         
         visualizeRobot();

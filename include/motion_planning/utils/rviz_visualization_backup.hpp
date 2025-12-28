@@ -59,17 +59,6 @@ public:
     void visualizeDottedLineToNearest( const Eigen::Vector3d& robot_pos, const Eigen::Vector3d& nearest_obs_pos, int num_points, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);
 
     void clearMarkers(const std::string& ns = "");
-
-
-    void publishObstacleFrame(
-        const std::vector<Eigen::VectorXd>& safe_cyls, const std::vector<double>& safe_radii,
-        const std::vector<Eigen::VectorXd>& threat_cyls, const std::vector<double>& threat_radii,
-        const std::vector<std::tuple<Eigen::Vector2d, double, double, double>>& safe_boxes,
-        const std::vector<std::tuple<Eigen::Vector2d, double, double, double>>& threat_boxes,
-        const std::vector<Eigen::Vector2d>& safe_vel_pos, const std::vector<Eigen::Vector2d>& safe_vel_val,
-        const std::vector<Eigen::Vector2d>& threat_vel_pos, const std::vector<Eigen::Vector2d>& threat_vel_val,
-        const std::string& frame_id);
-
 private:
     rclcpp::Node::SharedPtr node_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;

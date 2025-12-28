@@ -18,7 +18,7 @@ public:
     // Dimension is typically 7 (3 pos + 3 vel + 1 time)
     // The control input 'u' is acceleration in this model (bang-bang control)
     ThrusterSteerStateSpace(int dimension, double max_acceleration, unsigned int seed = 42);
-
+    ThrusterSteerStateSpace(int dimension, double max_acceleration, double max_velocity, unsigned int seed = 42);
     // Override StateSpace methods
     std::shared_ptr<State> addState(const Eigen::VectorXd& value) override;
     std::shared_ptr<State> sampleUniform(double min = 0.0, double max = 1.0) override;
@@ -57,11 +57,17 @@ public:
               const Eigen::MatrixXd& V_raw, const Eigen::MatrixXd& X_raw, double dt_res) const;
     
     double getGeometricDistance(const NDSteeringResult& result) const;
+
+    double getMaxVelocity() const override { return max_velocity_; } 
+    double getMaxAcceleration() const override { return max_acceleration_; }
+
+
 private:
     double max_acceleration_; // Maximum absolute acceleration per dimension
     Eigen::VectorXd weights_; // To balance
 
 
+    double max_velocity_; 
 
 
 

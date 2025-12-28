@@ -23,6 +23,26 @@ ThrusterSteerStateSpace::ThrusterSteerStateSpace(int dimension, double max_accel
     // }
 }
 
+ThrusterSteerStateSpace::ThrusterSteerStateSpace(int dimension, double max_acceleration, double max_velocity, unsigned int seed)
+    : StateSpace(dimension), max_acceleration_(max_acceleration), max_velocity_(max_velocity) {
+    // For 3D position and 3D velocity, plus time, dimension is 7.
+    // Ensure dimension is 2*D_spatial + 1.
+    if (dimension <= 1 || (dimension - 1) % 2 != 0) {
+        throw std::invalid_argument("ThrusterStateSpace dimension must be 2*D_spatial + 1 (e.g., 7 for 3D pos/vel/time).");
+    }
+
+    std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
+    // Set up weights for KD-Tree distance, if desired. Otherwise, unit weights.
+    // These weights would be for: [x,y,z,vx,vy,vz,t]
+    weights_.resize(dimension_);
+    weights_.setOnes(); // Default to unit weights
+    // Example: Emphasize position, deemphasize velocity and time
+    // if (dimension_ == 7) {
+    //     weights_ << 1.0, 1.0, 1.0,  0.5, 0.5, 0.5,  0.1; 
+    // }
+}
+
+
 std::shared_ptr<State> ThrusterSteerStateSpace::addState(const Eigen::VectorXd& value) {
     return StateSpace::addState(std::make_shared<EuclideanState>(value));
 }

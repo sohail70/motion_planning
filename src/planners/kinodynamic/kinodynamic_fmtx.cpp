@@ -1253,26 +1253,250 @@ void KinodynamicFMTX::printCacheStatus() const {
 // }
 
 
+/////////////////////////////////////////////////////////////////////////************************* */
+
+// // // VERSION WITH PARENT INVALIDATION TOO! (EDGE INVALIDATION ON TOP OF NODEINVALIDTION)
+// std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
+//     const ObstacleVector& obstacles,
+//     double max_length
+// ) {
+//     std::unordered_set<int> conflicting_samples;
+
+//     if (robot_continuous_state_.size() == 0) {
+//         RCLCPP_WARN(rclcpp::get_logger("Planner_Obstacle_Update"), "Robot state not set. Skipping obstacle update.");
+//         return conflicting_samples;
+//     }
+
+//     const double robot_current_heading = (kd_dim == 4) ? robot_continuous_state_(2) : 0.0;
+//     const double robot_current_timestamp = (kd_dim >= 3) ? robot_continuous_state_(kd_dim - 1) : 0.0;
+//     const double t_now = clock_->now().seconds();
+//     const double robot_current_t_go = robot_current_time_to_goal_;
+//     const double t_arrival_predicted = t_now + robot_current_t_go;
+
+//     const double PREDICTION_HORIZON = 3.0;
+//     const int num_intermediate_steps = 15;
+//     const double time_tolerance = 0.15; // seconds
+
+//     for (const auto& obstacle : obstacles) {
+//         // --- Compute obstacle radius + heuristic for edge coverage ---
+//         double base_radius = (obstacle.type == Obstacle::CIRCLE) ? 
+//                              obstacle.dimensions.radius : 
+//                              std::hypot(obstacle.dimensions.width / 2.0, obstacle.dimensions.height / 2.0);
+//         double obstacle_radius = base_radius + obstacle.inflation;
+//         double edge_heuristic_radius = std::sqrt(std::pow(obstacle_radius, 2) + std::pow(max_length / 2.0, 2));
+
+//         // --- Dynamic obstacles ---
+//         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
+//             double t_snapshot = (obstacle.last_update_time.seconds() > 0.0) ? 
+//                                  obstacle.last_update_time.seconds() : t_now;
+
+//             for (int i = 0; i <= num_intermediate_steps; ++i) {
+//                 double delta_t = (static_cast<double>(i) / num_intermediate_steps) * PREDICTION_HORIZON;
+//                 double t_pred = t_snapshot + delta_t;
+
+//                 // Skip predictions outside robot execution window
+//                 if (t_pred < t_now - 1e-6 || t_pred > t_arrival_predicted + 0.5) continue;
+
+//                 Eigen::Vector2d p_pred_2d = obstacle.position + obstacle.velocity * delta_t;
+
+//                 // Construct query for k-d tree
+//                 Eigen::VectorXd query_point(kd_dim);
+//                 switch (kd_dim) {
+//                     case 2: query_point = p_pred_2d; break;
+//                     case 3: query_point << p_pred_2d, robot_current_t_go; break;
+//                     case 4: query_point << p_pred_2d, robot_current_heading, robot_current_t_go; break;
+//                     case 5: query_point << p_pred_2d.x(), p_pred_2d.y(), obstacle.z, robot_current_heading, robot_current_t_go; break;
+//                     default: continue;
+//                 }
+
+//                 auto candidate_indices = kdtree_->radiusSearch(query_point, edge_heuristic_radius);
+
+//                 // --- Narrow-phase: temporal check + parent invalidation ---
+//                 for (int idx : candidate_indices) {
+//                     FMTNode* node = tree_[idx].get();
+//                     double node_tgo = node->getTimeToGoal();
+//                     if (!std::isfinite(node_tgo)) continue;
+
+//                     double t_exec_node = t_now + (robot_current_t_go - node_tgo);
+
+//                     if (std::abs(t_exec_node - t_pred) <= time_tolerance) {
+//                         conflicting_samples.insert(idx);
+//                         if (node->getParent()) {
+//                             conflicting_samples.insert(node->getParent()->getIndex());
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//         // --- Static obstacles ---
+//         else {
+//             auto it = std::find_if(seen_statics_.begin(), seen_statics_.end(),
+//                                    [&](const Obstacle& s){ return s.name == obstacle.name; });
+//             if (it != seen_statics_.end()) continue;
+//             seen_statics_.push_back(obstacle);
+
+//             Eigen::VectorXd query_point(kd_dim);
+//             switch (kd_dim) {
+//                 case 2: query_point = obstacle.position; break;
+//                 case 3: query_point << obstacle.position, robot_current_t_go; break;
+//                 case 4: query_point << obstacle.position, robot_current_heading, robot_current_t_go; break;
+//                 case 5: query_point << obstacle.position.x(), obstacle.position.y(), obstacle.z, robot_current_heading, robot_current_t_go; break;
+//                 default: continue;
+//             }
+
+//             auto indices = kdtree_->radiusSearch(query_point, edge_heuristic_radius);
+//             conflicting_samples.insert(indices.begin(), indices.end());
+
+//             // Parent invalidation for static obstacles
+//             for (int idx : indices) {
+//                 FMTNode* node = tree_[idx].get();
+//                 if (node->getParent()) {
+//                     conflicting_samples.insert(node->getParent()->getIndex());
+//                 }
+//             }
+//         }
+//     }
+
+//     return conflicting_samples;
+// }
 
 
+// // DEC25
+// std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
+//     const ObstacleVector& obstacles,
+//     double max_length
+// ) {
+//     std::unordered_set<int> conflicting_samples;
+
+//     if (robot_continuous_state_.size() == 0) {
+//         RCLCPP_WARN(rclcpp::get_logger("Planner_Obstacle_Update"), "Robot state not set.");
+//         return conflicting_samples;
+//     }
+
+//     // --- 1. GLOBAL CONTEXT ---
+//     const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
+//     const double robot_current_timestamp = (kd_dim >= 3) ? robot_continuous_state_(kd_dim - 1) : 0.0;
+//     const double robot_current_heading = (kd_dim == 4 || kd_dim == 5) ? robot_continuous_state_(2) : 0.0;
+
+//     // Determine current speed (u) for the SUVAT equation: s = ut + 0.5at^2
+//     double v_curr = (kd_dim == 5) ? robot_continuous_state_.segment<2>(2).norm() 
+//                                  : statespace_->getMaxVelocity();
+
+//     const double v_limit = statespace_->getMaxVelocity();
+//     const double a_limit = statespace_->getMaxAcceleration();
+
+//     for (const auto& obstacle : obstacles) {
+//         // --- 2. OBSTACLE RADIUS CALCULATION ---
+//         double obs_footprint;
+//         if (obstacle.type == Obstacle::CIRCLE) {
+//             obs_footprint = obstacle.dimensions.radius + obstacle.inflation;
+//         } else { // BOX
+//             obs_footprint = std::hypot(obstacle.dimensions.width / 2.0, obstacle.dimensions.height / 2.0) + obstacle.inflation;
+//         }
+
+//         // --- 3. DYNAMIC OBSTACLE LOGIC (Tube Search + Reachability) ---
+//         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
+//             const double PREDICTION_HORIZON = 3.0;
+//             const int steps = 10;
+
+//             for (int i = 0; i <= steps; ++i) {
+//                 double delta_t = (static_cast<double>(i) / steps) * PREDICTION_HORIZON;
+                
+//                 // A. SCIENTIFIC REACHABILITY FILTER
+//                 // Max distance robot can travel in delta_t: SUVAT
+//                 double max_reach = (v_curr * delta_t) + (0.5 * a_limit * delta_t * delta_t);
+//                 max_reach = std::min(max_reach, v_limit * delta_t); // Physical Cap
+
+//                 Eigen::Vector2d predicted_obs_pos = obstacle.position + obstacle.velocity * delta_t;
+//                 double dist_to_future_obs = (robot_pos_2d - predicted_obs_pos).norm();
+
+//                 // If collision is physically impossible to reach, skip this slice.
+//                 // We add max_length/2 buffer for edge overlap safety.
+//                 if (dist_to_future_obs > max_reach + (max_length * 0.5) + 1.0) {
+//                     continue; 
+//                 }
+
+//                 // B. TEMPORAL ALIGNMENT (Walking Timestamp)
+//                 double query_timestamp = robot_current_timestamp - delta_t;
+//                 if (query_timestamp < -0.1) break; // Goal reached
+
+//                 Eigen::VectorXd query_point(kd_dim);
+//                 switch (kd_dim) {
+//                     case 2: query_point = predicted_obs_pos; break;
+//                     case 3: query_point << predicted_obs_pos, query_timestamp; break;
+//                     case 4: query_point << predicted_obs_pos, robot_current_heading, query_timestamp; break;
+//                     case 5: query_point << predicted_obs_pos, obstacle.z, robot_current_heading, query_timestamp; break;
+//                 }
+                
+//                 // Use a tight "Tube" radius search for dynamic obstacles
+//                 auto indices = kdtree_->radiusSearch(query_point, obs_footprint + 1.5);
+//                 conflicting_samples.insert(indices.begin(), indices.end());
+//             }
+//         } 
+//         // --- 4. STATIC OBSTACLE LOGIC (Conservative Geometric Search) ---
+//         else {
+//             auto it = std::find(seen_statics_.begin(), seen_statics_.end(), obstacle);
+//             if (it != seen_statics_.end()) continue;
+//             seen_statics_.push_back(obstacle);
+
+//             Eigen::VectorXd query_point(kd_dim);
+//             switch (kd_dim) {
+//                 case 2: query_point = obstacle.position; break;
+//                 case 3: query_point << obstacle.position, robot_current_timestamp; break;
+//                 case 4: query_point << obstacle.position, robot_current_heading, robot_current_timestamp; break;
+//                 case 5: query_point << obstacle.position, obstacle.z, robot_current_heading, robot_current_timestamp; break;
+//             }
+            
+//             // For static obstacles, we must use the larger heuristic radius 
+//             // to find ANY node whose edge might cross the obstacle.
+//             double static_search_radius = std::sqrt(std::pow(obs_footprint, 2) + std::pow(max_length / 2.0, 2));
+            
+//             auto indices = kdtree_->radiusSearch(query_point, static_search_radius);
+//             conflicting_samples.insert(indices.begin(), indices.end());
+//         }
+//     }
+//     return conflicting_samples;
+// }
+
+// time and reachblity!
 std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
     const ObstacleVector& obstacles,
     double max_length
 ) {
     std::unordered_set<int> conflicting_samples;
 
-    // Ensure the robot's state is valid before proceeding.
     if (robot_continuous_state_.size() == 0) {
-        RCLCPP_WARN(rclcpp::get_logger("Planner_Obstacle_Update"), "Robot state not set. Skipping obstacle update.");
+        RCLCPP_WARN(rclcpp::get_logger("Planner_Obstacle_Update"), "Robot state not set.");
         return conflicting_samples;
     }
 
-    // Get the necessary information from the current state and k-d tree.
-    const double robot_current_heading = (kd_dim == 4) ? robot_continuous_state_(2) : 0.0;
-    const double robot_current_timestamp = (kd_dim >= 3) ? robot_continuous_state_(kd_dim - 1) : 0.0;
+    // --- 1. ROBUST STATE EXTRACTION ---
+    // Extract geometry from the full state vector, regardless of kdtree settings
+    const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
+    const double robot_current_timestamp = robot_continuous_state_(robot_continuous_state_.size() - 1);
+    
+    // Extract Velocity: Check STATE size (5), not KD-Tree size (3)
+    double v_curr = 0.0;
+    if (robot_continuous_state_.size() >= 4) {
+        // For Thruster (5D) or Dubins (4D), indices 2/3 might contain derivatives
+        // Thruster: [x, y, vx, vy, time] -> velocity is at 2,3
+        if (robot_continuous_state_.size() == 5) {
+             v_curr = robot_continuous_state_.segment<2>(2).norm();
+        } else {
+             // For Dubins, index 2 is theta, so use max velocity heuristic or extraction if available
+             v_curr = statespace_->getMaxVelocity(); 
+        }
+    } else {
+        v_curr = statespace_->getMaxVelocity();
+    }
+
+    // For Dubins, we need heading for the 4D tree query
+    const double robot_current_heading = (robot_continuous_state_.size() >= 3) ? robot_continuous_state_(2) : 0.0;
+
+    double v_limit = statespace_->getMaxVelocity();
+    double a_limit = statespace_->getMaxAcceleration();
 
     for (const auto& obstacle : obstacles) {
-        // --- Calculate the search radius for this obstacle ---
         double obstacle_radius;
         if (obstacle.type == Obstacle::CIRCLE) {
             obstacle_radius = obstacle.dimensions.radius + obstacle.inflation;
@@ -1280,125 +1504,69 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
             double half_diagonal = std::hypot(obstacle.dimensions.width / 2.0, obstacle.dimensions.height / 2.0);
             obstacle_radius = half_diagonal + obstacle.inflation;
         }
+
         double edge_heuristic_radius = std::sqrt(
-            std::pow(obstacle_radius, 2) +
-            std::pow(max_length / 2.0, 2)
+            std::pow(obstacle_radius, 2) + std::pow(max_length / 2.0, 2)
         );
-        // double edge_heuristic_radius = obstacle_radius + max_length + obstacle.inflation;
 
-        // --- Handle DYNAMIC Obstacles ---
+        // --- DYNAMIC OBSTACLES ---
         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
-            /*
-                // --- Intelligently Calculate Horizon ---
-                const double max_robot_speed = statespace_->getMaxVelocity(); // Assuming StateSpace exposes this
-                const double distance_to_obstacle = (robot_continuous_state_.head<2>() - obstacle.position).norm();
-
-                // Simplified closing speed calculation
-                const double closing_speed = max_robot_speed + obstacle.velocity.norm();
-                
-                // Heuristic for time-to-impact
-                double time_to_impact = distance_to_obstacle / std::max(1.0, closing_speed);
-
-                // The adaptive horizon is the shortest of the time-to-impact or the robot's remaining plan time,
-                // clamped within a reasonable min/max range.
-                const double PREDICTION_HORIZON_SECONDS = std::min(
-                    robot_current_timestamp, // Can't predict past the goal
-                    std::clamp(time_to_impact, 1.5, 5.0) // Clamp to a sensible range (e.g., 1.5s to 5.0s)
-                );
-
-                // --- Intelligently Calculate Step Count ---
-                const double desired_time_resolution = 0.5; // Check every 0.5 seconds
-                const int num_intermediate_steps = static_cast<int>(std::ceil(PREDICTION_HORIZON_SECONDS / desired_time_resolution));
-            */
-
             const double PREDICTION_HORIZON_SECONDS = 3.0;
             const int num_intermediate_steps = 10;
 
-            // Perform searches at multiple discrete time steps along the predicted path
             for (int i = 0; i <= num_intermediate_steps; ++i) {
                 double delta_t = (static_cast<double>(i) / num_intermediate_steps) * PREDICTION_HORIZON_SECONDS;
-                
-                // Predict the obstacle's future 2D position
                 Eigen::Vector2d predicted_pos_2d = obstacle.position + obstacle.velocity * delta_t;
+
+                // A. REACHABILITY FILTER (Physics-Based)
+                // d = v*t + 0.5*a*t^2
+                double max_reach = (v_curr * delta_t) + (0.5 * a_limit * delta_t * delta_t);
+                max_reach = std::min(max_reach, v_limit * delta_t); // Clamp to physical max speed
                 
-                // Construct the full-dimensional query point for the k-d tree
+                double dist_to_collision = (robot_pos_2d - predicted_pos_2d).norm();
+                
+                // If the obstacle is physically unreachable, skip it
+                if (dist_to_collision > max_reach + (max_length * 0.5) + 1.5) continue; 
+
+                // B. TEMPORAL ALIGNMENT (Time-To-Go)
+                // Future obstacle state corresponds to LOWER time-to-go for the robot
+                double query_timestamp = robot_current_timestamp - delta_t;
+                if (query_timestamp < -0.1) continue; 
+
+                // C. QUERY CONSTRUCTION
+                // Must match the KD-Tree dimension (e.g., 3 for Thruster)
                 Eigen::VectorXd query_point(kd_dim);
-                
                 switch (kd_dim) {
-                    case 2: // (x, y)
-                        query_point = predicted_pos_2d;
+                    case 2: 
+                        query_point = predicted_pos_2d; 
                         break;
-                    case 3: // (x, y, time)
-                    case 4: // (x, y, theta, time)
-                        {
-                            // // Translate future time into the planner's "time-to-go" frame
-                            /*
-                                robot passese thorugh some nodes but those nodes might become useful later in case robot needs to escape back so do not get tempted to some how removing them from the conflicting nodes
-
-                                why subtract delta t? It aligns the obstacle’s future positions with the robot’s future positions in the same time axis.
-
-
-                            */
-
-                            // double query_timestamp = robot_current_timestamp - delta_t;
-                            // if (query_timestamp < 0) {
-                            //     // std::cout<<"skipped" << query_timestamp<<"\n";
-                            //     // query_timestamp = 0.0;
-                            //     continue;
-                            // } // Skip if predicted time is "after" the goal
-
-                            
-                            // By not subtracting delta_t, we create a spatial query
-                            // centered temporally near the robot's current plan.
-                            double query_timestamp = robot_current_timestamp;
-                            if (kd_dim == 3) {
-                                query_point << predicted_pos_2d, query_timestamp;
-                            } else { // kd_dim == 4
-                                query_point << predicted_pos_2d, robot_current_heading, query_timestamp;
-                            }
-                        }
+                    case 3: // (x, y, time) - Used for Thruster & R2T
+                        query_point << predicted_pos_2d, query_timestamp;
                         break;
-                    case 5: // (x, y, z, yaw, time)
-                        // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                        query_point << predicted_pos_2d, obstacle.z, robot_current_heading, robot_current_timestamp;
+                    case 4: // (x, y, theta, time) - Used for Dubins
+                        query_point << predicted_pos_2d, robot_current_heading, query_timestamp;
                         break;
-                    default:
-                        continue; // Skip unsupported dimensions
+                    case 5: // Full state
+                        query_point << predicted_pos_2d, obstacle.z, robot_current_heading, query_timestamp;
+                        break;
                 }
                 
                 auto indices = kdtree_->radiusSearch(query_point, edge_heuristic_radius);
                 conflicting_samples.insert(indices.begin(), indices.end());
             }
-        } else {
-            // --- Handle STATIC Obstacles ---
-            // Optimization: If we have seen this static obstacle before, skip it.
+        } 
+        // --- STATIC OBSTACLES ---
+        else {
             auto it = std::find(seen_statics_.begin(), seen_statics_.end(), obstacle);
-            if (it != seen_statics_.end()) {
-                continue;
-            }
+            if (it != seen_statics_.end()) continue;
             seen_statics_.push_back(obstacle);
 
             Eigen::VectorXd query_point(kd_dim);
-            
             switch (kd_dim) {
-                case 2: // (x, y)
-                    query_point = obstacle.position;
-                    break;
-                case 3: // (x, y, time)
-                case 4: // (x, y, theta, time)
-                    // For static obstacles, query at the robot's current timestamp
-                    if (kd_dim == 3) {
-                        query_point << obstacle.position, robot_current_timestamp;
-                    } else { // kd_tree_dim == 4
-                        query_point << obstacle.position, robot_current_heading, robot_current_timestamp;
-                    }
-                    break;
-                case 5: // (x, y, z, yaw, time)
-                    // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
-                    query_point << obstacle.position, obstacle.z, robot_current_heading, robot_current_timestamp;
-                    break;
-                default:
-                    continue;
+                case 2: query_point = obstacle.position; break;
+                case 3: query_point << obstacle.position, robot_current_timestamp; break;
+                case 4: query_point << obstacle.position, robot_current_heading, robot_current_timestamp; break;
+                case 5: query_point << obstacle.position, obstacle.z, robot_current_heading, robot_current_timestamp; break;
             }
             
             auto indices = kdtree_->radiusSearch(query_point, edge_heuristic_radius);
@@ -1407,6 +1575,271 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
     }
     return conflicting_samples;
 }
+
+ // original with only time fixed
+// std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
+//     const ObstacleVector& obstacles,
+//     double max_length
+// ) {
+//     std::unordered_set<int> conflicting_samples;
+
+//     // Ensure the robot's state is valid before proceeding.
+//     if (robot_continuous_state_.size() == 0) {
+//         RCLCPP_WARN(rclcpp::get_logger("Planner_Obstacle_Update"), "Robot state not set. Skipping obstacle update.");
+//         return conflicting_samples;
+//     }
+
+//     // Get the necessary information from the current state and k-d tree.
+//     const double robot_current_heading = (kd_dim == 4 || kd_dim == 5) ? robot_continuous_state_(2) : 0.0;
+//     const double robot_current_timestamp = (kd_dim >= 3) ? robot_continuous_state_(kd_dim - 1) : 0.0;
+
+//     for (const auto& obstacle : obstacles) {
+//         // --- Calculate the search radius for this obstacle ---
+//         double obstacle_radius;
+//         if (obstacle.type == Obstacle::CIRCLE) {
+//             obstacle_radius = obstacle.dimensions.radius + obstacle.inflation;
+//         } else { // BOX
+//             double half_diagonal = std::hypot(obstacle.dimensions.width / 2.0, obstacle.dimensions.height / 2.0);
+//             obstacle_radius = half_diagonal + obstacle.inflation;
+//         }
+//         double edge_heuristic_radius = std::sqrt(
+//             std::pow(obstacle_radius, 2) +
+//             std::pow(max_length / 2.0, 2)
+//         );
+
+//         // --- Handle DYNAMIC Obstacles ---
+//         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
+//             const double PREDICTION_HORIZON_SECONDS = 3.0;
+//             const int num_intermediate_steps = 10;
+
+//             // Perform searches at multiple discrete time steps along the predicted path
+//             for (int i = 0; i <= num_intermediate_steps; ++i) {
+//                 double delta_t = (static_cast<double>(i) / num_intermediate_steps) * PREDICTION_HORIZON_SECONDS;
+                
+//                 // Predict the obstacle's future 2D position
+//                 Eigen::Vector2d predicted_pos_2d = obstacle.position + obstacle.velocity * delta_t;
+                
+//                 // --- CRITICAL FIX: TEMPORAL ALIGNMENT ---
+//                 // We subtract delta_t because as real-world time moves forward (obstacle moving),
+//                 // the robot's "Time-To-Go" decreases.
+//                 double query_timestamp = robot_current_timestamp - delta_t;
+
+//                 // Optimization: If the event happens "after" the robot reaches the goal (negative time-to-go),
+//                 // we don't need to check it.
+//                 if (query_timestamp < -0.1) continue; 
+
+//                 // Construct the full-dimensional query point for the k-d tree
+//                 Eigen::VectorXd query_point(kd_dim);
+                
+//                 switch (kd_dim) {
+//                     case 2: // (x, y)
+//                         query_point = predicted_pos_2d;
+//                         break;
+//                     case 3: // (x, y, time)
+//                         query_point << predicted_pos_2d, query_timestamp;
+//                         break;
+//                     case 4: // (x, y, theta, time)
+//                         query_point << predicted_pos_2d, robot_current_heading, query_timestamp;
+//                         break;
+//                     case 5: // (x, y, z, yaw, time) - assuming 3D pos + yaw + time
+//                         // Using obstacle.z for Z, and robot heading/timestamp
+//                         query_point << predicted_pos_2d, obstacle.z, robot_current_heading, query_timestamp;
+//                         break;
+//                     default:
+//                         continue; 
+//                 }
+                
+//                 auto indices = kdtree_->radiusSearch(query_point, edge_heuristic_radius);
+//                 conflicting_samples.insert(indices.begin(), indices.end());
+//             }
+//         } else {
+//             // --- Handle STATIC Obstacles ---
+//             auto it = std::find(seen_statics_.begin(), seen_statics_.end(), obstacle);
+//             if (it != seen_statics_.end()) {
+//                 continue;
+//             }
+//             seen_statics_.push_back(obstacle);
+
+//             Eigen::VectorXd query_point(kd_dim);
+            
+//             switch (kd_dim) {
+//                 case 2: // (x, y)
+//                     query_point = obstacle.position;
+//                     break;
+//                 case 3: // (x, y, time)
+//                     query_point << obstacle.position, robot_current_timestamp;
+//                     break;
+//                 case 4: // (x, y, theta, time)
+//                     query_point << obstacle.position, robot_current_heading, robot_current_timestamp;
+//                     break;
+//                 case 5: // (x, y, z, yaw, time)
+//                     query_point << obstacle.position, obstacle.z, robot_current_heading, robot_current_timestamp;
+//                     break;
+//                 default:
+//                     continue;
+//             }
+            
+//             auto indices = kdtree_->radiusSearch(query_point, edge_heuristic_radius);
+//             conflicting_samples.insert(indices.begin(), indices.end());
+//         }
+//     }
+//     return conflicting_samples;
+// }
+
+
+// // ORIGINAL VERSION
+// std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
+//     const ObstacleVector& obstacles,
+//     double max_length
+// ) {
+//     std::unordered_set<int> conflicting_samples;
+
+//     // Ensure the robot's state is valid before proceeding.
+//     if (robot_continuous_state_.size() == 0) {
+//         RCLCPP_WARN(rclcpp::get_logger("Planner_Obstacle_Update"), "Robot state not set. Skipping obstacle update.");
+//         return conflicting_samples;
+//     }
+
+//     // Get the necessary information from the current state and k-d tree.
+//     const double robot_current_heading = (kd_dim == 4) ? robot_continuous_state_(2) : 0.0;
+//     const double robot_current_timestamp = (kd_dim >= 3) ? robot_continuous_state_(kd_dim - 1) : 0.0;
+
+//     for (const auto& obstacle : obstacles) {
+//         // --- Calculate the search radius for this obstacle ---
+//         double obstacle_radius;
+//         if (obstacle.type == Obstacle::CIRCLE) {
+//             obstacle_radius = obstacle.dimensions.radius + obstacle.inflation;
+//         } else { // BOX
+//             double half_diagonal = std::hypot(obstacle.dimensions.width / 2.0, obstacle.dimensions.height / 2.0);
+//             obstacle_radius = half_diagonal + obstacle.inflation;
+//         }
+//         double edge_heuristic_radius = std::sqrt(
+//             std::pow(obstacle_radius, 2) +
+//             std::pow(max_length / 2.0, 2)
+//         );
+//         // double edge_heuristic_radius = obstacle_radius + max_length + obstacle.inflation;
+
+//         // --- Handle DYNAMIC Obstacles ---
+//         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
+//             /*
+//                 // --- Intelligently Calculate Horizon ---
+//                 const double max_robot_speed = statespace_->getMaxVelocity(); // Assuming StateSpace exposes this
+//                 const double distance_to_obstacle = (robot_continuous_state_.head<2>() - obstacle.position).norm();
+
+//                 // Simplified closing speed calculation
+//                 const double closing_speed = max_robot_speed + obstacle.velocity.norm();
+                
+//                 // Heuristic for time-to-impact
+//                 double time_to_impact = distance_to_obstacle / std::max(1.0, closing_speed);
+
+//                 // The adaptive horizon is the shortest of the time-to-impact or the robot's remaining plan time,
+//                 // clamped within a reasonable min/max range.
+//                 const double PREDICTION_HORIZON_SECONDS = std::min(
+//                     robot_current_timestamp, // Can't predict past the goal
+//                     std::clamp(time_to_impact, 1.5, 5.0) // Clamp to a sensible range (e.g., 1.5s to 5.0s)
+//                 );
+
+//                 // --- Intelligently Calculate Step Count ---
+//                 const double desired_time_resolution = 0.5; // Check every 0.5 seconds
+//                 const int num_intermediate_steps = static_cast<int>(std::ceil(PREDICTION_HORIZON_SECONDS / desired_time_resolution));
+//             */
+
+//             const double PREDICTION_HORIZON_SECONDS = 3.0;
+//             const int num_intermediate_steps = 10;
+
+//             // Perform searches at multiple discrete time steps along the predicted path
+//             for (int i = 0; i <= num_intermediate_steps; ++i) {
+//                 double delta_t = (static_cast<double>(i) / num_intermediate_steps) * PREDICTION_HORIZON_SECONDS;
+                
+//                 // Predict the obstacle's future 2D position
+//                 Eigen::Vector2d predicted_pos_2d = obstacle.position + obstacle.velocity * delta_t;
+                
+//                 // Construct the full-dimensional query point for the k-d tree
+//                 Eigen::VectorXd query_point(kd_dim);
+                
+//                 switch (kd_dim) {
+//                     case 2: // (x, y)
+//                         query_point = predicted_pos_2d;
+//                         break;
+//                     case 3: // (x, y, time)
+//                     case 4: // (x, y, theta, time)
+//                         {
+//                             // // Translate future time into the planner's "time-to-go" frame
+//                             /*
+//                                 robot passese thorugh some nodes but those nodes might become useful later in case robot needs to escape back so do not get tempted to some how removing them from the conflicting nodes
+
+//                                 why subtract delta t? It aligns the obstacle’s future positions with the robot’s future positions in the same time axis.
+
+
+//                             */
+
+//                             // double query_timestamp = robot_current_timestamp - delta_t;
+//                             // if (query_timestamp < 0) {
+//                             //     // std::cout<<"skipped" << query_timestamp<<"\n";
+//                             //     // query_timestamp = 0.0;
+//                             //     continue;
+//                             // } // Skip if predicted time is "after" the goal
+
+                            
+//                             // By not subtracting delta_t, we create a spatial query
+//                             // centered temporally near the robot's current plan.
+//                             double query_timestamp = robot_current_timestamp;
+//                             if (kd_dim == 3) {
+//                                 query_point << predicted_pos_2d, query_timestamp;
+//                             } else { // kd_dim == 4
+//                                 query_point << predicted_pos_2d, robot_current_heading, query_timestamp;
+//                             }
+//                         }
+//                         break;
+//                     case 5: // (x, y, z, yaw, time)
+//                         // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
+//                         query_point << predicted_pos_2d, obstacle.z, robot_current_heading, robot_current_timestamp;
+//                         break;
+//                     default:
+//                         continue; // Skip unsupported dimensions
+//                 }
+                
+//                 auto indices = kdtree_->radiusSearch(query_point, edge_heuristic_radius);
+//                 conflicting_samples.insert(indices.begin(), indices.end());
+//             }
+//         } else {
+//             // --- Handle STATIC Obstacles ---
+//             // Optimization: If we have seen this static obstacle before, skip it.
+//             auto it = std::find(seen_statics_.begin(), seen_statics_.end(), obstacle);
+//             if (it != seen_statics_.end()) {
+//                 continue;
+//             }
+//             seen_statics_.push_back(obstacle);
+
+//             Eigen::VectorXd query_point(kd_dim);
+            
+//             switch (kd_dim) {
+//                 case 2: // (x, y)
+//                     query_point = obstacle.position;
+//                     break;
+//                 case 3: // (x, y, time)
+//                 case 4: // (x, y, theta, time)
+//                     // For static obstacles, query at the robot's current timestamp
+//                     if (kd_dim == 3) {
+//                         query_point << obstacle.position, robot_current_timestamp;
+//                     } else { // kd_tree_dim == 4
+//                         query_point << obstacle.position, robot_current_heading, robot_current_timestamp;
+//                     }
+//                     break;
+//                 case 5: // (x, y, z, yaw, time)
+//                     // Obstacles are 3D (x,y,z), so we use a placeholder for yaw.
+//                     query_point << obstacle.position, obstacle.z, robot_current_heading, robot_current_timestamp;
+//                     break;
+//                 default:
+//                     continue;
+//             }
+            
+//             auto indices = kdtree_->radiusSearch(query_point, edge_heuristic_radius);
+//             conflicting_samples.insert(indices.begin(), indices.end());
+//         }
+//     }
+//     return conflicting_samples;
+// }
 
 
 
@@ -1665,31 +2098,64 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         // }
         // std::cout<<"current after: "<<current.size()<<"\n";
 
-    /////////////////////////geometry based filter based on robots current position!///////////////////////////
+    // /////////////////////////geometry based filter based on robots current position!///////////////////////////
 
-        // --- STEP 2: IN-PLACE GEOMETRIC FILTER ---
-        // Now, filter the 'current' set directly. Remove any node that is not
-        // within a "local bubble" around the robot.
-        // std::cout<<"current before: "<<current.size()<<"\n";
+    //     // --- STEP 2: IN-PLACE GEOMETRIC FILTER ---
+    //     // Now, filter the 'current' set directly. Remove any node that is not
+    //     // within a "local bubble" around the robot.
+    //     // std::cout<<"current before: "<<current.size()<<"\n";
 
-        const double local_filter_radius = use_knn ? 30.0 : neighborhood_radius_;
-        // local_filter_radius = (v_obs_max + v_robot_max) / loop_hz + obstacle_radius;  
-        //                // = 40/20 + 5 = 7 m
-        const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
+    //     const double local_filter_radius = use_knn ? 30.0 : neighborhood_radius_;
+    //     // local_filter_radius = (v_obs_max + v_robot_max) / loop_hz + obstacle_radius;  
+    //     //                // = 40/20 + 5 = 7 m
+    //     const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
 
-        for (auto it = current.begin(); it != current.end(); /* manual increment */) {
-            auto node = tree_[*it].get();
-            double dist_to_robot = (node->getStateValue().head<2>() - robot_pos_2d).norm();
+    //     for (auto it = current.begin(); it != current.end(); /* manual increment */) {
+    //         auto node = tree_[*it].get();
+    //         double dist_to_robot = (node->getStateValue().head<2>() - robot_pos_2d).norm();
 
-            // If the node is outside our local bubble, remove it from the set.
-            if (dist_to_robot > local_filter_radius) {
-                it = current.erase(it); // Erase and get iterator to the next element
-            } else {
-                ++it; // Node is relevant, move to the next element
-            }
-        }
-        // std::cout<<"current after: "<<current.size()<<"\n";
-        // --- END OF FILTER ---
+    //         // If the node is outside our local bubble, remove it from the set.
+    //         if (dist_to_robot > local_filter_radius) {
+    //             it = current.erase(it); // Erase and get iterator to the next element
+    //         } else {
+    //             ++it; // Node is relevant, move to the next element
+    //         }
+    //     }
+    //     // std::cout<<"current after: "<<current.size()<<"\n";
+    //     // --- END OF FILTER ---
+
+        ///////////////////////////////////////// dec25
+
+        // // --- STEP 2: LAZY TEMPORAL & SPATIAL FILTER ---
+        // const double t_now = clock_->now().seconds();
+        // const double local_filter_radius = use_knn ? 30.0 : neighborhood_radius_;
+        // const Eigen::Vector2d robot_pos_2d = robot_continuous_state_.head<2>();
+
+        // for (auto it = current.begin(); it != current.end(); /* manual increment */) {
+        //     auto node = tree_[*it].get();
+            
+        //     // 1. Distance check (Spatially relevant?)
+        //     double dist_to_robot = (node->getStateValue().head<2>() - robot_pos_2d).norm();
+        //     if (dist_to_robot > local_filter_radius) {
+        //         it = current.erase(it);
+        //         continue;
+        //     }
+
+        //     // 2. Temporal relevance check (Temporally relevant?)
+        //     double time_offset_from_robot = robot_current_time_to_goal_ - node->getTimeToGoal();
+            
+        //     // We only keep nodes that are in the immediate future [0, Horizon]
+        //     // Nodes behind the robot (-0.5s buffer) are ignored to save computation.
+        //     if (time_offset_from_robot < -0.5 || time_offset_from_robot > 5.0) {
+        //         it = current.erase(it);
+        //     } else {
+        //         ++it; // KEEP node for repair consideration
+        //     }
+        // }
+
+
+
+        ///////////////////////////////////////////
 
 
 
@@ -1706,7 +2172,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
 
     ////////////////////////////////////////////////////
-        // CURRENT NODE VISUALIZATION CODE BLOCK
+        // // CURRENT NODE VISUALIZATION CODE BLOCK
         // if (visualization_) {
         //     // Create a vector to hold the 2D positions of the nodes near obstacles.
         //     std::vector<Eigen::VectorXd> positions_to_visualize;
@@ -1726,7 +2192,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         //                                  {0.0f, 1.0f, 1.0f},  // Cyan color
         //                                  "current_obstacle_nodes");
         // }
-        // END OF VISUALIZATION CODE BLOCK
+        // // END OF VISUALIZATION CODE BLOCK
 
 
 
@@ -2878,60 +3344,133 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
 
     return final_executable_path;
 }
+
+
 void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
-    // Store the robot's continuous state
+    // Defensive guards
+    if (robot_state.size() == 0) return;
+    if (!kdtree_) return;
+    if (tree_.empty()) return;
+
+    // Save continuous state
     robot_continuous_state_ = robot_state;
 
+    // helpers
+    const double hysteresis_factor = 0.98;
+    const double initial_radius = (use_knn ? 30.0 : (neighborhood_radius_ * 1.5));
+    const int max_attempts = 10;
+    const double radius_multiplier = 1.4;
+    const double INF = std::numeric_limits<double>::infinity();
+    double cost_of_current_path = INF;
+    double current_time = (clock_ ? clock_->now().seconds() : 0.0);
 
-    // Define a hysteresis factor. A new path must be at least 5% cheaper to be adopted.
-    // This prevents switching for negligible gains.
-    const double hysteresis_factor = 0.80;
-    double cost_of_current_path = std::numeric_limits<double>::infinity();
-
-    // First, calculate the cost of sticking with the current anchor node, if it's valid.
-    // This gives us a baseline to beat.
-    if (robot_node_ && robot_node_->getCost() != INFINITY) {
-        Trajectory bridge_to_current_anchor = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
-        if (bridge_to_current_anchor.is_valid && obs_checker_->isTrajectorySafe(bridge_to_current_anchor, clock_->now().seconds())) {
-            cost_of_current_path = bridge_to_current_anchor.cost + robot_node_->getCost();
+    // 1) Baseline: cost of staying with current anchor (if valid)
+    if (robot_node_ && std::isfinite(robot_node_->getCost())) {
+        Trajectory bridge_to_current = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+        if (bridge_to_current.is_valid) {
+            if (obs_checker_) {
+                if (obs_checker_->isTrajectorySafe(bridge_to_current, current_time)) {
+                    cost_of_current_path = bridge_to_current.cost + robot_node_->getCost();
+                }
+            } else {
+                // no obstacle checker: assume safe
+                cost_of_current_path = bridge_to_current.cost + robot_node_->getCost();
+            }
         }
     }
 
-    // Search for the best *potential* anchor node in the neighborhood.
-    // This part of your logic remains unchanged.
+    // 2) Build a safe KD query point (ensures 'time' is last element)
+    Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim);
+    // Map at least x,y
+    if (robot_continuous_state_.size() >= 2) {
+        query_point(0) = robot_continuous_state_(0);
+        query_point(1) = robot_continuous_state_(1);
+    }
+    if (kd_dim == 3) {
+        // time is always last element in your convention
+        if (robot_continuous_state_.size() >= 1) {
+            query_point(2) = robot_continuous_state_(robot_continuous_state_.size() - 1);
+        }
+    } else if (kd_dim == 4) {
+        if (robot_continuous_state_.size() >= 4) {
+            query_point(2) = robot_continuous_state_(2); // e.g., heading or extra dim
+            query_point(3) = robot_continuous_state_(robot_continuous_state_.size() - 1); // time
+        } else {
+            // fallback: use head to fill available dims
+            int copy_len = std::min<int>(robot_continuous_state_.size(), kd_dim);
+            query_point.head(copy_len) = robot_continuous_state_.head(copy_len);
+        }
+    } else {
+        // general fallback: copy head or pad with zeros
+        if (robot_continuous_state_.size() >= kd_dim) {
+            query_point = robot_continuous_state_.head(kd_dim);
+        } else {
+            int copy_len = robot_continuous_state_.size();
+            query_point.head(copy_len) = robot_continuous_state_.head(copy_len);
+        }
+    }
+
+    // 3) Search neighborhood for best anchor (safe checks throughout)
     FMTNode* best_candidate_node = nullptr;
     Trajectory best_candidate_bridge;
-    Trajectory current_bridge;
-    double best_candidate_cost = std::numeric_limits<double>::infinity();
-    double current_search_radius = (use_knn) ? 30.0 : neighborhood_radius_;
-    const int max_attempts = 5;
-    const double radius_multiplier = 1.5;
+    double best_candidate_cost = INF;
+    double current_search_radius = initial_radius;
 
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
-        auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head(kd_dim), current_search_radius);
-        
-        double min_cost_in_radius = std::numeric_limits<double>::infinity();
+        std::vector<size_t> nearby_indices;
+        try {
+            // radiusSearch may return vector<int> or vector<size_t>; accept either and normalize
+            auto raw_indices = kdtree_->radiusSearch(query_point, current_search_radius);
+            nearby_indices.reserve(raw_indices.size());
+            for (auto ridx : raw_indices) {
+                // guard against negative signed indices
+                if (ridx < 0) continue;
+                nearby_indices.push_back(static_cast<size_t>(ridx));
+            }
+        } catch (...) {
+            // KD-tree query failed: bail out of attempts
+            break;
+        }
 
-        for (auto idx : nearby_indices) {
+        // If no nearby nodes, expand radius next iteration
+        if (nearby_indices.empty()) {
+            current_search_radius *= radius_multiplier;
+            continue;
+        }
+
+        // Reuse a temporary Trajectory to reduce allocations
+        Trajectory candidate_bridge;
+
+        for (size_t idx : nearby_indices) {
+            if (idx >= tree_.size()) continue;            // correct unsigned bounds check
+            if (!tree_[idx]) continue;                    // unique_ptr may be null
             FMTNode* candidate = tree_[idx].get();
-            if (candidate->getCost() == INFINITY) continue;
+            if (!candidate) continue;
+            double node_cost = candidate->getCost();
+            if (!std::isfinite(node_cost)) continue;
 
-            // Reuse 'current_bridge' object via assignment. No new object is constructed here.
-            current_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
-            
-            if (!current_bridge.is_valid || !obs_checker_->isTrajectorySafe(current_bridge, clock_->now().seconds())) continue;
+            // Optional velocity filter (only when both states have 5 elements)
+            if (robot_continuous_state_.size() >= 5 && candidate->getStateValue().size() >= 5) {
+                // safe .segment only when sizes are >= requested
+                Eigen::Vector2d v_robot = robot_continuous_state_.segment<2>(2);
+                Eigen::Vector2d v_node  = candidate->getStateValue().segment<2>(2);
+                if ((v_robot - v_node).norm() > 5.0) continue;
+            }
 
-            double cost = current_bridge.cost + candidate->getCost();
-            if (cost < min_cost_in_radius) {
-                min_cost_in_radius = cost;
+            // Try to steer from robot state -> candidate state
+            candidate_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+            if (!candidate_bridge.is_valid) continue;
+
+            // Safety check
+            if (obs_checker_) {
+                if (!obs_checker_->isTrajectorySafe(candidate_bridge, current_time)) continue;
+            }
+
+            double total_cost = candidate_bridge.cost + node_cost;
+            if (total_cost < best_candidate_cost) {
+                best_candidate_cost = total_cost;
                 best_candidate_node = candidate;
-                
-                // Use std::swap instead of copying. This is a very cheap move operation.
-                std::swap(best_candidate_bridge, current_bridge);
-                
-                best_candidate_cost = cost; // Note: 'cost' was calculated with the old 'current_bridge' before the swap.
-                                            // We need to re-calculate it with the new best, or better, use its own data.
-                best_candidate_cost = best_candidate_bridge.cost + candidate->getCost(); // Correct way
+                best_candidate_bridge = candidate_bridge; // copy here; swap is optional
             }
         }
 
@@ -2939,38 +3478,142 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         current_search_radius *= radius_multiplier;
     }
 
+    // 4) Decide whether to switch anchor (apply hysteresis)
+    bool switch_node = false;
+    if (best_candidate_node) {
+        if (!std::isfinite(cost_of_current_path) ||
+            best_candidate_cost < cost_of_current_path * hysteresis_factor) {
+            switch_node = true;
+        }
+    }
 
-    // Make a stable decision.
-    // Only switch to the new candidate if it's significantly better than our current path.
-    if (best_candidate_node && best_candidate_cost < cost_of_current_path * hysteresis_factor) {
-        // The new node is significantly better. It's worth switching.
+    // 5) Update robot_node_/time-to-go/path cost appropriately (with guards)
+    if (switch_node) {
         robot_node_ = best_candidate_node;
-        robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
-        last_replan_metrics_.path_cost = best_candidate_bridge.cost + best_candidate_node->getCost();
-
+        if (robot_node_) {
+            robot_current_time_to_goal_ = best_candidate_bridge.time_duration + robot_node_->getTimeToGoal();
+            last_replan_metrics_.path_cost = best_candidate_bridge.cost + robot_node_->getCost();
+        } else {
+            robot_current_time_to_goal_ = INF;
+            last_replan_metrics_.path_cost = INF;
+        }
     } else if (robot_node_) {
-        // The new candidate is not significantly better, or none was found.
-        // Stick with the old anchor node to maintain stability.
-        // We still need to recalculate the time-to-go in case the tree costs updated.
-        Trajectory bridge_to_kept_anchor = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
-        if (bridge_to_kept_anchor.is_valid) {
-             robot_current_time_to_goal_ = bridge_to_kept_anchor.time_duration + robot_node_->getTimeToGoal();
-            last_replan_metrics_.path_cost = bridge_to_kept_anchor.cost + robot_node_->getCost();
+        // keep current node but update time-to-go if possible
+        Trajectory bridge_to_kept = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+        if (bridge_to_kept.is_valid) {
+            robot_current_time_to_goal_ = bridge_to_kept.time_duration + robot_node_->getTimeToGoal();
+            last_replan_metrics_.path_cost = bridge_to_kept.cost + robot_node_->getCost();
+        } else {
+            // Fallback: keep previous time-to-go if steering invalid
+            // (don't overwrite with garbage)
         }
     } else {
-        // This case handles when there was no previous anchor OR no valid new anchor.
-        // If we found a candidate but didn't switch, we still need to set it for the first time.
-        robot_node_ = best_candidate_node; // This will be nullptr if none found.
+        // no previous node and no candidate found
+        robot_node_ = best_candidate_node; // may be nullptr
         if (robot_node_) {
-            robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
-            last_replan_metrics_.path_cost = best_candidate_bridge.cost + best_candidate_node->getCost();
+            robot_current_time_to_goal_ = best_candidate_bridge.time_duration + robot_node_->getTimeToGoal();
+            last_replan_metrics_.path_cost = best_candidate_bridge.cost + robot_node_->getCost();
         } else {
-            robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
-            last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
-
+            robot_current_time_to_goal_ = INF;
+            last_replan_metrics_.path_cost = INF;
         }
     }
 }
+
+
+// // Orignal with problem! the robot_State in thruster for example is [x,y,vx,vy,time] so when you say robot_continuous_state_[kd_dim] you get [x,y,vx]! not [x,y,time] that you intended!
+// void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
+//     // Store the robot's continuous state
+//     robot_continuous_state_ = robot_state;
+
+
+//     // Define a hysteresis factor. A new path must be at least 5% cheaper to be adopted.
+//     // This prevents switching for negligible gains.
+//     const double hysteresis_factor = 0.80;
+//     double cost_of_current_path = std::numeric_limits<double>::infinity();
+
+//     // First, calculate the cost of sticking with the current anchor node, if it's valid.
+//     // This gives us a baseline to beat.
+//     if (robot_node_ && robot_node_->getCost() != INFINITY) {
+//         Trajectory bridge_to_current_anchor = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+//         if (bridge_to_current_anchor.is_valid && obs_checker_->isTrajectorySafe(bridge_to_current_anchor, clock_->now().seconds())) {
+//             cost_of_current_path = bridge_to_current_anchor.cost + robot_node_->getCost();
+//         }
+//     }
+//     // Search for the best *potential* anchor node in the neighborhood.
+//     // This part of your logic remains unchanged.
+//     FMTNode* best_candidate_node = nullptr;
+//     Trajectory best_candidate_bridge;
+//     Trajectory current_bridge;
+//     double best_candidate_cost = std::numeric_limits<double>::infinity();
+//     double current_search_radius = (use_knn) ? 30.0 : neighborhood_radius_;
+//     const int max_attempts = 5;
+//     const double radius_multiplier = 1.5;
+
+//     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+//         auto nearby_indices = kdtree_->radiusSearch(robot_continuous_state_.head(kd_dim), current_search_radius);
+        
+//         double min_cost_in_radius = std::numeric_limits<double>::infinity();
+
+//         for (auto idx : nearby_indices) {
+//             FMTNode* candidate = tree_[idx].get();
+//             if (candidate->getCost() == INFINITY) continue;
+
+//             // Reuse 'current_bridge' object via assignment. No new object is constructed here.
+//             current_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+            
+//             if (!current_bridge.is_valid || !obs_checker_->isTrajectorySafe(current_bridge, clock_->now().seconds())) continue;
+
+//             double cost = current_bridge.cost + candidate->getCost();
+//             if (cost < min_cost_in_radius) {
+//                 min_cost_in_radius = cost;
+//                 best_candidate_node = candidate;
+                
+//                 // Use std::swap instead of copying. This is a very cheap move operation.
+//                 std::swap(best_candidate_bridge, current_bridge);
+                
+//                 best_candidate_cost = cost; // Note: 'cost' was calculated with the old 'current_bridge' before the swap.
+//                                             // We need to re-calculate it with the new best, or better, use its own data.
+//                 best_candidate_cost = best_candidate_bridge.cost + candidate->getCost(); // Correct way
+//             }
+//         }
+
+//         if (best_candidate_node) break;
+//         current_search_radius *= radius_multiplier;
+//     }
+
+
+//     // Make a stable decision.
+//     // Only switch to the new candidate if it's significantly better than our current path.
+//     if (best_candidate_node && best_candidate_cost < cost_of_current_path * hysteresis_factor) {
+//         // The new node is significantly better. It's worth switching.
+//         robot_node_ = best_candidate_node;
+//         robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+//         last_replan_metrics_.path_cost = best_candidate_bridge.cost + best_candidate_node->getCost();
+
+//     } else if (robot_node_) {
+//         // The new candidate is not significantly better, or none was found.
+//         // Stick with the old anchor node to maintain stability.
+//         // We still need to recalculate the time-to-go in case the tree costs updated.
+//         Trajectory bridge_to_kept_anchor = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+//         if (bridge_to_kept_anchor.is_valid) {
+//              robot_current_time_to_goal_ = bridge_to_kept_anchor.time_duration + robot_node_->getTimeToGoal();
+//             last_replan_metrics_.path_cost = bridge_to_kept_anchor.cost + robot_node_->getCost();
+//         }
+//     } else {
+//         // This case handles when there was no previous anchor OR no valid new anchor.
+//         // If we found a candidate but didn't switch, we still need to set it for the first time.
+//         robot_node_ = best_candidate_node; // This will be nullptr if none found.
+//         if (robot_node_) {
+//             robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+//             last_replan_metrics_.path_cost = best_candidate_bridge.cost + best_candidate_node->getCost();
+//         } else {
+//             robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+//             last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+
+//         }
+//     }
+// }
 
 
 
