@@ -143,8 +143,8 @@ int main(int argc, char **argv) {
     manager_params.setParam("use_sim_time", true);
     manager_params.setParam("simulation_time_step", -0.04); // 50 Hz simulation loop
     manager_params.setParam("thruster_state_dimension", 5);
-    manager_params.setParam("sim_frequency_hz", 25);  // Smoothness of arrow
-    manager_params.setParam("vis_frequency_hz", 10);  // Obstacle visualization rate
+    manager_params.setParam("sim_frequency_hz", 50);  // Smoothness of arrow
+    manager_params.setParam("vis_frequency_hz", 30);  // Obstacle visualization rate
     manager_params.setParam("follow_path", true);
 
     Params gazebo_params;

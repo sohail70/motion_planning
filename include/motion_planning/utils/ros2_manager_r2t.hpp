@@ -77,30 +77,63 @@ public:
     //     is_path_set_ = true;
     // }
 
-    void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
-        // std::lock_guard<std::mutex> lock(path_mutex_);
+    // void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+    //     // std::lock_guard<std::mutex> lock(path_mutex_);
 
-        if (new_path_from_main.empty()) {
-            is_path_set_ = false;
-            current_path_.clear();
-            return;
-        }
+    //     if (new_path_from_main.empty()) {
+    //         is_path_set_ = false;
+    //         current_path_.clear();
+    //         return;
+    //     }
         
-        // Always update the path to the latest one from the planner.
-        current_path_ = new_path_from_main;
+    //     // Always update the path to the latest one from the planner.
+    //     current_path_ = new_path_from_main;
         
-        // If this is the FIRST time a path is being set,
-        // we must initialize the simulation time to the start of that path.
-        if (!is_path_set_) {
-            // The first point in the path holds the starting state and time-to-go.
-            current_sim_time_ = current_path_.front()(2); 
-            robot_spatial_trace_.clear();
-        }
+    //     // If this is the FIRST time a path is being set,
+    //     // we must initialize the simulation time to the start of that path.
+    //     if (!is_path_set_) {
+    //         // The first point in the path holds the starting state and time-to-go.
+    //         current_sim_time_ = current_path_.front()(2); 
+    //         robot_spatial_trace_.clear();
+    //     }
         
-        // Now, we can safely say a path is set. On subsequent calls, the block
-        // above will be skipped, preserving current_sim_time_ during replans.
-        is_path_set_ = true;
+    //     // Now, we can safely say a path is set. On subsequent calls, the block
+    //     // above will be skipped, preserving current_sim_time_ during replans.
+    //     is_path_set_ = true;
+    // }
+
+void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+    std::lock_guard<std::mutex> lock(path_mutex_); // MANDATORY: Prevents race conditions
+
+    if (new_path_from_main.size() < 2) {
+        is_path_set_ = false;
+        return;
     }
+
+    if (!is_path_set_) {
+        // Initial path setup
+        current_path_ = new_path_from_main;
+        current_sim_time_ = current_path_.front()(2);
+        current_interpolated_state_ = current_path_.front();
+        is_path_set_ = true;
+    } else {
+        // --- THE STITCH (The "No-Jump" Fix) ---
+        // 1. Take the new path from the planner
+        std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
+
+        // 2. Overwrite the first waypoint with the ACTUAL current state of the robot.
+        // This bridges the gap caused by the 80ms planning latency.
+        stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
+        
+        // 3. Ensure the time-to-go for this point matches our current simulation clock.
+        stitched_path.front()(2) = current_sim_time_;
+
+        // 4. Update the path. The simulation now has a continuous line from 
+        // "Exactly where I am now" to "The first waypoint of the new plan."
+        current_path_ = stitched_path;
+    }
+}    
+
 
 
     Eigen::VectorXd getCurrentSimulatedState() {
@@ -443,10 +476,10 @@ private:
              robot_spatial_trace_.push_back(robot_pos_3d.head<2>());
         }
 
-        // static int trace_pub_throttle = 0;
-        // if (++trace_pub_throttle % 5 == 0) {
-        //     visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 1.0f, 0.0f}, "robot_trace");
-        // }
+        static int trace_pub_throttle = 0;
+        if (++trace_pub_throttle % 10 == 0) {
+            visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 1.0f, 0.0f}, "robot_trace");
+        }
 
 
     }

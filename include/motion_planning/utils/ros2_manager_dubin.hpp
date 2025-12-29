@@ -397,10 +397,10 @@ private:
         }
         
 
-        // static int trace_pub_throttle = 0;
-        // if (++trace_pub_throttle % 5 == 0) {
-        //     visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 1.0f, 0.0f}, "robot_trace");
-        // }
+        static int trace_pub_throttle = 0;
+        if (++trace_pub_throttle % 10 == 0) {
+            visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 1.0f, 0.0f}, "robot_trace");
+        }
 
     }
 };
