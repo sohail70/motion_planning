@@ -273,6 +273,20 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
     // });
     
     // std::cout<<steer_call_<<"\n";
+
+    // =========================================================================
+    // BROAD PHASE ENVELOPE CALCULATION
+    // =========================================================================
+    // For a straight line, the center is the midpoint.
+    traj.envelope_center.head<2>() = (from.head<2>() + to.head<2>()) / 2.0;
+    
+    // The radius is exactly half the spatial distance.
+    traj.envelope_radius = spatial_distance / 2.0;
+    
+    traj.total_duration = time_duration;
+    // =========================================================================
+
+
     return traj;
 }
 

@@ -58,6 +58,11 @@ struct Trajectory {
     std::vector<Eigen::Vector2d> maneuver_pts;
     std::vector<Eigen::Vector2d> maneuver_centers;
 
+    // For Broad phase collision checking
+    Eigen::Vector3d envelope_center = Eigen::Vector3d::Zero();
+    double envelope_radius = 0.0;
+    double total_duration = 0.0;
+
 };
 
 

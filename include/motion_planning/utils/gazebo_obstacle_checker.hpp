@@ -21,6 +21,9 @@
 #include "BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 #include "BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
 
+#include "BulletCollision/NarrowPhaseCollision/btSubSimplexConvexCast.h"
+#include "BulletCollision/NarrowPhaseCollision/btVoronoiSimplexSolver.h"
+#include "BulletCollision/NarrowPhaseCollision/btConvexCast.h"
 
 class GazeboObstacleChecker : public ObstacleChecker {
 public:
@@ -55,6 +58,25 @@ public:
 bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, 
                                            double global_start_time, 
                                            const Obstacle& obstacle) const override;
+
+
+    bool isPointInOrientedBox(
+        const Eigen::Vector2d& point, 
+        const Eigen::Vector2d& box_center, 
+        double w, double h, double rotation
+    ) const {
+        // 1. Translate point relative to box center
+        Eigen::Vector2d d = point - box_center;
+
+        // 2. Rotate point into the box's local axis
+        double cos_r = std::cos(-rotation);
+        double sin_r = std::sin(-rotation);
+        double local_x = d.x() * cos_r - d.y() * sin_r;
+        double local_y = d.x() * sin_r + d.y() * cos_r;
+
+        // 3. Simple AABB check in local coordinates
+        return (std::abs(local_x) <= w / 2.0) && (std::abs(local_y) <= h / 2.0);
+    }
 
 
     bool isInVelocityObstacle(

@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
     double dist = (robot_initial_state.head<2>() - tree_root_state.head<2>()).norm();
     double buffer_factor = 1.5; // Allow 50% extra time for detours
     double time_budget = (dist / expected_velocity) * buffer_factor;
-    std::cout<<"TIME BUDGET: "<<time_budget<<"\n";
+    // std::cout<<"TIME BUDGET: "<<time_budget<<"\n";
 
     Eigen::VectorXd lower_bounds(4), upper_bounds(4);
     lower_bounds << -50.0, -50.0, -M_PI, 0.0;
@@ -421,6 +421,7 @@ int main(int argc, char** argv) {
             
             // EXECUTE PLAN (Populates the ObstacleChecker's culprit cache)
             planner->plan();
+            auto end = std::chrono::steady_clock::now();
 
             // --- [NEW] SYNC THREATS ---
             // 1. Extract what we hit
@@ -429,7 +430,6 @@ int main(int argc, char** argv) {
             ros_manager->updateThreats(culprits); 
             // --------------------------
 
-            auto end = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
             if (duration.count() > 0) {
                 std::cout << "Update time: " << duration.count() << " ms | Culprits: " << culprits.size() << "\n";

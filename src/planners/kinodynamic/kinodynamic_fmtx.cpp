@@ -954,6 +954,41 @@ void KinodynamicFMTX::plan() {
     // if (cached> 0)
     // std::cout<<" cached: "<< cached <<"\n";
 
+    // // --- ARCHITECTURE VERIFICATION LOOP ---
+    // std::cout << "\n[DEBUG] Verifying Time Architecture...\n";
+    // int matches = 0;
+    // int mismatches = 0;
+    // double total_diff = 0.0;
+
+    // for (const auto& node : tree_) {
+    //     if (node->getCost() == std::numeric_limits<double>::infinity()) continue;
+    //     if (node->getIndex() == 0) continue; // Skip root/goal if needed
+
+    //     // 1. Get the time coordinate from the sample (the last dimension)
+    //     double sampled_time = node->getStateValue().tail<1>()[0];
+        
+    //     // 2. Get the time-to-goal you calculated via summation
+    //     double summation_time = node->getTimeToGoal();
+
+    //     double diff = std::abs(sampled_time - summation_time);
+    //     if (diff < 1e-5) {
+    //         matches++;
+    //     } else {
+    //         mismatches++;
+    //         total_diff += diff;
+    //     }
+    // }
+
+    // std::cout << "Verification Result:\n"
+    //         << " - Total Valid Nodes: " << (matches + mismatches) << "\n"
+    //         << " - Perfect Matches:   " << matches << "\n"
+    //         << " - Mismatches:        " << mismatches << "\n";
+    // if (mismatches > 0) {
+    //     std::cout << " - Avg Mismatch Error: " << (total_diff / mismatches) << " sec\n";
+    // }
+    // std::cout << "--------------------------------------\n";
+
+
 }
 
 
@@ -1511,8 +1546,8 @@ std::unordered_set<int> KinodynamicFMTX::findSamplesNearObstacles(
 
         // --- DYNAMIC OBSTACLES ---
         if (obstacle.is_dynamic && obstacle.velocity.norm() > 1e-6) {
-            const double PREDICTION_HORIZON_SECONDS = 3.0;
-            const int num_intermediate_steps = 10;
+            const double PREDICTION_HORIZON_SECONDS = 2.0;
+            const int num_intermediate_steps = 5;
 
             for (int i = 0; i <= num_intermediate_steps; ++i) {
                 double delta_t = (static_cast<double>(i) / num_intermediate_steps) * PREDICTION_HORIZON_SECONDS;
@@ -2098,7 +2133,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
         // }
         // std::cout<<"current after: "<<current.size()<<"\n";
 
-    // /////////////////////////geometry based filter based on robots current position!///////////////////////////
+    // // /////////////////////////geometry based filter based on robots current position!///////////////////////////
 
     //     // --- STEP 2: IN-PLACE GEOMETRIC FILTER ---
     //     // Now, filter the 'current' set directly. Remove any node that is not
@@ -2124,7 +2159,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
     //     // std::cout<<"current after: "<<current.size()<<"\n";
     //     // --- END OF FILTER ---
 
-        ///////////////////////////////////////// dec25
+    //     ///////////////////////////////////////// dec25
 
         // // --- STEP 2: LAZY TEMPORAL & SPATIAL FILTER ---
         // const double t_now = clock_->now().seconds();
@@ -2172,27 +2207,27 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
 
     ////////////////////////////////////////////////////
-        // // CURRENT NODE VISUALIZATION CODE BLOCK
-        // if (visualization_) {
-        //     // Create a vector to hold the 2D positions of the nodes near obstacles.
-        //     std::vector<Eigen::VectorXd> positions_to_visualize;
-        //     positions_to_visualize.reserve(current.size());
+        // CURRENT NODE VISUALIZATION CODE BLOCK
+        if (visualization_) {
+            // Create a vector to hold the 2D positions of the nodes near obstacles.
+            std::vector<Eigen::VectorXd> positions_to_visualize;
+            positions_to_visualize.reserve(current.size());
 
-        //     // Iterate through the indices of the nodes in the 'current' set.
-        //     for (int node_index : current) {
-        //         // Get the full state of the node from the tree.
-        //         const Eigen::VectorXd& state = tree_.at(node_index)->getStateValue();
-        //         // Extract the 2D spatial part (x, y) for visualization.
-        //         positions_to_visualize.push_back(state.head<2>());
-        //     }
+            // Iterate through the indices of the nodes in the 'current' set.
+            for (int node_index : current) {
+                // Get the full state of the node from the tree.
+                const Eigen::VectorXd& state = tree_.at(node_index)->getStateValue();
+                // Extract the 2D spatial part (x, y) for visualization.
+                positions_to_visualize.push_back(state.head<2>());
+            }
 
-        //     // Call the visualization function to draw these nodes in RViz.
-        //     // We use a bright cyan color and a unique namespace to distinguish them.
-        //     visualization_->visualizeNodes(positions_to_visualize, "map", 
-        //                                  {0.0f, 1.0f, 1.0f},  // Cyan color
-        //                                  "current_obstacle_nodes");
-        // }
-        // // END OF VISUALIZATION CODE BLOCK
+            // Call the visualization function to draw these nodes in RViz.
+            // We use a bright cyan color and a unique namespace to distinguish them.
+            visualization_->visualizeNodes(positions_to_visualize, "map", 
+                                         {0.0f, 1.0f, 1.0f},  // Cyan color
+                                         "current_obstacle_nodes");
+        }
+        // END OF VISUALIZATION CODE BLOCK
 
 
 
@@ -2279,7 +2314,10 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
             RCLCPP_WARN(rclcpp::get_logger("Planner_Obstacle_Update"), "Robot state not set. Skipping obstacle update.");
             return false; // Return a value
         }
-        const double robot_current_timestamp = (kd_dim >= 3) ? robot_continuous_state_(kd_dim - 1) : 0.0;
+
+        // const double robot_current_timestamp = (kd_dim >= 3) ? robot_continuous_state_(kd_dim - 1) : 0.0;
+        const double robot_current_timestamp = robot_continuous_state_(robot_continuous_state_.size() - 1); //CRITICAL!
+
 
         std::unordered_set<int> primary_orphan_indices;
         // This set will hold nodes on the boundary of the "repaired" region, which need re-evaluation.

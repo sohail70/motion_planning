@@ -936,7 +936,9 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
     traj_out.is_valid = true;
     // traj_out.cost = duration;
     traj_out.cost = std::sqrt(duration * duration + traj_out.geometric_distance * traj_out.geometric_distance);
-    
+    traj_out.time_duration = duration;    
+
+
     // The solver gives us the correct path shape (X) and velocities (V).
     //    We just need to map the time from [0, duration] to your planner's
     //    [from_time, to_time] convention.
@@ -957,6 +959,30 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
         traj_out.path_points.push_back(state_at_t);
     }
     
+    // =========================================================================
+    //  Calculate Envelope for Broad-Phase Filtering
+    // =========================================================================
+    Eigen::Vector3d center = Eigen::Vector3d::Zero();
+    // 1. Calculate the spatial mean of the trajectory positions
+    for (const auto& point : traj_out.path_points) {
+        // head(D_spatial) works for both 2D and 3D position states
+        center.head(D_spatial) += point.head(D_spatial);
+    }
+    center /= static_cast<double>(num_points);
+    traj_out.envelope_center = center;
+
+    // 2. Calculate the radius (distance to the point furthest from the center)
+    double max_dist_sq = 0.0;
+    for (const auto& point : traj_out.path_points) {
+        double dist_sq = (point.head(D_spatial) - center.head(D_spatial)).squaredNorm();
+        if (dist_sq > max_dist_sq) max_dist_sq = dist_sq;
+    }
+    traj_out.envelope_radius = std::sqrt(max_dist_sq);
+    
+    // 3. Store total time duration (used to predict moving obstacle travel)
+    traj_out.total_duration = duration;
+    // =========================================================================
+
     return traj_out;
 }
 

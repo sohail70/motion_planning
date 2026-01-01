@@ -121,8 +121,8 @@ int main(int argc, char** argv) {
     Params manager_params;
     manager_params.setParam("use_sim_time", true);
     manager_params.setParam("sim_time_step", -0.04); // Time-to-go consumed per sim step
-    manager_params.setParam("sim_frequency_hz", 25);  // Smoothness of arrow
-    manager_params.setParam("vis_frequency_hz", 10);  // Obstacle visualization rate
+    manager_params.setParam("sim_frequency_hz", 50);  // Smoothness of arrow
+    manager_params.setParam("vis_frequency_hz", 30);  // Obstacle visualization rate
     manager_params.setParam("follow_path", true);
 
     Params gazebo_params;
@@ -182,7 +182,7 @@ int main(int argc, char** argv) {
 
     Eigen::VectorXd lower_bounds(4), upper_bounds(4);
     lower_bounds << -50.0, -50.0, -M_PI, 0.0;
-    upper_bounds << 50.0, 50.0, M_PI, 25.0;
+    upper_bounds << 50.0, 50.0, M_PI, 40.0;
     problem_def->setBounds(lower_bounds, upper_bounds);
 
     double min_turning_radius = 2.0;
@@ -269,6 +269,7 @@ int main(int argc, char** argv) {
 
         if (distance_to_goal < goal_tolerance) {
             RCLCPP_INFO(vis_node->get_logger(), "Goal Reached! Mission Accomplished.");
+            ros_manager->updateThreats({}); 
             g_running = false; // Set the flag to cleanly exit the loop.
             continue;          // Skip the rest of this loop iteration.
         }
@@ -282,6 +283,14 @@ int main(int argc, char** argv) {
 
         auto end = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+        // --- [NEW] SYNC THREATS ---
+        // 1. Extract what we hit
+        auto culprits = obstacle_checker->getAndClearCulprits();
+        // 2. Update the Manager (Background timer will draw them Red)
+        ros_manager->updateThreats(culprits); 
+        // --------------------------
+
         if (duration.count() > 0) {
             std::cout << "time taken for the update : " << duration.count() 
                     << " milliseconds\n";

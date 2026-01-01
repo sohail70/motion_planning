@@ -115,30 +115,65 @@ public:
     // }
 
 
-    void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+    // void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+    //     std::lock_guard<std::mutex> lock(path_mutex_);
+
+    //     if (new_path_from_main.empty()) {
+    //         is_path_set_ = false;
+    //         current_path_.clear();
+    //         return;
+    //     }
+        
+    //     current_path_ = new_path_from_main;
+        
+    //     // --- FIX: Only clear trace/time on the FIRST path set ---
+    //     // This prevents erasing the history when the planner sends an update/replan.
+    //     if (!is_path_set_) {
+    //         // Get time index (last element)
+    //         int time_idx = current_path_.front().size() - 1;
+    //         current_sim_time_ = current_path_.front()(time_idx);
+            
+    //         robot_spatial_trace_.clear();
+    //     }
+        
+    //     is_path_set_ = true;
+    // }
+
+    void setPath(const std::vector<Eigen::VectorXd>& new_path) {
         std::lock_guard<std::mutex> lock(path_mutex_);
 
-        if (new_path_from_main.empty()) {
-            is_path_set_ = false;
-            current_path_.clear();
-            return;
-        }
-        
-        current_path_ = new_path_from_main;
-        
-        // --- FIX: Only clear trace/time on the FIRST path set ---
-        // This prevents erasing the history when the planner sends an update/replan.
-        if (!is_path_set_) {
-            // Get time index (last element)
-            int time_idx = current_path_.front().size() - 1;
-            current_sim_time_ = current_path_.front()(time_idx);
-            
-            robot_spatial_trace_.clear();
-        }
-        
-        is_path_set_ = true;
-    }
+        if (new_path.size() < 2) return;
 
+        if (!is_path_set_) {
+            current_path_ = new_path;
+            current_sim_time_ = current_path_.front()(3);
+            is_path_set_ = true;
+        } else {
+            // --- SCIENTIFIC PROJECTION ---
+            // 1. Find the point on the new path that most closely matches the 
+            // robot's current state (Position AND Heading).
+            double min_error = std::numeric_limits<double>::max();
+            int best_idx = 0;
+
+            for (int i = 0; i < std::min((int)new_path.size(), 20); ++i) {
+                double dist = (new_path[i].head<2>() - current_interpolated_state_.head<2>()).norm();
+                double angle_err = std::abs(normalizeAngle(new_path[i](2) - current_interpolated_state_(2)));
+                
+                // Weighted error: Position error + Orientation error
+                double total_error = dist + (angle_err * 0.5); 
+                
+                if (total_error < min_error) {
+                    min_error = total_error;
+                    best_idx = i;
+                }
+            }
+
+            // 2. Resume simulation from the point that matches our current reality.
+            // This preserves the planner's Dubins curves perfectly.
+            current_path_ = new_path;
+            current_sim_time_ = current_path_[best_idx](3);
+        }
+    }
 
 
     Eigen::VectorXd getCurrentSimulatedState() {

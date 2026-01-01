@@ -101,26 +101,56 @@ public:
         RCLCPP_INFO(this->get_logger(), "Initial state set. Sim time starting at: %.2f", current_sim_time_);
     }
 
-    // Accepts the planned trajectory.
+    // // Accepts the planned trajectory.
+    // void setPlannedThrusterTrajectory(const std::vector<Eigen::VectorXd>& path) {
+    //     std::lock_guard<std::mutex> lock(path_mutex_);
+
+    //     if (path.size() < 2) {
+    //         RCLCPP_WARN(this->get_logger(), "[SET_PATH] Received invalid or empty trajectory. Path not set.");
+    //         is_path_set_ = false;
+    //         current_path_.clear();
+    //         return;
+    //     }
+
+    //     current_path_ = path;
+
+    //     if (!current_path_.empty()) {
+    //         const int dim = current_path_.front().size();
+    //         RCLCPP_INFO(this->get_logger(), "[SET_PATH] New path received. Points: %zu, Time Range: [%.4f -> %.4f]",
+    //             current_path_.size(), current_path_.front()(dim-1), current_path_.back()(dim-1));
+    //     }
+    //     is_path_set_ = true;
+    // }
+
     void setPlannedThrusterTrajectory(const std::vector<Eigen::VectorXd>& path) {
         std::lock_guard<std::mutex> lock(path_mutex_);
+        if (path.size() < 2) return;
 
-        if (path.size() < 2) {
-            RCLCPP_WARN(this->get_logger(), "[SET_PATH] Received invalid or empty trajectory. Path not set.");
-            is_path_set_ = false;
-            current_path_.clear();
-            return;
+        if (!is_path_set_) {
+            current_path_ = path;
+            current_sim_time_ = current_path_.front().reverse()(0); // Assuming time is last
+            is_path_set_ = true;
+        } else {
+            // Find the index that matches our current Momentum (Pos + Vel)
+            double min_error = std::numeric_limits<double>::max();
+            int best_idx = 0;
+
+            for (int i = 0; i < std::min((int)path.size(), 20); ++i) {
+                double pos_err = (path[i].head<2>() - current_interpolated_state_.head<2>()).norm();
+                double vel_err = (path[i].segment<2>(2) - current_interpolated_state_.segment<2>(2)).norm();
+                
+                double total_error = pos_err + (vel_err * 0.2);
+                if (total_error < min_error) {
+                    min_error = total_error;
+                    best_idx = i;
+                }
+            }
+
+            current_path_ = path;
+            current_sim_time_ = current_path_[best_idx](path[best_idx].size()-1);
         }
-
-        current_path_ = path;
-
-        if (!current_path_.empty()) {
-            const int dim = current_path_.front().size();
-            RCLCPP_INFO(this->get_logger(), "[SET_PATH] New path received. Points: %zu, Time Range: [%.4f -> %.4f]",
-                current_path_.size(), current_path_.front()(dim-1), current_path_.back()(dim-1));
-        }
-        is_path_set_ = true;
     }
+
 
     Eigen::VectorXd getCurrentKinodynamicState() const {
         std::lock_guard<std::mutex> lock(path_mutex_);
@@ -384,7 +414,11 @@ private:
         // --- Visualization ---
         Eigen::VectorXd new_pos = getSpatialPosition(current_interpolated_state_);
         Eigen::VectorXd new_vel = getSpatialVelocity(current_interpolated_state_);
-        
+
+        // double scalar_speed = new_vel.norm();
+        // std::cout << "Current Speed: " << scalar_speed << " m/s | Vx: " << new_vel[0] << " Vy: " << new_vel[1] << "\n";        
+
+
         // Determine robot orientation from velocity vector
         Eigen::VectorXd robot_orientation_quat(4);
         if (new_vel.norm() > 1e-3) {

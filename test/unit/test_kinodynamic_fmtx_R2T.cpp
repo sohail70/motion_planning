@@ -425,16 +425,16 @@ int main(int argc, char** argv)
              continue;
         }
 
-// --- PASTE THIS DEBUG BLOCK HERE ---
-        double planner_ttg = kinodynamic_planner->getRobotTimeToGo();
-        double sim_ttg = current_sim_state(2); // Assuming index 2 is time
+        // // ---------------------------------
+        // double planner_ttg = kinodynamic_planner->getRobotTimeToGo();
+        // double sim_ttg = current_sim_state(2); // Assuming index 2 is time
         
-        RCLCPP_WARN_THROTTLE(vis_node->get_logger(), *vis_node->get_clock(), 1000,
-                     "Planner TTG: %.2f, Sim TTG: %.2f, Diff: %.2f",
-                     planner_ttg,
-                     sim_ttg,
-                     planner_ttg - sim_ttg);
-        // -----------------------------------
+        // RCLCPP_WARN_THROTTLE(vis_node->get_logger(), *vis_node->get_clock(), 1000,
+        //              "Planner TTG: %.2f, Sim TTG: %.2f, Diff: %.2f",
+        //              planner_ttg,
+        //              sim_ttg,
+        //              planner_ttg - sim_ttg);
+        // // -----------------------------------
 
 
         // --- 3. GOAL CHECK ---

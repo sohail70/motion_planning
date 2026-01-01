@@ -358,13 +358,30 @@ bool GazeboObstacleChecker::check_arc_line_collision(
 
 
 
-// In gazebo_obstacle_checker.cpp
+// GOOD with prediction horizon
 bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
     const Trajectory& trajectory,
     double global_start_time,
     const Obstacle& obs
 ) const {
     if (trajectory.path_points.size() < 2) return true;
+
+
+    // --- BROAD-PHASE ENVELOPE CHECK ---
+    // If the obstacle center is nowhere near the trajectory spatial area, skip it.
+    // This is the "Filter First" logic from the Julia code.
+    Eigen::Vector2d traj_start = trajectory.path_points.front().head<2>();
+    Eigen::Vector2d traj_end = trajectory.path_points.back().head<2>();
+    Eigen::Vector2d mid_point = (traj_start + traj_end) / 2.0;
+    double half_length = (traj_end - traj_start).norm() / 2.0;
+    
+    // Quick distance from obstacle to the entire trajectory "envelope"
+    double dist_to_obs = (obs.position - mid_point).norm();
+    if (dist_to_obs > (half_length + obs.dimensions.radius + inflation + 5.0)) {
+        return true; // Too far away spatially, skip all segments!
+    }
+    // ---------------------------------------
+
 
     const int time_dim_idx = trajectory.path_points[0].size() - 1;
     double time_into_full_trajectory = 0.0;
@@ -437,6 +454,34 @@ bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
 
     return true; // No collision found
 }
+
+// // FOR ABSOLUTE TIME!
+// bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
+//     const Trajectory& trajectory, double global_edge_start_time, const Obstacle& obs) const {
+    
+//     // 1. Time-to-Goal at the very beginning of the edge
+//     const int t_idx = trajectory.path_points[0].size() - 1;
+//     const double robot_ttg_at_start = trajectory.path_points[0](t_idx);
+//     const double combined_rad_sq = std::pow(obs.dimensions.radius + inflation, 2);
+
+//     // 2. Point-by-Point Appointment (Otte Logic)
+//     for (const auto& point : trajectory.path_points) {
+//         // SimTime when robot hits this specific waypoint = Edge Start SimTime + (TTG difference)
+//         double waypoint_sim_time = global_edge_start_time + (robot_ttg_at_start - point(t_idx));
+        
+//         // Where is the obstacle at that exact SimTime?
+//         double dt_since_last_msg = waypoint_sim_time - obs.last_update_time.seconds();
+//         Eigen::Vector2d obs_pos = obs.position;
+//         if (obs.is_dynamic) {
+//             obs_pos += obs.velocity * dt_since_last_msg;
+//         }
+
+//         // Check if robot point (x,y) hits obstacle (x,y) at this appointment
+//         if ((point.head<2>() - obs_pos).squaredNorm() < combined_rad_sq) return false;
+//     }
+//     return true;
+// }
+
 
 /**
  * Performs a continuous, analytical collision check for a moving point (robot) against a moving box (obstacle).
@@ -512,6 +557,18 @@ bool GazeboObstacleChecker::isTrajectorySafe(
         return !getCollidingObstacleBullet(trajectory, global_edge_start_time).has_value();
     else
         return !getCollidingObstacle(trajectory, global_edge_start_time).has_value();
+
+
+// // Julia pattern: Iterate all obstacles and return the first culprit found.
+//     for (const auto& obs : obstacle_snapshot_) {
+//         if (!isTrajectorySafeAgainstSingleObstacle(trajectory, global_edge_start_time, obs)) {
+//             return false;
+//         }
+//     }
+//     return true;
+
+
+
 }
 
 //  With Constant Acc and Constant Vel implmented depending on what the obstalces movement and you KF is!
@@ -1306,7 +1363,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 
 
 
-
+// GOOD
 std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
     const Trajectory& trajectory,
     double global_start_time
@@ -1592,7 +1649,72 @@ std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
 
 }
 
+// // For Absolute time
+// std::optional<Obstacle> GazeboObstacleChecker::getCollidingObstacle(
+//     const Trajectory& trajectory,
+//     double global_start_time // The SimTime when the robot is at trajectory.path_points[0]
+// ) const {
+//     // Standard RRTX Helper: Records the threat for your red visualization
+//     auto recordCulprit = [&](const Obstacle& obs) {
+//         if (culprit_names_.find(obs.name) == culprit_names_.end()) {
+//             culprit_names_.insert(obs.name);
+//             culprit_cache_.push_back(obs);
+//         }
+//     };
 
+//     if (trajectory.path_points.empty()) return std::nullopt;
+
+//     const int state_dim = trajectory.path_points[0].size();
+//     const int t_idx = state_dim - 1; // Time-To-Goal coordinate index
+//     const double robot_ttg_at_start = trajectory.path_points[0](t_idx);
+
+//     for (const auto& obs : obstacle_snapshot_) {
+//         // --- 1. BROAD PHASE GATEKEEPER ---
+//         double obs_bound = (obs.type == Obstacle::CIRCLE) ? 
+//                             obs.dimensions.radius : 
+//                             std::hypot(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0);
+        
+//         double max_obs_move = obs.is_dynamic ? (obs.velocity.norm() * trajectory.total_duration) : 0.0;
+//         double dist_to_envelope = (obs.position - trajectory.envelope_center.head<2>()).norm();
+
+//         // Skip the entire obstacle if it can't physically reach the trajectory's spatial volume
+//         if (dist_to_envelope > (trajectory.envelope_radius + obs_bound + inflation + max_obs_move + 1.0)) {
+//             continue; 
+//         }
+
+//         // --- 2. NARROW PHASE: SPACE-TIME APPOINTMENTS ---
+//         for (const auto& point : trajectory.path_points) {
+//             // A. CALCULATE APPOINTMENT SimTime
+//             // Arrival_SimTime = (SimTime at start of edge) + (Time elapsed since start of edge)
+//             double abs_sim_time = global_start_time + (robot_ttg_at_start - point(t_idx));
+
+//             // B. PROJECT THE OBSTACLE TO THAT INSTANT
+//             Eigen::Vector2d obs_pos = obs.position;
+//             if (obs.is_dynamic) {
+//                 double dt = abs_sim_time - obs.last_update_time.seconds();
+//                 obs_pos += obs.velocity * dt;
+//             }
+
+//             // C. POINT-IN-SHAPE CHECK (O(1) Math)
+//             bool collision = false;
+//             if (obs.type == Obstacle::CIRCLE) {
+//                 double d_sq = (point.head<2>() - obs_pos).squaredNorm();
+//                 if (d_sq < std::pow(obs.dimensions.radius + inflation, 2)) collision = true;
+//             } else { // BOX
+//                 collision = isPointInOrientedBox(point.head<2>(), obs_pos, 
+//                                                obs.dimensions.width + 2*inflation, 
+//                                                obs.dimensions.height + 2*inflation, 
+//                                                obs.dimensions.rotation);
+//             }
+
+//             if (collision) {
+//                 recordCulprit(obs); // Save for red visualization!
+//                 return obs; 
+//             }
+//         }
+//     }
+//     return std::nullopt;
+// }
 
 
 

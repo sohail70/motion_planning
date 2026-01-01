@@ -102,37 +102,37 @@ public:
     //     is_path_set_ = true;
     // }
 
-void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
-    std::lock_guard<std::mutex> lock(path_mutex_); // MANDATORY: Prevents race conditions
+    void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+        std::lock_guard<std::mutex> lock(path_mutex_);
 
-    if (new_path_from_main.size() < 2) {
-        is_path_set_ = false;
-        return;
-    }
+        if (new_path_from_main.size() < 2) {
+            is_path_set_ = false;
+            return;
+        }
 
-    if (!is_path_set_) {
-        // Initial path setup
-        current_path_ = new_path_from_main;
-        current_sim_time_ = current_path_.front()(2);
-        current_interpolated_state_ = current_path_.front();
-        is_path_set_ = true;
-    } else {
-        // --- THE STITCH (The "No-Jump" Fix) ---
-        // 1. Take the new path from the planner
-        std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
+        if (!is_path_set_) {
+            // Initial path setup
+            current_path_ = new_path_from_main;
+            current_sim_time_ = current_path_.front()(2);
+            current_interpolated_state_ = current_path_.front();
+            is_path_set_ = true;
+        } else {
+            // --- THE STITCH (The "No-Jump" Fix) ---
+            // 1. Take the new path from the planner
+            std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
 
-        // 2. Overwrite the first waypoint with the ACTUAL current state of the robot.
-        // This bridges the gap caused by the 80ms planning latency.
-        stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
-        
-        // 3. Ensure the time-to-go for this point matches our current simulation clock.
-        stitched_path.front()(2) = current_sim_time_;
+            // 2. Overwrite the first waypoint with the ACTUAL current state of the robot.
+            // This bridges the gap caused by the 80ms planning latency.
+            stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
+            
+            // 3. Ensure the time-to-go for this point matches our current simulation clock.
+            stitched_path.front()(2) = current_sim_time_;
 
-        // 4. Update the path. The simulation now has a continuous line from 
-        // "Exactly where I am now" to "The first waypoint of the new plan."
-        current_path_ = stitched_path;
-    }
-}    
+            // 4. Update the path. The simulation now has a continuous line from 
+            // "Exactly where I am now" to "The first waypoint of the new plan."
+            current_path_ = stitched_path;
+        }
+    }    
 
 
 
