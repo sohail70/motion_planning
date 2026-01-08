@@ -144,6 +144,13 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     double shrinkingBallRadius() const;
     void addNewObstacle(const std::vector<int>& added_indices);
     void removeObstacle(const std::vector<int>& removed_indices);
+
+    void addNewObstacle(const Obstacle& ob);
+    void removeObstacle(const Obstacle& ob);
+
+    void addNewObstacle(const Obstacle& ob, std::vector<Eigen::VectorXd>& debug_nodes);
+    void removeObstacle(const Obstacle& ob, std::vector<Eigen::VectorXd>& debug_nodes);
+
     Eigen::VectorXd saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta);
 
     // Path smoothing implementations

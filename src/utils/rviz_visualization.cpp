@@ -138,13 +138,13 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
             geometry_msgs::msg::Point start, end;
             start.x = edge.first.x();
             start.y = edge.first.y();
-            // start.z = 0.0; // Assuming 2D
-            start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0; // <--- MODIFIED: Use Z if available, else 0
+            start.z = 0.0; // Assuming 2D
+            // start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0; // <--- MODIFIED: Use Z if available, else 0
 
             end.x = edge.second.x();
             end.y = edge.second.y();
-            // end.z = 0.0; // Assuming 2D
-            end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0; // <--- MODIFIED: Use Z if available, else 0
+            end.z = 0.0; // Assuming 2D
+            // end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0; // <--- MODIFIED: Use Z if available, else 0
 
             marker.points.push_back(start);
             marker.points.push_back(end);
@@ -190,13 +190,13 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
         geometry_msgs::msg::Point start, end;
         start.x = edge.first.x();
         start.y = edge.first.y();
-        // start.z = 0.0; // Assuming 2D
-        start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0; // <--- MODIFIED
+        start.z = 0.0; // Assuming 2D
+        // start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0; // <--- MODIFIED
 
         end.x = edge.second.x();
         end.y = edge.second.y();
-        // end.z = 0.0; // Assuming 2D
-        end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0; // <--- MODIFIED
+        end.z = 0.0; // Assuming 2D
+        // end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0; // <--- MODIFIED
 
         marker.points.push_back(start);
         marker.points.push_back(end);
@@ -244,13 +244,13 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
         geometry_msgs::msg::Point start, end;
         start.x = edge.first.x();
         start.y = edge.first.y();
-        // start.z = 0.0; // Assuming 2D
-        start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0; // <--- MODIFIED
+        start.z = 0.0; // Assuming 2D
+        // start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0; // <--- MODIFIED
 
         end.x = edge.second.x();
         end.y = edge.second.y();
-        // end.z = 0.0; // Assuming 2D
-        end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0; // <--- MODIFIED
+        end.z = 0.0; // Assuming 2D
+        // end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0; // <--- MODIFIED
 
         marker.points.push_back(start);
         marker.points.push_back(end);

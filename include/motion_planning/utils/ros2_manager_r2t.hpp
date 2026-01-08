@@ -181,67 +181,10 @@ private:
     bool is_in_collision_state_{false};
     std::set<std::string> current_threat_names_;
 
-    // OLD VERSION
-    // void visualizationLoop() {
-    //     if (!obstacle_checker_ || !visualizer_) return;
-        
-    //     auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
-    //     if (!gazebo_checker) return;
+    rclcpp::Time last_clock_time_;
+    double total_budget_;
 
-    //     gazebo_checker->processLatestPoseInfo();
-    //     const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions();
-        
-    //     // --- MODIFIED SECTION START ---
-        
-    //     // Prepare containers for visualization data
-    //     std::vector<Eigen::VectorXd> cylinder_positions;
-    //     std::vector<double> cylinder_radii;
-        
-    //     //  Create the specific data structure your visualizeCube function needs
-    //     std::vector<std::tuple<Eigen::Vector2d, double, double, double>> box_data_for_viz;
-
-    //     std::vector<Eigen::Vector2d> dynamic_obstacle_positions;
-    //     std::vector<Eigen::Vector2d> dynamic_obstacle_velocities;
-
-    //     // Process each obstacle and sort it into the correct container
-    //     for (const auto& obstacle : all_obstacles) {
-    //         if (obstacle.type == Obstacle::CIRCLE) {
-    //             Eigen::VectorXd pos(2);
-    //             pos << obstacle.position.x(), obstacle.position.y();
-    //             cylinder_positions.push_back(pos);
-    //             cylinder_radii.push_back(obstacle.dimensions.radius);
-    //         } else if (obstacle.type == Obstacle::BOX) {
-    //             // Populate the vector of tuples directly
-    //             box_data_for_viz.emplace_back(
-    //                 obstacle.position,
-    //                 obstacle.dimensions.width,
-    //                 obstacle.dimensions.height,
-    //                 obstacle.dimensions.rotation
-    //             );
-    //         }
-            
-    //         if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
-    //             dynamic_obstacle_positions.push_back(obstacle.position);
-    //             dynamic_obstacle_velocities.push_back(obstacle.velocity);
-    //         }
-    //     }
-
-    //     // Send data to the visualizer
-    //     if (!cylinder_positions.empty()) {
-    //         visualizer_->visualizeCylinder(cylinder_positions, cylinder_radii, "map", {0.0f, 0.4f, 1.0f}, "cylinder_obstacles");
-    //     }
-    //     if (!box_data_for_viz.empty()) {
-    //         // Call your actual visualizeCube function with the correct data structure
-    //         visualizer_->visualizeCube(box_data_for_viz, "map", {0.0f, 0.6f, 0.8f}, "box_obstacles");
-    //     }
-    //     if (!dynamic_obstacle_positions.empty()) {
-    //         visualizer_->visualizeVelocityVectors(dynamic_obstacle_positions, dynamic_obstacle_velocities, "map", {1.0f, 0.5f, 0.0f}, "velocity_vectors");
-    //     }
-        
-    //     // --- MODIFIED SECTION END ---
-    // }
-
-    // Optimized version
+    // // Optimized version
     void visualizationLoop() { if (!obstacle_checker_ || !visualizer_) return; auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); if (!gazebo_checker) return; gazebo_checker->processLatestPoseInfo(); const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; std::vector<double> safe_cyl_radii, threat_cyl_radii;
             std::vector<std::tuple<Eigen::Vector2d, double, double, double>> safe_boxes, threat_boxes;
 
@@ -298,289 +241,186 @@ private:
             );
         }
 
+// void visualizationLoop() { 
+//         if (!obstacle_checker_ || !visualizer_) return; 
+//         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); 
+//         if (!gazebo_checker) return; 
 
-
-
-    //     void simulationLoop() {
-    //     std::lock_guard<std::mutex> lock(path_mutex_);
-    //     if (!is_path_set_ || current_path_.size() < 2) {
-    //         return; // Nothing to do if no valid path is set.
-    //     }
-
-    //     // --- Time Progression ---
-    //     // Time counts down from a high "time-to-go" value towards zero.
-    //     current_sim_time_ += simulation_time_step_; // simulation_time_step_ is negative.
-
-    //     // --- FIX #1: Correct Clamping at the End of the Path ---
-    //     // The simulation should stop when it reaches or passes the time of the LAST point
-    //     // in the path (the root node), which has the lowest time-to-go.
-    //     if (current_sim_time_ < current_path_.back()(2)) {
-    //         current_sim_time_ = current_path_.back()(2);
-    //     }
+//         gazebo_checker->processLatestPoseInfo(); 
+//         const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); 
         
-    //     // --- FIX #2: Correctly Find the Current Path Segment ---
-    //     // The path is sorted by descending time: [T_start, T_mid, ..., T_end] where T_start > T_end.
-    //     // We need to find the first waypoint in the path whose time is less than or equal to
-    //     // our current simulation time.
-    //     auto it_after = std::lower_bound(current_path_.begin(), current_path_.end(), current_sim_time_,
-    //         [](const Eigen::VectorXd& point, double time) {
-    //             // This custom comparator tells lower_bound to find the first element
-    //             // that is NOT greater than 'time'.
-    //             return point(2) > time;
-    //         });
+//         // --- Containers for Standard Obstacles ---
+//         std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; 
+//         std::vector<double> safe_cyl_radii, threat_cyl_radii;
+//         std::vector<std::tuple<Eigen::Vector2d, double, double, double>> safe_boxes, threat_boxes;
 
-    //     // Handle the edge case where we are exactly at or before the first waypoint.
-    //     if (it_after == current_path_.begin()) {
-    //         it_after++;
-    //     }
-    //     // If the search fails or goes past the end, we can't form a segment.
-    //     if (it_after == current_path_.end()) {
-    //         return;
-    //     }
+//         // --- Containers for Prediction Arrows ---
+//         std::vector<Eigen::Vector2d> safe_vel_pos, safe_vel_val;
+//         std::vector<Eigen::Vector2d> threat_vel_pos, threat_vel_val;
 
-    //     // The segment for interpolation is between the waypoint we found and the one just before it.
-    //     auto it_before = std::prev(it_after);
+//         // Hardcode visualization horizon to 5.0s since member var is gone
+//         double vis_horizon = 5.0; 
 
-    //     const Eigen::VectorXd& state_before = *it_before;
-    //     const Eigen::VectorXd& state_after = *it_after;
-        
-    //     double time_before = state_before(2);
-    //     double time_after = state_after(2);
-    //     double segment_duration = time_before - time_after; // Note: duration is positive
+//         for (const auto& obstacle : all_obstacles) {
+//             bool is_threat = current_threat_names_.count(obstacle.name);
 
-    //     // --- Interpolation (Unchanged, but now using the correct segment) ---
-    //     Eigen::VectorXd current_robot_state(3);
-    //     if (segment_duration <= 1e-9) {
-    //         current_robot_state = state_after; // Snap to the end of the segment
-    //     } else {
-    //         // Calculate how far along we are in this specific segment.
-    //         double time_into_segment = time_before - current_sim_time_;
-    //         double interp_factor = time_into_segment / segment_duration;
-    //         current_robot_state.head<2>() = state_before.head<2>() + interp_factor * (state_after.head<2>() - state_before.head<2>());
-    //         current_robot_state(2) = current_sim_time_;
-    //     }
-        
-    //     // Update the state for the main thread's feedback loop
-    //     current_interpolated_state_ = current_robot_state;
-
-    //     // --- Visualization (Unchanged) ---
-    //     Eigen::Vector3d robot_pos_3d(current_robot_state(0), current_robot_state(1), 0.0);
-        
-    //     // The direction of travel is from the "before" state to the "after" state.
-    //     Eigen::Vector2d direction_vector = state_after.head<2>() - state_before.head<2>();
-    //     if (direction_vector.norm() > 1e-6) {
-    //         last_known_theta_ = atan2(direction_vector.y(), direction_vector.x());
-    //     }
-        
-    //     Eigen::Quaterniond q(Eigen::AngleAxisd(last_known_theta_, Eigen::Vector3d::UnitZ()));
-    //     Eigen::VectorXd orientation_quat(4);
-    //     orientation_quat << q.x(), q.y(), q.z(), q.w();
-        
-    //     visualizer_->visualizeRobotArrow(robot_pos_3d, orientation_quat, "map", {0.8f, 0.1f, 0.8f}, "simulated_robot");
-
-    //     if(robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - robot_pos_3d.head<2>()).norm() > 0.1) {
-    //          robot_spatial_trace_.push_back(robot_pos_3d.head<2>());
-    //     }
-    //     // visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 0.5f, 0.0f}, "robot_trace");
-    // }
-
-
-    // With speed logs!
-    void simulationLoop() {
-        // std::lock_guard<std::mutex> lock(path_mutex_);
-        if (!is_path_set_ || current_path_.size() < 2) {
-            return;
-        }
-
-        current_sim_time_ += simulation_time_step_;
-
-        if (current_sim_time_ < current_path_.back()(2)) {
-            current_sim_time_ = current_path_.back()(2);
-        }
-        
-        auto it_after = std::lower_bound(current_path_.begin(), current_path_.end(), current_sim_time_,
-            [](const Eigen::VectorXd& point, double time) {
-                return point(2) > time;
-            });
-
-        if (it_after == current_path_.begin()) {
-            it_after++;
-        }
-        if (it_after == current_path_.end()) {
-            return;
-        }
-
-        auto it_before = std::prev(it_after);
-        const Eigen::VectorXd& state_before = *it_before;
-        const Eigen::VectorXd& state_after = *it_after;
-        
-        double time_before = state_before(2);
-        double time_after = state_after(2);
-        double segment_duration = time_before - time_after;
-
-        // // ADD THIS BLOCK TO CHECK THE SPEED
-        // { // Use a block to keep variables local
-        //     double spatial_distance = (state_after.head<2>() - state_before.head<2>()).norm();
-        //     double segment_speed = 0.0;
-        //     if (segment_duration > 1e-9) {
-        //         segment_speed = spatial_distance / segment_duration;
-        //     }
-        //     // Use an RCLCPP_INFO logger to print, which is better than std::cout in ROS 2
-        //     // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Current Segment Speed: %.2f m/s", segment_speed);
-        //     std::cout<<"Current segment speed: "<<segment_speed<<"\n";
-        // }
-
-        Eigen::VectorXd current_robot_state(3);
-        if (segment_duration <= 1e-9) {
-            current_robot_state = state_after;
-        } else {
-            double time_into_segment = time_before - current_sim_time_;
-            double interp_factor = time_into_segment / segment_duration;
-            current_robot_state.head<2>() = state_before.head<2>() + interp_factor * (state_after.head<2>() - state_before.head<2>());
-            current_robot_state(2) = current_sim_time_;
-        }
-        
-        current_interpolated_state_ = current_robot_state;
-        // COLLISION COUNTING LOGIC
-        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
-        if (gazebo_checker) {
-            Eigen::Vector2d current_pos = current_robot_state.head<2>();
-            double current_yaw = last_known_theta_;
+//             // 1. Shapes
+//             if (obstacle.type == Obstacle::CIRCLE) {
+//                 Eigen::VectorXd pos(2); pos << obstacle.position.x(), obstacle.position.y();
+//                 if (is_threat) { threat_cyl_pos.push_back(pos); threat_cyl_radii.push_back(obstacle.dimensions.radius); }
+//                 else { safe_cyl_pos.push_back(pos); safe_cyl_radii.push_back(obstacle.dimensions.radius); }
+//             } else if (obstacle.type == Obstacle::BOX) {
+//                 auto box_tuple = std::make_tuple(obstacle.position, obstacle.dimensions.width, obstacle.dimensions.height, obstacle.dimensions.rotation);
+//                 if (is_threat) threat_boxes.push_back(box_tuple);
+//                 else safe_boxes.push_back(box_tuple);
+//             }
             
-            // Call the single, unified collision check function
-            bool is_colliding_now = gazebo_checker->checkRobotCollision(current_pos, current_yaw);
+//             // 2. Prediction Arrow (Start -> Finish)
+//             if (obstacle.is_dynamic && obstacle.has_ground_truth) {
+                
+//                 // Get the FULL path from your smart function
+//                 std::vector<Eigen::Vector3d> raw_prediction = gazebo_checker->generatePrediction(obstacle, vis_horizon);
 
-            if (is_colliding_now && !is_in_collision_state_) {
-                collision_count_++;
-                RCLCPP_FATAL(this->get_logger(), "COLLISION DETECTED! Total Failures: %d", collision_count_.load());
-            }
-            is_in_collision_state_ = is_colliding_now;
-        }
-        ////////////////////////////////////////////////////////////////////
+//                 if (!raw_prediction.empty()) {
+//                     // Calculate vector from Start to the FINAL predicted point
+//                     Eigen::Vector2d start_pos = obstacle.position;
+//                     Eigen::Vector2d final_pos = raw_prediction.back().head<2>();
+                    
+//                     Eigen::Vector2d total_displacement = final_pos - start_pos;
+
+//                     if (is_threat) {
+//                         threat_vel_pos.push_back(start_pos);
+//                         threat_vel_val.push_back(total_displacement);
+//                     } else {
+//                         safe_vel_pos.push_back(start_pos);
+//                         safe_vel_val.push_back(total_displacement);
+//                     }
+//                 }
+//             }
+//         }
+
+//         visualizer_->publishObstacleFrame(
+//             safe_cyl_pos, safe_cyl_radii,
+//             threat_cyl_pos, threat_cyl_radii,
+//             safe_boxes, threat_boxes,
+//             safe_vel_pos, safe_vel_val,      
+//             threat_vel_pos, threat_vel_val,  
+//             "map"
+//         );
+//     }
 
 
-        Eigen::Vector3d robot_pos_3d(current_robot_state(0), current_robot_state(1), 0.0);
-        
-        Eigen::Vector2d direction_vector = state_after.head<2>() - state_before.head<2>();
-        if (direction_vector.norm() > 1e-6) {
-            last_known_theta_ = atan2(direction_vector.y(), direction_vector.x());
-        }
-        
-        Eigen::Quaterniond q(Eigen::AngleAxisd(last_known_theta_, Eigen::Vector3d::UnitZ()));
-        Eigen::VectorXd orientation_quat(4);
-        orientation_quat << q.x(), q.y(), q.z(), q.w();
-        
-        visualizer_->visualizeRobotArrow(robot_pos_3d, orientation_quat, "map", {0.8f, 0.1f, 0.8f}, "simulated_robot");
+// With speed logs, fixed Clock-Sync, AND COLLISION CHECKS!
+void simulationLoop() {
+    rclcpp::Time now_sim = this->get_clock()->now();
 
-        if(robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - robot_pos_3d.head<2>()).norm() > 0.1) {
-             robot_spatial_trace_.push_back(robot_pos_3d.head<2>());
-        }
-
-        static int trace_pub_throttle = 0;
-        if (++trace_pub_throttle % 10 == 0) {
-            visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 1.0f, 0.0f}, "robot_trace");
-        }
-
-
+    // --- RESET GUARD ---
+    if (last_clock_time_.nanoseconds() == 0 || now_sim < last_clock_time_) {
+        last_clock_time_ = now_sim;
+        RCLCPP_INFO(this->get_logger(), "CLOCK ANCHORED/RESET: SimTime=%.2f", now_sim.seconds());
+        return; 
     }
 
+    double dt_sim = (now_sim - last_clock_time_).seconds();
+    last_clock_time_ = now_sim;
 
-//     /////////////////////////////////////////////////////////
-//     // for constant speed!
-//     void simulationLoop() {
-//     std::lock_guard<std::mutex> lock(path_mutex_);
-//     if (!is_path_set_ || current_path_.size() < 2) {
-//         return;
-//     }
+    if (dt_sim > 0) {
+        current_sim_time_ -= dt_sim;
+    }
 
-//     // Time progression (counts down)
-//     current_sim_time_ += simulation_time_step_;
+    std::lock_guard<std::mutex> lock(path_mutex_);
+    
+    // Safety Clamps
+    if (!current_path_.empty() && current_sim_time_ > current_path_.front()(2)) {
+        current_sim_time_ = current_path_.front()(2);
+    }
 
-//     if (current_sim_time_ < current_path_.back()(2)) {
-//         current_sim_time_ = current_path_.back()(2);
-//     }
-    
-//     // Find the current path segment (this logic is correct)
-//     auto it_after = std::lower_bound(current_path_.begin(), current_path_.end(), current_sim_time_,
-//         [](const Eigen::VectorXd& point, double time) {
-//             return point(2) > time;
-//         });
+    if (!is_path_set_ || current_path_.size() < 2) {
+        return;
+    }
 
-//     if (it_after == current_path_.begin()) {
-//         it_after++;
-//     }
-//     if (it_after == current_path_.end()) {
-//         // We've reached the end of the path. Hold the final position.
-//         current_interpolated_state_ = current_path_.back();
-//         return;
-//     }
+    if (current_sim_time_ < current_path_.back()(2)) {
+        current_sim_time_ = current_path_.back()(2);
+    }
+    
+    // Find Segment
+    auto it_after = std::lower_bound(current_path_.begin(), current_path_.end(), current_sim_time_,
+        [](const Eigen::VectorXd& point, double time) {
+            return point(2) > time;
+        });
 
-//     auto it_before = std::prev(it_after);
-//     const Eigen::VectorXd& state_before = *it_before;
-//     const Eigen::VectorXd& state_after = *it_after;
-    
-//     //
-//     // ---> START OF CRITICAL FIX <---
-//     //
-    
-//     // The time-to-go values from the waypoints define the *total time allotted* for this segment.
-//     double time_before = state_before(2);
-//     double time_after = state_after(2);
-//     double time_allotted_for_segment = time_before - time_after;
+    if (it_after == current_path_.begin()) it_after++;
+    if (it_after == current_path_.end()) return;
 
-//     // Calculate the *actual travel time* for this segment based on the constant velocity model.
-//     double spatial_distance = (state_after.head<2>() - state_before.head<2>()).norm();
-//     double actual_travel_time = (robot_velocity_ > 1e-6)
-//                               ? (spatial_distance / robot_velocity_)
-//                               : std::numeric_limits<double>::infinity();
+    auto it_before = std::prev(it_after);
+    const Eigen::VectorXd& state_before = *it_before;
+    const Eigen::VectorXd& state_after = *it_after;
     
-//     // The travel phase for this segment ends at this time-to-go value.
-//     // The robot then "waits" at state_after until the time-to-go reaches time_after.
-//     double travel_end_time = time_before - actual_travel_time;
+    double segment_duration = state_before(2) - state_after(2);
+
+    // --- INTERPOLATION ---
+    Eigen::VectorXd current_robot_state(3);
+    if (segment_duration <= 1e-9) {
+        current_robot_state = state_after;
+    } else {
+        double time_into_segment = state_before(2) - current_sim_time_;
+        double interp_factor = time_into_segment / segment_duration;
+        current_robot_state.head<2>() = state_before.head<2>() + interp_factor * (state_after.head<2>() - state_before.head<2>());
+        current_robot_state(2) = current_sim_time_;
+    }
     
-//     Eigen::VectorXd current_robot_state(3);
-    
-//     // Determine if the simulation is currently in the "travel" or "wait" phase of the segment.
-//     if (current_sim_time_ >= travel_end_time) {
-//         // We are currently moving. Interpolate based on the *actual_travel_time*.
-//         if (actual_travel_time <= 1e-9) {
-//             // Zero duration, snap to start
-//             current_robot_state.head<2>() = state_before.head<2>();
-//         } else {
-//             // Calculate interpolation factor based on progress through the travel phase
-//             double time_into_travel = time_before - current_sim_time_;
-//             double interp_factor = time_into_travel / actual_travel_time;
-//             interp_factor = std::max(0.0, std::min(1.0, interp_factor)); // Clamp for safety
+    current_interpolated_state_ = current_robot_state;
+
+    // Calculate Yaw for Visualization AND Collision
+    Eigen::Vector2d direction_vector = state_after.head<2>() - state_before.head<2>();
+    if (direction_vector.norm() > 1e-6) {
+        last_known_theta_ = atan2(direction_vector.y(), direction_vector.x());
+    }
+
+    // -------------------------------------------------------------------
+    // 7. [MISSING PART RESTORED] COLLISION COUNTING LOGIC
+    // -------------------------------------------------------------------
+    // We check if the interpolated state is actually valid against current obstacles
+    auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+    if (gazebo_checker) {
+        Eigen::Vector2d current_pos = current_robot_state.head<2>();
+        
+        // This function checks the robot's footprint against the *currently known* // obstacle positions (updated by visualizationLoop or main loop)
+        bool is_colliding_now = gazebo_checker->checkRobotCollision(current_pos, last_known_theta_);
+
+        if (is_colliding_now && !is_in_collision_state_) {
+            collision_count_++;
+            RCLCPP_FATAL(this->get_logger(), "XXX COLLISION DETECTED XXX At T=%.2f | Total: %d", 
+                         current_sim_time_, collision_count_.load());
             
-//             current_robot_state.head<2>() = state_before.head<2>() + interp_factor * (state_after.head<2>() - state_before.head<2>());
-//         }
-//     } else {
-//         // The travel phase is over. The robot is now waiting at the segment's end point.
-//         current_robot_state.head<2>() = state_after.head<2>();
-//     }
-    
-//     // The time component of the state is always the current simulation time
-//     current_robot_state(2) = current_sim_time_;
-    
-//     //
-//     // ---> END OF CRITICAL FIX <---
-//     //
-    
-//     current_interpolated_state_ = current_robot_state;
+            // Optional: You can visualize the collision point here if you want
+        }
+        is_in_collision_state_ = is_colliding_now;
+    }
+    // -------------------------------------------------------------------
 
-//     Eigen::Vector3d robot_pos_3d(current_robot_state(0), current_robot_state(1), 0.0);
-//     Eigen::Vector2d direction_vector = state_after.head<2>() - state_before.head<2>();
-//     if (direction_vector.norm() > 1e-6) {
-//         last_known_theta_ = atan2(direction_vector.y(), direction_vector.x());
-//     }
-//     Eigen::Quaterniond q(Eigen::AngleAxisd(last_known_theta_, Eigen::Vector3d::UnitZ()));
-//     Eigen::VectorXd orientation_quat(4);
-//     orientation_quat << q.x(), q.y(), q.z(), q.w();
-//     visualizer_->visualizeRobotArrow(robot_pos_3d, orientation_quat, "map", {0.8f, 0.1f, 0.8f}, "simulated_robot");
-//     if(robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - robot_pos_3d.head<2>()).norm() > 0.1) {
-//          robot_spatial_trace_.push_back(robot_pos_3d.head<2>());
-//     }
-// }
-
+    // --- VISUALIZATION ---
+    Eigen::Vector3d robot_pos_3d(current_robot_state(0), current_robot_state(1), 0.0);
     
-};
+    Eigen::Quaterniond q(Eigen::AngleAxisd(last_known_theta_, Eigen::Vector3d::UnitZ()));
+    Eigen::VectorXd orientation_quat(4);
+    orientation_quat << q.x(), q.y(), q.z(), q.w();
+    
+    // Change color to RED if colliding, PURPLE if safe
+    std::vector<float> color = is_in_collision_state_ ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.8f, 0.1f, 0.8f};
+    visualizer_->visualizeRobotArrow(robot_pos_3d, orientation_quat, "map", color, "simulated_robot");
+
+    if(robot_spatial_trace_.empty() || (robot_spatial_trace_.back() - robot_pos_3d.head<2>()).norm() > 0.1) {
+         robot_spatial_trace_.push_back(robot_pos_3d.head<2>());
+    }
+    
+    static int trace_pub_throttle = 0;
+    if (++trace_pub_throttle % 10 == 0) {
+        visualizer_->visualizeTrajectories({robot_spatial_trace_}, "map", {1.0f, 1.0f, 0.0f}, "robot_trace");
+    }
+}
+
+
+
+
+    };

@@ -55,9 +55,11 @@ public:
 
 
 
-bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, 
+    bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, 
                                            double global_start_time, 
                                            const Obstacle& obstacle) const override;
+
+    
 
 
     bool isPointInOrientedBox(
@@ -131,60 +133,60 @@ bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory,
 
     void publishPath(const std::vector<Eigen::VectorXd>& waypoints);
 
-ObstacleVector getObstacles() const override;
+    ObstacleVector getObstacles() const override;
 
-bool checkFootprintCollision(const Eigen::Vector2d& position,
-                               double yaw,
-                               const std::vector<Eigen::Vector2d>& footprint) const override {
-    // std::lock_guard<std::mutex> lock(data_mutex_);
-    
-    const Eigen::Rotation2Dd rot(yaw);
-    for(const auto& local_point : footprint) {
-        Eigen::Vector2d world_point = position + rot * local_point;
+    bool checkFootprintCollision(const Eigen::Vector2d& position,
+                                double yaw,
+                                const std::vector<Eigen::Vector2d>& footprint) const override {
+        // std::lock_guard<std::mutex> lock(data_mutex_);
         
-        for(const auto& obstacle : obstacle_positions_) {
-            if(obstacle.type == Obstacle::CIRCLE) {
-                double total_radius = obstacle.dimensions.radius + obstacle.inflation;
-                if((world_point - obstacle.position).norm() <= total_radius) {
-                    return true;
-                }
-            } else {
-                double width = obstacle.dimensions.width + 2*obstacle.inflation;
-                double height = obstacle.dimensions.height + 2*obstacle.inflation;
-                if(pointIntersectsRectangle(world_point, obstacle.position,
-                                           width, height, obstacle.dimensions.rotation)) {
-                    return true;
+        const Eigen::Rotation2Dd rot(yaw);
+        for(const auto& local_point : footprint) {
+            Eigen::Vector2d world_point = position + rot * local_point;
+            
+            for(const auto& obstacle : obstacle_positions_) {
+                if(obstacle.type == Obstacle::CIRCLE) {
+                    double total_radius = obstacle.dimensions.radius + obstacle.inflation;
+                    if((world_point - obstacle.position).norm() <= total_radius) {
+                        return true;
+                    }
+                } else {
+                    double width = obstacle.dimensions.width + 2*obstacle.inflation;
+                    double height = obstacle.dimensions.height + 2*obstacle.inflation;
+                    if(pointIntersectsRectangle(world_point, obstacle.position,
+                                            width, height, obstacle.dimensions.rotation)) {
+                        return true;
+                    }
                 }
             }
         }
+        return false;
     }
-    return false;
-}
 
-double distanceToNearestObstacle(const Eigen::Vector2d& position) const override {
-    // std::lock_guard<std::mutex> lock(data_mutex_);
-    double min_distance = std::numeric_limits<double>::max();
-    
-    for(const auto& obstacle : obstacle_positions_) {
-        double dist;
-        if(obstacle.type == Obstacle::CIRCLE) {
-            dist = (position - obstacle.position).norm() - 
-                  (obstacle.dimensions.radius + obstacle.inflation);
-        } else {
-            // Calculate distance to expanded rectangle
-            Eigen::Rotation2Dd rot(-obstacle.dimensions.rotation);
-            Eigen::Vector2d local_pos = rot * (position - obstacle.position);
-            double expanded_width = obstacle.dimensions.width + 2*obstacle.inflation;
-            double expanded_height = obstacle.dimensions.height + 2*obstacle.inflation;
-            
-            double dx = std::max(std::abs(local_pos.x()) - expanded_width/2, 0.0);
-            double dy = std::max(std::abs(local_pos.y()) - expanded_height/2, 0.0);
-            dist = std::sqrt(dx*dx + dy*dy);
+    double distanceToNearestObstacle(const Eigen::Vector2d& position) const override {
+        // std::lock_guard<std::mutex> lock(data_mutex_);
+        double min_distance = std::numeric_limits<double>::max();
+        
+        for(const auto& obstacle : obstacle_positions_) {
+            double dist;
+            if(obstacle.type == Obstacle::CIRCLE) {
+                dist = (position - obstacle.position).norm() - 
+                    (obstacle.dimensions.radius + obstacle.inflation);
+            } else {
+                // Calculate distance to expanded rectangle
+                Eigen::Rotation2Dd rot(-obstacle.dimensions.rotation);
+                Eigen::Vector2d local_pos = rot * (position - obstacle.position);
+                double expanded_width = obstacle.dimensions.width + 2*obstacle.inflation;
+                double expanded_height = obstacle.dimensions.height + 2*obstacle.inflation;
+                
+                double dx = std::max(std::abs(local_pos.x()) - expanded_width/2, 0.0);
+                double dy = std::max(std::abs(local_pos.y()) - expanded_height/2, 0.0);
+                dist = std::sqrt(dx*dx + dy*dy);
+            }
+            min_distance = std::min(min_distance, dist);
         }
-        min_distance = std::min(min_distance, dist);
+        return min_distance;
     }
-    return min_distance;
-}
 
 
     // Add these helper methods
@@ -203,16 +205,15 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
     };
 
     Snapshot getAtomicSnapshot() {
-        // First, process any new pose message that has arrived since the last call.
-        //    This updates the internal state (Kalman filters, obstacle_positions_, etc.).
         processLatestPoseInfo();
-        /*
-            The snapshot_mutex_ guarantees that the Gazebo callback cannot change obstacle_positions_ 
-            while getAtomicSnapshot is in the middle of copying it.
-        */
-        // std::lock_guard<std::mutex> lock(snapshot_mutex_);
-        obstacle_snapshot_ = obstacle_positions_;  // Atomic copy --> obstacle snapshot is gonna be used in isObstacleFree or isTrajectorySafe, because obstalce_positions_ is live updating while you are in a plan() function
-        return {robot_position_, obstacle_snapshot_};
+        
+        std::lock_guard<std::mutex> lock(snapshot_mutex_);
+        ObstacleVector snapshot_vec;
+        for (auto const& [name, ob] : obstacle_positions_map_) {
+            snapshot_vec.push_back(ob);
+        }
+        
+        return {robot_position_, snapshot_vec};
     }
 
     const ObstacleVector& getLatestSnapshot() const {
@@ -350,8 +351,196 @@ double distanceToNearestObstacle(const Eigen::Vector2d& position) const override
     bool checkRobotCollision(const Eigen::Vector3d& position, double yaw) const;
 
 
+    double calculateNextFlip(const Obstacle& ob, double currentRobotTime) {
+        auto info_it = obstacle_info_.find(ob.name);
+        if (info_it == obstacle_info_.end() || !info_it->second.is_dynamic) return -1.0;
+        const auto& info = info_it->second;
+
+        // 1. Define turnaround boundaries
+        Eigen::Vector2d pointA = info.initial_pose.head<2>();
+        Eigen::Vector2d pointB = pointA + (info.direction.head<2>() * info.amplitude);
+
+        // 2. CHATTERING FIX: Target the FURTHEST point
+        // When we trigger a flip, we are by definition very close to one boundary.
+        // We want to calculate the time to reach the OTHER boundary.
+        double distA = (pointA - ob.position).norm();
+        double distB = (pointB - ob.position).norm();
+
+        // If we are closer to B, we just hit B, so our next target is A.
+        // If we are closer to A, our next target is B.
+        Eigen::Vector2d nextTarget = (distA < distB) ? pointB : pointA;
+        std::string targetName = (distA < distB) ? "Point B (Limit)" : "Point A (Start)";
+
+        // 3. Calculate time to reach the FAR boundary
+        double distance = (nextTarget - ob.position).norm();
+        double time_to_reach = distance / std::max(info.speed, 0.001);
+
+        double nextChangeTime = currentRobotTime - time_to_reach;
+
+        RCLCPP_INFO(rclcpp::get_logger("ObstacleLogic"), 
+            "[%s] New Target: %s | Dist: %.2f | T_now: %.2f | Next Flip at T: %.2f", 
+            ob.name.c_str(), targetName.c_str(), distance, currentRobotTime, nextChangeTime);
+
+        return nextChangeTime;
+    }
+
+
+
+    std::vector<std::string> detectTurnaroundEvents(double currentRobotTime) {
+        std::vector<std::string> triggered_obstacles;
+        
+        for (auto& [name, ob] : obstacle_positions_map_) {
+            if (!ob.is_dynamic) continue;
+
+            // Trigger if current time budget T has dropped below predicted turn time
+            if (ob.nextDirectionChangeTime > currentRobotTime) {
+                
+                // --- CHATTERING FIX: Velocity Direction Hysteresis ---
+                // Only trigger if the turnaround has actually started or 
+                // if we haven't updated the timer yet. 
+                // We check the dot product of current velocity and the direction 
+                // it WAS supposed to be going.
+                auto info_it = obstacle_info_.find(name);
+                const auto& info = info_it->second;
+
+                // Define the vector of the current prediction tube
+                // (You can store 'current_direction_sign' in the Obstacle struct for better accuracy)
+                double current_dir_sign = (ob.velocity.dot(info.direction.head<2>()) > 0) ? 1.0 : -1.0;
+
+                // If the predicted turn time is reached, we trigger the event.
+                // The planner will then call calculateNextFlip which we will fix below.
+                RCLCPP_WARN(rclcpp::get_logger("RRTX_Trigger"), 
+                    "EVENT TRIGGERED for [%s]: Turnaround expected at T=%.2f, Actual T=%.2f", 
+                    name.c_str(), ob.nextDirectionChangeTime, currentRobotTime);
+                    
+                triggered_obstacles.push_back(name);
+            }
+        }
+        return triggered_obstacles;
+    }
+
+// NOTE: No "GazeboObstacleChecker::" prefix here because this is inside the .hpp class
+ObstacleVector checkAndRepairObstacles(double T_robot) {
+    ObstacleVector triggered_obs;
+    
+    // Threshold to detect if velocity changed (e.g. hit a wall)
+    const double VELOCITY_CHANGE_THRESHOLD = 0.1; 
+
+    for (auto& [name, ob] : obstacle_positions_map_) {
+        if (!ob.is_dynamic) continue;
+
+        // --- 1. INITIALIZATION CHECK (Keep this, it is good!) ---
+        if (!ob.is_initialized_in_graph) {
+            ob.is_initialized_in_graph = true;
+            
+            // Generate fresh tube from T_robot -> 0
+            ob.predicted_path = this->generatePrediction(ob, T_robot);
+            
+            // Save current velocity so we can detect changes later
+            last_velocities_[name] = ob.velocity; 
+
+            triggered_obs.push_back(ob);
+            RCLCPP_INFO(rclcpp::get_logger("RRTx_Trigger"), 
+                "First-time activation for [%s] at T=%.2f", name.c_str(), T_robot);
+            continue; 
+        }
+
+        // --- 2. VELOCITY FLIP CHECK (The Robust Fix) ---
+        // Instead of a timer, we check if the velocity changed direction physically.
+        
+        bool direction_changed = false;
+        
+        // Check if we have history for this object
+        if (last_velocities_.find(name) != last_velocities_.end()) {
+            Eigen::Vector2d old_v = last_velocities_[name];
+            Eigen::Vector2d current_v = ob.velocity;
+            
+            // If the difference is large, it hit a wall
+            if ((current_v - old_v).norm() > VELOCITY_CHANGE_THRESHOLD) {
+                direction_changed = true;
+                
+                RCLCPP_WARN(rclcpp::get_logger("RRTx_Trigger"), 
+                    "BOUNCE DETECTED for [%s]! Vel changed from [%.1f, %.1f] to [%.1f, %.1f]",
+                    name.c_str(), old_v.x(), old_v.y(), current_v.x(), current_v.y());
+            }
+        }
+
+        // Update history for next iteration
+        last_velocities_[name] = ob.velocity;
+
+        // --- 3. TRIGGER UPDATE IF FLIPPED ---
+        if (direction_changed) {
+            // Regenerate the tube starting exactly at T_robot
+            ob.predicted_path = this->generatePrediction(ob, T_robot);
+            
+            // Note: We also reset the nextDirectionChangeTime just in case you use it elsewhere, 
+            // though we don't rely on it for detection anymore.
+            ob.nextDirectionChangeTime = this->calculateNextFlip(ob, T_robot);
+
+            triggered_obs.push_back(ob);
+        }
+    }
+    return triggered_obs;
+}
+
+
+    std::vector<Eigen::Vector3d> generatePrediction(const Obstacle& ob, double current_time) const override;
+
+    // // In gazebo_obstacle_checker.cpp
+    // std::vector<Eigen::Vector3d> generatePrediction(
+    //     const Obstacle& ob, 
+    //     double currentTime) 
+    // {
+    //     std::vector<Eigen::Vector3d> path;
+        
+    //     // This is the temporal resolution (S.pathTimeStep in Julia).
+    //     // A value of 1.0 to 3.0 is usually good for a 25s-40s horizon.
+    //     const double dt_step = 2.0; 
+
+    //     // Start at current time (e.g., 25.0) and step down to 0.0
+    //     // We use a small epsilon (-1e-9) to ensure we include the T=0 point
+    //     for (double t = currentTime; t >= -1e-9; t -= dt_step) {
+            
+    //         // How much time has passed since the robot "saw" the obstacle at 'ob.position'
+    //         double elapsed = currentTime - t; 
+
+    //         // Project position: p_future = p_now + (v * delta_t)
+    //         Eigen::Vector2d future_pos = ob.position + (ob.velocity * elapsed);
+
+    //         // Store as (X, Y, Time)
+    //         path.emplace_back(future_pos.x(), future_pos.y(), t);
+    //     }
+
+    //     RCLCPP_DEBUG(rclcpp::get_logger("Predictor"), 
+    //         "Generated prediction for %s: %zu points from T=%.2f to 0.0", 
+    //         ob.name.c_str(), path.size(), currentTime);
+
+    //     return path;
+    // }
+
+    void initializeDynamicObstacles(double currentRobotTime) {
+        // 1. Ensure we have the latest positions from Gazebo
+        this->processLatestPoseInfo();
+
+        RCLCPP_INFO(rclcpp::get_logger("ObstacleChecker"), 
+                    "Initializing Dynamic Obstacles at T=%.2f", currentRobotTime);
+
+        for (auto& [name, ob] : obstacle_positions_map_) {
+            if (ob.is_dynamic) {
+                // Calculate the very first turnaround time
+                ob.nextDirectionChangeTime = this->calculateNextFlip(ob, currentRobotTime);
+                
+                RCLCPP_INFO(rclcpp::get_logger("ObstacleChecker"), 
+                    "-> [%s] logic initialized. First turnaround at T=%.2f", 
+                    name.c_str(), ob.nextDirectionChangeTime);
+            }
+        }
+    }
+
 
 private:
+    Eigen::Vector2d getObstaclePositionAtTime(const Obstacle& ob, double query_time) const;
+
     void poseInfoCallback(const gz::msgs::Pose_V& msg);
     bool new_pose_msg_available_;
 
@@ -490,5 +679,11 @@ private:
 
 
     void recordCulprit(const Obstacle& obs) const;
+
+
+
+    std::unordered_map<std::string, Eigen::Vector2d> last_velocities_;
+
+    std::map<std::string, Obstacle> obstacle_positions_map_;
 
 };

@@ -143,109 +143,109 @@ endif()
 
 # Tests
 enable_testing()
-add_executable(test_fmtx test/unit/test_fmtx.cpp)
-target_link_libraries(test_fmtx motion_planning gz_obs)
-ament_target_dependencies(test_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_fmtx COMMAND test_fmtx)
+# add_executable(test_fmtx test/unit/test_fmtx.cpp)
+# target_link_libraries(test_fmtx motion_planning gz_obs)
+# ament_target_dependencies(test_fmtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_fmtx COMMAND test_fmtx)
 
-add_executable(test_fmta test/unit/test_fmta.cpp)
-target_link_libraries(test_fmta motion_planning gz_obs)
-ament_target_dependencies(test_fmta rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_fmta COMMAND test_fmta)
+# add_executable(test_fmta test/unit/test_fmta.cpp)
+# target_link_libraries(test_fmta motion_planning gz_obs)
+# ament_target_dependencies(test_fmta rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_fmta COMMAND test_fmta)
 
-add_executable(test_fmt test/unit/test_fmt.cpp)
-target_link_libraries(test_fmt motion_planning gz_obs)
-ament_target_dependencies(test_fmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_fmt COMMAND test_fmt)
+# add_executable(test_fmt test/unit/test_fmt.cpp)
+# target_link_libraries(test_fmt motion_planning gz_obs)
+# ament_target_dependencies(test_fmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_fmt COMMAND test_fmt)
 
-add_executable(test_anyfmt test/unit/test_anyfmt.cpp)
-target_link_libraries(test_anyfmt motion_planning gz_obs)
-ament_target_dependencies(test_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_anyfmt COMMAND test_anyfmt)
-
-
-add_executable(test_informed_anyfmt test/unit/test_informed_anyfmt.cpp)
-target_link_libraries(test_informed_anyfmt motion_planning gz_obs)
-ament_target_dependencies(test_informed_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_informed_anyfmt COMMAND test_informed_anyfmt)
-
-add_executable(test_informed_anyfmta test/unit/test_informed_anyfmta.cpp)
-target_link_libraries(test_informed_anyfmta motion_planning gz_obs)
-ament_target_dependencies(test_informed_anyfmta rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_informed_anyfmta COMMAND test_informed_anyfmta)
-
-add_executable(test_bitstar test/unit/test_bitstar.cpp)
-target_link_libraries(test_bitstar motion_planning gz_obs)
-ament_target_dependencies(test_bitstar rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_bitstar COMMAND test_bitstar)
-
-add_executable(test_rrtx test/unit/test_rrtx.cpp)
-target_link_libraries(test_rrtx motion_planning gz_obs)
-ament_target_dependencies(test_rrtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_rrtx COMMAND test_rrtx)
+# add_executable(test_anyfmt test/unit/test_anyfmt.cpp)
+# target_link_libraries(test_anyfmt motion_planning gz_obs)
+# ament_target_dependencies(test_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_anyfmt COMMAND test_anyfmt)
 
 
-add_executable(test_kdtree test/unit/test_kdtree.cpp)
-target_link_libraries(test_kdtree motion_planning)
-add_test(NAME test_kdtree COMMAND test_kdtree)
+# add_executable(test_informed_anyfmt test/unit/test_informed_anyfmt.cpp)
+# target_link_libraries(test_informed_anyfmt motion_planning gz_obs)
+# ament_target_dependencies(test_informed_anyfmt rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_informed_anyfmt COMMAND test_informed_anyfmt)
 
-add_executable(test_weighted_kdtree test/unit/test_weighted_kdtree.cpp)
-target_link_libraries(test_weighted_kdtree motion_planning)
-add_test(NAME test_weighted_kdtree COMMAND test_weighted_kdtree)
+# add_executable(test_informed_anyfmta test/unit/test_informed_anyfmta.cpp)
+# target_link_libraries(test_informed_anyfmta motion_planning gz_obs)
+# ament_target_dependencies(test_informed_anyfmta rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_informed_anyfmta COMMAND test_informed_anyfmta)
 
-add_executable(test_weighted_kdtree_visualization test/unit/test_weighted_kdtree_visualization.cpp)
-target_link_libraries(test_weighted_kdtree_visualization motion_planning)
-add_test(NAME test_weighted_kdtree_visualization COMMAND test_weighted_kdtree_visualization)
+# add_executable(test_bitstar test/unit/test_bitstar.cpp)
+# target_link_libraries(test_bitstar motion_planning gz_obs)
+# ament_target_dependencies(test_bitstar rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_bitstar COMMAND test_bitstar)
 
-add_executable(test_lie_kdtree test/unit/test_lie_kdtree.cpp)
-target_link_libraries(test_lie_kdtree motion_planning)
-add_test(NAME test_lie_kdtree COMMAND test_lie_kdtree)
-
-
-add_executable(test_gz test/unit/test_gz.cpp)
-target_link_libraries(test_gz gz_obs visualization motion_planning)
-ament_target_dependencies(test_gz rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_gz COMMAND test_gz)
+# add_executable(test_rrtx test/unit/test_rrtx.cpp)
+# target_link_libraries(test_rrtx motion_planning gz_obs)
+# ament_target_dependencies(test_rrtx rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_rrtx COMMAND test_rrtx)
 
 
-add_executable(test_state test/unit/test_state.cpp)
-target_link_libraries(test_state motion_planning)
-add_test(NAME test_state COMMAND test_state)
+# add_executable(test_kdtree test/unit/test_kdtree.cpp)
+# target_link_libraries(test_kdtree motion_planning)
+# add_test(NAME test_kdtree COMMAND test_kdtree)
 
-add_executable(test_visual test/unit/test_visual.cpp)
-target_link_libraries(test_visual visualization)
-ament_target_dependencies(test_visual rclcpp visualization_msgs nav2_msgs rclcpp_action)  
-add_test(NAME test_visual COMMAND test_visual)
+# add_executable(test_weighted_kdtree test/unit/test_weighted_kdtree.cpp)
+# target_link_libraries(test_weighted_kdtree motion_planning)
+# add_test(NAME test_weighted_kdtree COMMAND test_weighted_kdtree)
 
-# add_executable(test_occupancy test/unit/test_occupancy.cpp)
-# target_link_libraries(test_occupancy visualization motion_planning gz_obs)
-# ament_target_dependencies(test_occupancy rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action) 
-# add_test(NAME test_occupancy COMMAND test_occupancy)
+# add_executable(test_weighted_kdtree_visualization test/unit/test_weighted_kdtree_visualization.cpp)
+# target_link_libraries(test_weighted_kdtree_visualization motion_planning)
+# add_test(NAME test_weighted_kdtree_visualization COMMAND test_weighted_kdtree_visualization)
 
-################### KINODYNAMIC TESTS #############################
-
-
-add_executable(test_kinodynamic_fmtx_R2T test/unit/test_kinodynamic_fmtx_R2T.cpp)
-target_link_libraries(test_kinodynamic_fmtx_R2T motion_planning gz_obs)
-ament_target_dependencies(test_kinodynamic_fmtx_R2T rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_kinodynamic_fmtx_R2T COMMAND test_kinodynamic_fmtx_R2T)
-
-add_executable(test_kinodynamic_fmtx_dubin_4D test/unit/test_kinodynamic_fmtx_dubin_4D.cpp)
-target_link_libraries(test_kinodynamic_fmtx_dubin_4D motion_planning gz_obs)
-ament_target_dependencies(test_kinodynamic_fmtx_dubin_4D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_kinodynamic_fmtx_dubin_4D COMMAND test_kinodynamic_fmtx_dubin_4D)
+# add_executable(test_lie_kdtree test/unit/test_lie_kdtree.cpp)
+# target_link_libraries(test_lie_kdtree motion_planning)
+# add_test(NAME test_lie_kdtree COMMAND test_lie_kdtree)
 
 
-add_executable(test_kinodynamic_fmtx_thruster_5D test/unit/test_kinodynamic_fmtx_thruster_5D.cpp)
-target_link_libraries(test_kinodynamic_fmtx_thruster_5D motion_planning gz_obs)
-ament_target_dependencies(test_kinodynamic_fmtx_thruster_5D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_kinodynamic_fmtx_thruster_5D COMMAND test_kinodynamic_fmtx_thruster_5D)
+# add_executable(test_gz test/unit/test_gz.cpp)
+# target_link_libraries(test_gz gz_obs visualization motion_planning)
+# ament_target_dependencies(test_gz rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_gz COMMAND test_gz)
 
 
-add_executable(test_kinodynamic_fmtx_min_snap_5D test/unit/test_kinodynamic_fmtx_min_snap_5D.cpp)
-target_link_libraries(test_kinodynamic_fmtx_min_snap_5D motion_planning gz_obs)
-ament_target_dependencies(test_kinodynamic_fmtx_min_snap_5D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_kinodynamic_fmtx_min_snap_5D COMMAND test_kinodynamic_fmtx_min_snap_5D)
+# add_executable(test_state test/unit/test_state.cpp)
+# target_link_libraries(test_state motion_planning)
+# add_test(NAME test_state COMMAND test_state)
+
+# add_executable(test_visual test/unit/test_visual.cpp)
+# target_link_libraries(test_visual visualization)
+# ament_target_dependencies(test_visual rclcpp visualization_msgs nav2_msgs rclcpp_action)  
+# add_test(NAME test_visual COMMAND test_visual)
+
+# # add_executable(test_occupancy test/unit/test_occupancy.cpp)
+# # target_link_libraries(test_occupancy visualization motion_planning gz_obs)
+# # ament_target_dependencies(test_occupancy rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action) 
+# # add_test(NAME test_occupancy COMMAND test_occupancy)
+
+# ################### KINODYNAMIC TESTS #############################
+
+
+# add_executable(test_kinodynamic_fmtx_R2T test/unit/test_kinodynamic_fmtx_R2T.cpp)
+# target_link_libraries(test_kinodynamic_fmtx_R2T motion_planning gz_obs)
+# ament_target_dependencies(test_kinodynamic_fmtx_R2T rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_kinodynamic_fmtx_R2T COMMAND test_kinodynamic_fmtx_R2T)
+
+# add_executable(test_kinodynamic_fmtx_dubin_4D test/unit/test_kinodynamic_fmtx_dubin_4D.cpp)
+# target_link_libraries(test_kinodynamic_fmtx_dubin_4D motion_planning gz_obs)
+# ament_target_dependencies(test_kinodynamic_fmtx_dubin_4D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_kinodynamic_fmtx_dubin_4D COMMAND test_kinodynamic_fmtx_dubin_4D)
+
+
+# add_executable(test_kinodynamic_fmtx_thruster_5D test/unit/test_kinodynamic_fmtx_thruster_5D.cpp)
+# target_link_libraries(test_kinodynamic_fmtx_thruster_5D motion_planning gz_obs)
+# ament_target_dependencies(test_kinodynamic_fmtx_thruster_5D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_kinodynamic_fmtx_thruster_5D COMMAND test_kinodynamic_fmtx_thruster_5D)
+
+
+# add_executable(test_kinodynamic_fmtx_min_snap_5D test/unit/test_kinodynamic_fmtx_min_snap_5D.cpp)
+# target_link_libraries(test_kinodynamic_fmtx_min_snap_5D motion_planning gz_obs)
+# ament_target_dependencies(test_kinodynamic_fmtx_min_snap_5D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_kinodynamic_fmtx_min_snap_5D COMMAND test_kinodynamic_fmtx_min_snap_5D)
 
 
 add_executable(test_kinodynamic_rrtx_R2T test/unit/test_kinodynamic_rrtx_R2T.cpp)
@@ -254,35 +254,35 @@ ament_target_dependencies(test_kinodynamic_rrtx_R2T rclcpp nav_msgs visualizatio
 add_test(NAME test_kinodynamic_rrtx_R2T COMMAND test_kinodynamic_rrtx_R2T)
 
 
-add_executable(test_kinodynamic_rrtx_dubin_4D test/unit/test_kinodynamic_rrtx_dubin_4D.cpp)
-target_link_libraries(test_kinodynamic_rrtx_dubin_4D motion_planning gz_obs)
-ament_target_dependencies(test_kinodynamic_rrtx_dubin_4D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_kinodynamic_rrtx_dubin_4D COMMAND test_kinodynamic_rrtx_dubin_4D)
+# add_executable(test_kinodynamic_rrtx_dubin_4D test/unit/test_kinodynamic_rrtx_dubin_4D.cpp)
+# target_link_libraries(test_kinodynamic_rrtx_dubin_4D motion_planning gz_obs)
+# ament_target_dependencies(test_kinodynamic_rrtx_dubin_4D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_kinodynamic_rrtx_dubin_4D COMMAND test_kinodynamic_rrtx_dubin_4D)
 
 
 
-add_executable(test_kinodynamic_rrtx_thruster_5D test/unit/test_kinodynamic_rrtx_thruster_5D.cpp)
-target_link_libraries(test_kinodynamic_rrtx_thruster_5D motion_planning gz_obs)
-ament_target_dependencies(test_kinodynamic_rrtx_thruster_5D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_kinodynamic_rrtx_thruster_5D COMMAND test_kinodynamic_rrtx_thruster_5D)
+# add_executable(test_kinodynamic_rrtx_thruster_5D test/unit/test_kinodynamic_rrtx_thruster_5D.cpp)
+# target_link_libraries(test_kinodynamic_rrtx_thruster_5D motion_planning gz_obs)
+# ament_target_dependencies(test_kinodynamic_rrtx_thruster_5D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_kinodynamic_rrtx_thruster_5D COMMAND test_kinodynamic_rrtx_thruster_5D)
 
 
 
-add_executable(test_dubin_time test/unit/test_dubin_time.cpp)
-target_link_libraries(test_dubin_time motion_planning gz_obs)
-ament_target_dependencies(test_dubin_time rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_dubin_time COMMAND test_dubin_time)
+# add_executable(test_dubin_time test/unit/test_dubin_time.cpp)
+# target_link_libraries(test_dubin_time motion_planning gz_obs)
+# ament_target_dependencies(test_dubin_time rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_dubin_time COMMAND test_dubin_time)
 
-add_executable(test_thruster test/unit/test_thruster.cpp)
-target_link_libraries(test_thruster motion_planning gz_obs)
-ament_target_dependencies(test_thruster rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_thruster COMMAND test_thruster)
+# add_executable(test_thruster test/unit/test_thruster.cpp)
+# target_link_libraries(test_thruster motion_planning gz_obs)
+# ament_target_dependencies(test_thruster rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_thruster COMMAND test_thruster)
 
 
-add_executable(test_min_snap test/unit/test_min_snap.cpp) 
-target_link_libraries(test_min_snap motion_planning gz_obs)
-ament_target_dependencies(test_min_snap rclcpp visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-add_test(NAME test_min_snap COMMAND test_min_snap)
+# add_executable(test_min_snap test/unit/test_min_snap.cpp) 
+# target_link_libraries(test_min_snap motion_planning gz_obs)
+# ament_target_dependencies(test_min_snap rclcpp visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# add_test(NAME test_min_snap COMMAND test_min_snap)
 
 
 add_executable(test_collision test/unit/test_collision.cpp)

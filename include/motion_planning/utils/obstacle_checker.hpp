@@ -48,6 +48,24 @@ struct Obstacle {
     double inflation;
     bool is_dynamic = false;
 
+    // Ground Truth Fields for Deterministic Prediction
+    bool has_ground_truth = false;
+    Eigen::Vector2d motion_axis = Eigen::Vector2d::UnitX(); 
+    Eigen::Vector2d initial_origin = Eigen::Vector2d::Zero();
+    double speed_scalar = 0.0;
+    double motion_limit = 0.0;
+
+
+    bool is_initialized_in_graph = false; // For the first time obstalce moves we need to inform the graph with this!
+
+
+    // This is the TIME BUDGET's "guess" currently marked as blocked in the KD-tree
+    std::vector<Eigen::Vector3d> predicted_path; 
+
+    // The "Timer": Ground truth time (T) when the next turn occurs
+    double nextDirectionChangeTime = -1.0;
+
+
     // Default constructor
     Obstacle() : type(CIRCLE), position(Eigen::Vector2d::Zero()), inflation(0.0) {}
 
@@ -90,6 +108,16 @@ struct ObstacleInfo {
     double radius = 0.0;    // For cylinders (initialize!)
     double width = 0.0;     // For boxes (initialize!)
     double height = 0.0;    // For boxes (initialize!)
+
+
+    // --- Fields for Ground Truth Prediction ---
+    bool is_dynamic = false;
+    double speed = 0.0;
+    double amplitude = 0.0;
+    Eigen::Vector3d direction = Eigen::Vector3d::Zero();
+    Eigen::Vector3d initial_pose = Eigen::Vector3d::Zero(); // To know the center of oscillation
+
+
 };
 
 // Operator<< definition OUTSIDE the struct
@@ -132,74 +160,9 @@ public:
                                        
     virtual double distanceToNearestObstacle(const Eigen::Vector2d& position) const = 0;
 
+    virtual std::vector<Eigen::Vector3d> generatePrediction(const Obstacle& ob, double current_time) const {
+        // Default behavior: return empty path (no prediction)
+        return {}; 
+    }
+
 };
-
-
-
-
-
-// // simple_obstacle_checker.hpp
-// #ifndef SIMPLE_OBSTACLE_CHECKER_HPP
-// #define SIMPLE_OBSTACLE_CHECKER_HPP
-
-// #include "obstacle_checker.hpp"
-// #include <vector>
-// #include <Eigen/Dense>
-
-// class SimpleObstacleChecker : public ObstacleChecker {
-// public:
-//     SimpleObstacleChecker(const std::vector<Eigen::Vector2d>& obstacles, double obstacle_radius)
-//         : obstacles_(obstacles), obstacle_radius_(obstacle_radius) {}
-
-//     bool isObstacleFree(const Eigen::VectorXd& start, const Eigen::VectorXd& end) const override {
-//         for (const auto& obstacle : obstacles_) {
-//             if (isLineIntersectingCircle(start, end, obstacle, obstacle_radius_)) {
-//                 return false;
-//             }
-//         }
-//         return true;
-//     }
-
-// private:
-//     std::vector<Eigen::Vector2d> obstacles_;
-//     double obstacle_radius_;
-
-//     bool isLineIntersectingCircle(const Eigen::VectorXd& start, const Eigen::VectorXd& end,
-//                                   const Eigen::Vector2d& center, double radius) const {
-//         // Implement line-circle intersection logic
-//         // (This is a placeholder; replace with actual collision detection logic)
-//         return false;
-//     }
-// };
-
-// #endif // SIMPLE_OBSTACLE_CHECKER_HPP
-
-
-
-
-
-// // grid_obstacle_checker.hpp
-// #ifndef GRID_OBSTACLE_CHECKER_HPP
-// #define GRID_OBSTACLE_CHECKER_HPP
-
-// #include "obstacle_checker.hpp"
-// #include <Eigen/Dense>
-// #include <vector>
-
-// class GridObstacleChecker : public ObstacleChecker {
-// public:
-//     GridObstacleChecker(const std::vector<std::vector<bool>>& grid, double resolution)
-//         : grid_(grid), resolution_(resolution) {}
-
-//     bool isObstacleFree(const Eigen::VectorXd& start, const Eigen::VectorXd& end) const override {
-//         // Implement grid-based obstacle checking
-//         // (This is a placeholder; replace with actual grid traversal logic)
-//         return true;
-//     }
-
-// private:
-//     std::vector<std::vector<bool>> grid_;
-//     double resolution_;
-// };
-
-// #endif // GRID_OBSTACLE_CHECKER_HPP

@@ -1,58 +1,51 @@
 // Copyright 2025 Soheil E.nia
 
 
-// #include "motion_planning/pch.hpp"
 #include <unordered_map>
 #include <tinyxml2.h>
 #include <sstream>
-
-// struct ObstacleInfo {
-//     enum Type { CYLINDER, BOX };
-//     Type type;
-//     double radius;    // For cylinders
-//     double width;     // For boxes
-//     double height;    // For boxes
-// };
+#include <Eigen/Dense>
 
 std::unordered_map<std::string, ObstacleInfo> parseSdfObstacles(const std::string& sdf_path) {
     std::unordered_map<std::string, ObstacleInfo> obstacles;
     tinyxml2::XMLDocument doc;
     
-    // Attempt to load the file; return empty map on failure.
     if (doc.LoadFile(sdf_path.c_str()) != tinyxml2::XML_SUCCESS) {
-        std::cerr << "Error: Could not load SDF file from path: " << sdf_path << std::endl;
+        std::cerr << "Error: Could not load SDF file: " << sdf_path << std::endl;
         return obstacles;
     }
 
     const auto* world = doc.RootElement()->FirstChildElement("world");
-    if (!world) {
-        std::cerr << "Error: No <world> element found in the SDF file." << std::endl;
-        return obstacles;
-    }
+    if (!world) return obstacles;
 
-    // Iterate through all <model> elements in the world.
     for (const auto* model = world->FirstChildElement("model"); model; 
          model = model->NextSiblingElement("model")) {
         
         const char* name = model->Attribute("name");
-        if (!name) continue; // Skip models without a name attribute.
+        if (!name) continue;
 
         const std::string model_name(name);
         ObstacleInfo info;
 
+        // 1. Extract Initial Pose (Start point for oscillation)
+        if (const auto* pose = model->FirstChildElement("pose")) {
+            std::stringstream ss(pose->GetText());
+            double x, y, z;
+            if (ss >> x >> y >> z) {
+                info.initial_pose << x, y, z;
+            }
+        }
+
+        // 2. Parse Geometry (Existing Logic)
         const auto* link = model->FirstChildElement("link");
         if (!link) continue;
 
-        // Prioritize <collision> geometry, but fall back to <visual> if not present.
         const auto* geometry = link->FirstChildElement("collision") 
                              ? link->FirstChildElement("collision")->FirstChildElement("geometry")
                              : link->FirstChildElement("visual")->FirstChildElement("geometry");
         
         if (!geometry) continue;
 
-        // --- PARSING LOGIC ---
-        // Check for each geometry type explicitly instead of relying on the model name.
-        
         const auto* box_geom = geometry->FirstChildElement("box");
         const auto* cylinder_geom = geometry->FirstChildElement("cylinder");
         const auto* sphere_geom = geometry->FirstChildElement("sphere");
@@ -62,37 +55,46 @@ std::unordered_map<std::string, ObstacleInfo> parseSdfObstacles(const std::strin
             if (const auto* size = box_geom->FirstChildElement("size")) {
                 std::stringstream ss(size->GetText());
                 double x, y, z;
-                
-                // Read all three dimensions for 3D correctness,
-                // but only store x and y for backward compatibility.
                 if (ss >> x >> y >> z) {
-                    if (x <= 0 || y <= 0) {
-                        std::cerr << "Warning: Invalid box dimensions for '" << name 
-                                  << "': " << x << "x" << y << std::endl;
-                        continue;
-                    }
-                    info.width = x;  // Store x-size in 'width'
-                    info.height = y; // Store y-size in 'height'
-                } else {
-                    std::cerr << "Warning: Failed to parse box size for '" << name 
-                              << "': " << size->GetText() << std::endl;
-                    continue;
+                    info.width = x;
+                    info.height = y;
                 }
             }
-        } else if (cylinder_geom) {
+        } else if (cylinder_geom || sphere_geom) {
             info.type = ObstacleInfo::CYLINDER;
-            // Both cylinders and spheres are represented by a radius in 2D.
-            cylinder_geom->FirstChildElement("radius")->QueryDoubleText(&info.radius);
-        } else if (sphere_geom) {
-            info.type = ObstacleInfo::CYLINDER;
-            // Treat a sphere as a circle in 2D, so we just need the radius.
-            sphere_geom->FirstChildElement("radius")->QueryDoubleText(&info.radius);
+            const auto* target = cylinder_geom ? cylinder_geom : sphere_geom;
+            target->FirstChildElement("radius")->QueryDoubleText(&info.radius);
         } else {
-            // This model is not a recognized obstacle type, so we skip it.
-            continue;
+            continue; 
         }
 
-        // If we successfully parsed an obstacle, add it to the map.
+        // 3. Extract Plugin Data (MoverPluginC)
+        for (const auto* plugin = model->FirstChildElement("plugin"); plugin; 
+             plugin = plugin->NextSiblingElement("plugin")) {
+            
+            const char* plugin_name = plugin->Attribute("name");
+            if (plugin_name && std::string(plugin_name) == "MoverPluginC") {
+                info.is_dynamic = true;
+                
+                // Parse Speed
+                if (auto* s = plugin->FirstChildElement("speed")) 
+                    s->QueryDoubleText(&info.speed);
+                
+                // Parse Amplitude
+                if (auto* a = plugin->FirstChildElement("amplitude")) 
+                    a->QueryDoubleText(&info.amplitude);
+                
+                // Parse Direction Vector
+                if (auto* d = plugin->FirstChildElement("direction")) {
+                    std::stringstream ss(d->GetText());
+                    double dx, dy, dz;
+                    if (ss >> dx >> dy >> dz) {
+                        info.direction << dx, dy, dz;
+                    }
+                }
+            }
+        }
+
         obstacles[model_name] = info;
     }
     

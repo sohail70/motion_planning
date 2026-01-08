@@ -358,102 +358,102 @@ bool GazeboObstacleChecker::check_arc_line_collision(
 
 
 
-// GOOD with prediction horizon
-bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
-    const Trajectory& trajectory,
-    double global_start_time,
-    const Obstacle& obs
-) const {
-    if (trajectory.path_points.size() < 2) return true;
+// // GOOD with prediction horizon
+// bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
+//     const Trajectory& trajectory,
+//     double global_start_time,
+//     const Obstacle& obs
+// ) const {
+//     if (trajectory.path_points.size() < 2) return true;
 
 
-    // --- BROAD-PHASE ENVELOPE CHECK ---
-    // If the obstacle center is nowhere near the trajectory spatial area, skip it.
-    // This is the "Filter First" logic from the Julia code.
-    Eigen::Vector2d traj_start = trajectory.path_points.front().head<2>();
-    Eigen::Vector2d traj_end = trajectory.path_points.back().head<2>();
-    Eigen::Vector2d mid_point = (traj_start + traj_end) / 2.0;
-    double half_length = (traj_end - traj_start).norm() / 2.0;
+//     // --- BROAD-PHASE ENVELOPE CHECK ---
+//     // If the obstacle center is nowhere near the trajectory spatial area, skip it.
+//     // This is the "Filter First" logic from the Julia code.
+//     Eigen::Vector2d traj_start = trajectory.path_points.front().head<2>();
+//     Eigen::Vector2d traj_end = trajectory.path_points.back().head<2>();
+//     Eigen::Vector2d mid_point = (traj_start + traj_end) / 2.0;
+//     double half_length = (traj_end - traj_start).norm() / 2.0;
     
-    // Quick distance from obstacle to the entire trajectory "envelope"
-    double dist_to_obs = (obs.position - mid_point).norm();
-    if (dist_to_obs > (half_length + obs.dimensions.radius + inflation + 5.0)) {
-        return true; // Too far away spatially, skip all segments!
-    }
-    // ---------------------------------------
+//     // Quick distance from obstacle to the entire trajectory "envelope"
+//     double dist_to_obs = (obs.position - mid_point).norm();
+//     if (dist_to_obs > (half_length + obs.dimensions.radius + inflation + 5.0)) {
+//         return true; // Too far away spatially, skip all segments!
+//     }
+//     // ---------------------------------------
 
 
-    const int time_dim_idx = trajectory.path_points[0].size() - 1;
-    double time_into_full_trajectory = 0.0;
+//     const int time_dim_idx = trajectory.path_points[0].size() - 1;
+//     double time_into_full_trajectory = 0.0;
 
-    for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
-        const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
-        const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
-        const double T_segment = segment_start_state(time_dim_idx) - segment_end_state(time_dim_idx);
+//     for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+//         const Eigen::VectorXd& segment_start_state = trajectory.path_points[i];
+//         const Eigen::VectorXd& segment_end_state   = trajectory.path_points[i + 1];
+//         const double T_segment = segment_start_state(time_dim_idx) - segment_end_state(time_dim_idx);
         
-        if (T_segment <= 1e-9) continue;
+//         if (T_segment <= 1e-9) continue;
 
-        const double time_at_segment_start = global_start_time + time_into_full_trajectory;
-        const Eigen::Vector2d p_r0 = segment_start_state.head<2>();
-        const Eigen::Vector2d p_r1 = segment_end_state.head<2>();
-        const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
+//         const double time_at_segment_start = global_start_time + time_into_full_trajectory;
+//         const Eigen::Vector2d p_r0 = segment_start_state.head<2>();
+//         const Eigen::Vector2d p_r1 = segment_end_state.head<2>();
+//         const Eigen::Vector2d v_r = (p_r1 - p_r0) / T_segment;
 
-        if (obs.type == Obstacle::CIRCLE) {
-            const double R = obs.dimensions.radius + inflation;
-            const double R_sq = R * R;
+//         if (obs.type == Obstacle::CIRCLE) {
+//             const double R = obs.dimensions.radius + inflation;
+//             const double R_sq = R * R;
 
-            if (obs.is_dynamic) {
-                const double delta_t = std::max(0.0, time_at_segment_start - obs.last_update_time.seconds());
-                const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
-                const Eigen::Vector2d p_rel_start = p_r0 - p_o0;
-                const Eigen::Vector2d v_rel = v_r - obs.velocity;
+//             if (obs.is_dynamic) {
+//                 const double delta_t = std::max(0.0, time_at_segment_start - obs.last_update_time.seconds());
+//                 const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+//                 const Eigen::Vector2d p_rel_start = p_r0 - p_o0;
+//                 const Eigen::Vector2d v_rel = v_r - obs.velocity;
                 
-                const double a = v_rel.dot(v_rel);
-                const double b = 2.0 * p_rel_start.dot(v_rel);
-                const double c = p_rel_start.dot(p_rel_start) - R_sq;
+//                 const double a = v_rel.dot(v_rel);
+//                 const double b = 2.0 * p_rel_start.dot(v_rel);
+//                 const double c = p_rel_start.dot(p_rel_start) - R_sq;
 
-                if (std::abs(a) < 1e-9) { 
-                    if (c <= 0) return false;
-                } else {
-                    const double discriminant = b * b - 4 * a * c;
-                    if (discriminant >= 0) {
-                        const double t1 = (-b - std::sqrt(discriminant)) / (2.0 * a);
-                        const double t2 = (-b + std::sqrt(discriminant)) / (2.0 * a);
-                        if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
-                            return false; // Collision interval overlaps with segment duration
-                        }
-                    }
-                }
-            } else { // Static Circle
-                if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
-                    return false;
-                }
-            }
-        } else if (obs.type == Obstacle::BOX) {
-            // Apply inflation to width and height for box checks
-            const double w = obs.dimensions.width + 2 * inflation;
-            const double h = obs.dimensions.height + 2 * inflation;
+//                 if (std::abs(a) < 1e-9) { 
+//                     if (c <= 0) return false;
+//                 } else {
+//                     const double discriminant = b * b - 4 * a * c;
+//                     if (discriminant >= 0) {
+//                         const double t1 = (-b - std::sqrt(discriminant)) / (2.0 * a);
+//                         const double t2 = (-b + std::sqrt(discriminant)) / (2.0 * a);
+//                         if (std::max(0.0, t1) <= std::min(T_segment, t2)) {
+//                             return false; // Collision interval overlaps with segment duration
+//                         }
+//                     }
+//                 }
+//             } else { // Static Circle
+//                 if (distanceSqrdPointToSegment(obs.position, p_r0, p_r1) <= R_sq) {
+//                     return false;
+//                 }
+//             }
+//         } else if (obs.type == Obstacle::BOX) {
+//             // Apply inflation to width and height for box checks
+//             const double w = obs.dimensions.width + 2 * inflation;
+//             const double h = obs.dimensions.height + 2 * inflation;
 
-            if (obs.is_dynamic) {
-                const double delta_t = std::max(0.0, time_at_segment_start - obs.last_update_time.seconds());
-                const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
+//             if (obs.is_dynamic) {
+//                 const double delta_t = std::max(0.0, time_at_segment_start - obs.last_update_time.seconds());
+//                 const Eigen::Vector2d p_o0 = obs.position + obs.velocity * delta_t;
                 
-                // Use the swept-volume test for a moving box
-                if (sweptBoxIntersection(p_r0, v_r, p_o0, obs.velocity, w, h, T_segment, obs.dimensions.rotation, false)) {
-                    return false;
-                }
-            } else { // Static Box
-                if (lineIntersectsRectangle(p_r0, p_r1, obs.position, w, h, obs.dimensions.rotation)) {
-                    return false;
-                }
-            }
-        }
+//                 // Use the swept-volume test for a moving box
+//                 if (sweptBoxIntersection(p_r0, v_r, p_o0, obs.velocity, w, h, T_segment, obs.dimensions.rotation, false)) {
+//                     return false;
+//                 }
+//             } else { // Static Box
+//                 if (lineIntersectsRectangle(p_r0, p_r1, obs.position, w, h, obs.dimensions.rotation)) {
+//                     return false;
+//                 }
+//             }
+//         }
         
-        time_into_full_trajectory += T_segment;
-    }
+//         time_into_full_trajectory += T_segment;
+//     }
 
-    return true; // No collision found
-}
+//     return true; // No collision found
+// }
 
 // // FOR ABSOLUTE TIME!
 // bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
@@ -482,6 +482,171 @@ bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
 //     return true;
 // }
 
+
+
+// FOR KNOWN DATA ASSOCIATION WITH OBSTACLE PATH
+// ---------------------------------------------------------
+// The Fixed Single-Obstacle Check
+// ---------------------------------------------------------
+// In gazebo_obstacle_checker.cpp
+
+bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
+    const Trajectory& trajectory, 
+    double global_edge_start_time, 
+    const Obstacle& ob) const 
+{
+    auto logger = rclcpp::get_logger("GazeboChecker");
+
+    
+    // 1. Basic Validity Checks
+    if (!trajectory.is_valid || trajectory.path_points.empty()) return false;
+    
+    if (ob.predicted_path.empty()) return true; 
+
+
+    // 2. Setup Thresholds
+    double obs_size = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
+                      std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+    
+    // Total collision radius (Robot + Obstacle + Inflation)
+    double threshold_dist = robot_radius_ + obs_size + inflation; 
+    double threshold_sq = threshold_dist * threshold_dist;
+
+    // 3. Define Robot Edge in Time-Space
+    // The robot edge goes from Start (High T) to End (Low T) in RRTx
+    Eigen::Vector2d robot_pos_start = trajectory.path_points.front().head<2>();
+    Eigen::Vector2d robot_pos_end   = trajectory.path_points.back().head<2>();
+    
+    double t_robot_start = global_edge_start_time; 
+    double t_robot_end   = t_robot_start - trajectory.time_duration;
+
+    // // LOG: Check if the time window makes sense
+    // RCLCPP_INFO(logger, "Check Traj vs [%s]: T_Start=%.2f -> T_End=%.2f (Dur=%.2f) | ObsPath: T=%.2f -> T=%.2f",
+    //     ob.name.c_str(), t_robot_start, t_robot_end, trajectory.time_duration, 
+    //     ob.predicted_path.front().z(), ob.predicted_path.back().z());
+
+    // -----------------------------------------------------------------------
+    // JULIA PORT START: Normalize to "Early" (Past) and "Late" (Future)
+    // The Julia code says: "make life easier by always checking past to future"
+    // -----------------------------------------------------------------------
+    Eigen::Vector2d P_early, P_late;
+    double T_early, T_late;
+
+    // RRTx usually goes High Time -> Low Time. We swap to make math easier (Low -> High)
+    if (t_robot_end < t_robot_start) {
+        P_early = robot_pos_end;   T_early = t_robot_end;
+        P_late  = robot_pos_start; T_late  = t_robot_start;
+    } else {
+        P_early = robot_pos_start; T_early = t_robot_start;
+        P_late  = robot_pos_end;   T_late  = t_robot_end;
+    }
+
+    // 4. Optimization: Find Relevant Obstacle Segments (The Julia "findIndexBeforeTime")
+    // We assume the obstacle path is sorted Descending (Future -> Past), matching RRTx.
+    // We want to find the slice of the obstacle path that overlaps [T_early, T_late].
+
+    // Find first point where Obs Time <= T_late (Since sorted descending, this is the start of valid range)
+    // Actually, simply iterating all segments and checking overlap is robust and fast enough for <100 points.
+    // But let's keep the optimization if the tube is huge.
+    
+    // We iterate through the tube to find segments that temporally overlap the robot's movement
+    for (size_t i = 0; i < ob.predicted_path.size() - 1; ++i) {
+        
+        Eigen::Vector3d obs_pt1 = ob.predicted_path[i];     // Point A
+        Eigen::Vector3d obs_pt2 = ob.predicted_path[i+1];   // Point B
+        
+        // Normalize Obstacle Segment to Past -> Future
+        Eigen::Vector2d O_early, O_late;
+        double OT_early, OT_late;
+
+        if (obs_pt2.z() < obs_pt1.z()) {
+            O_early = obs_pt2.head<2>(); OT_early = obs_pt2.z();
+            O_late  = obs_pt1.head<2>(); OT_late  = obs_pt1.z();
+        } else {
+            O_early = obs_pt1.head<2>(); OT_early = obs_pt1.z();
+            O_late  = obs_pt2.head<2>(); OT_late  = obs_pt2.z();
+        }
+
+        // -----------------------------------------------------------------------
+        // CHECK TIME OVERLAP
+        // Does [T_early, T_late] overlap with [OT_early, OT_late]?
+        // -----------------------------------------------------------------------
+        double overlap_min = std::max(T_early, OT_early);
+        double overlap_max = std::min(T_late, OT_late);
+
+        if (overlap_min > overlap_max) {
+            continue; // No temporal overlap, skip this segment
+        }
+
+        // -----------------------------------------------------------------------
+        // ANALYTICAL MATH (Solving for T_c)
+        // -----------------------------------------------------------------------
+        
+        // Robot Velocity Vector
+        double robot_dt = T_late - T_early;
+        if (robot_dt < 1e-6) robot_dt = 1e-6; // Avoid div by zero
+        Eigen::Vector2d V_robot = (P_late - P_early) / robot_dt;
+
+        // Obstacle Velocity Vector for this segment
+        double obs_dt = OT_late - OT_early;
+        if (obs_dt < 1e-6) obs_dt = 1e-6;
+        Eigen::Vector2d V_obs = (O_late - O_early) / obs_dt;
+
+        // Relative Velocity
+        Eigen::Vector2d V_rel = V_robot - V_obs;
+
+        // Relative Position at t=0 (Virtual origin)
+        // This calculates the offset between the two lines if extended back to time 0
+        Eigen::Vector2d P_rel_0 = (P_early - V_robot * T_early) - (O_early - V_obs * OT_early);
+
+        // We want to minimize distance squared D^2(t) = |V_rel * t + P_rel_0|^2
+        // D^2(t) = (V_rel.x * t + P_rel_0.x)^2 + ...
+        // Derivative d(D^2)/dt = 2 * (V_rel dot V_rel) * t + 2 * (P_rel_0 dot V_rel) = 0
+        
+        double A = V_rel.dot(V_rel);
+        double B = 2.0 * P_rel_0.dot(V_rel);
+        
+        double Tc; // Time of closest approach
+
+        if (std::abs(A) < 1e-9) {
+            // Objects moving parallel at same speed. Distance is constant.
+            // Check any valid time (e.g., start of overlap)
+            Tc = overlap_min;
+        } else {
+            Tc = -B / (2.0 * A);
+        }
+
+        // Clamp Tc to the valid overlapping time interval
+        if (Tc < overlap_min) Tc = overlap_min;
+        if (Tc > overlap_max) Tc = overlap_max;
+
+        // -----------------------------------------------------------------------
+        // FINAL CHECK at T_c
+        // -----------------------------------------------------------------------
+        Eigen::Vector2d pos_robot_at_Tc = P_early + V_robot * (Tc - T_early);
+        Eigen::Vector2d pos_obs_at_Tc   = O_early + V_obs * (Tc - OT_early);
+
+        double dist_sq = (pos_robot_at_Tc - pos_obs_at_Tc).squaredNorm();
+
+        if (dist_sq < threshold_sq) {
+            double dist = std::sqrt(dist_sq);
+            double thresh = std::sqrt(threshold_sq);
+            
+            // RCLCPP_ERROR(logger, "COLLISION DETECTED with [%s]!", ob.name.c_str());
+            // RCLCPP_ERROR(logger, "  > Time: %.2f (Valid Interval: %.2f - %.2f)", Tc, overlap_min, overlap_max);
+            // RCLCPP_ERROR(logger, "  > Robot: (%.2f, %.2f)", pos_robot_at_Tc.x(), pos_robot_at_Tc.y());
+            // RCLCPP_ERROR(logger, "  > Obs:   (%.2f, %.2f)", pos_obs_at_Tc.x(), pos_obs_at_Tc.y());
+            // RCLCPP_ERROR(logger, "  > Dist: %.3f < Threshold: %.3f", dist, thresh);
+            return false;
+        }
+        // else if (dist_sq < threshold_sq * 1.5) {
+        //      RCLCPP_INFO(logger, "Near Miss [%s] at T=%.2f | Dist=%.2f | Thresh=%.2f", 
+        //         ob.name.c_str(), Tc, std::sqrt(dist_sq), std::sqrt(threshold_sq));
+        // }
+    }
+
+    return true;
+}
 
 /**
  * Performs a continuous, analytical collision check for a moving point (robot) against a moving box (obstacle).
@@ -545,31 +710,43 @@ bool GazeboObstacleChecker::sweptBoxIntersection(
 
 
 
+// bool GazeboObstacleChecker::isTrajectorySafe(
+//     const Trajectory& trajectory,
+//     double global_edge_start_time
+// ) const {
+//     // A nullopt from getCollidingObstacle means the path is safe.
+//     // return isObstacleFree(trajectory.path_points.at(0),trajectory.path_points.at(1));
+//     if (use_fcl)
+//         return !getCollidingObstacleFCL(trajectory, global_edge_start_time).has_value();
+//     else if (use_bullet)
+//         return !getCollidingObstacleBullet(trajectory, global_edge_start_time).has_value();
+//     else
+//         return !getCollidingObstacle(trajectory, global_edge_start_time).has_value();
+
+// }
+
+
 bool GazeboObstacleChecker::isTrajectorySafe(
     const Trajectory& trajectory,
-    double global_edge_start_time
+    double global_edge_start_time // Time-To-Goal (TTG)
 ) const {
-    // A nullopt from getCollidingObstacle means the path is safe.
-    // return isObstacleFree(trajectory.path_points.at(0),trajectory.path_points.at(1));
-    if (use_fcl)
-        return !getCollidingObstacleFCL(trajectory, global_edge_start_time).has_value();
-    else if (use_bullet)
-        return !getCollidingObstacleBullet(trajectory, global_edge_start_time).has_value();
-    else
-        return !getCollidingObstacle(trajectory, global_edge_start_time).has_value();
+    // 1. Get the current world snapshot
+    // (This list already contains the updated positions/velocities)
+    ObstacleVector all_obs = getObstacles(); 
 
+    // 2. Loop through EVERY obstacle and check its Tube
+    for (const auto& ob : all_obs) {
+        // If an edge hits ANY obstacle's predicted path, it's NOT safe
+        if (!isTrajectorySafeAgainstSingleObstacle(trajectory, global_edge_start_time, ob)) {
+            return false; 
+        }
+    }
 
-// // Julia pattern: Iterate all obstacles and return the first culprit found.
-//     for (const auto& obs : obstacle_snapshot_) {
-//         if (!isTrajectorySafeAgainstSingleObstacle(trajectory, global_edge_start_time, obs)) {
-//             return false;
-//         }
-//     }
-//     return true;
-
-
-
+    return true; // Safe against the whole world
 }
+
+
+
 
 //  With Constant Acc and Constant Vel implmented depending on what the obstalces movement and you KF is!
 /*
@@ -2815,450 +2992,121 @@ void GazeboObstacleChecker::lightweightPoseCallback(const gz::msgs::Pose_V& msg)
     new_pose_msg_available_ = true;
 }
 
-// // The new processing function 
-// void GazeboObstacleChecker::processLatestPoseInfo() {
-//     gz::msgs::Pose_V msg;
-//     {
-//         std::lock_guard<std::mutex> lock(snapshot_mutex_);
-//         if (!new_pose_msg_available_) {
-//             return; // No new message to process
-//         }
-//         msg = latest_pose_msg_; // the lock above is for this line because latest_pose_msg_ is shared resource. writer is lightWeightPoseCallback and and reader is the current function. in case read and write is happening at the same time then we get a crash if we do not use lock
-//         new_pose_msg_available_ = false; // Mark as consumed
-//     }
-
-//     obstacle_positions_.clear();
-//     ObstacleVector current_dynamic_obstacles;
-
-//     // Get the current simulation time from the stored clock
-//     rclcpp::Time now = clock_->now();
-
-//     // Update robot position
-//     for (int i = 0; i < msg.pose_size(); ++i) {
-//         const auto& pose = msg.pose(i);
-//         if (pose.name() == robot_model_name_) {
-//             robot_position_ = Eigen::Vector2d(pose.position().x(), pose.position().y());
-//             break;
-//         }
-//     }
-
-//     // Process obstacles
-//     for (int i = 0; i < msg.pose_size(); ++i) {
-//         const auto& pose = msg.pose(i);
-//         const std::string name = pose.name();
-//         Eigen::Vector2d position(pose.position().x(), pose.position().y());
-
-//         if (name == robot_model_name_) continue;
-
-//         bool is_cylinder = name.find("cylinder") != std::string::npos;
-//         bool is_box = name.find("box") != std::string::npos;
-//         bool is_static = name.find("static_") != std::string::npos;
-//         bool is_moving = name.find("moving_") != std::string::npos;
-
-//         if (!is_cylinder && !is_box) continue;
-
-//         auto info_it = obstacle_info_.find(name);
-
-//         // Create obstacle object
-//         Obstacle obstacle;
-//         if (is_cylinder) {
-//             obstacle.type = Obstacle::CIRCLE;
-//             double radius = (info_it != obstacle_info_.end()) ? info_it->second.radius : 5.0;
-//             obstacle = Obstacle(position, radius, inflation, is_moving);
-//         } else {
-//             obstacle.type = Obstacle::BOX;
-//             double width = (info_it != obstacle_info_.end()) ? info_it->second.width : 10.0;
-//             double height = (info_it != obstacle_info_.end()) ? info_it->second.height : 10.0;
-            
-//             Eigen::Vector4d quat(
-//                 pose.orientation().x(),
-//                 pose.orientation().y(),
-//                 pose.orientation().z(),
-//                 pose.orientation().w()
-//             );
-//             double yaw = calculateYawFromQuaternion(quat);
-//             obstacle = Obstacle(position, width, height, yaw, inflation, is_moving);
-//         }
-//         obstacle.is_dynamic = is_moving;
-
-//         const bool within_range = !use_range || 
-//             (robot_position_ - position).norm() < sensor_range;
-
-//         // Handle static obstacles
-//         if (is_static) {
-//             if (persistent_static_obstacles) {
-//                 auto map_it = static_obstacle_positions_.find(name);
-                
-//                 if (map_it == static_obstacle_positions_.end()) {
-//                     if (within_range) {
-//                         static_obstacle_positions_[name] = obstacle;
-//                     }
-//                 } else {
-//                     map_it->second.position = position;
-//                 }
-//             }
-            
-//             if (within_range) {
-//                 obstacle_positions_.push_back(obstacle);
-//             }
-//         }
-//         // Handle dynamic obstacles
-//         else if (is_moving && within_range) {
-//             // This is the new block that replaces finite difference with a Kalman Filter.
-//             if(estimation) {
-//                 auto filter_it = obstacle_filters_.find(name);
-//                 if (filter_it == obstacle_filters_.end()) {
-//                     // First time seeing this obstacle, initialize a new filter.
-                    
-//                     // --- Use the Factory to create the filter ---
-//                     KalmanFilter new_filter = KalmanFilterFactory::createFilter(kf_model_type_);
-
-//                     // --- Initialize the state with the correct size ---
-//                     int state_size = (kf_model_type_ == "cv") ? 4 : 6;
-//                     Eigen::VectorXd initial_state = Eigen::VectorXd::Zero(state_size);
-//                     initial_state.head<2>() << obstacle.position.x(), obstacle.position.y();
-//                     new_filter.init(initial_state);
-                    
-//                     filter_it = obstacle_filters_.emplace(name, new_filter).first;
-                    
-//                     obstacle.velocity.setZero();
-//                     obstacle.acceleration.setZero();
-
-//                 } else {
-//                     // This obstacle has an existing filter. Predict and Update.
-//                     double dt = (now - obstacle_filters_times_[name]).seconds();
-
-//                     // Prevent instability from tiny or zero dt
-//                     if (dt <= 1e-6) {
-//                         dt = 0.016; // Fallback to a reasonable timestep, e.g., ~60Hz
-//                     }
-
-//                     // Predict step: Estimate where the filter thinks the obstacle should be.
-//                     filter_it->second.predict(dt);
-
-//                     // Update step: Correct the prediction with the new measurement.
-//                     Eigen::VectorXd measurement(2);
-//                     measurement << obstacle.position.x(), obstacle.position.y();
-//                     filter_it->second.update(measurement);
-
-//                     // Get the smoothed state from the filter to use in planning.
-//                     Eigen::VectorXd estimated_state = filter_it->second.getState();
-//                     obstacle.velocity << estimated_state(2), estimated_state(3);
-
-//                     if (kf_model_type_ == "cv") {
-//                         obstacle.acceleration.setZero();
-//                     } else { // For "ca" and "singer"
-//                         obstacle.acceleration << estimated_state(4), estimated_state(5);
-//                     }
-
-//                 }
-//                  // Store the timestamp of this update for the next iteration's dt calculation
-//                 obstacle_filters_times_[name] = now;
-//             }
-
-//             // Store the last update time on the obstacle object itself for the collision checker
-//             obstacle.last_update_time = now;
-//             current_dynamic_obstacles.push_back(obstacle);
-            
-//             // // --- DEBUG OUTPUT BLOCK ---
-//             // std::cout << std::fixed << std::setprecision(3);
-//             // std::cout << "--- Obstacle [" << name << "] at " << now.seconds() << "s ---\n"
-//             //           << "  Raw Position:      (" << position.x() << ", " << position.y() << ")\n"
-//             //           << "  Kalman Velocity:   (" << obstacle.velocity.x() << ", " << obstacle.velocity.y() << ")\n"
-//             //           << "  Kalman Accel:      (" << obstacle.acceleration.x() << ", " << obstacle.acceleration.y() << ")\n";
-//         }
-//     }
-
-//     // Add persistent static obstacles (even if currently out of range)
-//     if (persistent_static_obstacles) {
-//         for (const auto& [name, static_obs] : static_obstacle_positions_) {
-//             bool exists = std::any_of(
-//                 obstacle_positions_.begin(),
-//                 obstacle_positions_.end(),
-//                 [&](const Obstacle& o) {
-//                     return o.position == static_obs.position && 
-//                            o.type == static_obs.type;
-//                 }
-//             );
-            
-//             if (!exists) {
-//                 obstacle_positions_.push_back(static_obs);
-//             }
-//         }
-//     }
-
-//     // Add all processed dynamic obstacles to the main list
-//     obstacle_positions_.insert(obstacle_positions_.end(),
-//                              current_dynamic_obstacles.begin(),
-//                              current_dynamic_obstacles.end());
-// }
-
-
 
 // The new processing function 
 void GazeboObstacleChecker::processLatestPoseInfo() {
     gz::msgs::Pose_V msg;
     {
         std::lock_guard<std::mutex> lock(snapshot_mutex_);
-        if (!new_pose_msg_available_) {
-            return; // No new message to process
-        }
-        msg = latest_pose_msg_; // the lock above is for this line because latest_pose_msg_ is shared resource. writer is lightWeightPoseCallback and and reader is the current function. in case read and write is happening at the same time then we get a crash if we do not use lock
-        new_pose_msg_available_ = false; // Mark as consumed
+        if (!new_pose_msg_available_) return;
+        msg = latest_pose_msg_;
+        new_pose_msg_available_ = false;
     }
 
-    obstacle_positions_.clear();
-    ObstacleVector current_dynamic_obstacles;
-
-    // Get the current simulation time from the stored clock
     rclcpp::Time now = clock_->now();
+    obstacle_positions_.clear(); // Clear for Rviz sync
 
-    // Update robot position (TODO: make it 3D later for range check)
-    for (int i = 0; i < msg.pose_size(); ++i) {
-        const auto& pose = msg.pose(i);
-        if (pose.name() == robot_model_name_) {
-            robot_position_ = Eigen::Vector2d(pose.position().x(), pose.position().y());
-            break;
-        }
-    }
-
-    // Process obstacles
     for (int i = 0; i < msg.pose_size(); ++i) {
         const auto& pose = msg.pose(i);
         const std::string name = pose.name();
-        Eigen::Vector2d position(pose.position().x(), pose.position().y());
-        double position_z = pose.position().z();
-        if (name == robot_model_name_) continue;
+        
+        // 1. Handle Robot
+        if (name == robot_model_name_) {
+            robot_position_ = Eigen::Vector2d(pose.position().x(), pose.position().y());
+            continue;
+        }
 
-        bool is_cylinder = name.find("cylinder") != std::string::npos;
-        bool is_box = name.find("box") != std::string::npos;
-        bool is_static = name.find("static_") != std::string::npos;
-        bool is_moving = name.find("moving_") != std::string::npos;
-
-        if (!is_cylinder && !is_box) continue;
-
+        // 2. Find Obstacle Info (SDF Ground Truth)
         auto info_it = obstacle_info_.find(name);
+        if (info_it == obstacle_info_.end()) continue;
 
-        // Create obstacle object
-        Obstacle obstacle;
-        if (is_cylinder) {
-            obstacle.type = Obstacle::CIRCLE;
-            double radius = (info_it != obstacle_info_.end()) ? info_it->second.radius : 5.0;
-            obstacle = Obstacle(position, radius, inflation, is_moving);
+        const auto& info = info_it->second;
+        Obstacle& ob = obstacle_positions_map_[name]; // Get or create
+        
+        Eigen::Vector2d new_pos(pose.position().x(), pose.position().y());
+
+        // 3. Populate Static/Ground Truth Data (Every time, to be safe)
+        ob.name = name;
+        ob.is_dynamic = info.is_dynamic;
+        ob.has_ground_truth = true;
+        ob.speed_scalar = info.speed;        // e.g., 8.0
+        ob.motion_limit = info.amplitude;    // e.g., 40.0
+        ob.initial_origin = info.initial_pose.head<2>();
+        
+        // Normalize direction from SDF (e.g., (1,0) or (0,1))
+        if (info.direction.head<2>().norm() > 1e-6) {
+             ob.motion_axis = info.direction.head<2>().normalized();
         } else {
-            obstacle.type = Obstacle::BOX;
-            double width = (info_it != obstacle_info_.end()) ? info_it->second.width : 10.0;
-            double height = (info_it != obstacle_info_.end()) ? info_it->second.height : 10.0;
+             ob.motion_axis = Eigen::Vector2d::UnitX(); // Fallback
+        }
+
+        // 4. Robust Velocity Calculation
+        // We do NOT use dt for magnitude. We use SDF speed.
+        // We use position change ONLY for direction sign (+ or -).
+        if (ob.is_dynamic) {
+            // If this is the first run, assume positive direction along axis
+            if (ob.velocity.norm() < 1e-3 && ob.last_update_time.nanoseconds() == 0) {
+                ob.velocity = ob.motion_axis * ob.speed_scalar;
+            }
+            // Otherwise, calculate direction based on displacement
+            else if (ob.last_update_time.nanoseconds() > 0) {
+                Eigen::Vector2d displacement = new_pos - ob.position;
+                
+                // Only update direction if we moved enough to be sure (filter jitter)
+                if (displacement.norm() > 1e-4) {
+                    // Project displacement onto the motion axis
+                    double dot = displacement.dot(ob.motion_axis);
+                    double dir_sign = (dot >= 0.0) ? 1.0 : -1.0;
+                    
+                    // FORCE EXACT VELOCITY: Axis * (SDF_Speed * Sign)
+                    ob.velocity = ob.motion_axis * (ob.speed_scalar * dir_sign);
+                }
+                // If displacement is tiny, keep previous velocity (Obstacles don't stop).
+            }
+        } else {
+            ob.velocity = Eigen::Vector2d::Zero();
+        }
+
+        // 5. Update State
+        ob.position = new_pos;
+        ob.last_update_time = now;
+
+        // 6. Geometry Sync (Visuals & Collision)
+        if (info.type == ObstacleInfo::CYLINDER) {
+            ob.type = Obstacle::CIRCLE;
+            ob.dimensions.radius = info.radius;
+        } else {
+            ob.type = Obstacle::BOX;
+            ob.dimensions.width = info.width;
+            ob.dimensions.height = info.height;
             
-            Eigen::Vector4d quat(
+            // Quaternion to Yaw
+            Eigen::Quaterniond q(
+                pose.orientation().w(),
                 pose.orientation().x(),
                 pose.orientation().y(),
-                pose.orientation().z(),
-                pose.orientation().w()
+                pose.orientation().z()
             );
-            double yaw = calculateYawFromQuaternion(quat);
-            obstacle = Obstacle(position, width, height, yaw, inflation, is_moving);
-        }
-        obstacle.z = position_z; // Manual! TODO: Later make the KF to estimate the full 3D coords
-        obstacle.name = name;
-        obstacle.is_dynamic = is_moving;
-
-
-        if (use_fcl && (is_moving || is_static)) {
-            // Check if this obstacle is new.
-            if (fcl_cache_.find(name) == fcl_cache_.end()) {
-                // This is the FIRST time we've seen this obstacle.
-                // Create its FCL geometry and store it in the cache.
-                std::shared_ptr<fcl::CollisionGeometryd> geom;
-                if (obstacle.type == Obstacle::CIRCLE) {
-                    geom = std::make_shared<fcl::Cylinderd>(obstacle.dimensions.radius, 1.0);
-                } else { // BOX
-                    geom = std::make_shared<fcl::Boxd>(obstacle.dimensions.width, obstacle.dimensions.height, 1.0);
-                }
-                // Insert the newly created CollisionObject into our cache map.
-                fcl_cache_.emplace(name, fcl::CollisionObjectd(geom));
-                RCLCPP_INFO(rclcpp::get_logger("FCL_Cache"), "Cached new FCL object: %s", name.c_str());
-            }
+            // Extract Yaw from Eigen Quaternion
+            auto euler = q.toRotationMatrix().eulerAngles(0, 1, 2); // ZYX order, Z is index 0 or 2 depending on convention
+            // Simpler 2D planar projection for Yaw:
+            double yaw = std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()), 
+                                    1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
+            ob.dimensions.rotation = yaw;
         }
 
-
-
-
-        const bool within_range = !use_range || 
-            (robot_position_ - position).norm() < sensor_range;
-
-        // Handle static obstacles
-        if (is_static) {
-            if (persistent_static_obstacles) {
-                auto map_it = static_obstacle_positions_.find(name);
-                
-                if (map_it == static_obstacle_positions_.end()) {
-                    if (within_range) {
-                        static_obstacle_positions_[name] = obstacle;
-                    }
-                } else {
-                    map_it->second.position = position;
-                }
-            }
-            
-            if (within_range) {
-                obstacle_positions_.push_back(obstacle);
-            }
+        // 7. Logging (Throttled)
+        if (ob.is_dynamic) {
+            RCLCPP_INFO_THROTTLE(rclcpp::get_logger("PoseInfo"), *clock_, 1000,
+                "Dynamic Obs [%s]: Pos(%.1f, %.1f) | Vel(%.1f, %.1f) | Size: %.1f", 
+                name.c_str(), ob.position.x(), ob.position.y(), 
+                ob.velocity.x(), ob.velocity.y(), 
+                (ob.type == Obstacle::CIRCLE ? ob.dimensions.radius : ob.dimensions.width));
         }
-        // Handle dynamic obstacles
-        else if (is_moving && within_range) {
-            // This is the new block that replaces finite difference with a Kalman Filter.
-            if(estimation) {
-                auto filter_it = obstacle_filters_.find(name);
-                if (filter_it == obstacle_filters_.end()) {
-                    // First time seeing this obstacle, initialize a new filter.
-                    
-                    // --- Use the Factory to create the filter ---
-                    KalmanFilter new_filter = KalmanFilterFactory::createFilter(kf_model_type_);
 
-                    // --- Initialize the state with the correct size ---
-                    int state_size = (kf_model_type_ == "cv") ? 4 : 6;
-                    Eigen::VectorXd initial_state = Eigen::VectorXd::Zero(state_size);
-                    initial_state.head<2>() << obstacle.position.x(), obstacle.position.y();
-                    new_filter.init(initial_state);
-                    
-                    filter_it = obstacle_filters_.emplace(name, new_filter).first;
-                    
-                    obstacle.velocity.setZero();
-                    obstacle.acceleration.setZero();
-
-                } else {
-                    // This obstacle has an existing filter. Predict and Update.
-                    double dt = (now - obstacle_filters_times_[name]).seconds();
-
-                    // Prevent instability from tiny or zero dt
-                    if (dt <= 1e-6) {
-                        dt = 0.016; // Fallback to a reasonable timestep, e.g., ~60Hz
-                    }
-
-                    // Predict step: Estimate where the filter thinks the obstacle should be.
-                    filter_it->second.predict(dt);
-
-                    // Update step: Correct the prediction with the new measurement.
-                    Eigen::VectorXd measurement(2);
-                    measurement << obstacle.position.x(), obstacle.position.y();
-                    filter_it->second.update(measurement);
-
-                    // Get the smoothed state from the filter to use in planning.
-                    Eigen::VectorXd estimated_state = filter_it->second.getState();
-                    obstacle.velocity << estimated_state(2), estimated_state(3);
-
-                    if (kf_model_type_ == "cv") {
-                        obstacle.acceleration.setZero();
-                    } else { // For "ca" and "singer"
-                        obstacle.acceleration << estimated_state(4), estimated_state(5);
-                    }
-
-                }
-                 // Store the timestamp of this update for the next iteration's dt calculation
-                obstacle_filters_times_[name] = now;
-            }
-
-            // Store the last update time on the obstacle object itself for the collision checker
-            obstacle.last_update_time = now;
-            current_dynamic_obstacles.push_back(obstacle);
-            
-            // // --- DEBUG OUTPUT BLOCK ---
-            // std::cout << std::fixed << std::setprecision(3);
-            // std::cout << "--- Obstacle [" << name << "] at " << now.seconds() << "s ---\n"
-            //           << "  Raw Position:      (" << position.x() << ", " << position.y() << ")\n"
-            //           << "  Kalman Velocity:   (" << obstacle.velocity.x() << ", " << obstacle.velocity.y() << ")\n"
-            //           << "  Kalman Accel:      (" << obstacle.acceleration.x() << ", " << obstacle.acceleration.y() << ")\n";
-        }
+        // Push to vector for Visualization
+        obstacle_positions_.push_back(ob);
     }
-
-    // Add persistent static obstacles (even if currently out of range)
-    if (persistent_static_obstacles) {
-        for (const auto& [name, static_obs] : static_obstacle_positions_) {
-            bool exists = std::any_of(
-                obstacle_positions_.begin(),
-                obstacle_positions_.end(),
-                [&](const Obstacle& o) {
-                    return o.position == static_obs.position && 
-                           o.type == static_obs.type;
-                }
-            );
-            
-            if (!exists) {
-                obstacle_positions_.push_back(static_obs);
-            }
-        }
-    }
-
-    // Add all processed dynamic obstacles to the main list
-    obstacle_positions_.insert(obstacle_positions_.end(),
-                             current_dynamic_obstacles.begin(),
-                             current_dynamic_obstacles.end());
-
-
-    // if (use_bullet) {
-    //     // Use a set to track which obstacles are currently active in the scene
-    //     std::unordered_set<std::string> active_obstacle_names;
-
-    //     // --- UPDATE/CREATE LOOP ---
-    //     // Iterate through the latest snapshot of all obstacles
-    //     for (const auto& obs : obstacle_positions_) {
-    //         active_obstacle_names.insert(obs.name);
-
-    //         // If the obstacle is new, create and cache its shape.
-    //         if (bullet_shape_cache_.find(obs.name) == bullet_shape_cache_.end()) {
-    //             if (obs.type == Obstacle::BOX) {
-    //                 bullet_shape_cache_[obs.name] = std::make_unique<btBoxShape>(btVector3(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0, 1.0));
-    //             } else { // CIRCLE
-    //                 bullet_shape_cache_[obs.name] = std::make_unique<btSphereShape>(obs.dimensions.radius);
-    //             }
-    //         }
-    //     }
-
-    //     // --- CLEANUP LOOP ---
-    //     // Iterate through the cache and remove shapes for obstacles that are no longer active.
-    //     for (auto it = bullet_shape_cache_.begin(); it != bullet_shape_cache_.end(); ) {
-    //         if (active_obstacle_names.find(it->first) == active_obstacle_names.end()) {
-    //             // This obstacle has disappeared. Erase its shape from the cache.
-    //             // The unique_ptr will automatically handle memory deallocation.
-    //             it = bullet_shape_cache_.erase(it);
-    //         } else {
-    //             ++it;
-    //         }
-    //     }
-    // }
-    if (use_bullet) {
-        // Use a set to track which obstacles are currently active in the scene
-        std::unordered_set<std::string> active_obstacle_names;
-
-        // --- UPDATE/CREATE LOOP ---
-        for (const auto& obs : obstacle_positions_) {
-            active_obstacle_names.insert(obs.name);
-
-            // If the obstacle is new, create and cache its proper 3D shape.
-            if (bullet_shape_cache_.find(obs.name) == bullet_shape_cache_.end()) {
-                if (obs.type == Obstacle::BOX) {
-                    // *** FIX: Use height for depth to create a proper 3D box shape ***
-                    const double half_depth = obs.dimensions.height / 2.0; 
-                    bullet_shape_cache_[obs.name] = std::make_unique<btBoxShape>(btVector3(obs.dimensions.width / 2.0, obs.dimensions.height / 2.0, half_depth));
-                } else { // CIRCLE (Sphere in 3D)
-                    bullet_shape_cache_[obs.name] = std::make_unique<btSphereShape>(obs.dimensions.radius);
-                }
-            }
-        }
-
-        // --- CLEANUP LOOP (no changes needed here) ---
-        for (auto it = bullet_shape_cache_.begin(); it != bullet_shape_cache_.end(); ) {
-            if (active_obstacle_names.find(it->first) == active_obstacle_names.end()) {
-                it = bullet_shape_cache_.erase(it);
-            } else {
-                ++it;
-            }
-        }
-    }
-
-
-
 }
 
 
@@ -3444,14 +3292,62 @@ bool GazeboObstacleChecker::pointIntersectsRectangle(const Eigen::Vector2d& poin
 
 
 
-// Implementation of the unified public function
-bool GazeboObstacleChecker::checkRobotCollision(const Eigen::Vector2d& position, double yaw) const {
-    if (footprint_type_ == "rectangular") {
-        return checkRectangularCollisionHelper(position, yaw);
-    } else { // "circular" or default
-        return checkCircularCollisionHelper(position, robot_radius_);
+// // Implementation of the unified public function
+// bool GazeboObstacleChecker::checkRobotCollision(const Eigen::Vector2d& position, double yaw) const {
+//     if (footprint_type_ == "rectangular") {
+//         return checkRectangularCollisionHelper(position, yaw);
+//     } else { // "circular" or default
+//         return checkCircularCollisionHelper(position, robot_radius_);
+//     }
+// }
+
+bool GazeboObstacleChecker::checkRobotCollision(const Eigen::Vector2d& robot_pos, double yaw) const {
+    // 1. Thread Safety Lock (CRITICAL if running in threaded executor)
+    // std::lock_guard<std::mutex> lock(obstacles_mutex_); 
+
+    // 2. DIAGNOSTIC: Check if we even know about obstacles
+    if (obstacle_positions_.empty()) {
+        RCLCPP_WARN_THROTTLE(rclcpp::get_logger("CollisionCheck"), *clock_, 1000, 
+            "[CollisionCheck] SKIPPING: 0 obstacles known! (Is ProcessLatestPoseInfo running?)");
+        return false;
     }
+
+
+    // Using inflation as robot radius
+    double robot_r = inflation; 
+
+    for (const auto& ob : obstacle_positions_) {
+        // Calculate Distance
+        double dist = (robot_pos - ob.position).norm();
+        
+        // Calculate Obstacle Radius (Circle vs Box approximation)
+        double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
+                       std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+
+        double collision_threshold = robot_r + obs_r;
+
+        // 4. LOGGING: Print details if we are getting close (within 3 meters of collision)
+        if (dist < (collision_threshold + 3.0)) {
+            RCLCPP_INFO_THROTTLE(rclcpp::get_logger("CollisionDebug"), *clock_, 200, 
+                "NEAR MISS: Robot(%.2f, %.2f) vs [%s](%.2f, %.2f) \n"
+                "    -> Dist: %.3f | Threshold: %.3f (Rob:%.1f + Obs:%.1f)",
+                robot_pos.x(), robot_pos.y(), 
+                ob.name.c_str(), ob.position.x(), ob.position.y(), 
+                dist, collision_threshold, robot_r, obs_r);
+        }
+
+        // 5. The Check
+        if (dist < collision_threshold) {
+            RCLCPP_ERROR(rclcpp::get_logger("CollisionCheck"), 
+                "!!! CRASH DETECTED !!! Robot vs [%s] | Dist: %.3f < %.3f",
+                ob.name.c_str(), dist, collision_threshold);
+            return true;
+        }
+    }
+    return false;
 }
+
+
 
 // Helper for rectangular checks now uses its member variable
 bool GazeboObstacleChecker::checkRectangularCollisionHelper(const Eigen::Vector2d& position, double yaw) const {
@@ -3742,4 +3638,204 @@ void GazeboObstacleChecker::recordCulprit(const Obstacle& obs) const {
     //     collision_culprits_names_.insert(obs.name);
     //     collision_culprits_data_.push_back(obs);
     // }
+}
+
+
+
+// Eigen::Vector2d GazeboObstacleChecker::getObstaclePositionAtTime(const Obstacle& ob, double query_time) const {
+//     const auto& path = ob.predicted_path;
+//     if (path.empty()) return ob.position;
+
+//     // Bounds check (Path is stored: High Time -> Low Time)
+//     if (query_time >= path.front().z()) return Eigen::Vector2d(path.front().x(), path.front().y());
+//     if (query_time <= path.back().z()) return Eigen::Vector2d(path.back().x(), path.back().y());
+
+//     // Linear Search & Interpolate
+//     for (size_t i = 0; i < path.size() - 1; ++i) {
+//         const auto& p_prev = path[i];     // Higher T
+//         const auto& p_next = path[i+1];   // Lower T
+
+//         if (query_time <= p_prev.z() && query_time >= p_next.z()) {
+//             double total_dt = p_prev.z() - p_next.z();
+//             if (std::abs(total_dt) < 1e-6) return Eigen::Vector2d(p_prev.x(), p_prev.y());
+
+//             double alpha = (query_time - p_next.z()) / total_dt; 
+//             double x = p_next.x() + alpha * (p_prev.x() - p_next.x());
+//             double y = p_next.y() + alpha * (p_prev.y() - p_next.y());
+//             return Eigen::Vector2d(x, y);
+//         }
+//     }
+//     return ob.position;
+// }
+
+
+
+
+Eigen::Vector2d GazeboObstacleChecker::getObstaclePositionAtTime(
+    const Obstacle& ob, double query_time) const 
+{
+    auto logger = rclcpp::get_logger("GazeboChecker");
+
+    const auto& path = ob.predicted_path;
+    if (path.empty()) {
+        RCLCPP_DEBUG(logger, "Obs [%s] has empty path. Returning static pos.", ob.name.c_str());
+        return ob.position;
+    }
+
+    // Determine direction
+    bool is_descending = path.front().z() > path.back().z();
+    double start_t = path.front().z();
+    double end_t = path.back().z();
+
+    // Check bounds based on direction
+    if (is_descending) {
+        if (query_time >= start_t) {
+             RCLCPP_DEBUG(logger, "Query T=%.2f >= Start T=%.2f. Clamping to Start.", query_time, start_t);
+             return Eigen::Vector2d(path.front().x(), path.front().y());
+        }
+        if (query_time <= end_t) {
+             RCLCPP_DEBUG(logger, "Query T=%.2f <= End T=%.2f. Clamping to End.", query_time, end_t);
+             return Eigen::Vector2d(path.back().x(), path.back().y());
+        }
+    } else { // Ascending
+        if (query_time <= start_t) return Eigen::Vector2d(path.front().x(), path.front().y());
+        if (query_time >= end_t)   return Eigen::Vector2d(path.back().x(), path.back().y());
+    }
+
+    // Linear Interpolation
+    for (size_t i = 0; i < path.size() - 1; ++i) {
+        const auto& p1 = path[i];
+        const auto& p2 = path[i+1];
+
+        // Robust check for containing interval regardless of direction
+        bool in_interval = (p1.z() >= query_time && query_time >= p2.z()) || 
+                           (p1.z() <= query_time && query_time <= p2.z());
+
+        if (in_interval) {
+            double total_dt = p2.z() - p1.z();
+            if (std::abs(total_dt) < 1e-6) {
+                RCLCPP_WARN(logger, "Zero DT detected in path of [%s] at idx %zu", ob.name.c_str(), i);
+                return Eigen::Vector2d(p1.x(), p1.y());
+            }
+
+            double alpha = (query_time - p1.z()) / total_dt;
+            
+            Eigen::Vector2d result(
+                p1.x() + alpha * (p2.x() - p1.x()),
+                p1.y() + alpha * (p2.y() - p1.y())
+            );
+
+            // Detailed Math Log (Uncomment if needed)
+            RCLCPP_INFO(logger, "Interpolate [%s]: T_query=%.3f | P1(T=%.3f) -> P2(T=%.3f) | Alpha=%.3f | Res=(%.2f, %.2f)",
+                ob.name.c_str(), query_time, p1.z(), p2.z(), alpha, result.x(), result.y());
+            return result;
+        }
+    }
+
+    RCLCPP_WARN(logger, "Fallthrough in getObstaclePositionAtTime for [%s] T=%.2f. Returning Pos.", ob.name.c_str(), query_time);
+    return ob.position;
+}
+// std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
+//     const Obstacle& ob, 
+//     double currentTime) const 
+// {
+//     std::vector<Eigen::Vector3d> path;
+    
+//     // Safety check: Needs to be dynamic and have valid physics data
+//     if (!ob.is_dynamic || !ob.has_ground_truth) return path;
+
+//     const double dt_step = 0.5; 
+    
+//     // 1. Current State (Trusted from processLatestPoseInfo)
+//     Eigen::Vector2d current_v = ob.velocity;
+//     Eigen::Vector2d predicted_pos = ob.position;
+    
+//     // 2. Simulate (Linear Projection only)
+//     // We do NOT check for walls or amplitude. 
+//     // We assume it keeps going in the same direction forever.
+//     for (double t = currentTime; t >= -1e-9; t -= dt_step) {
+        
+//         // Add point [X, Y, Time]
+//         path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
+
+//         // Move linearly: Pos = Pos + (Vel * dt)
+//         predicted_pos = predicted_pos + (current_v * dt_step);
+//     }
+    
+//     // // --- DEBUG LOG ---
+//     // // You will now see Y increasing/decreasing monotonically (Straight Line)
+//     // // instead of zig-zagging.
+//     // // -----------------
+//     // std::cout << "\n=== LINEAR PREDICTION TUBE FOR " << ob.name << " ===" << std::endl;
+//     // for (size_t i = 0; i < path.size(); i+=5) { // Print every 5th point to save space
+//     //      printf("[%zu] X:%.2f  Y:%.2f  T:%.2f\n", 
+//     //            i, path[i].x(), path[i].y(), path[i].z());
+//     // }
+//     // std::cout << "===================================================\n" << std::endl;
+
+//     return path;
+// }
+
+std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
+    const Obstacle& ob, 
+    double currentTime) const 
+{
+    std::vector<Eigen::Vector3d> path;
+    
+    if (!ob.is_dynamic || !ob.has_ground_truth) return path;
+
+    // --- SMART STEP CALCULATION ---
+    
+    // 1. Determine Characteristic Size (The "Hit Box" Size)
+    // We want to step roughly 50-75% of the obstacle's size. 
+    // Stepping smaller than this is redundant (overlapping checks).
+    double feature_size;
+    if (ob.type == Obstacle::CIRCLE) {
+        feature_size = ob.dimensions.radius;
+    } else {
+        // For a box, use the smallest dimension to be safe, or average
+        feature_size = std::min(ob.dimensions.width, ob.dimensions.height) / 2.0;
+    }
+    
+    // Clamp size to avoid infinite loops for tiny points
+    if (feature_size < 0.5) feature_size = 0.5; 
+
+    // 2. Calculate Speed
+    double speed = ob.velocity.norm();
+    
+    // 3. Determine Time Step (dt)
+    double dt_step;
+    
+    if (speed < 0.1) {
+        // Stationary or crawling: Use a coarse time step
+        dt_step = 2.0; 
+    } else {
+        // Moving: Time = Distance / Speed
+        // We step forward by 'feature_size' meters at a time.
+        // This ensures we don't skip over the obstacle, but we don't over-sample.
+        dt_step = feature_size / speed;
+    }
+
+    // 4. Clamping
+    // Don't let dt be too small (CPU killer) or too huge (tunneling risk)
+    // For a 20m/s obstacle with radius 2m: dt = 2/20 = 0.1s. This is necessary!
+    // For a 1m/s obstacle with radius 2m: dt = 2/1 = 2.0s. Much more efficient.
+    if (dt_step < 0.5) dt_step = 0.5;   // Cap max resolution
+    if (dt_step > 2.0) dt_step = 2.0;   // Cap min resolution
+
+    // --- GENERATION LOOP ---
+    
+    Eigen::Vector2d current_v = ob.velocity;
+    Eigen::Vector2d predicted_pos = ob.position;
+    
+    // Reserve memory to prevent reallocations (Optimization)
+    int estimated_steps = static_cast<int>(currentTime / dt_step) + 2;
+    path.reserve(estimated_steps);
+
+    for (double t = currentTime; t >= -1e-9; t -= dt_step) {
+        path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
+        predicted_pos = predicted_pos + (current_v * dt_step);
+    }
+
+    return path;
 }
