@@ -635,6 +635,11 @@ private:
         if (!gazebo_checker) return; 
         
         double current_time = this->getCurrentSimTime();
+        // Print to see the difference
+        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
+            "Planner Time: %.2f", current_time);
+
+
         gazebo_checker->processLatestPoseInfo(current_time); 
         
         const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); 

@@ -519,8 +519,7 @@ private:
 
     // Determinism Debugging
     bool use_deterministic_override_ = true; // Set this to TRUE to force math model
-    double max_position_error_ = 0.0;
-    double max_velocity_error_ = 0.0;
 
+    double initial_budget_time_ ;
 
 };

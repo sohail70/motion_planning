@@ -135,6 +135,8 @@ int main(int argc, char** argv)
     manager_params.setParam("vis_frequency_hz", 30);  // Obstacle visualization rate
     manager_params.setParam("follow_path", true);
 
+
+    double time_budget_ = 20.0;
     Params gazebo_params;
     gazebo_params.setParam("robot_model_name", "tugbot");
     gazebo_params.setParam("default_robot_x", 48.0); // in case you want to test the planner without running gz sim
@@ -148,6 +150,7 @@ int main(int argc, char** argv)
     gazebo_params.setParam("bullet", false);
     gazebo_params.setParam("inflation", 0.5); //
     gazebo_params.setParam("persistent_static_obstacles", false);
+    gazebo_params.setParam("initial_budget_time", time_budget_);
 
 
     // gazebo_params.setParam("collision_check_footprint", "rectangular"); // Options: "circular", "rectangular"
@@ -194,7 +197,6 @@ int main(int argc, char** argv)
     const int dim = 3;
     const int spatial_dim = 2;
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
-    double time_budget_ = 20.0;
     Eigen::VectorXd tree_root_state(3);
     tree_root_state << -48.0, -48.0, 0.0; // Destination: x, y, time-to-go
     problem_def->setStart(tree_root_state); // "Start" of the backward search
@@ -210,7 +212,7 @@ int main(int argc, char** argv)
 
 
     double min_velocity = 0.0;
-    double max_velocity = 30.0;
+    double max_velocity = 20.0;
     double robot_velocity = 10.0;
     // Create the single, consolidated R2TROSManager
     auto ros_manager = std::make_shared<R2TROS2Manager>(obstacle_checker, visualization, manager_params,robot_velocity, robot_initial_state);
@@ -280,7 +282,7 @@ int main(int argc, char** argv)
 
     std::vector<LogEntry> log_data;
     auto global_start = std::chrono::steady_clock::now();
-    rclcpp::Rate loop_rate(20);
+    // rclcpp::Rate loop_rate(20);
     // Start profiling
     int counter = 0;
 
@@ -437,7 +439,7 @@ int main(int argc, char** argv)
     std::vector<TurnaroundEvent> current_run_events;
 
     // --- CONFIGURATION ---
-    const double slice_time = 0.05;       // The robot moves this amount every slice (e.g., 0.05s)
+    const double slice_time = 0.02;       // The robot moves this amount every slice (e.g., 0.05s)
     const double gazebo_max_step = 0.001; // Physics engine step size
     
     std::cout << "[CONFIG] Slice Time: " << slice_time << "s | Gazebo Step: " << gazebo_max_step << "s" << std::endl;

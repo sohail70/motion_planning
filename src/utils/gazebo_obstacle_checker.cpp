@@ -22,6 +22,10 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
     use_fcl = params.getParam<bool>("fcl", false);
     use_bullet = params.getParam<bool>("bullet", false);
     spatial_dim_ = params.getParam<int>("spatial_dim", 2); // Defaults to 2 for backward compatibility
+
+
+    initial_budget_time_ = params.getParam<double>("initial_budget_time");
+
     // Subscribe to the robot pose topic
     std::string robot_pose_topic = "/model/" + robot_model_name_ + "/tf";
     if (!gz_node_.Subscribe(robot_pose_topic, &GazeboObstacleChecker::robotPoseCallback, this)) {
@@ -3150,11 +3154,10 @@ void GazeboObstacleChecker::lightweightPoseCallback(const gz::msgs::Pose_V& msg)
 
 // Helper function implementation
 Eigen::Vector2d GazeboObstacleChecker::calculateDeterministicPosition(const Obstacle& ob, double current_robot_time) const {
-    const double initial_budget = 20.0; 
     
     if (!ob.has_ground_truth) return ob.position;
 
-    double time_elapsed = initial_budget - current_robot_time;
+    double time_elapsed = initial_budget_time_ - current_robot_time;
     double amplitude = ob.motion_limit; 
     double speed = ob.speed_scalar;
     
@@ -3187,7 +3190,7 @@ Eigen::Vector2d GazeboObstacleChecker::calculateDeterministicPosition(const Obst
     return calculated_pos;
 }
 
-// The updated processing function
+// The updated processing function --> deterministic integration!
 void GazeboObstacleChecker::processLatestPoseInfo(double current_robot_time) {
     gz::msgs::Pose_V msg;
     {
@@ -4241,40 +4244,34 @@ ObstacleVector GazeboObstacleChecker::checkAndRepairObstacles(double T_robot) {
     return triggered_obs;
 }
 
-
 double GazeboObstacleChecker::calculateNextFlip(const Obstacle& ob, double currentRobotTime) {
     auto info_it = obstacle_info_.find(ob.name);
     if (info_it == obstacle_info_.end() || !info_it->second.is_dynamic) return -1.0;
     const auto& info = info_it->second;
 
-    // 1. Calculate the time it takes to travel ONE full leg (Start <-> End)
-    // Distance = Amplitude. Time = Distance / Speed.
     double amplitude = info.amplitude;
-    double speed = info.speed; // Use the configured speed from SDF, not current velocity magnitude
+    double speed = info.speed; 
     
     if (speed < 1e-6) return -1.0;
-
     double time_for_one_leg = amplitude / speed;
 
-    // 2. Calculate how much time has passed since the simulation started (T=20)
-    // currentRobotTime counts DOWN (20 -> 0).
-    // Time elapsed = Initial_Budget - currentRobotTime
-    double initial_budget = 20.0; // Or pass this in if it varies
-    double time_elapsed = initial_budget - currentRobotTime;
+    double time_elapsed = initial_budget_time_ - currentRobotTime;
 
-    // 3. Determine which "leg" we are on.
-    // Leg 0: Start -> End
-    // Leg 1: End -> Start
-    // Leg 2: Start -> End ...
-    int current_leg_index = static_cast<int>(time_elapsed / time_for_one_leg);
-
-    // 4. Calculate the exact time the CURRENT leg ends.
-    // This is the next turnaround time.
+    // =================================================================
+    // FIX: Force calculation to the NEXT leg to prevent chattering
+    // =================================================================
+    // We add a tiny epsilon to time_elapsed. This ensures that if we are 
+    // exactly at the turnaround point (e.g. 4.0000), we are treated as 
+    // being slightly into the NEXT leg (4.00001), so we calculate the 
+    // turnaround for the end of THAT leg, not the current one.
+    double time_elapsed_safe = time_elapsed + 1e-9; 
+    
+    int current_leg_index = static_cast<int>(time_elapsed_safe / time_for_one_leg);
+    
+    // The next turnaround is at the end of this new leg
     double time_of_next_turn = (current_leg_index + 1) * time_for_one_leg;
-
-    // 5. Convert back to T_robot (Time-To-Go)
-    // T_robot = Initial_Budget - time_of_next_turn
-    double nextChangeTime = initial_budget - time_of_next_turn;
+    
+    double nextChangeTime = initial_budget_time_ - time_of_next_turn;
 
     return nextChangeTime;
 }
