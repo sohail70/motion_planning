@@ -5,8 +5,9 @@
 #include "motion_planning/state_space/rdt_statespace.hpp"
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
-#include "motion_planning/utils/ros2_manager_r2t.hpp" // Use your new manager
+#include "motion_planning/utils/ros2_manager_r2t.hpp" 
 #include "motion_planning/utils/rviz_visualization.hpp"
+#include "motion_planning/utils/logs.hpp"
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -19,6 +20,17 @@
 #include <valgrind/callgrind.h>
 
 
+
+// Helper to convert Obstacle to TurnaroundEvent for logging
+TurnaroundEvent obstacleToLogEvent(const Obstacle& ob, double current_T_robot) {
+    TurnaroundEvent event;
+    event.name = ob.name;
+    event.t_robot = current_T_robot;
+    event.expected_t = ob.nextDirectionChangeTime; // This was set right before the return
+    event.vel_x = ob.velocity.x();
+    event.vel_y = ob.velocity.y();
+    return event;
+}
 
 struct LogEntry {
     double elapsed_s = 0.0;
@@ -84,6 +96,7 @@ int main(int argc, char** argv)
     // --- Initial Setup ---
     rclcpp::init(argc, argv);
     signal(SIGINT, sigint_handler);
+
 
 
     int num_samples = 100;
@@ -181,18 +194,18 @@ int main(int argc, char** argv)
     const int dim = 3;
     const int spatial_dim = 2;
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
-    
+    double time_budget_ = 20.0;
     Eigen::VectorXd tree_root_state(3);
     tree_root_state << -48.0, -48.0, 0.0; // Destination: x, y, time-to-go
     problem_def->setStart(tree_root_state); // "Start" of the backward search
 
     Eigen::VectorXd robot_initial_state(3);
-    robot_initial_state << 48.0, 48.0, 20.0; // Initial robot state: x, y, total time budget
+    robot_initial_state << 48.0, 48.0, time_budget_; // Initial robot state: x, y, total time budget
     problem_def->setGoal(robot_initial_state); // "Goal" of the backward search
 
     Eigen::VectorXd lower_bounds(3), upper_bounds(3);
     lower_bounds << -50.0, -50.0, 0.0;
-    upper_bounds << 50.0, 50.0, 20.0; // Max time-to-go for any sample
+    upper_bounds << 50.0, 50.0, time_budget_; // Max time-to-go for any sample
     problem_def->setBounds(lower_bounds, upper_bounds);
 
 
@@ -277,7 +290,7 @@ int main(int argc, char** argv)
     // 3. Initialize the RRTx timers ONCE
     // STEP 3: Grab the actual "Frozen" positions from Gazebo
     if (gazebo_checker) {
-        gazebo_checker->processLatestPoseInfo();
+        gazebo_checker->processLatestPoseInfo(time_budget_);
         
         // Initialize timers based on the exact Budget (e.g., 25.0)
         double initial_T = robot_initial_state(2); 
@@ -419,6 +432,10 @@ int main(int argc, char** argv)
 
     // Start profiling
     CALLGRIND_START_INSTRUMENTATION;
+
+
+    std::vector<TurnaroundEvent> current_run_events;
+
     // --- CONFIGURATION ---
     const double slice_time = 0.05;       // The robot moves this amount every slice (e.g., 0.05s)
     const double gazebo_max_step = 0.001; // Physics engine step size
@@ -453,8 +470,28 @@ int main(int argc, char** argv)
         double T_robot = current_sim_state(current_sim_state.size()-1);
 
         // --- 3. DETECT EVENTS & PLAN ---
-        gazebo_checker->processLatestPoseInfo();
+        gazebo_checker->processLatestPoseInfo(T_robot);
+
         ObstacleVector turned_obs = gazebo_checker->checkAndRepairObstacles(T_robot);
+
+        // --- CAPTURE LOGS FROM RETURNED VECTOR : THIS IS FOR TURNAROUND EVENT DETERMINISM VERIFICATION ---
+        if (!turned_obs.empty()) {
+            for (const auto& ob : turned_obs) {
+                // We only log if it's a dynamic obstacle that actually turned
+                // (The function returns initialized obstacles too, but they have nextDirectionChangeTime set)
+                if (ob.is_dynamic) {
+                    current_run_events.push_back(obstacleToLogEvent(ob, T_robot));
+                    
+                    // // Optional: Print to console manually since we removed RCLCPP_WARN
+                    // std::cout << "[TURNAROUND] " << ob.name 
+                    //         << " | T_robot: " << T_robot 
+                    //         << " | Expected: " << ob.nextDirectionChangeTime
+                    //         << " | Vel: (" << ob.velocity.x() << ", " << ob.velocity.y() << ")" << std::endl;
+                }
+            }
+        }
+        // ---------------------------------------
+
 
         auto calc_start = std::chrono::steady_clock::now();
 
@@ -550,8 +587,7 @@ int main(int argc, char** argv)
     CALLGRIND_STOP_INSTRUMENTATION;
 
 
-
-
+    verifyDeterminism(current_run_events);
 
 
 

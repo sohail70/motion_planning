@@ -248,10 +248,10 @@ add_test(NAME test_kinodynamic_fmtx_R2T COMMAND test_kinodynamic_fmtx_R2T)
 # add_test(NAME test_kinodynamic_fmtx_min_snap_5D COMMAND test_kinodynamic_fmtx_min_snap_5D)
 
 
-# add_executable(test_kinodynamic_rrtx_R2T test/unit/test_kinodynamic_rrtx_R2T.cpp)
-# target_link_libraries(test_kinodynamic_rrtx_R2T motion_planning gz_obs)
-# ament_target_dependencies(test_kinodynamic_rrtx_R2T rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-# add_test(NAME test_kinodynamic_rrtx_R2T COMMAND test_kinodynamic_rrtx_R2T)
+add_executable(test_kinodynamic_rrtx_R2T test/unit/test_kinodynamic_rrtx_R2T.cpp)
+target_link_libraries(test_kinodynamic_rrtx_R2T motion_planning gz_obs)
+ament_target_dependencies(test_kinodynamic_rrtx_R2T rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_kinodynamic_rrtx_R2T COMMAND test_kinodynamic_rrtx_R2T)
 
 
 # add_executable(test_kinodynamic_rrtx_dubin_4D test/unit/test_kinodynamic_rrtx_dubin_4D.cpp)

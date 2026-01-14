@@ -605,6 +605,9 @@ public:
             current_threat_names_.insert(obs.name);
         }
     }
+    double getCurrentSimTime() const {
+        return current_sim_time_;
+    }
 
 private:
     std::shared_ptr<ObstacleChecker> obstacle_checker_;
@@ -631,7 +634,9 @@ private:
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); 
         if (!gazebo_checker) return; 
         
-        gazebo_checker->processLatestPoseInfo(); 
+        double current_time = this->getCurrentSimTime();
+        gazebo_checker->processLatestPoseInfo(current_time); 
+        
         const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); 
         
         std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; 
