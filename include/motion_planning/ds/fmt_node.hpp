@@ -110,6 +110,14 @@ public:
     FMTNode* parent_;
     bool neighbors_cached_ = false;
     int bad_count = 0;
+
+
+    // "Threats": The set of obstacles that are currently moving in the vicinity of this node.
+    // If this set is NOT empty, this node is "Dirty" and must be repaired.
+    // std::unordered_set<std::string> threats;
+    std::set<std::string> threats;
+
+
 private:
     std::shared_ptr<State> state_;
     NeighborMap neighbors_;

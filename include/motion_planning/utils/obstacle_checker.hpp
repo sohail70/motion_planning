@@ -29,11 +29,15 @@ struct Obstacle {
     */
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
+    int turnaround_step_index = -1;
+    int steps_per_cycle = 0; // Add this
+
 
     std::string name;
     enum Type { CIRCLE, BOX };
     Type type;
     Eigen::Vector2d position;
+    Eigen::Vector2d previous_position;
     Eigen::Vector2d velocity;
     Eigen::Vector2d acceleration;
     rclcpp::Time last_update_time;
@@ -67,7 +71,8 @@ struct Obstacle {
 
 
     // Default constructor
-    Obstacle() : type(CIRCLE), position(Eigen::Vector2d::Zero()), inflation(0.0) {}
+    Obstacle() : type(CIRCLE), position(Eigen::Vector2d::Zero()), previous_position(Eigen::Vector2d::Zero()), inflation(0.0) {}
+
 
     // Circle constructor
     Obstacle(Eigen::Vector2d pos, double rad, double infl, bool dynamic = false)

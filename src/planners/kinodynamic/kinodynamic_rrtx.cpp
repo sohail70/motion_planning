@@ -697,47 +697,55 @@ void KinodynamicRRTX::rewireNeighbors(RRTxNode* v) {
 
 
 // }
-
 void KinodynamicRRTX::reduceInconsistency() {
+    // 1. SNAPSHOT: Capture robot state ONCE before the loop
+    double robot_cost = std::numeric_limits<double>::infinity();
+    double robot_lmc = std::numeric_limits<double>::infinity();
+    bool robot_in_queue = false;
+    
+    if (vbot_node_) {
+        robot_cost = vbot_node_->getCost();
+        robot_lmc = vbot_node_->getLMC();
+        robot_in_queue = vbot_node_->in_queue_;
+    }
+
     while (!inconsistency_queue_.empty()) {
-        
-        double robot_cost = std::numeric_limits<double>::infinity();
-        double robot_lmc = std::numeric_limits<double>::infinity();
-        bool robot_in_queue = false;
-
-        if (vbot_node_) {
-            robot_cost = vbot_node_->getCost();
-            robot_lmc = vbot_node_->getLMC();
-            robot_in_queue = vbot_node_->in_queue_;
-        }
-
         auto top_element = inconsistency_queue_.top();
         double min_key = top_element.first;
 
         if (partial_update) {
-            bool condition_met = (min_key < robot_cost) || 
-                                 (robot_lmc != robot_cost) || 
-                                 (robot_cost == std::numeric_limits<double>::infinity()) || 
-                                 robot_in_queue;
+            // 2. CHECK: Use the snapshot values, NOT live values
+            // Stop if:
+            // a) The top of the queue has a higher cost than the robot (we've passed the robot).
+            // b) The robot is consistent (Cost == LMC).
+            // c) The robot is valid (Cost is not INF).
+            // d) The robot is not currently waiting for an update (not in queue).
             
-            if (!condition_met) break;
+            bool robot_is_satisfied = (robot_cost != std::numeric_limits<double>::infinity()) &&
+                                      (robot_lmc == robot_cost) && 
+                                      (!robot_in_queue);
+
+            bool queue_is_past_robot = (min_key >= robot_cost);
+
+            if (robot_is_satisfied && queue_is_past_robot) {
+                break;
+            }
         }
 
         inconsistency_queue_.pop();
         RRTxNode* node = top_element.second;
-
         int node_idx = node->getIndex();
+        
+        // Safety check (ensure node is valid)
         if (node_idx == -1 || Vc_T_.count(node_idx)) continue;
 
         if (node->getCost() > node->getLMC() + epsilon_) {
             updateLMC(node);
             rewireNeighbors(node);
         }
-
         node->setCost(node->getLMC());
     }
 }
-
 
 
 double KinodynamicRRTX::shrinkingBallRadius() const {
@@ -2898,6 +2906,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         // Use robot_sim_time so collision check is synced with the world
         if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) {
             cost_of_current_path = bridge.cost + vbot_node_->getCost();
+            robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
             return;
         }
     }
@@ -2950,7 +2959,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     }
 
 
-// =========================================================================================
+    // =========================================================================================
     // 4. [NEW] INTERNAL DEBUG VISUALIZATION
     // =========================================================================================
     if (visualization_) {
@@ -2988,6 +2997,35 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         }
     }
     // =========================================================================================
+
+    // =========================================================================================
+    // 5. [NEW] ANCHOR LOGGING (Manual Throttle)
+    // =========================================================================================
+    // Use static variable to persist time between function calls
+    static auto last_log_time = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    
+    // Check if 1 second has passed
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log_time).count() > 1000) {
+        if (vbot_node_) {
+            // Use RCLCPP_WARN to ensure visibility regardless of log level settings
+            RCLCPP_WARN(
+                rclcpp::get_logger("RRTx_Anchor"), 
+                "Anchor Connected: Node [%d] | Node Cost: %.2f | Total Path Cost: %.2f", 
+                vbot_node_->getIndex(), 
+                vbot_node_->getCost(), 
+                last_replan_metrics_.path_cost
+            );
+        } else {
+            RCLCPP_WARN(
+                rclcpp::get_logger("RRTx_Anchor"), 
+                "Anchor Status: NULL (Robot is lost or searching...)"
+            );
+        }
+        last_log_time = now;
+    }
+    // =========================================================================================
+
 
 
 }
@@ -3089,8 +3127,13 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
     // Iterate through the 'Old' tube we are removing
     for (const auto& point_3d : ob.predicted_path) {
         Eigen::VectorXd query(kd_dim);
-        if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
-        else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
+        if (kd_dim == 3) {
+            query << point_3d.x(), point_3d.y(), point_3d.z();  // z is time
+        } else if (kd_dim == 2) {
+            query << point_3d.x(), point_3d.y();
+        } else if (kd_dim == 4) {
+            query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        }
 
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
 
@@ -3150,8 +3193,15 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob, std::vector<Eigen::Vect
 
     for (const auto& point_3d : ob.predicted_path) {
         Eigen::VectorXd query(kd_dim);
-        if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
-        else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
+
+        if (kd_dim == 3) {
+            query << point_3d.x(), point_3d.y(), point_3d.z();  // z is time
+        } else if (kd_dim == 2) {
+            query << point_3d.x(), point_3d.y();
+        } else if (kd_dim == 4) {
+            query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+            // search_radius += M_PI; // Wrong because it accumulates!!
+        }
 
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
 
@@ -3218,9 +3268,15 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
     for (const auto& point_3d : ob.predicted_path) {
         // Build Query Point
         Eigen::VectorXd query(kd_dim);
-        if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z(); // z is time
-        else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
-        
+
+        if (kd_dim == 3) {
+            query << point_3d.x(), point_3d.y(), point_3d.z();  // z is time
+        } else if (kd_dim == 2) {
+            query << point_3d.x(), point_3d.y();
+        } else if (kd_dim == 4) {
+            query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+            // search_radius += M_PI; //Wrong because it accumulates
+        }
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
 
         for (size_t idx : indices) {
@@ -3287,9 +3343,13 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob, std::vector<Eigen::Vect
 
     for (const auto& point_3d : ob.predicted_path) {
         Eigen::VectorXd query(kd_dim);
-        if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
-        else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
-
+        if (kd_dim == 3) {
+            query << point_3d.x(), point_3d.y(), point_3d.z();  // z is time
+        } else if (kd_dim == 2) {
+            query << point_3d.x(), point_3d.y();
+        } else if (kd_dim == 4) {
+            query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        }
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
 
         for (size_t idx : indices) {

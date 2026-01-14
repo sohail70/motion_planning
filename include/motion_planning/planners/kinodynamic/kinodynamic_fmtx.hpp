@@ -83,6 +83,8 @@ class KinodynamicFMTX : public Planner {
             bool updateObstacleSamples(const ObstacleVector& obstacles);
             std::unordered_set<int> getDescendants(int node_index);
 
+            void addNewObstacle(const Obstacle& ob);
+            void removeObstacle(const Obstacle& ob);
 
 
             void handleAddedObstacleSamples(const std::vector<int>& added);
@@ -200,6 +202,11 @@ class KinodynamicFMTX : public Planner {
                 Fine Resolution (e.g., 0.05s): More cache entries, fewer cache hits (more misses). Slower, but more temporally accurate.
             */
             double time_resolution_; // seconds
+
+
+
+            // Master set to accumulate nodes for re-queuing before the final batch push
+            std::unordered_set<FMTNode*> pending_requeue_nodes_;
 
 
 

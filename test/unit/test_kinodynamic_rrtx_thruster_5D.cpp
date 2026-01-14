@@ -28,52 +28,44 @@ struct LogEntry {
 };
 
 
-void resetAndPlaySimulation()
-{
+void resetAndPauseSimulation() {
     gz::transport::Node node;
-    {
-        gz::msgs::WorldControl reset_req;
-        reset_req.mutable_reset()->set_all(true);
-        gz::msgs::Boolean reset_res;
-        bool result;
-        unsigned int timeout = 3000; // ms
-        
-        bool executed = node.Request("/world/default/control", 
-                                   reset_req,
-                                   timeout,
-                                   reset_res,
-                                   result);
-        
-        if (!executed || !result || !reset_res.data()) {
-            std::cerr << "Failed to reset world" << std::endl;
-            return;
-        }
-        std::cout << "World reset successfully" << std::endl;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    {
-        gz::msgs::WorldControl play_req;
-        play_req.set_pause(false);
-        
-        gz::msgs::Boolean play_res;
-        bool result;
-        
-        bool executed = node.Request("/world/default/control",
-                                   play_req,
-                                   3000,
-                                   play_res,
-                                   result);
-        
-        if (!executed || !result || !play_res.data()) {
-            std::cerr << "Failed to play simulation" << std::endl;
-            return;
-        }
-        std::cout << "Simulation playing successfully" << std::endl;
+    gz::msgs::WorldControl reset_req;
+    reset_req.mutable_reset()->set_all(true);
+    reset_req.set_pause(true); // <--- THIS IS THE KEY: Reset but stay frozen
+    
+    gz::msgs::Boolean res;
+    bool result;
+    if (node.Request("/world/default/control", reset_req, 3000, res, result) && result && res.data()) {
+        std::cout << "[SYNC] World Reset and Paused at T=0.\n";
     }
 }
 
+void unpauseSimulation() {
+    gz::transport::Node node;
+    gz::msgs::WorldControl play_req;
+    play_req.set_pause(false); // <--- Pull the trigger
+    
+    gz::msgs::Boolean res;
+    bool result;
+    node.Request("/world/default/control", play_req, 3000, res, result);
+    std::cout << "[SYNC] Simulation Started!\n";
+}
 
-
+// Add this near your other helper functions in main.cpp
+void stepGazebo(unsigned int steps) {
+    gz::transport::Node node;
+    gz::msgs::WorldControl step_req;
+    
+    step_req.set_pause(true);       // IMPORTANT: Stay paused after stepping
+    step_req.set_multi_step(steps); // Advance physics by 'steps' iterations
+    
+    gz::msgs::Boolean res;
+    bool result;
+    
+    // Send request to the default world control topic
+    node.Request("/world/default/control", step_req, 1000, res, result);
+}
 
 
 
@@ -101,8 +93,8 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    int num_samples = 10;
-    double factor = 1.5;
+    int num_samples = 300;
+    double factor = 1.0;
     unsigned int seed = 42;
     int run_secs = 20;
 
@@ -177,9 +169,10 @@ int main(int argc, char **argv) {
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
     auto sim_clock = vis_node->get_clock();
 
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_1_obs.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box.sdf");
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
@@ -210,12 +203,10 @@ int main(int argc, char **argv) {
 
     // Create the thruster state space with max acceleration.
     double max_acceleration = 5.0; // m/s^2
-    auto statespace = std::make_shared<ThrusterSteerStateSpace>(dim, max_acceleration, seed);
-    
-    // The ROS manager now uses the thruster-specific version.
     auto ros_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization, manager_params);
-    
+    auto statespace = std::make_shared<ThrusterSteerStateSpace>(dim, max_acceleration, seed);
     auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicRRTX, statespace, problem_def, obstacle_checker);
+
     auto kinodynamic_planner = dynamic_cast<KinodynamicRRTX*>(planner.get());
     kinodynamic_planner->setClock(sim_clock);
     planner->setup(planner_params, visualization);
@@ -230,7 +221,7 @@ int main(int argc, char **argv) {
     auto path = kinodynamic_planner->getPathPositions(); // Returns the correct format directly
     if (!path.empty()) {
         ros_manager->setPlannedThrusterTrajectory(path);
-                // Set the robot's starting state in the manager to initialize its clock.
+        // Set the robot's starting state in the manager to initialize its clock.
         ros_manager->setInitialState(robot_initial_state);
     }
     
@@ -241,23 +232,15 @@ int main(int argc, char **argv) {
         std::chrono::milliseconds(200),
         [&]() { if (kinodynamic_planner) kinodynamic_planner->visualizeTree(); });
 
-    // --- Executor Setup ---
-    // rclcpp::executors::MultiThreadedExecutor executor;
-    rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
-
-    executor.add_node(ros_manager);
-    executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
-    std::thread executor_thread([&executor]() { executor.spin(); });
 
     // --- Main Execution and Replanning Loop ---
-    resetAndPlaySimulation();
-    const double goal_tolerance = 3.0;
-    rclcpp::Rate loop_rate(20); // Replanning loop can run slower
+    resetAndPauseSimulation();
+    std::this_thread::sleep_for(std::chrono::milliseconds(800));
 
+    const double goal_tolerance = 3.0;
 
     std::vector<double> sim_durations;
     std::vector<std::tuple<double, double>> sim_duration_2;
-
 
     bool limited = true; 
     if (manager_params.getParam<bool>("follow_path"))
@@ -267,92 +250,218 @@ int main(int argc, char **argv) {
 
     std::vector<LogEntry> log_data;
     auto global_start = std::chrono::steady_clock::now();
+
+    rclcpp::Rate loop_rate(20); // Replanning loop can run slower
+
+
+    // 1. Cast the shared_ptr to the specific Gazebo class
+    auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker);
+    // 3. Initialize the RRTx timers ONCE
+    // STEP 3: Grab the actual "Frozen" positions from Gazebo
+    if (gazebo_checker) {
+        gazebo_checker->processLatestPoseInfo();
+        
+        // Initialize timers based on the exact Budget (e.g., 25.0)
+        double initial_T = robot_initial_state(2); 
+        gazebo_checker->initializeDynamicObstacles(initial_T);
+        std::cout << "[SYNC] RRTx Timers initialized against frozen physics.\n";
+    }
+
+
+    // --- Executor Setup ---
+    // rclcpp::executors::MultiThreadedExecutor executor;
+    rclcpp::executors::StaticSingleThreadedExecutor executor; // +++ ADD THIS
+
+    executor.add_node(ros_manager);
+    executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
+    std::thread executor_thread([&executor]() { executor.spin(); });
+    RCLCPP_INFO(vis_node->get_logger(), "Starting execution and monitoring loop.");
+
+
     // Start profiling
     CALLGRIND_START_INSTRUMENTATION;
+
+
+
+    std::vector<Eigen::VectorXd> current_viz_path; 
     while (g_running && rclcpp::ok()) {
-        /////////////
+        // --- 1. Time Limit Check (Restored) ---
         if (limited) {
             auto now = std::chrono::steady_clock::now();
             if (now - start_time > time_limit) {
                 std::cout << "[INFO] time_limit seconds have passed. Exiting loop.\n";
-                break;  // exit the loop
+                break;
             }
         }
-        /////////////
 
-        // Get the robot's current state from the simulator.
-        Eigen::VectorXd current_state = ros_manager->getCurrentKinodynamicState();
-        kinodynamic_planner->setRobotState(current_state);
+        auto loop_start_time = std::chrono::steady_clock::now();
 
-        // Check if the goal has been reached.
-        double dist_to_goal = (current_state.head<2>() - tree_root_state.head<2>()).norm();
-        if (dist_to_goal < goal_tolerance) {
-            RCLCPP_INFO(vis_node->get_logger(), "Goal Reached! Mission Accomplished.");
-            g_running = false;
-            break;
+        // --- 2. Get Robot State & Correct Order ---
+        // [CRITICAL ORDER FIX]: Update Planner State FIRST so it knows where the robot IS.
+        Eigen::VectorXd current_sim_state = ros_manager->getCurrentKinodynamicState();
+        if (current_sim_state.size() == 0) {
+            loop_rate.sleep();
+            continue;
         }
         
-        // Get the trajectory the robot is currently trying to execute.
-        auto current_path = kinodynamic_planner->getPathPositions();
-
-        // PROACTIVELY VALIDATE THE CURRENT PATH
-        // bool is_path_still_safe = kinodynamic_planner->isPathStillValid(current_path, current_state);
-
-        // REPLAN IF, AND ONLY IF, THE CURRENT PATH IS UNSAFE
-        // if (!is_path_still_safe) {
-            RCLCPP_WARN(vis_node->get_logger(), "Collision predicted on current path! Triggering replan...");
-            auto snapshot = obstacle_checker->getAtomicSnapshot();
-            auto start = std::chrono::steady_clock::now();
-            kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
-            auto end = std::chrono::steady_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
-            sim_durations.push_back(duration.count());
-            double elapsed_s = std::chrono::duration<double>(start - global_start).count();
-            double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
-            sim_duration_2.emplace_back(elapsed_s, duration_ms);
-
-            /////-----
-            LogEntry entry;
-            entry.elapsed_s = std::chrono::duration<double>(start - global_start).count();
-            entry.duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
-            /////-----
+        // Update the planner's internal robot node immediately
+        kinodynamic_planner->setRobotState(current_sim_state); 
+        double T_robot = current_sim_state(current_sim_state.size()-1);
 
 
-            kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
+        // --- 3. Detect Events ---
+        // Grab the frozen physics state
+        gazebo_checker->processLatestPoseInfo();
+        
+        // Calculate which obstacles have flipped relative to the Robot's T
+        ObstacleVector turned_obs = gazebo_checker->checkAndRepairObstacles(T_robot);
 
-            // Get the new path to execute.
-            auto new_path = kinodynamic_planner->getPathPositions();
-            ////--------
-            const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
-            entry.obstacle_checks = metrics.obstacle_checks;
-            entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
-            entry.orphaned_nodes = metrics.orphaned_nodes;
-            entry.path_cost = metrics.path_cost;
-            entry.time_to_goal = kinodynamic_planner->getRobotTimeToGo();
-            
-            log_data.push_back(entry);
-            /////--------
+        // Measure computation time for this specific update step
+        auto calc_start = std::chrono::steady_clock::now();
 
-            // --- 3. SYNC THREATS & VISUALIZE ---
-            // 3.1 Extract all obstacles that caused a collision during the search phase
-            std::vector<Obstacle> culprits = obstacle_checker->getAndClearCulprits();
-
-            // 3.2 SEND TO MANAGER: This causes the specific obstacles to turn RED in Gazebo/RViz
-            ros_manager->updateThreats(culprits);
-
-
-            if (!new_path.empty()) {
-                ros_manager->setPlannedThrusterTrajectory(new_path);
-                kinodynamic_planner->visualizePath(new_path);
-            } else {
-                RCLCPP_ERROR(vis_node->get_logger(), "Replanning failed to find a new path!");
-                // Consider adding safety stop logic here.
-            }
+        // // --- 4. Update Planner ---
+        // // Only burn CPU if something actually changed
+        // if (!turned_obs.empty()) {
+        //     kinodynamic_planner->updateObstacleSamples(turned_obs);
         // }
+
+        if (!turned_obs.empty()) {
+            // 1. Start Timer
+            auto start_update = std::chrono::steady_clock::now();
+
+            // 2. Run the heavy function
+            kinodynamic_planner->updateObstacleSamples(turned_obs);
+
+            // 3. Stop Timer & Calculate
+            auto end_update = std::chrono::steady_clock::now();
+            double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
+
+            // 4. Log result
+            // Assuming you have a node logger available (e.g. from your visualizer or the main node)
+            RCLCPP_INFO(rclcpp::get_logger("RRTx_Timing"), 
+                "updateObstacleSamples took: %.2f ms | Obstacles processed: %zu", 
+                duration_ms, turned_obs.size());
+        }
+
+        auto calc_end = std::chrono::steady_clock::now();
+
+
+        // --- 5. Sync Threats (Restored) ---
+        // Visualize collisions (turn obstacles RED if hit)
+        std::vector<Obstacle> culprits = obstacle_checker->getAndClearCulprits();
+        ros_manager->updateThreats(culprits);
+
+        // --- 6. Check Goal ---
+        double distance_to_goal = (current_sim_state.head<2>() - tree_root_state.head<2>()).norm();
+        if (distance_to_goal < goal_tolerance) {
+            RCLCPP_INFO(vis_node->get_logger(), "Goal Reached!");
+            ros_manager->updateThreats({}); // Clear threats on success
+            g_running = false;
+            continue;
+        }
+
+        // --- 7. Get & Set Path (No Emergency Stop) ---
+        auto new_executable_path = kinodynamic_planner->getPathPositions();
         
-        // Wait for the next cycle.
-        loop_rate.sleep();
+        if (!new_executable_path.empty()) {
+            // Found a valid path -> Update the manager
+            ros_manager->setPlannedThrusterTrajectory(new_executable_path);
+            current_viz_path = new_executable_path;
+        } 
+        // ELSE: Path is empty (planner failed this cycle). 
+        // DO NOTHING. Do NOT stop. The RosManager will keep interpolating 
+        // the previous valid path or drift naturally.
+
+        // --- 8. Visualize Path (Restored) ---
+        // We visualize every frame so the line doesn't disappear
+        if (!current_viz_path.empty()) {
+            kinodynamic_planner->visualizePath(current_viz_path);
+        }
+
+        // --- 9. Logging ---
+        LogEntry entry;
+        const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
+        
+        entry.elapsed_s = std::chrono::duration<double>(loop_start_time - global_start).count();
+        // Calculate duration in ms for the heavy lifting part
+        entry.duration_ms = std::chrono::duration<double, std::milli>(calc_end - calc_start).count(); 
+        
+        entry.obstacle_checks = metrics.obstacle_checks;
+        entry.orphaned_nodes = metrics.orphaned_nodes;
+        entry.path_cost = metrics.path_cost;
+        entry.time_to_goal = T_robot;
+        entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
+        log_data.push_back(entry);
+
+        stepGazebo(50);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        // loop_rate.sleep();
+
+
+
+
+        // ////////////////////////////////////////////////////
+        // // Get the trajectory the robot is currently trying to execute.
+        // auto current_path = kinodynamic_planner->getPathPositions();
+
+        // // PROACTIVELY VALIDATE THE CURRENT PATH
+        // // bool is_path_still_safe = kinodynamic_planner->isPathStillValid(current_path, current_state);
+
+        // // REPLAN IF, AND ONLY IF, THE CURRENT PATH IS UNSAFE
+        // // if (!is_path_still_safe) {
+        //     RCLCPP_WARN(vis_node->get_logger(), "Collision predicted on current path! Triggering replan...");
+        //     auto snapshot = obstacle_checker->getAtomicSnapshot();
+        //     auto start = std::chrono::steady_clock::now();
+        //     kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
+        //     auto end = std::chrono::steady_clock::now();
+        //     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        //     std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
+        //     sim_durations.push_back(duration.count());
+        //     double elapsed_s = std::chrono::duration<double>(start - global_start).count();
+        //     double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
+        //     sim_duration_2.emplace_back(elapsed_s, duration_ms);
+
+        //     /////-----
+        //     LogEntry entry;
+        //     entry.elapsed_s = std::chrono::duration<double>(start - global_start).count();
+        //     entry.duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
+        //     /////-----
+
+
+        //     kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
+
+        //     // Get the new path to execute.
+        //     auto new_path = kinodynamic_planner->getPathPositions();
+        //     ////--------
+        //     const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
+        //     entry.obstacle_checks = metrics.obstacle_checks;
+        //     entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
+        //     entry.orphaned_nodes = metrics.orphaned_nodes;
+        //     entry.path_cost = metrics.path_cost;
+        //     entry.time_to_goal = kinodynamic_planner->getRobotTimeToGo();
+            
+        //     log_data.push_back(entry);
+        //     /////--------
+
+        //     // --- 3. SYNC THREATS & VISUALIZE ---
+        //     // 3.1 Extract all obstacles that caused a collision during the search phase
+        //     std::vector<Obstacle> culprits = obstacle_checker->getAndClearCulprits();
+
+        //     // 3.2 SEND TO MANAGER: This causes the specific obstacles to turn RED in Gazebo/RViz
+        //     ros_manager->updateThreats(culprits);
+
+
+        //     if (!new_path.empty()) {
+        //         ros_manager->setPlannedThrusterTrajectory(new_path);
+        //         kinodynamic_planner->visualizePath(new_path);
+        //     } else {
+        //         RCLCPP_ERROR(vis_node->get_logger(), "Replanning failed to find a new path!");
+        //         // Consider adding safety stop logic here.
+        //     }
+        // // }
+        
+        // // Wait for the next cycle.
+        // loop_rate.sleep();
     }
     // Stop profiling
     CALLGRIND_STOP_INSTRUMENTATION;

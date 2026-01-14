@@ -74,6 +74,35 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
     }
 
 
+    // =========================================================================
+    // NEW: Subscribe to Turnaround Signals
+    // =========================================================================
+    for (const auto& [name, info] : obstacle_info_) {
+        if (info.is_dynamic) {
+            std::string topic = "/model/" + name + "/turnaround";
+            
+            // Define the callback type explicitly
+            using CallbackType = std::function<void(const gz::msgs::Boolean&)>;
+            
+            // Create the lambda
+            CallbackType callback = [this, name](const gz::msgs::Boolean &_msg) {
+                // When Gazebo sends a message, this code runs.
+                // We set the flag for this specific obstacle to TRUE.
+                this->obstacle_turnaround_flags_[name] = true;
+            };
+
+            // Subscribe using the std::function
+            if (!gz_node_.Subscribe(topic, callback)) {
+                std::cerr << "Failed to subscribe to turnaround topic: " << topic << std::endl;
+            } else {
+                // Initialize the flag to false
+                obstacle_turnaround_flags_[name] = false;
+            }
+        }
+    }
+
+
+
 
 }
 
@@ -3024,6 +3053,7 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
         Obstacle& ob = obstacle_positions_map_[name]; // Get or create
         
         Eigen::Vector2d new_pos(pose.position().x(), pose.position().y());
+        ob.previous_position = ob.position; 
 
         // 3. Populate Static/Ground Truth Data (Every time, to be safe)
         ob.name = name;
@@ -3040,16 +3070,25 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
              ob.motion_axis = Eigen::Vector2d::UnitX(); // Fallback
         }
 
-        // 4. Robust Velocity Calculation
-        // We do NOT use dt for magnitude. We use SDF speed.
-        // We use position change ONLY for direction sign (+ or -).
+       // 4. Robust Velocity Calculation
         if (ob.is_dynamic) {
-            // If this is the first run, assume positive direction along axis
-            if (ob.velocity.norm() < 1e-3 && ob.last_update_time.nanoseconds() == 0) {
-                ob.velocity = ob.motion_axis * ob.speed_scalar;
+            // CASE A: FIRST FRAME (Initialization)
+            // We ignore Gazebo's velocity on the first frame because it is often unstable (0 or jitter).
+            // We trust the SDF Ground Truth (speed_scalar + motion_axis).
+            if (ob.last_update_time.nanoseconds() == 0) {
+                // Determine direction: 
+                // If SDF direction is (1,0), we assume positive. If (-1,0), negative.
+                // We normalize the SDF direction to get the sign.
+                double sdf_dir_sign = info.direction.head<2>().normalized().x(); 
+                // Note: For Y-axis movement, this logic still holds because normalized vector preserves sign.
+                
+                // To be safe, we project the SDF direction onto the motion axis (which is normalized)
+                sdf_dir_sign = info.direction.head<2>().dot(ob.motion_axis);
+
+                ob.velocity = ob.motion_axis * (ob.speed_scalar * sdf_dir_sign);
             }
-            // Otherwise, calculate direction based on displacement
-            else if (ob.last_update_time.nanoseconds() > 0) {
+            // CASE B: SUBSEQUENT FRAMES (Physics)
+            else {
                 Eigen::Vector2d displacement = new_pos - ob.position;
                 
                 // Only update direction if we moved enough to be sure (filter jitter)
@@ -3061,7 +3100,7 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
                     // FORCE EXACT VELOCITY: Axis * (SDF_Speed * Sign)
                     ob.velocity = ob.motion_axis * (ob.speed_scalar * dir_sign);
                 }
-                // If displacement is tiny, keep previous velocity (Obstacles don't stop).
+                // If displacement is tiny, keep previous velocity (Inertia)
             }
         } else {
             ob.velocity = Eigen::Vector2d::Zero();
@@ -3095,14 +3134,14 @@ void GazeboObstacleChecker::processLatestPoseInfo() {
             ob.dimensions.rotation = yaw;
         }
 
-        // 7. Logging (Throttled)
-        if (ob.is_dynamic) {
-            RCLCPP_INFO_THROTTLE(rclcpp::get_logger("PoseInfo"), *clock_, 1000,
-                "Dynamic Obs [%s]: Pos(%.1f, %.1f) | Vel(%.1f, %.1f) | Size: %.1f", 
-                name.c_str(), ob.position.x(), ob.position.y(), 
-                ob.velocity.x(), ob.velocity.y(), 
-                (ob.type == Obstacle::CIRCLE ? ob.dimensions.radius : ob.dimensions.width));
-        }
+        // // 7. Logging (Throttled)
+        // if (ob.is_dynamic) {
+        //     RCLCPP_INFO_THROTTLE(rclcpp::get_logger("PoseInfo"), *clock_, 1000,
+        //         "Dynamic Obs [%s]: Pos(%.1f, %.1f) | Vel(%.1f, %.1f) | Size: %.1f", 
+        //         name.c_str(), ob.position.x(), ob.position.y(), 
+        //         ob.velocity.x(), ob.velocity.y(), 
+        //         (ob.type == Obstacle::CIRCLE ? ob.dimensions.radius : ob.dimensions.width));
+        // }
 
         // Push to vector for Visualization
         obstacle_positions_.push_back(ob);
@@ -3326,15 +3365,15 @@ bool GazeboObstacleChecker::checkRobotCollision(const Eigen::Vector2d& robot_pos
 
         double collision_threshold = robot_r + obs_r;
 
-        // 4. LOGGING: Print details if we are getting close (within 3 meters of collision)
-        if (dist < (collision_threshold + 3.0)) {
-            RCLCPP_INFO_THROTTLE(rclcpp::get_logger("CollisionDebug"), *clock_, 200, 
-                "NEAR MISS: Robot(%.2f, %.2f) vs [%s](%.2f, %.2f) \n"
-                "    -> Dist: %.3f | Threshold: %.3f (Rob:%.1f + Obs:%.1f)",
-                robot_pos.x(), robot_pos.y(), 
-                ob.name.c_str(), ob.position.x(), ob.position.y(), 
-                dist, collision_threshold, robot_r, obs_r);
-        }
+        // // 4. LOGGING: Print details if we are getting close (within 3 meters of collision)
+        // if (dist < (collision_threshold + 3.0)) {
+        //     RCLCPP_INFO_THROTTLE(rclcpp::get_logger("CollisionDebug"), *clock_, 200, 
+        //         "NEAR MISS: Robot(%.2f, %.2f) vs [%s](%.2f, %.2f) \n"
+        //         "    -> Dist: %.3f | Threshold: %.3f (Rob:%.1f + Obs:%.1f)",
+        //         robot_pos.x(), robot_pos.y(), 
+        //         ob.name.c_str(), ob.position.x(), ob.position.y(), 
+        //         dist, collision_threshold, robot_r, obs_r);
+        // }
 
         // 5. The Check
         if (dist < collision_threshold) {
@@ -3735,107 +3774,107 @@ Eigen::Vector2d GazeboObstacleChecker::getObstaclePositionAtTime(
     RCLCPP_WARN(logger, "Fallthrough in getObstaclePositionAtTime for [%s] T=%.2f. Returning Pos.", ob.name.c_str(), query_time);
     return ob.position;
 }
-// std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
-//     const Obstacle& ob, 
-//     double currentTime) const 
-// {
-//     std::vector<Eigen::Vector3d> path;
-    
-//     // Safety check: Needs to be dynamic and have valid physics data
-//     if (!ob.is_dynamic || !ob.has_ground_truth) return path;
-
-//     const double dt_step = 0.5; 
-    
-//     // 1. Current State (Trusted from processLatestPoseInfo)
-//     Eigen::Vector2d current_v = ob.velocity;
-//     Eigen::Vector2d predicted_pos = ob.position;
-    
-//     // 2. Simulate (Linear Projection only)
-//     // We do NOT check for walls or amplitude. 
-//     // We assume it keeps going in the same direction forever.
-//     for (double t = currentTime; t >= -1e-9; t -= dt_step) {
-        
-//         // Add point [X, Y, Time]
-//         path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
-
-//         // Move linearly: Pos = Pos + (Vel * dt)
-//         predicted_pos = predicted_pos + (current_v * dt_step);
-//     }
-    
-//     // // --- DEBUG LOG ---
-//     // // You will now see Y increasing/decreasing monotonically (Straight Line)
-//     // // instead of zig-zagging.
-//     // // -----------------
-//     // std::cout << "\n=== LINEAR PREDICTION TUBE FOR " << ob.name << " ===" << std::endl;
-//     // for (size_t i = 0; i < path.size(); i+=5) { // Print every 5th point to save space
-//     //      printf("[%zu] X:%.2f  Y:%.2f  T:%.2f\n", 
-//     //            i, path[i].x(), path[i].y(), path[i].z());
-//     // }
-//     // std::cout << "===================================================\n" << std::endl;
-
-//     return path;
-// }
-
 std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
     const Obstacle& ob, 
     double currentTime) const 
 {
     std::vector<Eigen::Vector3d> path;
     
+    // Safety check: Needs to be dynamic and have valid physics data
     if (!ob.is_dynamic || !ob.has_ground_truth) return path;
 
-    // --- SMART STEP CALCULATION ---
+    const double dt_step = 0.5; 
     
-    // 1. Determine Characteristic Size (The "Hit Box" Size)
-    // We want to step roughly 50-75% of the obstacle's size. 
-    // Stepping smaller than this is redundant (overlapping checks).
-    double feature_size;
-    if (ob.type == Obstacle::CIRCLE) {
-        feature_size = ob.dimensions.radius;
-    } else {
-        // For a box, use the smallest dimension to be safe, or average
-        feature_size = std::min(ob.dimensions.width, ob.dimensions.height) / 2.0;
-    }
-    
-    // Clamp size to avoid infinite loops for tiny points
-    if (feature_size < 0.5) feature_size = 0.5; 
-
-    // 2. Calculate Speed
-    double speed = ob.velocity.norm();
-    
-    // 3. Determine Time Step (dt)
-    double dt_step;
-    
-    if (speed < 0.1) {
-        // Stationary or crawling: Use a coarse time step
-        dt_step = 2.0; 
-    } else {
-        // Moving: Time = Distance / Speed
-        // We step forward by 'feature_size' meters at a time.
-        // This ensures we don't skip over the obstacle, but we don't over-sample.
-        dt_step = feature_size / speed;
-    }
-
-    // 4. Clamping
-    // Don't let dt be too small (CPU killer) or too huge (tunneling risk)
-    // For a 20m/s obstacle with radius 2m: dt = 2/20 = 0.1s. This is necessary!
-    // For a 1m/s obstacle with radius 2m: dt = 2/1 = 2.0s. Much more efficient.
-    if (dt_step < 0.5) dt_step = 0.5;   // Cap max resolution
-    if (dt_step > 2.0) dt_step = 2.0;   // Cap min resolution
-
-    // --- GENERATION LOOP ---
-    
+    // 1. Current State (Trusted from processLatestPoseInfo)
     Eigen::Vector2d current_v = ob.velocity;
     Eigen::Vector2d predicted_pos = ob.position;
     
-    // Reserve memory to prevent reallocations (Optimization)
-    int estimated_steps = static_cast<int>(currentTime / dt_step) + 2;
-    path.reserve(estimated_steps);
-
+    // 2. Simulate (Linear Projection only)
+    // We do NOT check for walls or amplitude. 
+    // We assume it keeps going in the same direction forever.
     for (double t = currentTime; t >= -1e-9; t -= dt_step) {
+        
+        // Add point [X, Y, Time]
         path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
+
+        // Move linearly: Pos = Pos + (Vel * dt)
         predicted_pos = predicted_pos + (current_v * dt_step);
     }
+    
+    // // --- DEBUG LOG ---
+    // // You will now see Y increasing/decreasing monotonically (Straight Line)
+    // // instead of zig-zagging.
+    // // -----------------
+    // std::cout << "\n=== LINEAR PREDICTION TUBE FOR " << ob.name << " ===" << std::endl;
+    // for (size_t i = 0; i < path.size(); i+=5) { // Print every 5th point to save space
+    //      printf("[%zu] X:%.2f  Y:%.2f  T:%.2f\n", 
+    //            i, path[i].x(), path[i].y(), path[i].z());
+    // }
+    // std::cout << "===================================================\n" << std::endl;
 
     return path;
 }
+
+// std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
+//     const Obstacle& ob, 
+//     double currentTime) const 
+// {
+//     std::vector<Eigen::Vector3d> path;
+    
+//     if (!ob.is_dynamic || !ob.has_ground_truth) return path;
+
+//     // --- SMART STEP CALCULATION ---
+    
+//     // 1. Determine Characteristic Size (The "Hit Box" Size)
+//     // We want to step roughly 50-75% of the obstacle's size. 
+//     // Stepping smaller than this is redundant (overlapping checks).
+//     double feature_size;
+//     if (ob.type == Obstacle::CIRCLE) {
+//         feature_size = ob.dimensions.radius;
+//     } else {
+//         // For a box, use the smallest dimension to be safe, or average
+//         feature_size = std::min(ob.dimensions.width, ob.dimensions.height) / 2.0;
+//     }
+    
+//     // Clamp size to avoid infinite loops for tiny points
+//     if (feature_size < 0.5) feature_size = 0.5; 
+
+//     // 2. Calculate Speed
+//     double speed = ob.velocity.norm();
+    
+//     // 3. Determine Time Step (dt)
+//     double dt_step;
+    
+//     if (speed < 0.1) {
+//         // Stationary or crawling: Use a coarse time step
+//         dt_step = 2.0; 
+//     } else {
+//         // Moving: Time = Distance / Speed
+//         // We step forward by 'feature_size' meters at a time.
+//         // This ensures we don't skip over the obstacle, but we don't over-sample.
+//         dt_step = feature_size / speed;
+//     }
+
+//     // 4. Clamping
+//     // Don't let dt be too small (CPU killer) or too huge (tunneling risk)
+//     // For a 20m/s obstacle with radius 2m: dt = 2/20 = 0.1s. This is necessary!
+//     // For a 1m/s obstacle with radius 2m: dt = 2/1 = 2.0s. Much more efficient.
+//     if (dt_step < 0.5) dt_step = 0.5;   // Cap max resolution
+//     if (dt_step > 2.0) dt_step = 2.0;   // Cap min resolution
+
+//     // --- GENERATION LOOP ---
+    
+//     Eigen::Vector2d current_v = ob.velocity;
+//     Eigen::Vector2d predicted_pos = ob.position;
+    
+//     // Reserve memory to prevent reallocations (Optimization)
+//     int estimated_steps = static_cast<int>(currentTime / dt_step) + 2;
+//     path.reserve(estimated_steps);
+
+//     for (double t = currentTime; t >= -1e-9; t -= dt_step) {
+//         path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
+//         predicted_pos = predicted_pos + (current_v * dt_step);
+//     }
+
+//     return path;
+// }

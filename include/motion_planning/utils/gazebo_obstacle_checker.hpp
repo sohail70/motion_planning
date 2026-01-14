@@ -24,6 +24,7 @@
 #include "BulletCollision/NarrowPhaseCollision/btSubSimplexConvexCast.h"
 #include "BulletCollision/NarrowPhaseCollision/btVoronoiSimplexSolver.h"
 #include "BulletCollision/NarrowPhaseCollision/btConvexCast.h"
+#include <gz/msgs/boolean.pb.h>
 
 class GazeboObstacleChecker : public ObstacleChecker {
 public:
@@ -377,9 +378,9 @@ public:
 
         double nextChangeTime = currentRobotTime - time_to_reach;
 
-        RCLCPP_INFO(rclcpp::get_logger("ObstacleLogic"), 
-            "[%s] New Target: %s | Dist: %.2f | T_now: %.2f | Next Flip at T: %.2f", 
-            ob.name.c_str(), targetName.c_str(), distance, currentRobotTime, nextChangeTime);
+        // RCLCPP_INFO(rclcpp::get_logger("ObstacleLogic"), 
+        //     "[%s] New Target: %s | Dist: %.2f | T_now: %.2f | Next Flip at T: %.2f", 
+        //     ob.name.c_str(), targetName.c_str(), distance, currentRobotTime, nextChangeTime);
 
         return nextChangeTime;
     }
@@ -409,7 +410,7 @@ public:
 
                 // If the predicted turn time is reached, we trigger the event.
                 // The planner will then call calculateNextFlip which we will fix below.
-                RCLCPP_WARN(rclcpp::get_logger("RRTX_Trigger"), 
+                RCLCPP_WARN(rclcpp::get_logger("Obs Checker"), 
                     "EVENT TRIGGERED for [%s]: Turnaround expected at T=%.2f, Actual T=%.2f", 
                     name.c_str(), ob.nextDirectionChangeTime, currentRobotTime);
                     
@@ -419,72 +420,126 @@ public:
         return triggered_obstacles;
     }
 
-// NOTE: No "GazeboObstacleChecker::" prefix here because this is inside the .hpp class
+// // NOTE: No "GazeboObstacleChecker::" prefix here because this is inside the .hpp class
+// ObstacleVector checkAndRepairObstacles(double T_robot) {
+//     ObstacleVector triggered_obs;
+    
+//     // Threshold to detect if velocity changed (e.g. hit a wall)
+//     const double VELOCITY_CHANGE_THRESHOLD = 0.1; 
+
+//     for (auto& [name, ob] : obstacle_positions_map_) {
+//         if (!ob.is_dynamic) continue;
+
+//         // --- 1. INITIALIZATION CHECK (Keep this, it is good!) ---
+//         if (!ob.is_initialized_in_graph) {
+//             ob.is_initialized_in_graph = true;
+            
+//             // Generate fresh tube from T_robot -> 0
+//             ob.predicted_path = this->generatePrediction(ob, T_robot);
+            
+//             // Save current velocity so we can detect changes later
+//             last_velocities_[name] = ob.velocity; 
+
+//             triggered_obs.push_back(ob);
+//             RCLCPP_INFO(rclcpp::get_logger("Obs Checker"), 
+//                 "First-time activation for [%s] at T=%.2f", name.c_str(), T_robot);
+//             continue; 
+//         }
+
+//         // --- 2. VELOCITY FLIP CHECK (The Robust Fix) ---
+//         // Instead of a timer, we check if the velocity changed direction physically.
+        
+//         bool direction_changed = false;
+        
+//         // Check if we have history for this object
+//         if (last_velocities_.find(name) != last_velocities_.end()) {
+//             Eigen::Vector2d old_v = last_velocities_[name];
+//             Eigen::Vector2d current_v = ob.velocity;
+            
+//             // If the difference is large, it hit a wall
+//             if ((current_v - old_v).norm() > VELOCITY_CHANGE_THRESHOLD) {
+//                 direction_changed = true;
+                
+//                 // RCLCPP_WARN(rclcpp::get_logger("RRTx_Trigger"), 
+//                 //     "BOUNCE DETECTED for [%s]! Vel changed from [%.1f, %.1f] to [%.1f, %.1f]",
+//                 //     name.c_str(), old_v.x(), old_v.y(), current_v.x(), current_v.y());
+//             }
+//         }
+
+//         // Update history for next iteration
+//         last_velocities_[name] = ob.velocity;
+
+//         // --- 3. TRIGGER UPDATE IF FLIPPED ---
+//         if (direction_changed) {
+//             // Regenerate the tube starting exactly at T_robot
+//             ob.predicted_path = this->generatePrediction(ob, T_robot);
+            
+//             // Note: We also reset the nextDirectionChangeTime just in case you use it elsewhere, 
+//             // though we don't rely on it for detection anymore.
+//             ob.nextDirectionChangeTime = this->calculateNextFlip(ob, T_robot);
+
+//             triggered_obs.push_back(ob);
+//         }
+//     }
+//     return triggered_obs;
+// }
 ObstacleVector checkAndRepairObstacles(double T_robot) {
     ObstacleVector triggered_obs;
     
-    // Threshold to detect if velocity changed (e.g. hit a wall)
-    const double VELOCITY_CHANGE_THRESHOLD = 0.1; 
-
     for (auto& [name, ob] : obstacle_positions_map_) {
         if (!ob.is_dynamic) continue;
 
-        // --- 1. INITIALIZATION CHECK (Keep this, it is good!) ---
+        // --- 1. INITIALIZATION CHECK ---
         if (!ob.is_initialized_in_graph) {
             ob.is_initialized_in_graph = true;
-            
-            // Generate fresh tube from T_robot -> 0
             ob.predicted_path = this->generatePrediction(ob, T_robot);
-            
-            // Save current velocity so we can detect changes later
             last_velocities_[name] = ob.velocity; 
-
             triggered_obs.push_back(ob);
-            RCLCPP_INFO(rclcpp::get_logger("RRTx_Trigger"), 
-                "First-time activation for [%s] at T=%.2f", name.c_str(), T_robot);
             continue; 
         }
 
-        // --- 2. VELOCITY FLIP CHECK (The Robust Fix) ---
-        // Instead of a timer, we check if the velocity changed direction physically.
-        
-        bool direction_changed = false;
-        
-        // Check if we have history for this object
-        if (last_velocities_.find(name) != last_velocities_.end()) {
-            Eigen::Vector2d old_v = last_velocities_[name];
-            Eigen::Vector2d current_v = ob.velocity;
+        // --- 2. CHECK GAZEBO SIGNAL ---
+        bool did_turn = false;
+        if (obstacle_turnaround_flags_[name]) {
+            did_turn = true;
+            obstacle_turnaround_flags_[name] = false;
             
-            // If the difference is large, it hit a wall
-            if ((current_v - old_v).norm() > VELOCITY_CHANGE_THRESHOLD) {
-                direction_changed = true;
-                
-                RCLCPP_WARN(rclcpp::get_logger("RRTx_Trigger"), 
-                    "BOUNCE DETECTED for [%s]! Vel changed from [%.1f, %.1f] to [%.1f, %.1f]",
-                    name.c_str(), old_v.x(), old_v.y(), current_v.x(), current_v.y());
-            }
+            // --- ROBUST VELOCITY FLIP ---
+            // We don't just do ob.velocity = -ob.velocity.
+            // Instead, we project the velocity onto the Motion Axis, flip the sign of the projection,
+            // and reconstruct the vector. This ensures we stay exactly on the line defined by the SDF.
+            
+            // 1. Calculate how much velocity we have along the motion axis
+            double projection = ob.velocity.dot(ob.motion_axis);
+            
+            // 2. Flip the projection (Reverse direction)
+            double flipped_projection = -projection;
+            
+            // 3. Reconstruct the velocity vector
+            // New Velocity = (Axis * Flipped_Projection)
+            // This preserves the exact speed scalar from the SDF but reverses direction.
+            ob.velocity = ob.motion_axis * flipped_projection;
+            
+            RCLCPP_WARN(rclcpp::get_logger("Obs_Debug"), 
+                "!!! TURNAROUND [%s] !!! | Velocity Corrected to (%.2f, %.2f)", 
+                name.c_str(), ob.velocity.x(), ob.velocity.y());
         }
 
-        // Update history for next iteration
-        last_velocities_[name] = ob.velocity;
+        // --- 3. UPDATE PREDICTION ---
+        ob.predicted_path = this->generatePrediction(ob, T_robot);
 
-        // --- 3. TRIGGER UPDATE IF FLIPPED ---
-        if (direction_changed) {
-            // Regenerate the tube starting exactly at T_robot
-            ob.predicted_path = this->generatePrediction(ob, T_robot);
-            
-            // Note: We also reset the nextDirectionChangeTime just in case you use it elsewhere, 
-            // though we don't rely on it for detection anymore.
-            ob.nextDirectionChangeTime = this->calculateNextFlip(ob, T_robot);
-
+        // --- 4. TRIGGER UPDATE ---
+        if (did_turn) {
             triggered_obs.push_back(ob);
         }
+        
+        last_velocities_[name] = ob.velocity;
     }
     return triggered_obs;
 }
 
 
-    std::vector<Eigen::Vector3d> generatePrediction(const Obstacle& ob, double current_time) const override;
+std::vector<Eigen::Vector3d> generatePrediction(const Obstacle& ob, double current_time) const override;
 
     // // In gazebo_obstacle_checker.cpp
     // std::vector<Eigen::Vector3d> generatePrediction(
@@ -685,5 +740,12 @@ private:
     std::unordered_map<std::string, Eigen::Vector2d> last_velocities_;
 
     std::map<std::string, Obstacle> obstacle_positions_map_;
+
+
+
+    // Map to store the turnaround flags received from Gazebo
+    std::unordered_map<std::string, bool> obstacle_turnaround_flags_;
+
+
 
 };

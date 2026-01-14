@@ -10,10 +10,23 @@
 #include "motion_planning/ds/ifmt_node.hpp"
 #pragma once
 
+// struct FMTComparator {
+//     bool operator()(const std::pair<double, FMTNode*>& a, 
+//                    const std::pair<double, FMTNode*>& b) const {
+//         return a.first < b.first;  // Only compare min_key
+//     }
+// };
+
 struct FMTComparator {
     bool operator()(const std::pair<double, FMTNode*>& a, 
                    const std::pair<double, FMTNode*>& b) const {
-        return a.first < b.first;  // Only compare min_key
+        // Primary: Compare the priority key (Cost + Heuristic)
+        if (std::abs(a.first - b.first) > 1e-9) { 
+            return a.first < b.first;
+        }
+        // Secondary: Compare Node Index to ensure deterministic order
+        // This prevents "undefined behavior" when costs are equal
+        return a.second->getIndex() < b.second->getIndex();
     }
 };
 
