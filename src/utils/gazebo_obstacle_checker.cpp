@@ -26,6 +26,48 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
 
     initial_budget_time_ = params.getParam<double>("initial_budget_time");
 
+
+    // =========================================================================
+    // CRITICAL FIX: Initialize obstacle_positions_map_ from obstacle_info_
+    // =========================================================================
+    for (const auto& [name, info] : obstacle_info_) {
+        Obstacle ob;
+        ob.name = name;
+        ob.is_dynamic = info.is_dynamic;
+        ob.has_ground_truth = true; // We have ground truth from SDF
+        
+        // Set Geometry
+        if (info.type == ObstacleInfo::CYLINDER) {
+            ob.type = Obstacle::CIRCLE;
+            ob.dimensions.radius = info.radius;
+        } else {
+            ob.type = Obstacle::BOX;
+            ob.dimensions.width = info.width;
+            ob.dimensions.height = info.height;
+            ob.dimensions.rotation = 0.0; // Yaw from SDF if needed
+        }
+
+        // Set Motion Parameters (Crucial for deterministic math)
+        ob.speed_scalar = info.speed;
+        ob.motion_limit = info.amplitude;
+        ob.initial_origin = info.initial_pose.head<2>();
+        
+        if (info.direction.head<2>().norm() > 1e-6) {
+             ob.motion_axis = info.direction.head<2>().normalized();
+        } else {
+             ob.motion_axis = Eigen::Vector2d::UnitX();
+        }
+
+        // Initialize position to the start point (will be updated in processLatestPoseInfo)
+        ob.position = ob.initial_origin;
+        ob.velocity = Eigen::Vector2d::Zero();
+
+        // Insert into the map so processLatestPoseInfo finds valid data
+        obstacle_positions_map_[name] = ob;
+    }
+    // =========================================================================
+
+
     // Subscribe to the robot pose topic
     std::string robot_pose_topic = "/model/" + robot_model_name_ + "/tf";
     if (!gz_node_.Subscribe(robot_pose_topic, &GazeboObstacleChecker::robotPoseCallback, this)) {
@@ -680,6 +722,8 @@ bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
 
     return true;
 }
+
+
 
 /**
  * Performs a continuous, analytical collision check for a moving point (robot) against a moving box (obstacle).
@@ -3153,162 +3197,200 @@ void GazeboObstacleChecker::lightweightPoseCallback(const gz::msgs::Pose_V& msg)
 // }
 
 // Helper function implementation
-Eigen::Vector2d GazeboObstacleChecker::calculateDeterministicPosition(const Obstacle& ob, double current_robot_time) const {
+// Eigen::Vector2d GazeboObstacleChecker::calculateDeterministicPosition(const Obstacle& ob, double current_robot_time) const {
     
-    if (!ob.has_ground_truth) return ob.position;
+//     if (!ob.has_ground_truth) return ob.position;
 
-    double time_elapsed = initial_budget_time_ - current_robot_time;
-    double amplitude = ob.motion_limit; 
-    double speed = ob.speed_scalar;
+//     double time_elapsed = initial_budget_time_ - current_robot_time;
+//     double amplitude = ob.motion_limit; 
+//     double speed = ob.speed_scalar;
     
-    if (speed < 1e-6) return ob.position;
+//     if (speed < 1e-6) return ob.position;
 
-    double total_distance = speed * time_elapsed;
-    double phase = total_distance / amplitude;
-    int cycle = static_cast<int>(phase); 
-    double remainder = phase - static_cast<double>(cycle);
+//     double total_distance = speed * time_elapsed;
+//     double phase = total_distance / amplitude;
+//     int cycle = static_cast<int>(phase); 
+//     double remainder = phase - static_cast<double>(cycle);
 
-    // =================================================================
-    // FIX: The SDF 'initial_origin' IS the Start Point.
-    // =================================================================
-    // Based on your SDF:
-    // <pose>-55.0 30.0 0 0 0 0</pose>
-    // <amplitude>110.0</amplitude>
-    // The obstacle starts at -55 and moves to +55.
-    // Therefore, 'initial_origin' is the start point. We do NOT subtract amplitude.
+//     // =================================================================
+//     // FIX: The SDF 'initial_origin' IS the Start Point.
+//     // =================================================================
+//     // Based on your SDF:
+//     // <pose>-55.0 30.0 0 0 0 0</pose>
+//     // <amplitude>110.0</amplitude>
+//     // The obstacle starts at -55 and moves to +55.
+//     // Therefore, 'initial_origin' is the start point. We do NOT subtract amplitude.
     
-    Eigen::Vector2d math_start_point = ob.initial_origin; 
+//     Eigen::Vector2d math_start_point = ob.initial_origin; 
     
-    Eigen::Vector2d calculated_pos;
-    if (cycle % 2 == 0) {
-        // Moving Forward (Start -> End)
-        calculated_pos = math_start_point + ob.motion_axis * (remainder * amplitude);
-    } else {
-        // Moving Backward (End -> Start)
-        calculated_pos = math_start_point + ob.motion_axis * ((1.0 - remainder) * amplitude);
-    }
-    return calculated_pos;
-}
+//     Eigen::Vector2d calculated_pos;
+//     if (cycle % 2 == 0) {
+//         // Moving Forward (Start -> End)
+//         calculated_pos = math_start_point + ob.motion_axis * (remainder * amplitude);
+//     } else {
+//         // Moving Backward (End -> Start)
+//         calculated_pos = math_start_point + ob.motion_axis * ((1.0 - remainder) * amplitude);
+//     }
+//     return calculated_pos;
+// }
 
-// The updated processing function --> deterministic integration!
-void GazeboObstacleChecker::processLatestPoseInfo(double current_robot_time) {
-    gz::msgs::Pose_V msg;
-    {
-        std::lock_guard<std::mutex> lock(snapshot_mutex_);
-        if (!new_pose_msg_available_) return;
-        msg = latest_pose_msg_;
-        new_pose_msg_available_ = false;
-    }
-    rclcpp::Time now = clock_->now();
+// // The updated processing function --> deterministic integration!
+// void GazeboObstacleChecker::processLatestPoseInfo(double current_robot_time) {
+//     gz::msgs::Pose_V msg;
+//     {
+//         std::lock_guard<std::mutex> lock(snapshot_mutex_);
+//         if (!new_pose_msg_available_) return;
+//         msg = latest_pose_msg_;
+//         new_pose_msg_available_ = false;
+//     }
+//     rclcpp::Time now = clock_->now();
+//     obstacle_positions_.clear(); 
+    
+//     for (int i = 0; i < msg.pose_size(); ++i) {
+//         const auto& pose = msg.pose(i);
+//         const std::string name = pose.name();
+        
+//         if (name == robot_model_name_) {
+//             robot_position_ = Eigen::Vector2d(pose.position().x(), pose.position().y());
+//             continue;
+//         }
+
+//         auto info_it = obstacle_info_.find(name);
+//         if (info_it == obstacle_info_.end()) continue;
+//         const auto& info = info_it->second;
+//         Obstacle& ob = obstacle_positions_map_[name]; 
+        
+//         // 1. Get Gazebo Position (The "Noisy" Truth)
+//         Eigen::Vector2d gazebo_pos(pose.position().x(), pose.position().y());
+        
+//         // 2. Calculate Deterministic Position (The "Math" Truth)
+//         Eigen::Vector2d math_pos = gazebo_pos; // Default fallback
+//         if (use_deterministic_override_ && ob.is_dynamic) {
+//             math_pos = calculateDeterministicPosition(ob, current_robot_time);
+            
+//             // =================================================================
+//             // ERROR ANALYSIS
+//             // =================================================================
+//             // COMMENTED OUT: The time comparison is invalid because Gazebo's 
+//             // internal clock drifts from the planner's wall-clock time.
+//             /*
+//             double error = (gazebo_pos - math_pos).norm();
+//             if (error > 0.01) {
+//                 RCLCPP_WARN_THROTTLE(rclcpp::get_logger("Obs_Error"), *clock_, 2000,
+//                     "[NOISE DETECTED] [%s] | T: %.2f | Error: %.4f m | Gazebo: (%.2f, %.2f) | Math: (%.2f, %.2f)",
+//                     name.c_str(), current_robot_time, error, 
+//                     gazebo_pos.x(), gazebo_pos.y(), 
+//                     math_pos.x(), math_pos.y());
+//             }
+//             */
+//             // =================================================================
+//         }
+
+//         // 3. Update Obstacle State
+//         // If override is ON, we use math_pos. If OFF, we use gazebo_pos.
+//         Eigen::Vector2d active_pos = use_deterministic_override_ ? math_pos : gazebo_pos;
+        
+//         ob.previous_position = ob.position; 
+        
+//         // Populate Static Data
+//         ob.name = name;
+//         ob.is_dynamic = info.is_dynamic;
+//         ob.has_ground_truth = true;
+//         ob.speed_scalar = info.speed;
+//         ob.motion_limit = info.amplitude;
+//         ob.initial_origin = info.initial_pose.head<2>();
+        
+//         if (info.direction.head<2>().norm() > 1e-6) {
+//              ob.motion_axis = info.direction.head<2>().normalized();
+//         } else {
+//              ob.motion_axis = Eigen::Vector2d::UnitX();
+//         }
+
+//         // 4. Velocity Calculation
+//         if (ob.is_dynamic) {
+//             if (ob.last_update_time.nanoseconds() == 0) {
+//                 double sdf_dir_sign = info.direction.head<2>().dot(ob.motion_axis);
+//                 ob.velocity = ob.motion_axis * (ob.speed_scalar * sdf_dir_sign);
+//             } else {
+//                 // Calculate displacement based on the ACTIVE position (Math or Gazebo)
+//                 Eigen::Vector2d displacement = active_pos - ob.position;
+                
+//                 if (displacement.norm() > 1e-4) {
+//                     double dot = displacement.dot(ob.motion_axis);
+//                     double dir_sign = (dot >= 0.0) ? 1.0 : -1.0;
+//                     ob.velocity = ob.motion_axis * (ob.speed_scalar * dir_sign);
+//                 }
+//             }
+//         } else {
+//             ob.velocity = Eigen::Vector2d::Zero();
+//         }
+
+//         // 5. Final Update
+//         ob.position = active_pos; // Use the calculated position
+//         ob.last_update_time = now;
+
+//         // 6. Geometry Sync (Same as before)
+//         if (info.type == ObstacleInfo::CYLINDER) {
+//             ob.type = Obstacle::CIRCLE;
+//             ob.dimensions.radius = info.radius;
+//         } else {
+//             ob.type = Obstacle::BOX;
+//             ob.dimensions.width = info.width;
+//             ob.dimensions.height = info.height;
+            
+//             Eigen::Quaterniond q(
+//                 pose.orientation().w(),
+//                 pose.orientation().x(),
+//                 pose.orientation().y(),
+//                 pose.orientation().z()
+//             );
+//             double yaw = std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()), 
+//                                     1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
+//             ob.dimensions.rotation = yaw;
+//         }
+
+//         obstacle_positions_.push_back(ob);
+//     }
+// }
+
+void GazeboObstacleChecker::processLatestPoseInfo(double sim_time) {
     obstacle_positions_.clear(); 
     
-    for (int i = 0; i < msg.pose_size(); ++i) {
-        const auto& pose = msg.pose(i);
-        const std::string name = pose.name();
-        
-        if (name == robot_model_name_) {
-            robot_position_ = Eigen::Vector2d(pose.position().x(), pose.position().y());
-            continue;
-        }
-
-        auto info_it = obstacle_info_.find(name);
-        if (info_it == obstacle_info_.end()) continue;
-        const auto& info = info_it->second;
-        Obstacle& ob = obstacle_positions_map_[name]; 
-        
-        // 1. Get Gazebo Position (The "Noisy" Truth)
-        Eigen::Vector2d gazebo_pos(pose.position().x(), pose.position().y());
-        
-        // 2. Calculate Deterministic Position (The "Math" Truth)
-        Eigen::Vector2d math_pos = gazebo_pos; // Default fallback
-        if (use_deterministic_override_ && ob.is_dynamic) {
-            math_pos = calculateDeterministicPosition(ob, current_robot_time);
-            
-            // =================================================================
-            // ERROR ANALYSIS
-            // =================================================================
-            // COMMENTED OUT: The time comparison is invalid because Gazebo's 
-            // internal clock drifts from the planner's wall-clock time.
-            /*
-            double error = (gazebo_pos - math_pos).norm();
-            if (error > 0.01) {
-                RCLCPP_WARN_THROTTLE(rclcpp::get_logger("Obs_Error"), *clock_, 2000,
-                    "[NOISE DETECTED] [%s] | T: %.2f | Error: %.4f m | Gazebo: (%.2f, %.2f) | Math: (%.2f, %.2f)",
-                    name.c_str(), current_robot_time, error, 
-                    gazebo_pos.x(), gazebo_pos.y(), 
-                    math_pos.x(), math_pos.y());
-            }
-            */
-            // =================================================================
-        }
-
-        // 3. Update Obstacle State
-        // If override is ON, we use math_pos. If OFF, we use gazebo_pos.
-        Eigen::Vector2d active_pos = use_deterministic_override_ ? math_pos : gazebo_pos;
-        
-        ob.previous_position = ob.position; 
-        
-        // Populate Static Data
-        ob.name = name;
-        ob.is_dynamic = info.is_dynamic;
-        ob.has_ground_truth = true;
-        ob.speed_scalar = info.speed;
-        ob.motion_limit = info.amplitude;
-        ob.initial_origin = info.initial_pose.head<2>();
-        
-        if (info.direction.head<2>().norm() > 1e-6) {
-             ob.motion_axis = info.direction.head<2>().normalized();
-        } else {
-             ob.motion_axis = Eigen::Vector2d::UnitX();
-        }
-
-        // 4. Velocity Calculation
+    for (auto& [name, ob] : obstacle_positions_map_) {
         if (ob.is_dynamic) {
-            if (ob.last_update_time.nanoseconds() == 0) {
-                double sdf_dir_sign = info.direction.head<2>().dot(ob.motion_axis);
-                ob.velocity = ob.motion_axis * (ob.speed_scalar * sdf_dir_sign);
+            // 1. Calculate Position based on Forward Time
+            double phase = (ob.speed_scalar * sim_time) / ob.motion_limit;
+            double cycle_val = std::fmod(phase, 2.0);
+            double remainder = phase - static_cast<int>(phase);
+
+            Eigen::Vector2d calculated_pos;
+            if (cycle_val < 1.0) {
+                // Moving Forward (Start -> End)
+                calculated_pos = ob.initial_origin + ob.motion_axis * (remainder * ob.motion_limit);
             } else {
-                // Calculate displacement based on the ACTIVE position (Math or Gazebo)
-                Eigen::Vector2d displacement = active_pos - ob.position;
-                
-                if (displacement.norm() > 1e-4) {
-                    double dot = displacement.dot(ob.motion_axis);
-                    double dir_sign = (dot >= 0.0) ? 1.0 : -1.0;
-                    ob.velocity = ob.motion_axis * (ob.speed_scalar * dir_sign);
-                }
+                // Moving Backward (End -> Start)
+                calculated_pos = ob.initial_origin + ob.motion_axis * ((1.0 - remainder) * ob.motion_limit);
             }
+            ob.position = calculated_pos;
+
+            // 2. Calculate Velocity based on Forward Time
+            // FIX: 
+            // 1. Determine direction along the axis based on the cycle (Forward or Backward)
+            double cycle_direction = (cycle_val < 1.0) ? 1.0 : -1.0;
+            
+            // 2. Calculate velocity: Axis * Speed * CycleDirection
+            // motion_axis contains the SDF direction (e.g., 1,0 or 0,-1).
+            // cycle_direction flips it if we are in the return leg.
+            ob.velocity = ob.motion_axis * (ob.speed_scalar * cycle_direction);
+            
         } else {
+            ob.position = ob.initial_origin;
             ob.velocity = Eigen::Vector2d::Zero();
         }
-
-        // 5. Final Update
-        ob.position = active_pos; // Use the calculated position
-        ob.last_update_time = now;
-
-        // 6. Geometry Sync (Same as before)
-        if (info.type == ObstacleInfo::CYLINDER) {
-            ob.type = Obstacle::CIRCLE;
-            ob.dimensions.radius = info.radius;
-        } else {
-            ob.type = Obstacle::BOX;
-            ob.dimensions.width = info.width;
-            ob.dimensions.height = info.height;
-            
-            Eigen::Quaterniond q(
-                pose.orientation().w(),
-                pose.orientation().x(),
-                pose.orientation().y(),
-                pose.orientation().z()
-            );
-            double yaw = std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()), 
-                                    1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
-            ob.dimensions.rotation = yaw;
-        }
-
+        
         obstacle_positions_.push_back(ob);
     }
 }
-
 double GazeboObstacleChecker::calculateYawFromQuaternion(const Eigen::VectorXd& quaternion) {
     // Ensure the quaternion is valid (x, y, z, w)
     if (quaternion.size() != 4) {
@@ -3942,7 +4024,7 @@ std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
     // Safety check: Needs to be dynamic and have valid physics data
     if (!ob.is_dynamic || !ob.has_ground_truth) return path;
 
-    const double dt_step = 0.5; 
+    const double dt_step = 0.1; 
     
     // 1. Current State (Trusted from processLatestPoseInfo)
     Eigen::Vector2d current_v = ob.velocity;
@@ -4041,27 +4123,24 @@ std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
 
 //////////////////////////////////////////////NON DETERMINISTIC//////////////////////////////////////////
 void GazeboObstacleChecker::initializeDynamicObstacles(double currentRobotTime) {
-    // 1. Ensure we have the latest positions from Gazebo
-    this->processLatestPoseInfo(currentRobotTime);
-
+    // currentRobotTime is T_robot (e.g., 20.0)
     RCLCPP_INFO(rclcpp::get_logger("ObstacleChecker"), 
-                "Initializing Dynamic Obstacles at T=%.2f", currentRobotTime);
-
+                "Initializing Dynamic Obstacles (T_robot Mode).");
+                
     for (auto& [name, ob] : obstacle_positions_map_) {
         if (ob.is_dynamic) {
-            // Calculate the very first turnaround time
-            ob.nextDirectionChangeTime = this->calculateNextFlip(ob, currentRobotTime);
+            double time_for_one_leg = ob.motion_limit / ob.speed_scalar;
+            
+            // Set the timer to the first turnaround in T_robot terms
+            // Start (20.0) minus one leg duration
+            ob.nextDirectionChangeTime = currentRobotTime - time_for_one_leg; 
             
             RCLCPP_INFO(rclcpp::get_logger("ObstacleChecker"), 
-                "-> [%s] logic initialized. First turnaround at T=%.2f", 
+                "-> [%s] logic initialized. First turnaround at T_Robot=%.2f", 
                 name.c_str(), ob.nextDirectionChangeTime);
         }
     }
 }
-
-
-
-
 // ObstacleVector GazeboObstacleChecker::checkAndRepairObstacles(double T_robot) {
 // ObstacleVector triggered_obs;
 
@@ -4189,89 +4268,115 @@ std::vector<std::string> GazeboObstacleChecker::detectTurnaroundEvents(double cu
 // }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-
+// Change argument from sim_time to T_robot
 ObstacleVector GazeboObstacleChecker::checkAndRepairObstacles(double T_robot) {
     ObstacleVector triggered_obs;
+    
     for (auto& [name, ob] : obstacle_positions_map_) {
         if (!ob.is_dynamic) continue;
-
-        // --- 1. INITIALIZATION CHECK ---
+        
         if (!ob.is_initialized_in_graph) {
             ob.is_initialized_in_graph = true;
+            // Generate prediction starting from current T_robot (e.g., 20.0)
+            // The prediction function will handle the loop down to 0
             ob.predicted_path = this->generatePrediction(ob, T_robot);
-            last_velocities_[name] = ob.velocity;
             triggered_obs.push_back(ob);
-            continue;
+            
+            // Initialize the NEXT turnaround time in T_robot terms.
+            // If SimTime turnaround is at 3.67, T_robot turnaround is at 20.0 - 3.67 = 16.33.
+            double time_for_one_leg = ob.motion_limit / ob.speed_scalar;
+            ob.nextDirectionChangeTime = T_robot - time_for_one_leg; 
+            
+            continue; 
         }
-
-        // --- 2. DETERMINISTIC TURNAROUND CHECK (THE FIX) ---
-        // We do NOT use obstacle_turnaround_flags_ (network message).
-        // We calculate it purely based on time.
-        bool did_turn = false;
         
-        // Use a small epsilon for floating point comparison
-        const double EPSILON = 1e-5; 
-        
-        // Check if we crossed the threshold
-        if (T_robot <= ob.nextDirectionChangeTime + EPSILON) {
-            did_turn = true;
+        // --- CHECK FOR TURNAROUND (T_robot decreases) ---
+        // We check if T_robot has dropped BELOW the scheduled time
+        if (T_robot <= ob.nextDirectionChangeTime) {
             
-            // --- ROBUST VELOCITY FLIP ---
-            double projection = ob.velocity.dot(ob.motion_axis);
-            double flipped_projection = -projection;
-            ob.velocity = ob.motion_axis * flipped_projection;
+            // Calculate T_robot equivalent for logging (optional)
+            double sim_time = 20.0 - T_robot; 
             
-            // LOGGING
             RCLCPP_WARN(rclcpp::get_logger("Obs_Debug"),
-                "!!! TURNAROUND [%s] !!! | T_robot: %.5f | Expected T: %.5f | Velocity: (%.2f, %.2f)",
-                name.c_str(), T_robot, ob.nextDirectionChangeTime, ob.velocity.x(), ob.velocity.y());
-
-            // --- 3. UPDATE NEXT PREDICTION ---
-            // Immediately calculate the NEXT turnaround time
-            ob.nextDirectionChangeTime = this->calculateNextFlip(ob, T_robot);
-        }
-
-        // --- 4. UPDATE PREDICTION PATH ---
-        ob.predicted_path = this->generatePrediction(ob, T_robot);
-
-        // --- 5. TRIGGER UPDATE ---
-        if (did_turn) {
+                "!!! TURNAROUND [%s] !!! | T_Robot: %.2f | Scheduled: %.2f", 
+                name.c_str(), T_robot, ob.nextDirectionChangeTime);
+                
+            // --- UPDATE SCHEDULE ---
+            // Schedule the NEXT turnaround (one leg further into the past)
+            double time_for_one_leg = ob.motion_limit / ob.speed_scalar;
+            ob.nextDirectionChangeTime -= time_for_one_leg;
+            
+            // --- UPDATE PREDICTION ---
+            // Generate path starting from current T_robot
+            ob.predicted_path = this->generatePrediction(ob, T_robot);
+            
             triggered_obs.push_back(ob);
         }
-        
-        last_velocities_[name] = ob.velocity;
     }
     return triggered_obs;
 }
 
-double GazeboObstacleChecker::calculateNextFlip(const Obstacle& ob, double currentRobotTime) {
-    auto info_it = obstacle_info_.find(ob.name);
-    if (info_it == obstacle_info_.end() || !info_it->second.is_dynamic) return -1.0;
-    const auto& info = info_it->second;
+// double GazeboObstacleChecker::calculateNextFlip(const Obstacle& ob, double currentRobotTime) {
+//     auto info_it = obstacle_info_.find(ob.name);
+//     if (info_it == obstacle_info_.end() || !info_it->second.is_dynamic) return -1.0;
+//     const auto& info = info_it->second;
 
-    double amplitude = info.amplitude;
-    double speed = info.speed; 
+//     double amplitude = info.amplitude;
+//     double speed = info.speed; 
     
-    if (speed < 1e-6) return -1.0;
-    double time_for_one_leg = amplitude / speed;
+//     if (speed < 1e-6) return -1.0;
+//     double time_for_one_leg = amplitude / speed;
 
-    double time_elapsed = initial_budget_time_ - currentRobotTime;
+//     double time_elapsed = initial_budget_time_ - currentRobotTime;
 
-    // =================================================================
-    // FIX: Force calculation to the NEXT leg to prevent chattering
-    // =================================================================
-    // We add a tiny epsilon to time_elapsed. This ensures that if we are 
-    // exactly at the turnaround point (e.g. 4.0000), we are treated as 
-    // being slightly into the NEXT leg (4.00001), so we calculate the 
-    // turnaround for the end of THAT leg, not the current one.
-    double time_elapsed_safe = time_elapsed + 1e-9; 
+//     // =================================================================
+//     // FIX: Force calculation to the NEXT leg to prevent chattering
+//     // =================================================================
+//     // We add a tiny epsilon to time_elapsed. This ensures that if we are 
+//     // exactly at the turnaround point (e.g. 4.0000), we are treated as 
+//     // being slightly into the NEXT leg (4.00001), so we calculate the 
+//     // turnaround for the end of THAT leg, not the current one.
+//     double time_elapsed_safe = time_elapsed + 1e-9; 
     
-    int current_leg_index = static_cast<int>(time_elapsed_safe / time_for_one_leg);
+//     int current_leg_index = static_cast<int>(time_elapsed_safe / time_for_one_leg);
     
-    // The next turnaround is at the end of this new leg
-    double time_of_next_turn = (current_leg_index + 1) * time_for_one_leg;
+//     // The next turnaround is at the end of this new leg
+//     double time_of_next_turn = (current_leg_index + 1) * time_for_one_leg;
     
-    double nextChangeTime = initial_budget_time_ - time_of_next_turn;
+//     double nextChangeTime = initial_budget_time_ - time_of_next_turn;
 
-    return nextChangeTime;
-}
+//     return nextChangeTime;
+// }
+// double GazeboObstacleChecker::calculateNextFlip(const Obstacle& ob, double currentRobotTime) {
+//     auto info_it = obstacle_info_.find(ob.name);
+//     if (info_it == obstacle_info_.end() || !info_it->second.is_dynamic) return -1.0;
+    
+//     const auto& info = info_it->second;
+//     double amplitude = info.amplitude;
+//     double speed = info.speed; 
+    
+//     if (speed < 1e-6) return -1.0;
+    
+//     double time_for_one_leg = amplitude / speed;
+    
+//     // FIX: Use Elapsed Time (increasing)
+//     double time_elapsed = initial_budget_time_ - currentRobotTime;
+    
+//     // FIX: Use fmod to determine the current leg index robustly
+//     double phase = (speed * time_elapsed) / amplitude;
+//     double cycle_val = std::fmod(phase, 2.0);
+    
+//     // Determine which leg we are in (0 or 1)
+//     int current_leg_index = (cycle_val < 1.0) ? 0 : 1;
+    
+//     // The next turnaround happens at the end of the *next* leg (current + 1)
+//     // We add 1 to ensure we are looking forward in time.
+//     int next_leg_index = current_leg_index + 1;
+    
+//     double time_of_next_turn_elapsed = next_leg_index * time_for_one_leg;
+    
+//     // Convert back to Robot Time Budget (decreasing)
+//     double nextChangeTime = initial_budget_time_ - time_of_next_turn_elapsed;
+    
+//     return nextChangeTime;
+// }

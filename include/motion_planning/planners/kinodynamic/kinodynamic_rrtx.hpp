@@ -62,6 +62,8 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
     double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
 
+    bool isRobotSafe();
+
  private:
     // Core data structures
     std::vector<std::shared_ptr<RRTxNode>> tree_;

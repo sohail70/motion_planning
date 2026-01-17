@@ -2876,10 +2876,165 @@ void KinodynamicRRTX::dumpTreeToCSV(const std::string& filename) const {
 // }
 
 
+// void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
+//     robot_continuous_state_ = robot_state;
+//     // Extract actual planner-time from the state (last element)
+//     double robot_sim_time = robot_continuous_state_(robot_continuous_state_.size() - 1);
+
+//     // --- 1. QUERY POINT CONSTRUCTION ---
+//     Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim);
+//     if (robot_continuous_state_.size() >= 2) {
+//         query_point(0) = robot_continuous_state_(0);
+//         query_point(1) = robot_continuous_state_(1);
+//     }
+
+//     if (kd_dim == 3) {
+//         query_point(2) = robot_sim_time;
+//     } else if (kd_dim == 4) {
+//         query_point(2) = robot_continuous_state_(2); 
+//         query_point(3) = robot_sim_time;
+//     } else if (kd_dim == 5) {
+//         query_point = robot_continuous_state_; 
+//     }
+
+//     // --- 2. HYSTERESIS LOGIC ---
+//     const double hysteresis_factor = 0.98;
+//     double cost_of_current_path = std::numeric_limits<double>::infinity();
+
+//     if (vbot_node_ && vbot_node_->getCost() != INFINITY) {
+//         Trajectory bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
+//         // Use robot_sim_time so collision check is synced with the world
+//         if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) {
+//             cost_of_current_path = bridge.cost + vbot_node_->getCost();
+//             robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
+//             return;
+//         }
+//     }
+
+//     RRTxNode* best_candidate_node = nullptr;
+//     Trajectory best_candidate_bridge;
+//     double best_candidate_cost = std::numeric_limits<double>::infinity();
+    
+//     // Radius Expansion to handle sparse graphs
+//     double current_search_radius = neighborhood_radius_; 
+//     const int max_attempts = 5; 
+//     const double radius_multiplier = 2.0;
+
+//     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+//         auto nearby_indices = kdtree_->radiusSearch(query_point, current_search_radius);
+
+//         for (auto idx : nearby_indices) {
+//             RRTxNode* candidate = tree_[idx].get();
+//             if (candidate->getCost() == INFINITY) continue;
+
+//             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+            
+//             // CRITICAL: Check if this candidate connection is safe
+//             if (!bridge.is_valid || !obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) continue;
+
+//             double cost = bridge.cost + candidate->getCost();
+//             if (cost < best_candidate_cost) {
+//                 best_candidate_node = candidate;
+//                 best_candidate_bridge = bridge;
+//                 best_candidate_cost = cost;
+//             }
+//         }
+//         if (best_candidate_node) break;
+//         current_search_radius *= radius_multiplier;
+//     }
+
+//     // --- 3. ASSIGNMENT ---
+//     if (best_candidate_node && best_candidate_cost < cost_of_current_path * hysteresis_factor) {
+//         vbot_node_ = best_candidate_node;
+//         robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+//         last_replan_metrics_.path_cost = best_candidate_cost;
+//     } else if (vbot_node_ && cost_of_current_path != std::numeric_limits<double>::infinity()) {
+//         Trajectory bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
+//         robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
+//     } else {
+//         // We are trapped. No nodes in radius are safe.
+//         vbot_node_ = nullptr;
+//         robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+//         RCLCPP_WARN_THROTTLE(rclcpp::get_logger("RRTx"), *clock_, 1000, "LOST SAFE ANCHOR!");
+//     }
+
+
+//     // =========================================================================================
+//     // 4. [NEW] INTERNAL DEBUG VISUALIZATION
+//     // =========================================================================================
+//     if (visualization_) {
+//         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> debug_edges;
+
+//         // If we have a valid anchor, recalculate the bridge path for visualization
+//         if (vbot_node_) {
+//             // Recalculate strictly for visualization
+//             Trajectory viz_bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
+            
+//             // Convert points to edges (segments)
+//             if (viz_bridge.path_points.size() >= 2) {
+//                 for (size_t i = 0; i < viz_bridge.path_points.size() - 1; ++i) {
+//                     debug_edges.emplace_back(viz_bridge.path_points[i], viz_bridge.path_points[i+1]);
+//                 }
+//             } else {
+//                 // Fallback: simple straight line from robot to anchor node
+                 
+//                 debug_edges.emplace_back(robot_continuous_state_, vbot_node_->getStateValue());
+//             }
+
+//             // Visualize in CYAN (0, 1, 1) so it stands out from the path (Green) and Tree (Red/Green)
+//             // Using a unique namespace "debug_anchor_trajectory" ensures it overwrites the previous frame
+//             visualization_->visualizeEdges(debug_edges, "map", "0.0,1.0,1.0", "debug_anchor_trajectory");
+            
+//             // OPTIONAL: Visualize the anchor node itself as a big dot
+//             std::vector<Eigen::VectorXd> anchor_pt = { vbot_node_->getStateValue().head<2>() };
+//             visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
+
+//         } else {
+//             // CLEAR THE VISUALIZATION
+//             // Sending an empty list to the same namespace effectively deletes the markers
+//             visualization_->visualizeEdges({}, "map", "0.0,0.0,0.0", "debug_anchor_trajectory");
+//             visualization_->visualizeNodes({}, "map", {0.0f, 0.0f, 0.0f}, "debug_anchor_point");
+//         }
+//     }
+//     // =========================================================================================
+
+//     // =========================================================================================
+//     // 5. [NEW] ANCHOR LOGGING (Manual Throttle)
+//     // =========================================================================================
+//     // Use static variable to persist time between function calls
+//     static auto last_log_time = std::chrono::steady_clock::now();
+//     auto now = std::chrono::steady_clock::now();
+    
+//     // Check if 1 second has passed
+//     if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log_time).count() > 1000) {
+//         if (vbot_node_) {
+//             // Use RCLCPP_WARN to ensure visibility regardless of log level settings
+//             RCLCPP_WARN(
+//                 rclcpp::get_logger("RRTx_Anchor"), 
+//                 "Anchor Connected: Node [%d] | Node Cost: %.2f | Total Path Cost: %.2f", 
+//                 vbot_node_->getIndex(), 
+//                 vbot_node_->getCost(), 
+//                 last_replan_metrics_.path_cost
+//             );
+//         } else {
+//             RCLCPP_WARN(
+//                 rclcpp::get_logger("RRTx_Anchor"), 
+//                 "Anchor Status: NULL (Robot is lost or searching...)"
+//             );
+//         }
+//         last_log_time = now;
+//     }
+//     // =========================================================================================
+
+
+
+// }
+
+
 void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     robot_continuous_state_ = robot_state;
-    // Extract actual planner-time from the state (last element)
-    double robot_sim_time = robot_continuous_state_(robot_continuous_state_.size() - 1);
+    // Extract actual planner-time (Time-to-Go) from the state (last element)
+    double robot_time_to_go = robot_continuous_state_(robot_continuous_state_.size() - 1);
 
     // --- 1. QUERY POINT CONSTRUCTION ---
     Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim);
@@ -2887,30 +3042,26 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         query_point(0) = robot_continuous_state_(0);
         query_point(1) = robot_continuous_state_(1);
     }
-
     if (kd_dim == 3) {
-        query_point(2) = robot_sim_time;
+        query_point(2) = robot_time_to_go;
     } else if (kd_dim == 4) {
         query_point(2) = robot_continuous_state_(2); 
-        query_point(3) = robot_sim_time;
+        query_point(3) = robot_time_to_go;
     } else if (kd_dim == 5) {
         query_point = robot_continuous_state_; 
     }
-
     // --- 2. HYSTERESIS LOGIC ---
     const double hysteresis_factor = 0.98;
     double cost_of_current_path = std::numeric_limits<double>::infinity();
-
     if (vbot_node_ && vbot_node_->getCost() != INFINITY) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
-        // Use robot_sim_time so collision check is synced with the world
-        if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) {
+        // Use robot_time_to_go so collision check is synced with the world
+        if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) {
             cost_of_current_path = bridge.cost + vbot_node_->getCost();
             robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
             return;
         }
     }
-
     RRTxNode* best_candidate_node = nullptr;
     Trajectory best_candidate_bridge;
     double best_candidate_cost = std::numeric_limits<double>::infinity();
@@ -2919,19 +3070,15 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     double current_search_radius = neighborhood_radius_; 
     const int max_attempts = 5; 
     const double radius_multiplier = 2.0;
-
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
         auto nearby_indices = kdtree_->radiusSearch(query_point, current_search_radius);
-
         for (auto idx : nearby_indices) {
             RRTxNode* candidate = tree_[idx].get();
             if (candidate->getCost() == INFINITY) continue;
-
             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
             
             // CRITICAL: Check if this candidate connection is safe
-            if (!bridge.is_valid || !obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) continue;
-
+            if (!bridge.is_valid || !obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) continue;
             double cost = bridge.cost + candidate->getCost();
             if (cost < best_candidate_cost) {
                 best_candidate_node = candidate;
@@ -2942,7 +3089,6 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         if (best_candidate_node) break;
         current_search_radius *= radius_multiplier;
     }
-
     // --- 3. ASSIGNMENT ---
     if (best_candidate_node && best_candidate_cost < cost_of_current_path * hysteresis_factor) {
         vbot_node_ = best_candidate_node;
@@ -2955,16 +3101,14 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         // We are trapped. No nodes in radius are safe.
         vbot_node_ = nullptr;
         robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
-        RCLCPP_WARN_THROTTLE(rclcpp::get_logger("RRTx"), *clock_, 1000, "LOST SAFE ANCHOR!");
+        RCLCPP_WARN(rclcpp::get_logger("RRTx_Anchor"), "Anchor Status: NULL (Robot is lost or searching...)");
     }
-
 
     // =========================================================================================
     // 4. [NEW] INTERNAL DEBUG VISUALIZATION
     // =========================================================================================
     if (visualization_) {
         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> debug_edges;
-
         // If we have a valid anchor, recalculate the bridge path for visualization
         if (vbot_node_) {
             // Recalculate strictly for visualization
@@ -2980,7 +3124,6 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
                  
                 debug_edges.emplace_back(robot_continuous_state_, vbot_node_->getStateValue());
             }
-
             // Visualize in CYAN (0, 1, 1) so it stands out from the path (Green) and Tree (Red/Green)
             // Using a unique namespace "debug_anchor_trajectory" ensures it overwrites the previous frame
             visualization_->visualizeEdges(debug_edges, "map", "0.0,1.0,1.0", "debug_anchor_trajectory");
@@ -2988,7 +3131,6 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
             // OPTIONAL: Visualize the anchor node itself as a big dot
             std::vector<Eigen::VectorXd> anchor_pt = { vbot_node_->getStateValue().head<2>() };
             visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
-
         } else {
             // CLEAR THE VISUALIZATION
             // Sending an empty list to the same namespace effectively deletes the markers
@@ -2997,7 +3139,6 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         }
     }
     // =========================================================================================
-
     // =========================================================================================
     // 5. [NEW] ANCHOR LOGGING (Manual Throttle)
     // =========================================================================================
@@ -3008,13 +3149,19 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     // Check if 1 second has passed
     if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log_time).count() > 1000) {
         if (vbot_node_) {
+            // Calculate Forward Simulation Time for logging
+            double initial_budget = 20.0; // Ensure this matches your actual budget
+            double forward_sim_time = initial_budget - robot_time_to_go;
+
             // Use RCLCPP_WARN to ensure visibility regardless of log level settings
             RCLCPP_WARN(
                 rclcpp::get_logger("RRTx_Anchor"), 
-                "Anchor Connected: Node [%d] | Node Cost: %.2f | Total Path Cost: %.2f", 
+                "Anchor Connected: Node [%d] | Node Cost: %.2f | Total Path Cost: %.2f | T_Goal: %.2f | Sim_Time: %.2f", 
                 vbot_node_->getIndex(), 
                 vbot_node_->getCost(), 
-                last_replan_metrics_.path_cost
+                last_replan_metrics_.path_cost,
+                robot_time_to_go,
+                forward_sim_time
             );
         } else {
             RCLCPP_WARN(
@@ -3026,10 +3173,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     }
     // =========================================================================================
 
-
-
 }
-
 
 
 bool KinodynamicRRTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path, const Eigen::VectorXd& current_robot_state) const {
@@ -3442,4 +3586,13 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& turned_obstacl
     propagateDescendants();
     if (vbot_node_) verifyQueue(vbot_node_);
     reduceInconsistency();
+}
+
+
+
+
+bool KinodynamicRRTX::isRobotSafe() {
+    // If vbot_node_ is null, we have no anchor.
+    // If cost is INFINITY, the anchor is invalid (trapped).
+    return (vbot_node_ != nullptr) && (vbot_node_->getCost() != INFINITY);
 }

@@ -115,7 +115,7 @@ class KinodynamicFMTX : public Planner {
 
             std::vector<Trajectory> getPathAsTrajectories() const;
 
-
+            bool isRobotSafe();
 
  private:
             std::shared_ptr<State> start_;

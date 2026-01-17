@@ -1157,11 +1157,16 @@ void KinodynamicFMTX::plan() {
                                 }
                             }
                         }
+                        /*
+                            WE CANT NOT CLEAR THREATS HERE!!! imagine we repaired the graph becuase moving box 10 turn around! then we repair the graph and clear the threat
+                            later moving cylinder 1 triggered the update but at this moment when we call the plan function it repairs the graph IGNORING the moving box 10 that is still coming toward these edges!!!!
                         
-                        // If safe, clear the threats. The accusations were false.
-                        if (obstacle_free) {
-                            x->threats.clear();
-                        }
+                        */
+                        
+                        // // If safe, clear the threats. The accusations were false.
+                        // if (obstacle_free) {
+                        //     x->threats.clear();
+                        // }
                     } else {
                         // No threats? Assume safe.
                         obstacle_free = true;
@@ -5088,6 +5093,9 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& turned_obstacl
         addNewObstacle(stored_ob);
     }
 
+    // if (robot_node_) {
+    //     robot_node_ = nullptr;
+    // }
 
 
     plan();
@@ -5997,3 +6005,11 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
 
 // }
+
+
+
+bool KinodynamicFMTX::isRobotSafe() {
+    // If vbot_node_ is null, we have no anchor.
+    // If cost is INFINITY, the anchor is invalid (trapped).
+    return (robot_node_ != nullptr) && (robot_node_->getCost() != INFINITY);
+}
