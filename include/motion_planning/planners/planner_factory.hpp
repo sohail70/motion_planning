@@ -13,6 +13,8 @@
 #include "motion_planning/planners/geometric/bit_star.hpp"
 #include "motion_planning/planners/kinodynamic/kinodynamic_fmtx.hpp"
 #include "motion_planning/planners/kinodynamic/kinodynamic_rrtx.hpp"
+#include "motion_planning/planners/kinodynamic/kinodynamic_any_fmtx.hpp"
+#include "motion_planning/planners/kinodynamic/kinodynamic_any_rrtx.hpp"
 
 class PlannerFactory {
  public:
@@ -48,3 +50,5 @@ static AutorRegisterPlanners<BITStar> autoRegisterBITStar(PlannerType::BITStar);
 
 static AutorRegisterPlanners<KinodynamicFMTX> autoRegisterKinodynamicFMTx(PlannerType::KinodynamicFMTX);
 static AutorRegisterPlanners<KinodynamicRRTX> autoRegisterKinodynamicRRTx(PlannerType::KinodynamicRRTX);
+static AutorRegisterPlanners<KinodynamicANYFMTX> autoRegisterKinodynamicANYFMTx(PlannerType::KinodynamicANYFMTX);
+static AutorRegisterPlanners<KinodynamicANYRRTX> autoRegisterKinodynamicANYRRTx(PlannerType::KinodynamicANYRRTX);

@@ -1370,18 +1370,25 @@ void RVizVisualization::publishObstacleFrame(
     const std::vector<std::tuple<Eigen::Vector2d, double, double, double>>& threat_boxes,
     const std::vector<Eigen::Vector2d>& safe_vel_pos, const std::vector<Eigen::Vector2d>& safe_vel_val,
     const std::vector<Eigen::Vector2d>& threat_vel_pos, const std::vector<Eigen::Vector2d>& threat_vel_val,
+    
+    // --- NEW PARAMETERS FOR ROBOT ---
+    const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& robot_trace_edges,
+    const Eigen::Vector3d& robot_pos,
+    const Eigen::VectorXd& robot_orientation, // Quaternion
+    const std::vector<float>& robot_color,
+    double robot_inflation,
+    
     const std::string& frame_id)
 {
     visualization_msgs::msg::MarkerArray frame_array;
     auto now_stamp = node_->now();
 
     // 1. ADD CLEAR COMMANDS
-    // We add a DELETEALL marker for every namespace we intend to use.
-    // This ensures no "ghosts" remain from the previous frame.
     std::vector<std::string> namespaces = {
         "obs_cyl_safe", "obs_cyl_threat", 
         "obs_box_safe", "obs_box_threat", 
-        "obs_vel_safe", "obs_vel_threat"
+        "obs_vel_safe", "obs_vel_threat",
+        "robot_trace", "simulated_robot", "simulated_robot_inflation"
     };
 
     for (const auto& ns : namespaces) {
@@ -1393,7 +1400,7 @@ void RVizVisualization::publishObstacleFrame(
         frame_array.markers.push_back(clear_m);
     }
 
-    // 2. HELPER: ADD CYLINDERS
+    // 2. DEFINE HELPER LAMBDAS (These were missing)
     auto add_cylinders = [&](const std::vector<Eigen::VectorXd>& pos, const std::vector<double>& rad, 
                              const std::vector<float>& col, const std::string& ns) {
         for (size_t i = 0; i < pos.size(); ++i) {
@@ -1407,7 +1414,6 @@ void RVizVisualization::publishObstacleFrame(
         }
     };
 
-    // 3. HELPER: ADD BOXES
     auto add_boxes = [&](const std::vector<std::tuple<Eigen::Vector2d, double, double, double>>& boxes, 
                          const std::vector<float>& col, const std::string& ns) {
         for (size_t i = 0; i < boxes.size(); ++i) {
@@ -1418,7 +1424,6 @@ void RVizVisualization::publishObstacleFrame(
             const auto& b = boxes[i];
             m.pose.position.x = std::get<0>(b).x(); m.pose.position.y = std::get<0>(b).y(); m.pose.position.z = 0.05;
             
-            // Manual Quaternion for Yaw (No TF2 needed)
             double rot = std::get<3>(b);
             m.pose.orientation.z = sin(rot * 0.5); m.pose.orientation.w = cos(rot * 0.5);
             
@@ -1428,7 +1433,6 @@ void RVizVisualization::publishObstacleFrame(
         }
     };
 
-    // 4. HELPER: ADD VELOCITY ARROWS
     auto add_arrows = [&](const std::vector<Eigen::Vector2d>& pos, const std::vector<Eigen::Vector2d>& vel, 
                           const std::vector<float>& col, const std::string& ns) {
         for (size_t i = 0; i < pos.size(); ++i) {
@@ -1447,16 +1451,99 @@ void RVizVisualization::publishObstacleFrame(
         }
     };
 
-    // 5. BUILD THE FRAME
-    // Colors are RGBA. Safe = Blue/Cyan, Threat = Red.
+    // 3. BUILD OBSTACLES (Using the helpers)
     add_cylinders(safe_cyls, safe_radii, {0.0f, 0.4f, 1.0f, 0.5f}, "obs_cyl_safe");
     add_cylinders(threat_cyls, threat_radii, {1.0f, 0.0f, 0.0f, 0.8f}, "obs_cyl_threat");
 
     add_boxes(safe_boxes, {0.0f, 0.6f, 0.8f, 0.5f}, "obs_box_safe");
     add_boxes(threat_boxes, {1.0f, 0.0f, 0.0f, 0.8f}, "obs_box_threat");
 
-    add_arrows(safe_vel_pos, safe_vel_val, {1.0f, 0.5f, 0.0f}, "obs_vel_safe"); // Orange
-    add_arrows(threat_vel_pos, threat_vel_val, {1.0f, 0.0f, 0.0f}, "obs_vel_threat"); // Red
+    add_arrows(safe_vel_pos, safe_vel_val, {1.0f, 0.5f, 0.0f}, "obs_vel_safe"); 
+    add_arrows(threat_vel_pos, threat_vel_val, {1.0f, 0.0f, 0.0f}, "obs_vel_threat"); 
+
+    // 4. BUILD ROBOT TRACE
+    if (!robot_trace_edges.empty()) {
+        visualization_msgs::msg::Marker trace_m;
+        trace_m.header.frame_id = frame_id;
+        trace_m.header.stamp = now_stamp;
+        trace_m.ns = "robot_trace";
+        trace_m.id = 0;
+        trace_m.type = visualization_msgs::msg::Marker::LINE_LIST;
+        trace_m.action = visualization_msgs::msg::Marker::ADD;
+        trace_m.scale.x = 0.1; 
+        trace_m.color.r = 1.0f; trace_m.color.g = 1.0f; trace_m.color.b = 0.0f; trace_m.color.a = 1.0f;
+
+        for (const auto& edge : robot_trace_edges) {
+            geometry_msgs::msg::Point p1, p2;
+            p1.x = edge.first.x(); p1.y = edge.first.y(); p1.z = 0.0;
+            p2.x = edge.second.x(); p2.y = edge.second.y(); p2.z = 0.0;
+            trace_m.points.push_back(p1);
+            trace_m.points.push_back(p2);
+        }
+        frame_array.markers.push_back(trace_m);
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. BUILD ROBOT MARKERS (ARROW + CYLINDER)
+    // -------------------------------------------------------------------------
+    
+    // A. Robot Arrow
+    {
+        visualization_msgs::msg::Marker arrow_m;
+        arrow_m.header.frame_id = frame_id;
+        arrow_m.header.stamp = now_stamp;
+        arrow_m.ns = "simulated_robot";
+        arrow_m.id = 0;
+        arrow_m.type = visualization_msgs::msg::Marker::ARROW;
+        arrow_m.action = visualization_msgs::msg::Marker::ADD;
+
+        arrow_m.pose.position.x = robot_pos.x();
+        arrow_m.pose.position.y = robot_pos.y();
+        arrow_m.pose.position.z = robot_pos.z();
+
+        arrow_m.pose.orientation.x = robot_orientation[0];
+        arrow_m.pose.orientation.y = robot_orientation[1];
+        arrow_m.pose.orientation.z = robot_orientation[2];
+        arrow_m.pose.orientation.w = robot_orientation[3];
+
+        arrow_m.scale.x = 1.0;  // Length
+        arrow_m.scale.y = 0.2;  // Width
+        arrow_m.scale.z = 0.2;  // Head
+
+        arrow_m.color.r = robot_color[0];
+        arrow_m.color.g = robot_color[1];
+        arrow_m.color.b = robot_color[2];
+        arrow_m.color.a = 1.0;
+
+        frame_array.markers.push_back(arrow_m);
+    }
+
+    // B. Robot Inflation Cylinder
+    if (robot_inflation > 0.0) {
+        visualization_msgs::msg::Marker cyl_m;
+        cyl_m.header.frame_id = frame_id;
+        cyl_m.header.stamp = now_stamp;
+        cyl_m.ns = "simulated_robot_inflation";
+        cyl_m.id = 0;
+        cyl_m.type = visualization_msgs::msg::Marker::CYLINDER;
+        cyl_m.action = visualization_msgs::msg::Marker::ADD;
+
+        cyl_m.pose.position.x = robot_pos.x();
+        cyl_m.pose.position.y = robot_pos.y();
+        cyl_m.pose.position.z = robot_pos.z(); // Or 0.0 for ground
+        cyl_m.pose.orientation.w = 1.0;
+
+        cyl_m.scale.x = 2.0 * robot_inflation;
+        cyl_m.scale.y = 2.0 * robot_inflation;
+        cyl_m.scale.z = 0.05;
+
+        cyl_m.color.r = robot_color[0];
+        cyl_m.color.g = robot_color[1];
+        cyl_m.color.b = robot_color[2];
+        cyl_m.color.a = 0.3; // Transparent
+
+        frame_array.markers.push_back(cyl_m);
+    }
 
     // 6. PUBLISH EVERYTHING AT ONCE
     marker_pub_2_->publish(frame_array);

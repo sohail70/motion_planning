@@ -99,7 +99,7 @@ int main(int argc, char** argv)
 
 
 
-    int num_samples = 100;
+    int num_samples = 2;
     double factor = 2.0;
     unsigned int seed = 42;
     int run_secs = 30;
@@ -153,6 +153,7 @@ int main(int argc, char** argv)
     gazebo_params.setParam("initial_budget_time", time_budget_);
 
 
+    manager_params.setParam("inflation", gazebo_params.getParam<double>("inflation"));  // Obstacle visualization rate
     // gazebo_params.setParam("collision_check_footprint", "rectangular"); // Options: "circular", "rectangular"
     // // [NEW] Define the rectangular footprint points as a string
     // // This will only be used if the above parameter is "rectangular"
@@ -174,7 +175,7 @@ int main(int argc, char** argv)
     planner_params.setParam("use_heuristic", false);
     planner_params.setParam("kd_dim", 3); // 2 or 3 only for R2T
     planner_params.setParam("use_knn", false); // In FMTX you get more connection using knn than radial due to obvious reasons!(having steer constraints!)
-    planner_params.setParam("precache_neighbors", true);
+    planner_params.setParam("precache_neighbors", false);
     // planner_params.setParam("mode", 1); //1: prune false 2: prune true
     // --- Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("fmtx_visualizer",
@@ -189,7 +190,11 @@ int main(int argc, char** argv)
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box.sdf");
     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight.sdf");
+
+    // std::unordered_map<std::string, ObstacleInfo> obstacle_info;
+
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
 
@@ -217,9 +222,9 @@ int main(int argc, char** argv)
     // Create the single, consolidated R2TROSManager
     auto ros_manager = std::make_shared<R2TROS2Manager>(obstacle_checker, visualization, manager_params,robot_velocity, robot_initial_state, time_budget_);
     auto statespace = std::make_shared<RDTStateSpace>(spatial_dim, min_velocity , max_velocity , robot_velocity, 30000, seed);
-    auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicFMTX, statespace, problem_def, obstacle_checker);
+    auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicANYFMTX, statespace, problem_def, obstacle_checker);
     
-    auto kinodynamic_planner = dynamic_cast<KinodynamicFMTX*>(planner.get());
+    auto kinodynamic_planner = dynamic_cast<KinodynamicANYFMTX*>(planner.get());
     kinodynamic_planner->setClock(sim_clock);
     planner->setup(planner_params, visualization);
 
@@ -231,9 +236,25 @@ int main(int argc, char** argv)
     // obstacle_checker->getAtomicSnapshot();
     auto start = std::chrono::steady_clock::now();
 
-    planner->plan();
+    //////////////////////WARMUP LOGIC NEWWWW/////////////////
+    // Option A: Run for a specific duration (e.g., 2 seconds)
+    // --- Warmup Phase ---
+    RCLCPP_INFO(vis_node->get_logger(), "Starting Warmup (building initial tree)...");
+    
+    // Define duration as 500 milliseconds
+    auto warmup_duration = std::chrono::milliseconds(750); 
+    
+    auto warmup_start = std::chrono::steady_clock::now();
+    
+    // Compare the elapsed time against the warmup_duration
+    while (std::chrono::steady_clock::now() - warmup_start < warmup_duration) {
+        // Run the single-step planner repeatedly
+        planner->plan(); 
+    }
+    
+    RCLCPP_INFO(vis_node->get_logger(), "Warmup complete.");
     auto end = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - warmup_start);
     if (duration.count() > 0) {
         std::cout << "time taken for the initial plan : " << duration.count() 
                 << " milliseconds\n";
@@ -449,7 +470,7 @@ int main(int argc, char** argv)
     // Variables to track time within the current slice
     double time_accumulated_in_slice = 0.0;
     auto slice_start_time = std::chrono::steady_clock::now();
-    bool stopMechanism = false;
+    bool stopMechanism = true;
 
     while (g_running && rclcpp::ok()) 
     {
@@ -523,6 +544,7 @@ int main(int argc, char** argv)
                 duration_ms, obs_names.c_str());
         }
 
+        kinodynamic_planner->plan();
         auto calc_end = std::chrono::steady_clock::now();
 
         // --- 4. UPDATE VISUALIZATION & THREATS ---

@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
     upper_bounds << 50.0, 50.0, M_PI, 40.0;
 
     Eigen::VectorXd weights(dimension);
-    weights << 1.0, 1.0, 5.0, 1.0;
+    weights << 1.0, 1.0, 1.0, 1.0;
 
     std::vector<int> wrap_dims = {2};
     std::vector<double> wrap_periods = {2.0 * M_PI};

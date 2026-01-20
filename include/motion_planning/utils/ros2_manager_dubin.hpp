@@ -26,6 +26,7 @@ public:
           visualizer_(visualizer),
           is_path_set_(false)
     {
+        inflation = params.getParam<double>("inflation");
         if (initial_sim_state.size() != 4) {
             throw std::runtime_error("DubinsROS2Manager: Initial state must be 4D.");
         }
@@ -229,6 +230,7 @@ private:
     bool is_in_collision_state_{false};
 
     std::set<std::string> current_threat_names_;
+    double inflation;
 
 
     // Methods...

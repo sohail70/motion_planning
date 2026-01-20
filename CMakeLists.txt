@@ -113,6 +113,8 @@ add_library(motion_planning
     src/planners/geometric/fmtx.cpp
     src/planners/kinodynamic/kinodynamic_fmtx.cpp
     src/planners/kinodynamic/kinodynamic_rrtx.cpp
+    src/planners/kinodynamic/kinodynamic_any_fmtx.cpp
+    src/planners/kinodynamic/kinodynamic_any_rrtx.cpp
     src/planners/geometric/rrtx.cpp
     src/planners/geometric/bit_star.cpp
     src/planners/planner_factory.cpp
@@ -129,6 +131,7 @@ add_library(motion_planning
     src/ds/rrtx_node.cpp
     src/utils/nano_flann.cpp
     src/utils/weighted_nano_flann.cpp
+    src/utils/dynamic_weighted_nano_flann.cpp
     src/utils/lie_kd_tree.cpp
 )
 
@@ -196,6 +199,12 @@ enable_testing()
 # add_executable(test_weighted_kdtree_visualization test/unit/test_weighted_kdtree_visualization.cpp)
 # target_link_libraries(test_weighted_kdtree_visualization motion_planning)
 # add_test(NAME test_weighted_kdtree_visualization COMMAND test_weighted_kdtree_visualization)
+
+
+add_executable(test_dynamic_weighted_kdtree_visualization test/unit/test_dynamic_weighted_kdtree_visualization.cpp)
+target_link_libraries(test_dynamic_weighted_kdtree_visualization motion_planning)
+add_test(NAME test_dynamic_weighted_kdtree_visualization COMMAND test_dynamic_weighted_kdtree_visualization)
+
 
 # add_executable(test_lie_kdtree test/unit/test_lie_kdtree.cpp)
 # target_link_libraries(test_lie_kdtree motion_planning)
@@ -290,3 +299,16 @@ add_test(NAME test_kinodynamic_rrtx_R2T COMMAND test_kinodynamic_rrtx_R2T)
 # ament_target_dependencies(test_collision rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
 # add_test(NAME test_collision COMMAND test_collision)
 
+
+
+####################ANYTIME FMTX AND RRTX################
+add_executable(test_kinodynamic_any_fmtx_R2T test/unit/test_kinodynamic_any_fmtx_R2T.cpp)
+target_link_libraries(test_kinodynamic_any_fmtx_R2T motion_planning gz_obs)
+ament_target_dependencies(test_kinodynamic_any_fmtx_R2T rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_kinodynamic_any_fmtx_R2T COMMAND test_kinodynamic_any_fmtx_R2T)
+
+
+add_executable(test_kinodynamic_any_rrtx_R2T test/unit/test_kinodynamic_any_rrtx_R2T.cpp)
+target_link_libraries(test_kinodynamic_any_rrtx_R2T motion_planning gz_obs)
+ament_target_dependencies(test_kinodynamic_any_rrtx_R2T rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_kinodynamic_any_rrtx_R2T COMMAND test_kinodynamic_any_rrtx_R2T)

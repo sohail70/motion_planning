@@ -1,15 +1,15 @@
 // Copyright 2025 Soheil E.nia
 
-#include "motion_planning/planners/kinodynamic/kinodynamic_rrtx.hpp"
+#include "motion_planning/planners/kinodynamic/kinodynamic_any_rrtx.hpp"
 
-KinodynamicRRTX::KinodynamicRRTX(std::shared_ptr<StateSpace> statespace, 
+KinodynamicANYRRTX::KinodynamicANYRRTX(std::shared_ptr<StateSpace> statespace, 
     std::shared_ptr<ProblemDefinition> problem_def,
     std::shared_ptr<ObstacleChecker> obs_checker): statespace_(statespace), problem_(problem_def), obs_checker_(obs_checker){
-        std::cout<<"KinodynamicRRTX constructor \n";
+        std::cout<<"KinodynamicANYRRTX constructor \n";
 }
 
 
-void KinodynamicRRTX::setStart(const Eigen::VectorXd& start) {
+void KinodynamicANYRRTX::setStart(const Eigen::VectorXd& start) {
     robot_state_index_ = statespace_->getNumStates();
     auto node = std::make_shared<RRTxNode>(statespace_->addState(start) ,  tree_.size());
     tree_.push_back(node);
@@ -17,7 +17,7 @@ void KinodynamicRRTX::setStart(const Eigen::VectorXd& start) {
 
     std::cout << "RRTX: Start node created on Index: " << robot_state_index_ << "\n";
 }
-void KinodynamicRRTX::setGoal(const Eigen::VectorXd& goal) {
+void KinodynamicANYRRTX::setGoal(const Eigen::VectorXd& goal) {
     root_state_index_ = statespace_->getNumStates();
     auto node = std::make_shared<RRTxNode>(statespace_->addState(goal) ,  tree_.size());
     vbot_index_ = 1;
@@ -26,14 +26,14 @@ void KinodynamicRRTX::setGoal(const Eigen::VectorXd& goal) {
 
     
     tree_.push_back(node); // Fixed parenthesis
-    std::cout << "KinodynamicRRTX: Goal node created on Index: " << root_state_index_ << "\n";
+    std::cout << "KinodynamicANYRRTX: Goal node created on Index: " << root_state_index_ << "\n";
 }
 
-void KinodynamicRRTX::setClock(rclcpp::Clock::SharedPtr clock) {
+void KinodynamicANYRRTX::setClock(rclcpp::Clock::SharedPtr clock) {
     clock_ = clock;
 }
 
-std::vector<int> KinodynamicRRTX::getPathIndex() const {
+std::vector<int> KinodynamicANYRRTX::getPathIndex() const {
     std::vector<int> path;
     int idx = vbot_index_;
     while (idx != -1) {
@@ -49,7 +49,7 @@ std::vector<int> KinodynamicRRTX::getPathIndex() const {
 }
 
 
-std::vector<Eigen::VectorXd> KinodynamicRRTX::getPathPositions() const {
+std::vector<Eigen::VectorXd> KinodynamicANYRRTX::getPathPositions() const {
     // Check if the planner has a valid anchor point for the robot.
     if (!vbot_node_ || vbot_node_->getCost() == INFINITY) {
         RCLCPP_ERROR(rclcpp::get_logger("RRTX_Path_Assembly"),
@@ -95,7 +95,7 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::getPathPositions() const {
 
 
 
-void KinodynamicRRTX::clearPlannerState() {
+void KinodynamicANYRRTX::clearPlannerState() {
     // Clear all critical variables
     // start_.reset();
     // goal_.reset();
@@ -163,7 +163,7 @@ void KinodynamicRRTX::clearPlannerState() {
 }
 
 
-void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
+void KinodynamicANYRRTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
     auto start = std::chrono::high_resolution_clock::now();
     clearPlannerState();
 
@@ -214,7 +214,7 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
         throw std::runtime_error("FMTX requires a KD-Tree.");
     }
 
-    std::cout << "KinodynamicRRTX setup complete: num_of_samples=" << num_of_samples_
+    std::cout << "KinodynamicANYRRTX setup complete: num_of_samples=" << num_of_samples_
                 << ", bounds=[" << lower_bounds_ << ", " << upper_bounds_ << "]\n";
 
 
@@ -278,8 +278,8 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
     // Since i want to put a cap on the number of samples and i want RRTX to be as close as to FMTX im gonna set step size (delta) to this:
     factor = params.getParam<double>("factor");
     std::cout<<"factor: "<<factor<<"\n";
-    delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
-    // delta = 15.0;
+    // delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
+    delta = 20.0;
     std::cout << "Computed value of delta: " << delta << std::endl;
 
 
@@ -292,7 +292,7 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
     sample_counter = 1;
 }
 
-Eigen::VectorXd KinodynamicRRTX::saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta) {
+Eigen::VectorXd KinodynamicANYRRTX::saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta) {
     int dimension = newPoint.size();
     Eigen::VectorXd saturatedPoint = newPoint;
 
@@ -347,104 +347,50 @@ Eigen::VectorXd KinodynamicRRTX::saturate(const Eigen::VectorXd& newPoint, const
     return saturatedPoint;
 }
 
-// Well for now I use this for the first tree creation
-void KinodynamicRRTX::plan() {
 
-    auto start = std::chrono::high_resolution_clock::now();
-    // if (cap_samples_==true && sample_counter < num_of_samples_) { // TODO: later when you add the robot you can put the condtion of the while loop here and we use the while true outside because we want it to always work to update the gazebo obstale positions
-    while ( cap_samples_==true && sample_counter < num_of_samples_) { // TODO: later when you add the robot you can put the condtion of the while loop here and we use the while true outside because we want it to always work to update the gazebo obstale positions
-        neighborhood_radius_ = shrinkingBallRadius();
-        // neighborhood_radius_ = 10.0;
-        // delta = neighborhood_radius_;
+// In KinodynamicANYRRTX.cpp
 
-        Eigen::VectorXd sample = Eigen::VectorXd::Random(dimension_);
-        sample = (lower_bounds_.array() + (upper_bounds_ - lower_bounds_).array() * ((sample.array() + 1.0) / 2.0)).matrix();
-        
-        sample_counter++;
-        std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample.head(kd_dim), 1);
-        RRTxNode* nearest_node = tree_[nearest_indices[0]].get();
-        Eigen::VectorXd nearest_state = nearest_node->getStateValue();
-        
-        // // Steer towards sample
-        // // Calculate direction and distance using only the first two elements
-        // Eigen::VectorXd direction_xd = sample.head(kd_dim) - nearest_state.head(kd_dim);
-        // double distance_xd = direction_xd.norm();
+void KinodynamicANYRRTX::plan() {
+    // 1. Calculate Radius (Do this every iteration as the tree grows)
+    neighborhood_radius_ = shrinkingBallRadius();
 
-        // // Check if the 2D distance exceeds the step size
-        // if (distance_xd > delta) {
-        //     // Update only the first two elements of the original 'sample' vector
-        //     sample.head(kd_dim) = nearest_state.head(kd_dim) + (direction_xd / distance_xd) * delta;
-        // }
-        sample = saturate(sample, nearest_state, delta);
+    // 2. Sample a point
+    Eigen::VectorXd sample = Eigen::VectorXd::Random(dimension_);
+    sample = (lower_bounds_.array() + (upper_bounds_ - lower_bounds_).array() * ((sample.array() + 1.0) / 2.0)).matrix();
+    
+    sample_counter++;
+    
+    // 3. Find Nearest
+    std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample.head(kd_dim), 1);
+    RRTxNode* nearest_node = tree_[nearest_indices[0]].get();
+    Eigen::VectorXd nearest_state = nearest_node->getStateValue();
+    
+    // 4. Saturate (Steer)
+    sample = saturate(sample, nearest_state, delta);
 
-
-        // Attempt to extend tree
-        bool node_added = false;
-        if (obs_checker_->isObstacleFree(sample)) {
-            node_added = extend(sample);
-        }
-            
-        if (node_added) {
-            RRTxNode* new_node = tree_.back().get();
-            
-            // Add to active node set
-            v_indices_.insert(tree_.size()-1);
-            
-            // Update node costs and neighbors
-            rewireNeighbors(new_node);
-            reduceInconsistency();
-            new_node->setCost(new_node->getLMC());
-        }
-        
+    // 5. Attempt to extend tree
+    bool node_added = false;
+    if (obs_checker_->isObstacleFree(sample)) {
+        node_added = extend(sample);
     }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    std::cout << "Planning time: " << duration.count() << " ms" << std::endl;
-
-
-
-// // --- RRTX ARCHITECTURE VERIFICATION ---
-//     std::cout << "\n[DEBUG] Verifying RRTX Time Architecture...\n";
-//     int matches = 0;
-//     int mismatches = 0;
-//     double max_err = 0.0;
-
-//     for (const auto& node : tree_) {
-//         // Skip the Goal (Root) which is handled specially
-//         if (node->getIndex() == 0 || node->getCost() == std::numeric_limits<double>::infinity()) continue;
-
-//         // 1. The coordinate sampled/stored in the KD-Tree
-//         double sampled_ttg = node->getStateValue().tail<1>()[0];
         
-//         // 2. The value you calculated via: best_parent->getTimeToGoal() + best_traj.time_duration
-//         double summation_ttg = node->getTimeToGoal();
-
-//         double diff = std::abs(sampled_ttg - summation_ttg);
-//         if (diff < 1e-4) {
-//             matches++;
-//         } else {
-//             mismatches++;
-//             if (diff > max_err) max_err = diff;
-//         }
-//     }
-
-//     std::cout << "Verification Result:\n"
-//               << " - Total Tree Nodes:  " << tree_.size() << "\n"
-//               << " - Perfect Matches:   " << matches << "\n"
-//               << " - Mismatches:        " << mismatches << "\n";
-//     if (mismatches > 0) {
-//         std::cout << " - Max Time Drift:    " << max_err << " seconds\n"
-//                   << " [!] Warning: Your summation logic is drifting from the KD-Tree coordinates.\n";
-//     } else {
-//         std::cout << " [✓] SUCCESS: Sampled time and Summation time are identical.\n";
-//     }
-//     std::cout << "--------------------------------------\n";
-
+    // 6. If added, rewire and reduce inconsistency
+    if (node_added) {
+        RRTxNode* new_node = tree_.back().get();
+        
+        // Add to active node set
+        v_indices_.insert(tree_.size()-1);
+        
+        // Update node costs and neighbors
+        rewireNeighbors(new_node);
+        reduceInconsistency();
+        new_node->setCost(new_node->getLMC());
+    }
+    // Function returns here. Main loop will call it again.
 }
 
 
-bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
+bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
     
@@ -493,7 +439,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 
 
 
-std::unordered_map<RRTxNode*, Trajectory> KinodynamicRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
+std::unordered_map<RRTxNode*, Trajectory> KinodynamicANYRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
     double min_lmc = INFINITY; // v is a new node so it has not LMC yet (you can also use v->getLMC() instead of INFINITY)
     RRTxNode* best_parent = nullptr;
     double best_dist = 0.0;
@@ -554,7 +500,7 @@ std::unordered_map<RRTxNode*, Trajectory> KinodynamicRRTX::findParent(std::share
 
 
 
-void KinodynamicRRTX::rewireNeighbors(RRTxNode* v) {
+void KinodynamicANYRRTX::rewireNeighbors(RRTxNode* v) {
     const double inconsistency = v->getCost() - v->getLMC();
     if (inconsistency <= epsilon_) return;
 
@@ -587,7 +533,7 @@ void KinodynamicRRTX::rewireNeighbors(RRTxNode* v) {
     }
 }
 
-// void KinodynamicRRTX::reduceInconsistency() {
+// void KinodynamicANYRRTX::reduceInconsistency() {
 //     std::vector<Eigen::VectorXd> processed_nodes_positions;
 
 //     size_t initial_queue_size = inconsistency_queue_.getHeap().size();
@@ -697,7 +643,7 @@ void KinodynamicRRTX::rewireNeighbors(RRTxNode* v) {
 
 
 // }
-void KinodynamicRRTX::reduceInconsistency() {
+void KinodynamicANYRRTX::reduceInconsistency() {
     // 1. SNAPSHOT: Capture robot state ONCE before the loop
     double robot_cost = std::numeric_limits<double>::infinity();
     double robot_lmc = std::numeric_limits<double>::infinity();
@@ -748,7 +694,7 @@ void KinodynamicRRTX::reduceInconsistency() {
 }
 
 
-double KinodynamicRRTX::shrinkingBallRadius() const {
+double KinodynamicANYRRTX::shrinkingBallRadius() const {
     auto rad = factor * gamma_ * pow(log(tree_.size()) / tree_.size(), 1.0/dimension_);
     return std::min(rad, delta);
     // return 15.0;
@@ -756,7 +702,7 @@ double KinodynamicRRTX::shrinkingBallRadius() const {
 }
 
 // // Suited for 2D kd tree
-// std::unordered_set<int> KinodynamicRRTX::findSamplesNearObstacles(
+// std::unordered_set<int> KinodynamicANYRRTX::findSamplesNearObstacles(
 //     const ObstacleVector& obstacles,
 //     double max_length
 // ) {
@@ -815,7 +761,7 @@ double KinodynamicRRTX::shrinkingBallRadius() const {
 // }
 
 // GOOD
-// std::unordered_set<int> KinodynamicRRTX::findSamplesNearObstacles(
+// std::unordered_set<int> KinodynamicANYRRTX::findSamplesNearObstacles(
 //     const ObstacleVector& obstacles,
 //     double max_length
 // ) {
@@ -951,7 +897,7 @@ double KinodynamicRRTX::shrinkingBallRadius() const {
 //     return conflicting_samples;
 // }
 
-std::unordered_set<int> KinodynamicRRTX::findSamplesNearObstacles(
+std::unordered_set<int> KinodynamicANYRRTX::findSamplesNearObstacles(
     const ObstacleVector& obstacles,
     double max_length
 ) {
@@ -1116,7 +1062,7 @@ std::unordered_set<int> KinodynamicRRTX::findSamplesNearObstacles(
     return conflicting_samples;
 }
 
-void KinodynamicRRTX::updateLMC(RRTxNode* v) {
+void KinodynamicANYRRTX::updateLMC(RRTxNode* v) {
     cullNeighbors(v);
     double min_lmc = v->getLMC();
     RRTxNode* best_parent = nullptr;
@@ -1175,12 +1121,7 @@ void KinodynamicRRTX::updateLMC(RRTxNode* v) {
 
 */
 
-void KinodynamicRRTX::cullNeighbors(RRTxNode* v) {
-    if (cap_samples_ == true && sample_counter >= num_of_samples_-1)
-    // if (cap_samples_ == true && update_obstacle == true)
-        return; // to not waste time when we put a cap on the number of samples!
-
-
+void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
     auto& outgoing = v->outgoingEdges();
     auto it = outgoing.begin();
     while (it != outgoing.end()) {
@@ -1203,7 +1144,7 @@ void KinodynamicRRTX::cullNeighbors(RRTxNode* v) {
     }
 }
 
-// void KinodynamicRRTX::cullNeighbors(RRTxNode* v) {
+// void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
 //     if (cap_samples_ == true && sample_counter >= num_of_samples_ - 1) {
 //         // This early exit for a fixed number of samples is a reasonable optimization.
 //         return;
@@ -1248,7 +1189,7 @@ void KinodynamicRRTX::cullNeighbors(RRTxNode* v) {
 
 
 
-void KinodynamicRRTX::verifyQueue(RRTxNode* node) {
+void KinodynamicANYRRTX::verifyQueue(RRTxNode* node) {
     const double min_key = std::min(node->getLMC(), node->getCost());
     const double g_value = node->getCost();
     
@@ -1268,7 +1209,7 @@ void KinodynamicRRTX::verifyQueue(RRTxNode* node) {
 
 
 
-void KinodynamicRRTX::verifyOrphan(RRTxNode* node) {
+void KinodynamicANYRRTX::verifyOrphan(RRTxNode* node) {
     if(node->in_queue_==true){
         inconsistency_queue_.remove(node);
         // node->in_queue_=false;
@@ -1281,7 +1222,7 @@ void KinodynamicRRTX::verifyOrphan(RRTxNode* node) {
     }
 }
 
-void KinodynamicRRTX::propagateDescendants() {
+void KinodynamicANYRRTX::propagateDescendants() {
     std::queue<RRTxNode*> to_process;
 
     // Step 1: Propagate descendants through the tree
@@ -1394,12 +1335,12 @@ void KinodynamicRRTX::propagateDescendants() {
 
 
 
-bool KinodynamicRRTX::isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& edge) const {
+bool KinodynamicANYRRTX::isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& edge) const {
     return edge.distance != INFINITY && 
            obs_checker_->isObstacleFree(from->getStateValue(), to->getStateValue());
 }
 
-// void KinodynamicRRTX::visualizeTree() {
+// void KinodynamicANYRRTX::visualizeTree() {
 //     std::vector<Eigen::VectorXd> nodes;
 //     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
 //     const double goal_cost = vbot_node_ ? vbot_node_->getCost() : INFINITY;
@@ -1424,44 +1365,58 @@ bool KinodynamicRRTX::isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& 
 //     visualization_->visualizeEdges(edges);
 // }
 
-void KinodynamicRRTX::visualizeTree() {
-    // Using a more appropriate name since the edges are straight lines.
+void KinodynamicANYRRTX::visualizeTree() {
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-    // std::cout<<vbot_node_->getCost()<<"\n";
-    // OPTIMIZATION: Reserve memory for one edge per node (except the root).
-    // This is more accurate and prevents reallocations.
     if (!tree_.empty()) {
         edges.reserve(tree_.size());
     }
+    
     std::vector<Eigen::VectorXd> tree_nodes;
+    tree_nodes.reserve(tree_.size());
 
-    // Iterate through all nodes in the tree.
+    // --- Variables for statistics ---
+    long long total_forward_neighbors = 0;
+    size_t max_forward_neighbors = 0;
+    int connected_nodes_count = 0;
+    
     for (const auto& node_ptr : tree_) {
         RRTxNode* child_node = node_ptr.get();
         RRTxNode* parent_node = child_node->getParent();
 
-        tree_nodes.push_back(node_ptr->getStateValue());
+        tree_nodes.push_back(node_ptr->getStateValue().head(2)); // TODO: For min snap it needs to be 3!!! I need spatial dim variable!
 
-        // If a node has a parent, it forms a valid edge in the tree.
+        if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
+            connected_nodes_count++;
+            size_t current_neighbors = child_node->outgoingEdges().size();
+            total_forward_neighbors += current_neighbors;
+            if (current_neighbors > max_forward_neighbors) {
+                max_forward_neighbors = current_neighbors;
+            }
+        }
+
         if (parent_node) {
-            // Add a single, straight-line edge from the parent's state to the child's state.
-            // No need to check for intermediate points.
-            edges.emplace_back(parent_node->getStateValue(), child_node->getStateValue());
+            edges.emplace_back(parent_node->getStateValue().head(2), child_node->getStateValue().head(2));
         }
     }
-    
-    // std::cout<<"Tree Size: "<< tree_nodes.size()<<"\n";
 
+    double average_neighbors = (connected_nodes_count > 0) 
+                             ? static_cast<double>(total_forward_neighbors) / connected_nodes_count 
+                             : 0.0;
+    
+    std::cout << "[FMTX INFO] Total nodes: " << tree_.size()
+              << " | Connected: " << connected_nodes_count
+              << " | Max Neighbors: " << max_forward_neighbors
+              << " | Avg Neighbors: " << std::fixed << std::setprecision(2) << average_neighbors << std::endl;
+    
     // visualization_->visualizeNodes(tree_nodes, "map", 
-    //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Red for tree
+    //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
-    // Visualize the collected straight-line edges.
     visualization_->visualizeEdges(edges, "map");
 }
 
 
-void KinodynamicRRTX::visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints) {
+void KinodynamicANYRRTX::visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints) {
     // A path needs at least two points to have an edge.
     if (path_waypoints.size() < 2) {
         return;
@@ -1487,7 +1442,7 @@ void KinodynamicRRTX::visualizePath(const std::vector<Eigen::VectorXd>& path_way
 
 
 
-void KinodynamicRRTX::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_) {
+void KinodynamicANYRRTX::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_) {
     // Extract nodes and edges from the smoothed path
     std::vector<Eigen::VectorXd> nodes;
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
@@ -1510,7 +1465,7 @@ void KinodynamicRRTX::visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& 
 }
 
 
-std::vector<Eigen::VectorXd> KinodynamicRRTX::getSmoothedPathPositions(int num_intermediates, int smoothing_passes) const {
+std::vector<Eigen::VectorXd> KinodynamicANYRRTX::getSmoothedPathPositions(int num_intermediates, int smoothing_passes) const {
     // Check for invalid inputs
     if (num_intermediates < 1) {
         throw std::invalid_argument("num_intermediates must be at least 1");
@@ -1538,7 +1493,7 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::getSmoothedPathPositions(int num_i
 }
 
 
-std::vector<Eigen::VectorXd> KinodynamicRRTX::interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const {
+std::vector<Eigen::VectorXd> KinodynamicANYRRTX::interpolatePath(const std::vector<Eigen::VectorXd>& path, int num_intermediates) const {
     std::vector<Eigen::VectorXd> new_path;
 
     // Check for invalid inputs
@@ -1577,7 +1532,7 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::interpolatePath(const std::vector<
 }
 
 
-std::vector<Eigen::VectorXd> KinodynamicRRTX::smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const {
+std::vector<Eigen::VectorXd> KinodynamicANYRRTX::smoothPath(const std::vector<Eigen::VectorXd>& path, int window_size) const {
     // Check for invalid inputs
     if (path.size() <= 2 || window_size < 1) {
         return path; // Return original path if no smoothing is needed
@@ -1609,7 +1564,7 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::smoothPath(const std::vector<Eigen
 }
 
 // // Node centric with a map that asscoiates conflicting nodes to obstalces
-// void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
+// void KinodynamicANYRRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //     if (mode == 1 || mode == 3) {
 //         last_replan_metrics_ = ReplanMetrics();
 
@@ -2198,7 +2153,7 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::smoothPath(const std::vector<Eigen
 
 
 
-// void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
+// void KinodynamicANYRRTX::addNewObstacle(const std::vector<int>& added_indices) {
 //     for (int idx : added_indices) {
 //         RRTxNode* node = tree_[idx].get();
         
@@ -2245,7 +2200,7 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::smoothPath(const std::vector<Eigen
 //         // }
 //     }
 // }
-// void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
+// void KinodynamicANYRRTX::removeObstacle(const std::vector<int>& removed_indices) {
 //     for (int idx : removed_indices) {
 //         RRTxNode* node = tree_[idx].get();
 
@@ -2292,7 +2247,7 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::smoothPath(const std::vector<Eigen
 */
 
 // // This is not optimized because isTrajectorySafe is being used with all obstalces! but that added_indices was added because of a few obstalces at most, not all of them
-void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
+void KinodynamicANYRRTX::addNewObstacle(const std::vector<int>& added_indices) {
     if (mode == 1) {
         // We need a stable time anchor for all checks in this cycle.
         int count = 0;
@@ -2450,7 +2405,7 @@ void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
 
 
 
-void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
+void KinodynamicANYRRTX::removeObstacle(const std::vector<int>& removed_indices) {
     const double t_now = clock_->now().seconds();
     const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
 
@@ -2520,7 +2475,7 @@ void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
 
 // // With 3 seconds horizon filter!
 
-// void KinodynamicRRTX::addNewObstacle(const std::vector<int>& added_indices) {
+// void KinodynamicANYRRTX::addNewObstacle(const std::vector<int>& added_indices) {
 //     // We need a stable time anchor for all checks in this cycle.
 //     int count = 0;
 //     const double t_now = clock_->now().seconds();
@@ -2645,7 +2600,7 @@ void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
 // }
 
 
-// void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
+// void KinodynamicANYRRTX::removeObstacle(const std::vector<int>& removed_indices) {
 //     const double t_now = clock_->now().seconds();
 //     // const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
 
@@ -2741,7 +2696,7 @@ void KinodynamicRRTX::removeObstacle(const std::vector<int>& removed_indices) {
 
 
 ////////////////////////////////////////////////////////////////////////////////////////
-void KinodynamicRRTX::dumpTreeToCSV(const std::string& filename) const {
+void KinodynamicANYRRTX::dumpTreeToCSV(const std::string& filename) const {
     std::ofstream fout(filename);
     if (!fout.is_open()) {
         std::cerr << "Failed to open " << filename << " for writing\n";
@@ -2779,7 +2734,7 @@ void KinodynamicRRTX::dumpTreeToCSV(const std::string& filename) const {
 }
 
 // GOOD
-// void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
+// void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
 //     // Store the robot's continuous state
 //     robot_continuous_state_ = robot_state;
 
@@ -2876,7 +2831,7 @@ void KinodynamicRRTX::dumpTreeToCSV(const std::string& filename) const {
 // }
 
 
-// void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
+// void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
 //     robot_continuous_state_ = robot_state;
 //     // Extract actual planner-time from the state (last element)
 //     double robot_sim_time = robot_continuous_state_(robot_continuous_state_.size() - 1);
@@ -3031,7 +2986,7 @@ void KinodynamicRRTX::dumpTreeToCSV(const std::string& filename) const {
 // }
 
 
-void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
+void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     robot_continuous_state_ = robot_state;
     // Extract actual planner-time (Time-to-Go) from the state (last element)
     double robot_time_to_go = robot_continuous_state_(robot_continuous_state_.size() - 1);
@@ -3176,7 +3131,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
 }
 
 
-bool KinodynamicRRTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path, const Eigen::VectorXd& current_robot_state) const {
+bool KinodynamicANYRRTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path, const Eigen::VectorXd& current_robot_state) const {
     if (path.size() < 2) {
         return true;
     }
@@ -3234,7 +3189,7 @@ bool KinodynamicRRTX::isPathStillValid(const std::vector<Eigen::VectorXd>& path,
 
 
 
-bool KinodynamicRRTX::arePathsSimilar(const std::vector<Eigen::VectorXd>& path_a, const std::vector<Eigen::VectorXd>& path_b, double tolerance) const {
+bool KinodynamicANYRRTX::arePathsSimilar(const std::vector<Eigen::VectorXd>& path_a, const std::vector<Eigen::VectorXd>& path_b, double tolerance) const {
     // If paths have different numbers of waypoints, they are not similar.
     if (path_a.size() != path_b.size()) {
         return false;
@@ -3258,7 +3213,7 @@ bool KinodynamicRRTX::arePathsSimilar(const std::vector<Eigen::VectorXd>& path_a
 
 //////////////////////////////////////EVENT BASED!!!////////////////////////////////////////
 
-void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
+void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
     if (ob.predicted_path.empty()) return;
 
     // Use a conservative radius (Radius + Inflation + Delta)
@@ -3326,7 +3281,7 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
     }
 }
 
-void KinodynamicRRTX::removeObstacle(const Obstacle& ob, std::vector<Eigen::VectorXd>& debug_nodes) {
+void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob, std::vector<Eigen::VectorXd>& debug_nodes) {
     if (ob.predicted_path.empty()) return;
 
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
@@ -3397,7 +3352,7 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob, std::vector<Eigen::Vect
 }
 
 
-void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
+void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob) {
     if (ob.predicted_path.empty()) return;
 
 
@@ -3468,7 +3423,7 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
     }
 }
 
-void KinodynamicRRTX::addNewObstacle(const Obstacle& ob, std::vector<Eigen::VectorXd>& debug_nodes) {
+void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob, std::vector<Eigen::VectorXd>& debug_nodes) {
     if (ob.predicted_path.empty()) return;
 
 
@@ -3528,7 +3483,7 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob, std::vector<Eigen::Vect
         }
     }
 }
-void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& turned_obstacles) {
+void KinodynamicANYRRTX::updateObstacleSamples(const ObstacleVector& turned_obstacles) {
     if (mode != 2) return;
     if (turned_obstacles.empty()) return;
 
@@ -3591,7 +3546,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& turned_obstacl
 
 
 
-bool KinodynamicRRTX::isRobotSafe() {
+bool KinodynamicANYRRTX::isRobotSafe() {
     // If vbot_node_ is null, we have no anchor.
     // If cost is INFINITY, the anchor is invalid (trapped).
     return (vbot_node_ != nullptr) && (vbot_node_->getCost() != INFINITY);

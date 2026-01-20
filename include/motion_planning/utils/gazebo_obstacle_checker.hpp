@@ -363,6 +363,9 @@ public:
     void updateObstaclesMathematically(double current_robot_time);
       
 
+    Eigen::Vector2d getObstacleAnalyticalPosition(const Obstacle& ob, double t_robot) const;
+    
+
 private:
     Eigen::Vector2d getObstaclePositionAtTime(const Obstacle& ob, double query_time) const;
 

@@ -48,7 +48,7 @@ class StateSpace {
 
 
 
-    virtual bool prefersLazyNear() const { return false; } // Default to proactive (i.e., caching and not lazy)
+    virtual bool prefersLazyNear() const { return true; } // Default to proactive (i.e., caching and not lazy)
 
     virtual double getMaxVelocity() const { return 0.0; }
     virtual double getMaxAcceleration() const { return 0.0; }

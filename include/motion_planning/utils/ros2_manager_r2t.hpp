@@ -457,6 +457,8 @@ public:
           robot_velocity_(robot_velocity),
           initial_budget_time_(initial_budget_time)
     {
+        inflation = params.getParam<double>("inflation");
+
         if (initial_sim_state.size() != 3) {
             throw std::runtime_error("R2TROS2Manager: Initial state must be 3D.");
         }
@@ -538,133 +540,170 @@ public:
             last_known_theta_ = atan2(direction_vector.y(), direction_vector.x());
         }
 
-        // 5. Collision Check
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+        double current_planner_time = this->getCurrentSimTime(); 
+        double current_sim_time = initial_budget_time_ - current_planner_time;
+        gazebo_checker->processLatestPoseInfo(current_sim_time); 
+        // 5. Collision Check
         if (gazebo_checker) {
             Eigen::Vector2d current_pos = current_interpolated_state_.head<2>();
             bool is_colliding_now = gazebo_checker->checkRobotCollision(current_pos, last_known_theta_);
             if (is_colliding_now && !is_in_collision_state_) {
                 collision_count_++;
-                RCLCPP_FATAL(this->get_logger(), "XXX COLLISION DETECTED XXX At T=%.2f | Total: %d", 
-                             current_sim_time_, collision_count_.load());
+
+                // Collect additional info
+                Eigen::Vector2d robot_pos = current_interpolated_state_.head<2>();
+                double robot_theta = last_known_theta_;
+
+                // Grab all threats nearby
+                auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+                std::vector<std::string> colliding_obstacles;
+                if (gazebo_checker) {
+                    const auto& all_obstacles = gazebo_checker->getObstaclePositions();
+                    for (const auto& obs : all_obstacles) {
+                        Eigen::Vector2d obs_pos(obs.position.x(), obs.position.y());
+                        double dist = (robot_pos - obs_pos).norm();
+                        if (dist < obs.dimensions.radius + inflation) { // optional small epsilon
+                            colliding_obstacles.push_back(obs.name);
+                        }
+                    }
+                }
+
+                // Log the enriched crash info
+                RCLCPP_FATAL(this->get_logger(),
+                            "XXX COLLISION DETECTED XXX At T=%.2f | Total Collisions: %d\n"
+                            "Robot Pos: [%.3f, %.3f] | Theta: %.3f rad\n"
+                            "Colliding Obstacles: %s",
+                            current_sim_time_,
+                            collision_count_.load(),
+                            robot_pos.x(), robot_pos.y(), robot_theta,
+                            colliding_obstacles.empty() ? "NONE" : colliding_obstacles.front().c_str() // could join all names if you want
+                );
             }
             is_in_collision_state_ = is_colliding_now;
         }
 
-        // 6. VISUALIZATION: Robot Arrow & Trace (EDGES)
-        if (visualizer_) {
-            // A. Robot Arrow
-            Eigen::Vector3d robot_pos_3d(current_interpolated_state_(0), current_interpolated_state_(1), 0.0);
-            Eigen::Quaterniond q(Eigen::AngleAxisd(last_known_theta_, Eigen::Vector3d::UnitZ()));
-            Eigen::VectorXd orientation_quat(4); orientation_quat << q.x(), q.y(), q.z(), q.w();
-            
-            std::vector<float> color = is_in_collision_state_ ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.8f, 0.1f, 0.8f};
-            visualizer_->visualizeRobotArrow(robot_pos_3d, orientation_quat, "map", color, "simulated_robot");
-
-            // B. Robot Trace (Add Edges)
-            // FIX: Remove the distance check. Always add the edge.
-            // This ensures continuity even if the robot moves slowly.
-            
-            // B. Robot Trace (Add Edges)
-            // FIX: Remove the distance check. Always add the edge.
-            
-            // Create a 3D point for start and end (Z=0)
-            Eigen::VectorXd start_pt(3); start_pt << prev_state(0), prev_state(1), 0.0; // <--- ADDED SEMICOLON HERE
-            Eigen::VectorXd end_pt(3);   end_pt << current_interpolated_state_(0), current_interpolated_state_(1), 0.0;
-            
-            // Add to edge list
-            robot_trace_edges_.push_back({start_pt, end_pt});
-            
-            // C. Publish Trace (Throttled to every 10 steps)
-            // Keep the throttle here to save network bandwidth, but the list is now complete.
-            static int trace_pub_throttle = 0;
-            if (++trace_pub_throttle % 2 == 0) {
-                visualizer_->visualizeEdges(robot_trace_edges_, "map", "1.0,1.0,0.0", "robot_trace_edges");
-            }
-        }
-    }
-
-    // void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
-    //     std::lock_guard<std::mutex> lock(path_mutex_);
-    //     if (new_path_from_main.size() < 2) {
-    //         is_path_set_ = false;
-    //         return;
-    //     }
+        // Create a 3D point for start and end (Z=0)
+        Eigen::VectorXd start_pt(3); start_pt << prev_state(0), prev_state(1), 0.0; // <--- ADDED SEMICOLON HERE
+        Eigen::VectorXd end_pt(3);   end_pt << current_interpolated_state_(0), current_interpolated_state_(1), 0.0;
         
-    //     if (!is_path_set_) {
-    //         current_path_ = new_path_from_main;
-    //         current_sim_time_ = current_path_.front()(2); 
-    //         current_interpolated_state_ = current_path_.front();
-    //         is_path_set_ = true;
-    //     } else {
-    //         std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
-    //         stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
-    //         stitched_path.front()(2) = current_sim_time_;
-    //         current_path_ = stitched_path;
-    //     }
-    // }    
+        // Add to edge list
+        robot_trace_edges_.push_back({start_pt, end_pt});
 
-    void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
-        std::lock_guard<std::mutex> lock(path_mutex_);
-        if (new_path_from_main.size() < 2) {
-            is_path_set_ = false;
-            return;
-        }
+        // // 6. VISUALIZATION: Robot Arrow & Trace (EDGES)
+    // if (visualizer_) {
+    //     // A. Robot Arrow
+    //     Eigen::Vector3d robot_pos_3d(current_interpolated_state_(0), current_interpolated_state_(1), 0.0);
+    //     Eigen::Quaterniond q(Eigen::AngleAxisd(last_known_theta_, Eigen::Vector3d::UnitZ()));
+    //     Eigen::VectorXd orientation_quat(4); orientation_quat << q.x(), q.y(), q.z(), q.w();
         
-        if (!is_path_set_) {
-            // First time setup
-            current_path_ = new_path_from_main;
-            // Sync manager time to the path's start time
-            current_sim_time_ = current_path_.front()(2); 
-            current_interpolated_state_ = current_path_.front();
-            is_path_set_ = true;
-        } else {
-            // --- THE FIX ---
-            // 1. Create a copy of the new path
-            std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
-            
-            // 2. Stitch the POSITION (x, y) to where the robot actually is right now
-            stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
-            
-            // 3. CRITICAL: Do NOT overwrite the Time!
-            // Keep the time from the planner (new_path_from_main).
-            // This ensures the path is temporally consistent with the planner's graph.
-            // stitched_path.front()(2) = current_sim_time_; // <--- REMOVE THIS LINE
-            
-            // 4. Update the path
-            current_path_ = stitched_path;
+    //     std::vector<float> color = is_in_collision_state_ ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.8f, 0.1f, 0.8f};
+    //     visualizer_->visualizeRobotArrow(robot_pos_3d, orientation_quat, "map", color, "simulated_robot");
 
-            // 5. OPTIONAL: Sync Manager Time?
-            // If the planner's time is significantly different from the manager's time,
-            // it implies a jump. We should snap the manager to the path to prevent interpolation errors.
-            // However, usually, we just let stepSimulation handle the progression.
-            // If you want to be safe, you can uncomment the following, but it might cause "teleporting" if the planner is slow:
-            // current_sim_time_ = current_path_.front()(2); 
-        }
-    }
+    //     // B. Robot Trace (Add Edges)
+    //     // FIX: Remove the distance check. Always add the edge.
+    //     // This ensures continuity even if the robot moves slowly.
+        
+    //     // B. Robot Trace (Add Edges)
+    //     // FIX: Remove the distance check. Always add the edge.
+        
+    //     // Create a 3D point for start and end (Z=0)
+    //     Eigen::VectorXd start_pt(3); start_pt << prev_state(0), prev_state(1), 0.0; // <--- ADDED SEMICOLON HERE
+    //     Eigen::VectorXd end_pt(3);   end_pt << current_interpolated_state_(0), current_interpolated_state_(1), 0.0;
+        
+    //     // Add to edge list
+    //     robot_trace_edges_.push_back({start_pt, end_pt});
+        
+    //     // C. Publish Trace (Throttled to every 10 steps)
+    //     // Keep the throttle here to save network bandwidth, but the list is now complete.
+    //     static int trace_pub_throttle = 0;
+    //     if (++trace_pub_throttle % 2 == 0) {
+    //         visualizer_->visualizeEdges(robot_trace_edges_, "map", "1.0,1.0,0.0", "robot_trace_edges");
+    //     }
+    // }
+}
 
+// void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+//     std::lock_guard<std::mutex> lock(path_mutex_);
+//     if (new_path_from_main.size() < 2) {
+//         is_path_set_ = false;
+//         return;
+//     }
     
+//     if (!is_path_set_) {
+//         current_path_ = new_path_from_main;
+//         current_sim_time_ = current_path_.front()(2); 
+//         current_interpolated_state_ = current_path_.front();
+//         is_path_set_ = true;
+//     } else {
+//         std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
+//         stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
+//         stitched_path.front()(2) = current_sim_time_;
+//         current_path_ = stitched_path;
+//     }
+// }    
 
-    Eigen::VectorXd getCurrentSimulatedState() {
-        std::lock_guard<std::mutex> lock(path_mutex_);
-        return current_interpolated_state_;
+void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+    std::lock_guard<std::mutex> lock(path_mutex_);
+    if (new_path_from_main.size() < 2) {
+        is_path_set_ = false;
+        return;
     }
     
-    int getCollisionCount() const { return collision_count_.load(); }
-    
-    void updateThreats(const std::vector<Obstacle>& culprits) {
-        current_threat_names_.clear();
-        for (const auto& obs : culprits) {
-            current_threat_names_.insert(obs.name);
-        }
+    if (!is_path_set_) {
+        // First time setup
+        current_path_ = new_path_from_main;
+        // Sync manager time to the path's start time
+        current_sim_time_ = current_path_.front()(2); 
+        current_interpolated_state_ = current_path_.front();
+        is_path_set_ = true;
+    } else {
+        // --- THE FIX ---
+        // 1. Create a copy of the new path
+        std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
+        
+        // 2. Stitch the POSITION (x, y) to where the robot actually is right now
+        stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
+        
+        // 3. CRITICAL: Do NOT overwrite the Time!
+        // Keep the time from the planner (new_path_from_main).
+        // This ensures the path is temporally consistent with the planner's graph.
+        // stitched_path.front()(2) = current_sim_time_; // <--- REMOVE THIS LINE
+        
+        // 4. Update the path
+        current_path_ = stitched_path;
+
+        // 5. OPTIONAL: Sync Manager Time?
+        // If the planner's time is significantly different from the manager's time,
+        // it implies a jump. We should snap the manager to the path to prevent interpolation errors.
+        // However, usually, we just let stepSimulation handle the progression.
+        // If you want to be safe, you can uncomment the following, but it might cause "teleporting" if the planner is slow:
+        // current_sim_time_ = current_path_.front()(2); 
     }
-    double getCurrentSimTime() const {
-        return current_sim_time_;
+}
+
+
+
+Eigen::VectorXd getCurrentSimulatedState() {
+    std::lock_guard<std::mutex> lock(path_mutex_);
+    return current_interpolated_state_;
+}
+
+int getCollisionCount() const { return collision_count_.load(); }
+
+void updateThreats(const std::vector<Obstacle>& culprits) {
+    current_threat_names_.clear();
+    for (const auto& obs : culprits) {
+        current_threat_names_.insert(obs.name);
     }
+}
+double getCurrentSimTime() const {
+    return current_sim_time_;
+}
 
 private:
-    std::shared_ptr<ObstacleChecker> obstacle_checker_;
-    std::shared_ptr<RVizVisualization> visualizer_;
+std::shared_ptr<ObstacleChecker> obstacle_checker_;
+std::shared_ptr<RVizVisualization> visualizer_;
     rclcpp::TimerBase::SharedPtr vis_timer_;
     std::mutex path_mutex_;
     std::vector<Eigen::VectorXd> current_path_;
@@ -681,55 +720,133 @@ private:
     bool is_in_collision_state_{false};
     std::set<std::string> current_threat_names_;
     double initial_budget_time_;
+    double inflation;
 
-    // Visualization Loop (Background Thread - Obstacles Only)
+    // // Visualization Loop (Background Thread - Obstacles Only)
+    // void visualizationLoop() { 
+    //     if (!obstacle_checker_ || !visualizer_) return; 
+    //     auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); 
+    //     if (!gazebo_checker) return; 
+        
+    //     double current_planner_time = this->getCurrentSimTime(); // e.g. 18.0 (decreasing)
+        
+    //     // FIX: Convert to Forward Simulation Time
+    //     // If Budget started at 20.0, and is now 18.0, Sim Time is 2.0
+    //     double current_sim_time = initial_budget_time_ - current_planner_time;
+
+    //     // Optional: Debug log to verify the conversion
+    //     // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, 
+    //     //     "Vis Loop | Planner T: %.2f | Sim T: %.2f", current_planner_time, current_sim_time);
+
+    //     // NOW pass the CORRECT time (Forward Time)
+    //     gazebo_checker->processLatestPoseInfo(current_sim_time); 
+        
+    //     const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); 
+        
+    //     std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; 
+    //     std::vector<double> safe_cyl_radii, threat_cyl_radii;
+    //     std::vector<std::tuple<Eigen::Vector2d, double, double, double>> safe_boxes, threat_boxes;
+    //     std::vector<Eigen::Vector2d> safe_vel_pos, safe_vel_val;
+    //     std::vector<Eigen::Vector2d> threat_vel_pos, threat_vel_val;
+        
+    //     for (const auto& obstacle : all_obstacles) {
+    //         bool is_threat = current_threat_names_.count(obstacle.name);
+    //         if (obstacle.type == Obstacle::CIRCLE) {
+    //             Eigen::VectorXd pos(2); pos << obstacle.position.x(), obstacle.position.y();
+    //             if (is_threat) { threat_cyl_pos.push_back(pos); threat_cyl_radii.push_back(obstacle.dimensions.radius); }
+    //             else { safe_cyl_pos.push_back(pos); safe_cyl_radii.push_back(obstacle.dimensions.radius); }
+    //         } else if (obstacle.type == Obstacle::BOX) {
+    //             auto box_tuple = std::make_tuple(obstacle.position, obstacle.dimensions.width, obstacle.dimensions.height, obstacle.dimensions.rotation);
+    //             if (is_threat) threat_boxes.push_back(box_tuple);
+    //             else safe_boxes.push_back(box_tuple);
+    //         }
+    //         if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
+    //             if (is_threat) { threat_vel_pos.push_back(obstacle.position); threat_vel_val.push_back(obstacle.velocity); }
+    //             else { safe_vel_pos.push_back(obstacle.position); safe_vel_val.push_back(obstacle.velocity); }
+    //         }
+    //     }
+    //     visualizer_->publishObstacleFrame(
+    //         safe_cyl_pos, safe_cyl_radii, threat_cyl_pos, threat_cyl_radii,
+    //         safe_boxes, threat_boxes, safe_vel_pos, safe_vel_val, threat_vel_pos, threat_vel_val, "map"
+    //     );
+    // }
+
     void visualizationLoop() { 
         if (!obstacle_checker_ || !visualizer_) return; 
+        
+        // --- 1. PREPARE OBSTACLE DATA ---
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); 
-        if (!gazebo_checker) return; 
-        
-        double current_planner_time = this->getCurrentSimTime(); // e.g. 18.0 (decreasing)
-        
-        // FIX: Convert to Forward Simulation Time
-        // If Budget started at 20.0, and is now 18.0, Sim Time is 2.0
-        double current_sim_time = initial_budget_time_ - current_planner_time;
-
-        // Optional: Debug log to verify the conversion
-        // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, 
-        //     "Vis Loop | Planner T: %.2f | Sim T: %.2f", current_planner_time, current_sim_time);
-
-        // NOW pass the CORRECT time (Forward Time)
-        gazebo_checker->processLatestPoseInfo(current_sim_time); 
-        
-        const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); 
-        
         std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; 
         std::vector<double> safe_cyl_radii, threat_cyl_radii;
         std::vector<std::tuple<Eigen::Vector2d, double, double, double>> safe_boxes, threat_boxes;
         std::vector<Eigen::Vector2d> safe_vel_pos, safe_vel_val;
         std::vector<Eigen::Vector2d> threat_vel_pos, threat_vel_val;
-        
-        for (const auto& obstacle : all_obstacles) {
-            bool is_threat = current_threat_names_.count(obstacle.name);
-            if (obstacle.type == Obstacle::CIRCLE) {
-                Eigen::VectorXd pos(2); pos << obstacle.position.x(), obstacle.position.y();
-                if (is_threat) { threat_cyl_pos.push_back(pos); threat_cyl_radii.push_back(obstacle.dimensions.radius); }
-                else { safe_cyl_pos.push_back(pos); safe_cyl_radii.push_back(obstacle.dimensions.radius); }
-            } else if (obstacle.type == Obstacle::BOX) {
-                auto box_tuple = std::make_tuple(obstacle.position, obstacle.dimensions.width, obstacle.dimensions.height, obstacle.dimensions.rotation);
-                if (is_threat) threat_boxes.push_back(box_tuple);
-                else safe_boxes.push_back(box_tuple);
-            }
-            if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
-                if (is_threat) { threat_vel_pos.push_back(obstacle.position); threat_vel_val.push_back(obstacle.velocity); }
-                else { safe_vel_pos.push_back(obstacle.position); safe_vel_val.push_back(obstacle.velocity); }
+
+        if (gazebo_checker) {
+            double current_planner_time = this->getCurrentSimTime(); 
+            double current_sim_time = initial_budget_time_ - current_planner_time;
+            gazebo_checker->processLatestPoseInfo(current_sim_time); 
+            const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); 
+            
+            for (const auto& obstacle : all_obstacles) {
+                bool is_threat = current_threat_names_.count(obstacle.name);
+                if (obstacle.type == Obstacle::CIRCLE) {
+                    Eigen::VectorXd pos(2); pos << obstacle.position.x(), obstacle.position.y();
+                    if (is_threat) { threat_cyl_pos.push_back(pos); threat_cyl_radii.push_back(obstacle.dimensions.radius); }
+                    else { safe_cyl_pos.push_back(pos); safe_cyl_radii.push_back(obstacle.dimensions.radius); }
+                } else if (obstacle.type == Obstacle::BOX) {
+                    auto box_tuple = std::make_tuple(obstacle.position, obstacle.dimensions.width, obstacle.dimensions.height, obstacle.dimensions.rotation);
+                    if (is_threat) threat_boxes.push_back(box_tuple);
+                    else safe_boxes.push_back(box_tuple);
+                }
+                if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
+                    if (is_threat) { threat_vel_pos.push_back(obstacle.position); threat_vel_val.push_back(obstacle.velocity); }
+                    else { safe_vel_pos.push_back(obstacle.position); safe_vel_val.push_back(obstacle.velocity); }
+                }
             }
         }
+
+        // --- 2. PREPARE ROBOT DATA (Trace & Arrow) ---
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> current_trace;
+        Eigen::Vector3d robot_pos;
+        Eigen::VectorXd orientation_quat(4);
+        bool is_colliding = false;
+
+        {
+            std::lock_guard<std::mutex> lock(path_mutex_);
+            
+            // Copy trace for thread safety
+            current_trace = robot_trace_edges_;
+            
+            // Prepare Robot Arrow Data
+            robot_pos << current_interpolated_state_(0), current_interpolated_state_(1), 0.0;
+            Eigen::Quaterniond q(Eigen::AngleAxisd(last_known_theta_, Eigen::Vector3d::UnitZ()));
+            orientation_quat << q.x(), q.y(), q.z(), q.w();
+            is_colliding = is_in_collision_state_;
+        }
+
+        // --- 3. PUBLISH BATCH ---
+        // Note: We still use visualizeRobotArrow separately because it's a single marker 
+        // and easier to manage than adding it to the complex obstacle batch logic.
+        // But the Trace is now batched with obstacles!
+        
+        // // Draw Arrow
+        // std::vector<float> arrow_color = is_colliding ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.8f, 0.1f, 0.8f};
+        // visualizer_->visualizeRobotArrow(robot_pos, orientation_quat, "map", arrow_color, "simulated_robot");
+
+        // --- 3. PUBLISH BATCH (UPDATED) ---
+        std::vector<float> robot_color = is_colliding ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.8f, 0.1f, 0.8f};
+        
+        // Pass robot data directly to the batch function
         visualizer_->publishObstacleFrame(
             safe_cyl_pos, safe_cyl_radii, threat_cyl_pos, threat_cyl_radii,
-            safe_boxes, threat_boxes, safe_vel_pos, safe_vel_val, threat_vel_pos, threat_vel_val, "map"
+            safe_boxes, threat_boxes, safe_vel_pos, safe_vel_val, threat_vel_pos, threat_vel_val,
+            current_trace, 
+            robot_pos, orientation_quat, robot_color, inflation, // <--- ROBOT DATA HERE
+            "map"
         );
     }
+
 };
 //////////////////
 

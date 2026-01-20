@@ -68,6 +68,14 @@ public:
         const std::vector<std::tuple<Eigen::Vector2d, double, double, double>>& threat_boxes,
         const std::vector<Eigen::Vector2d>& safe_vel_pos, const std::vector<Eigen::Vector2d>& safe_vel_val,
         const std::vector<Eigen::Vector2d>& threat_vel_pos, const std::vector<Eigen::Vector2d>& threat_vel_val,
+        
+        // --- NEW PARAMETERS FOR ROBOT ---
+        const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& robot_trace_edges,
+        const Eigen::Vector3d& robot_pos,
+        const Eigen::VectorXd& robot_orientation, // Quaternion
+        const std::vector<float>& robot_color,
+        double robot_inflation,
+        
         const std::string& frame_id);
 
 private:

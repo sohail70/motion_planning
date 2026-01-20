@@ -59,7 +59,7 @@ public:
     bool validateAgainstSamples(const std::vector<std::shared_ptr<BITNode>>& samples) const override;
     int getDimension() override {return dimension_;}
 
-private:
+protected:
     int dimension_;
     Eigen::VectorXd weights_;
     

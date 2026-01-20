@@ -235,3 +235,4 @@ Trajectory DubinsTimeStateSpace::createHoverPath(const Eigen::VectorXd& hover_st
 
     return hover_traj;
 }
+

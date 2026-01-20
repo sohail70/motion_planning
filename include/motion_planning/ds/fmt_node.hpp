@@ -93,6 +93,7 @@ public:
     size_t heap_index_;  // Tracks position in the priority queue
 
     bool in_unvisited_;
+    bool is_new = true;
     double edge_cost_;
     /*
         blocked_best_neighbor: one thing about FMT is it exhausts the z nodes as it goes and in some bad cases near obstacles 

@@ -63,6 +63,11 @@ struct Trajectory {
     double envelope_radius = 0.0;
     double total_duration = 0.0;
 
+
+        // ADD THESE TWO FIELDS:
+    int from_node_index = -1; // To store 1287
+    int to_node_index = -1;   // To store 2203
+
 };
 
 

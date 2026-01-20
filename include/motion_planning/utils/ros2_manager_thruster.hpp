@@ -43,6 +43,7 @@ public:
           visualizer_(visualizer),
           is_path_set_(false) {
         
+        inflation = params.getParam<double>("inflation");
         int dim = params.getParam<int>("thruster_state_dimension", 5);
         current_interpolated_state_ = Eigen::VectorXd::Zero(dim);
 
@@ -189,7 +190,7 @@ private:
 
 
     std::set<std::string> current_threat_names_;
-
+    double inflation;
     //ORIGINAL VISUALIATOIN
     // void visualizationLoop() {
     //     if (!obstacle_checker_ || !visualizer_) return;
