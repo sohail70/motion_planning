@@ -543,9 +543,16 @@ int main(int argc, char** argv)
                 "updateObstacleSamples took: %.2f ms | Processed: [ %s ]", 
                 duration_ms, obs_names.c_str());
         }
-
+        auto start  = std::chrono::steady_clock::now();
         kinodynamic_planner->plan();
         auto calc_end = std::chrono::steady_clock::now();
+
+        double duration_ms = std::chrono::duration<double, std::milli>(calc_end - start).count();
+        RCLCPP_INFO(rclcpp::get_logger("FMTx_Timing"), 
+                "plan took: %.2f", 
+                duration_ms);
+
+
 
         // --- 4. UPDATE VISUALIZATION & THREATS ---
         std::vector<Obstacle> culprits = obstacle_checker->getAndClearCulprits();

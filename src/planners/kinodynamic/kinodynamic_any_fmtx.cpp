@@ -587,8 +587,7 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
         int node_index = tree_.size();
         tree_.push_back(node);
         
-        // Add to KD-Tree
-        kdtree_->addPoint(sample_val); 
+        // Add to KD-Tree kdtree_->addPoint(sample_val); 
         
         added_node_indices.push_back(node_index);
         new_samples_viz.push_back(sample_val);
@@ -596,7 +595,7 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
 
     if (added_node_indices.empty()) return;
 
-    // 5. BUILD KD-TREE
+    // 5. BUILD KD-TREE --> BUILDT TREE function is empty in case you use DynamicWeightedNanoFlann
     if (use_kdtree) {
         kdtree_->buildTree();
     }
@@ -604,16 +603,34 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
     // 6. UPDATE NEIGHBORHOOD RADIUS
     updateNeighborhoodRadius();
 
+    /*
+        For newly sampled node can we use the union of the threats of the neighbors? it might work but i need to think if the removeObstalce later will remove 
+        those obstalces from the new node or not. I can think of a configuration where those obstalces might linger in the threat set of this new node so for now I will
+        check the collision with all the obstalces in the plan function for the new added node with is_new flag! then later in the nex turn around events the threat set for this
+        new node would be updated naturally in the addNewObstalce function and we are good! 
+        even using KNN to use the nearest node's threat seems like its not exact because the nearest node might be in the obstalces tube but new node might be safe outside the tube!
+        I will think of an optimized solution later!
+    
+    */
     // 7. SEED V_OPEN
     for (int idx : added_node_indices) {
         FMTNode* new_node = tree_[idx].get();
+        // std::unordered_set<std::string> accumulated_threats;
 
         for (const auto& [neighbor, edge_info] : new_node->forwardNeighbors()) {
+            // // Accumulate threats from all connected neighbors
+            // for (const auto& threat_name : neighbor->threats) {
+            //     accumulated_threats.insert(threat_name);
+            // }
+
             if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) {
                 continue;
             }
             v_open_heap_.add(neighbor, neighbor->getCost());
         }
+        // // Assign the union of threats to the new node
+        // new_node->threats = accumulated_threats;
+
     }
     // // ======================================================
     // // NEW: VISUALIZE V_OPEN NODES
@@ -1570,7 +1587,8 @@ void KinodynamicANYFMTX::plan() {
                     // HYBRID COLLISION CHECKING
                     // ======================================================
                     
-                    if (x->is_new) {
+                    if (x->is_new) {  // ---> I used the union threats in the addBatchSamples function last for loop but i need to make sure if removeObstalce will remove it logically or not! (given all the neighbors of the new node are having the up to date threat set since i use the union some obstalce  might linger!)
+                    // if (false) {
                         // CASE 1: NEW SAMPLE
                         // We haven't checked this node against the world yet.
                         // Perform a full check against ALL obstacles.
