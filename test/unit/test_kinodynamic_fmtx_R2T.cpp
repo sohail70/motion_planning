@@ -151,6 +151,9 @@ int main(int argc, char** argv)
     gazebo_params.setParam("inflation", 0.75); //
     gazebo_params.setParam("persistent_static_obstacles", false);
     gazebo_params.setParam("initial_budget_time", time_budget_);
+    manager_params.setParam("inflation", gazebo_params.getParam<double>("inflation"));  // Obstacle visualization rate
+
+
 
 
     // gazebo_params.setParam("collision_check_footprint", "rectangular"); // Options: "circular", "rectangular"

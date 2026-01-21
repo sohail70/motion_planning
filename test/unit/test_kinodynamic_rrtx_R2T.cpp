@@ -148,6 +148,8 @@ int main(int argc, char** argv)
     gazebo_params.setParam("inflation", 0.75); // <-- VERIFY THIS IS A REASONABLE, NON-ZERO VALUE
     gazebo_params.setParam("persistent_static_obstacles", false);
     gazebo_params.setParam("initial_budget_time", time_budget_);
+    manager_params.setParam("inflation", gazebo_params.getParam<double>("inflation"));  // Obstacle visualization rate
+
     
     Params planner_params;
     planner_params.setParam("num_of_samples", num_samples);

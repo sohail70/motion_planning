@@ -3331,7 +3331,16 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob, std::vector<Eigen::Vect
 
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-    double search_radius = obs_r + ob.inflation + delta;
+
+    // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
+    // 4. THE FIX: Gap Coverage Inflation
+    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // Total = R + 0.414R = 1.414R.
+    double search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+
 
     std::unordered_set<int> processed_indices;
 
@@ -3477,10 +3486,15 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob, std::vector<Eigen::Vect
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     
+    // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
+    // 4. THE FIX: Gap Coverage Inflation
+    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // Total = R + 0.414R = 1.414R.
 
-    // Linear sum is safer (conservative) than sqrt for sparse graphs
-    double search_radius = obs_r + ob.inflation + (delta );
-
+    double search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
 
 
     std::unordered_set<int> processed_indices;

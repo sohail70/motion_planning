@@ -4564,48 +4564,100 @@ Eigen::Vector2d GazeboObstacleChecker::getObstaclePositionAtTime(
     RCLCPP_WARN(logger, "Fallthrough in getObstaclePositionAtTime for [%s] T=%.2f. Returning Pos.", ob.name.c_str(), query_time);
     return ob.position;
 }
-// // ITS GOOD BUT IF I HAVE COLLISON ITS BECAUSE IT dt IS NOT SMALL ENOUGH!!!
+// // // ITS GOOD BUT IF I HAVE COLLISON ITS BECAUSE IT dt IS NOT SMALL ENOUGH!!!
+// std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
+//     const Obstacle& ob, 
+//     double currentTime) const 
+// {
+//     std::vector<Eigen::Vector3d> path;
+    
+//     // Safety check: Needs to be dynamic and have valid physics data
+//     if (!ob.is_dynamic || !ob.has_ground_truth) return path;
+
+//     // const double dt_step = 0.05; 
+//     const double dt_step = 0.1; // we cant reduce this much because of kd tree queries in addNewObstacle/RemoveObstacle but the isTrajecotrySafe functions is analytical and doesnt need much points!
+    
+//     // 1. Current State (Trusted from processLatestPoseInfo)
+//     Eigen::Vector2d current_v = ob.velocity;
+//     Eigen::Vector2d predicted_pos = ob.position;
+    
+//     // 2. Simulate (Linear Projection only)
+//     // We do NOT check for walls or amplitude. 
+//     // We assume it keeps going in the same direction forever.
+//     for (double t = currentTime; t >= -1e-9; t -= dt_step) {
+        
+//         // Add point [X, Y, Time]
+//         path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
+
+//         // Move linearly: Pos = Pos + (Vel * dt)
+//         predicted_pos = predicted_pos + (current_v * dt_step);
+//     }
+    
+//     // // --- DEBUG LOG ---
+//     // // You will now see Y increasing/decreasing monotonically (Straight Line)
+//     // // instead of zig-zagging.
+//     // // -----------------
+//     // std::cout << "\n=== LINEAR PREDICTION TUBE FOR " << ob.name << " ===" << std::endl;
+//     // for (size_t i = 0; i < path.size(); i+=5) { // Print every 5th point to save space
+//     //      printf("[%zu] X:%.2f  Y:%.2f  T:%.2f\n", 
+//     //            i, path[i].x(), path[i].y(), path[i].z());
+//     // }
+//     // std::cout << "===================================================\n" << std::endl;
+
+//     return path;
+// }
+
+
 std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
     const Obstacle& ob, 
     double currentTime) const 
 {
     std::vector<Eigen::Vector3d> path;
     
-    // Safety check: Needs to be dynamic and have valid physics data
     if (!ob.is_dynamic || !ob.has_ground_truth) return path;
 
-    // const double dt_step = 0.05; 
-    const double dt_step = 2.0; // Maybe it sholdnt be bigger than the duration of any turnaround! because the path will change and i dontknow which is correct!!!also i notices less repair when this gets big!
-    
-    // 1. Current State (Trusted from processLatestPoseInfo)
-    Eigen::Vector2d current_v = ob.velocity;
-    Eigen::Vector2d predicted_pos = ob.position;
-    
-    // 2. Simulate (Linear Projection only)
-    // We do NOT check for walls or amplitude. 
-    // We assume it keeps going in the same direction forever.
-    for (double t = currentTime; t >= -1e-9; t -= dt_step) {
-        
-        // Add point [X, Y, Time]
-        path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
+    // 1. Calculate Effective Radius
+    double R_eff = 0.0;
+    if (ob.type == Obstacle::CIRCLE) {
+        R_eff = ob.dimensions.radius;
+    } else {
+        // For Box, use the radius of the circumscribed circle (half diagonal)
+        // This ensures we cover the corners even if it rotates (though yours is linear)
+        R_eff = std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+    }
 
-        // Move linearly: Pos = Pos + (Vel * dt)
+    // 2. Get Speed (Scalar magnitude of velocity vector)
+    double speed = ob.velocity.norm();
+
+    // 3. Calculate Adaptive DT
+    // We add a small safety factor (e.g., 0.8) to ensure the circles overlap slightly
+    // rather than just touching. This prevents "edge cases" (pun intended).
+    double dt_step = 0.1; // Default fallback
+    
+    if (speed > 1e-6) {
+        // Formula: dt = (2 * Radius) / Speed
+        // We clamp it to a minimum (e.g., 0.05) to prevent infinite loops if speed is huge,
+        // and a maximum (e.g., 0.5) to prevent too sparse samples for very slow objects.
+        double calculated_dt = (2.0 * R_eff) / speed;
+        // Clamp values to keep sanity
+        dt_step = std::clamp(calculated_dt, 0.05, 1.0);
+    } else {
+        // Static obstacle (or very slow)
+        dt_step = 0.5; // Don't need many samples if it's not moving
+    }
+
+    // 4. Generate Path
+    Eigen::Vector2d predicted_pos = ob.position;
+    Eigen::Vector2d current_v = ob.velocity;
+
+    for (double t = currentTime; t >= -1e-9; t -= dt_step) {
+        path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
         predicted_pos = predicted_pos + (current_v * dt_step);
     }
     
-    // // --- DEBUG LOG ---
-    // // You will now see Y increasing/decreasing monotonically (Straight Line)
-    // // instead of zig-zagging.
-    // // -----------------
-    // std::cout << "\n=== LINEAR PREDICTION TUBE FOR " << ob.name << " ===" << std::endl;
-    // for (size_t i = 0; i < path.size(); i+=5) { // Print every 5th point to save space
-    //      printf("[%zu] X:%.2f  Y:%.2f  T:%.2f\n", 
-    //            i, path[i].x(), path[i].y(), path[i].z());
-    // }
-    // std::cout << "===================================================\n" << std::endl;
-
     return path;
 }
+
 
 // std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
 //     const Obstacle& ob, 

@@ -84,95 +84,8 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
 
 
     std::cout << "Taking care of the samples: \n \n";
-    bool use_rrtx_saved_samples_ = false;
-    if (use_rrtx_saved_samples_) {
-        std::string filepath = "/home/sohail/motion_planning/build/rrtx_tree_nodes.csv";
-               std::cout << "Loading nodes from file: " << filepath << "\n";
-        std::ifstream fin(filepath);
-        if (!fin.is_open()) {
-            throw std::runtime_error("Failed to open node file: " + filepath);
-        }
-
-        std::string line;
-        // Skip header line
-        std::getline(fin, line); 
-
-        std::string cell;
-        while (std::getline(fin, line)) {
-            std::stringstream lineStream(line);
-            std::vector<double> state_values;
-            
-            // Skip node_id
-            std::getline(lineStream, cell, ','); 
-
-            // Read the state vector (x0, x1, x2...)
-            // This assumes state is 3D for R2T space. Adjust if needed.
-            for(int i = 0; i < statespace_->getDimension(); ++i) {
-                std::getline(lineStream, cell, ',');
-                state_values.push_back(std::stod(cell));
-            }
-
-            // Create an Eigen vector and then the FMTNode
-            Eigen::Map<Eigen::VectorXd> state_vec(state_values.data(), state_values.size());
-            auto node = std::make_shared<FMTNode>(statespace_->addState(state_vec), tree_.size());
-            node->in_unvisited_ = true;
-            tree_.push_back(node);
-        }
-        fin.close();
-        std::cout << "Loaded " << tree_.size() << " nodes from file.\n";
-
-        const Eigen::VectorXd& start_state_val = problem_->getStart();
-        const Eigen::VectorXd& goal_state_val = problem_->getGoal();
-
-        FMTNode* root_node_ptr = nullptr;
-        FMTNode* robot_node_ptr = nullptr;
-        double min_dist_to_start = std::numeric_limits<double>::infinity();
-        double min_dist_to_goal = std::numeric_limits<double>::infinity();
-
-        // Iterate through all loaded nodes to find the closest matches
-        for (const auto& node_ptr : tree_) {
-            // Find the node closest to the tree root (the destination)
-            double dist_to_start = (node_ptr->getStateValue() - start_state_val).norm();
-            if (dist_to_start < min_dist_to_start) {
-                min_dist_to_start = dist_to_start;
-                root_node_ptr = node_ptr.get();
-            }
-
-            // Find the node closest to the robot's initial state
-            double dist_to_goal = (node_ptr->getStateValue() - goal_state_val).norm();
-            if (dist_to_goal < min_dist_to_goal) {
-                min_dist_to_goal = dist_to_goal;
-                robot_node_ptr = node_ptr.get();
-            }
-        }
-
-        if (!root_node_ptr) throw std::runtime_error("Could not find any node near the start state.");
-        if (!robot_node_ptr) throw std::runtime_error("Could not find any node near the goal state.");
-        
-        // Assign the found nodes to the member variables
-        robot_node_ = robot_node_ptr;
-        root_state_index_ = root_node_ptr->getIndex();
-        robot_state_index_ = robot_node_ptr->getIndex();
-
-        // Configure the root node (the destination of the backward search)
-        root_node_ptr->setCost(0);
-        root_node_ptr->setTimeToGoal(0);
-        v_open_heap_.add(root_node_ptr, 0.0);
-
-        // Configure the goal node (the robot's starting position)
-        robot_node_ptr->setTimeToGoal(goal_state_val(goal_state_val.size() - 1));
-
-        std::cout<<"Successfully identified start  and goal  nodes."<<"\n";
-    }
-    else{
-        setStart(problem_->getStart());
-        // for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
-        //     auto node = std::make_shared<FMTNode>(statespace_->sampleUniform(lower_bounds_ , upper_bounds_),tree_.size());
-        //     node->in_unvisited_ = true;
-        //     tree_.push_back(node);
-        // }
-        setGoal(problem_->getGoal());
-    }
+    setStart(problem_->getStart());
+    setGoal(problem_->getGoal());
 
 
 
@@ -1666,10 +1579,20 @@ void KinodynamicANYFMTX::plan() {
                         // Mark as old so we don't full-check it again next time.
                         x->is_new = false;
                         
-                    } else if (!x->threats.empty()) {
+                    // } else if (!x->threats.empty() || ! best_parent_for_x->threats.empty()){
+                    } else if (!x->threats.empty()){
                         // CASE 2: OLD SAMPLE WITH THREATS
                         // This node is known to be affected by specific obstacles.
                         // Check only those.
+                        // // ======================================================
+                        // // Check union of threats from both nodes --> child threat is sufficient!
+                        // // ======================================================
+                        // std::unordered_set<std::string> all_threats = x->threats;
+                        // all_threats.insert(best_parent_for_x->threats.begin(), 
+                        //                 best_parent_for_x->threats.end());
+
+
+
                         for (const std::string& obs_name : x->threats) {
                             if (previous_obstacles_.count(obs_name)) {
                                 const Obstacle& ob = previous_obstacles_[obs_name];
@@ -1745,21 +1668,9 @@ void KinodynamicANYFMTX::plan() {
                     
  
                     if (obstacle_free) {
-                        // ======================================================
-                        // DEBUG: LOG EVERY CONNECTION
-                        // ======================================================
-                        // If the robot is near Node 1287, print what it's connecting to
-                        if (best_parent_for_x->getIndex() == 1287 || x->getIndex() == 1287) {
-                            std::cout << "[DEBUG_CONNECT] Connecting " 
-                                    << best_parent_for_x->getIndex() << " -> " << x->getIndex()
-                                    << " | Cost: " << min_cost_for_x 
-                                    << " | Threats Parent: " << best_parent_for_x->threats.size()
-                                    << " | Threats Child: " << x->threats.size() << std::endl;
-                        }
-                        // ======================================================
 
-                        best_traj_for_x.from_node_index = x->getIndex();       // Child (e.g., 1287)
-                        best_traj_for_x.to_node_index = best_parent_for_x->getIndex(); // Parent (e.g., 2203)
+                        // best_traj_for_x.from_node_index = x->getIndex(); 
+                        // best_traj_for_x.to_node_index = best_parent_for_x->getIndex(); 
 
                         
                         // costUpdated[x] = true;   // mark “done once”
@@ -5886,9 +5797,18 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     
+    // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
+    // 4. THE FIX: Gap Coverage Inflation
+    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // Total = R + 0.414R = 1.414R.
+
+
     // Use tube radius + small buffer for edges
     // double search_radius = obs_r + ob.inflation + (max_length_); 
-    double search_radius = obs_r + ob.inflation + delta; 
+    double search_radius = obs_r + ob.inflation + gap_coverage_inflation + delta; 
 
     // std::unordered_set<int> orphan_indices;
     std::set<int> orphan_indices;
@@ -5940,9 +5860,7 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
         // Mark this node as being under threat from this specific obstacle
         node->threats.insert(ob.name);
         // ======================================================
-        if(node->getIndex()==2203){
-            std::cout<<"threat added for 2203: "<<ob.name<<"\n";
-        }
+
         // Skip root or nodes with no parent (shouldn't happen in tree except root, but good to be safe)
         if (node->getParent() == nullptr) continue; 
 
@@ -5950,21 +5868,12 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
             filtered_orphan_indices.push_back(idx);
         }
     }
-    if(tree_.size()>2203 && ob.name=="moving_cylinder_5")
-        filtered_orphan_indices.push_back(2203);
-
 
     orphan_indices.clear(); // Clear the original set
     for (int idx : filtered_orphan_indices) {
         orphan_indices.insert(idx);
         viz_potential_orphans.push_back(tree_[idx]->getStateValue().head(2));
     }
-// if (2203 < tree_.size()) {
-//     viz_potential_orphans.push_back(tree_[2203]->getStateValue().head(2));
-// }
-// if (1287 < tree_.size()) {
-//     viz_potential_orphans.push_back(tree_[1287]->getStateValue().head(2));
-// }
 
 
     // // ======================================================
@@ -5991,8 +5900,6 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
 
     for (int idx : initial_hit_list) {
         propagation_queue.push(tree_[idx].get());
-        auto node = tree_[idx].get();
-
     }
 
     while (!propagation_queue.empty()) {
@@ -6072,8 +5979,17 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
 
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+
+    // 4. THE FIX: Gap Coverage Inflation
+    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // Total = R + 0.414R = 1.414R.
+
+
     // double search_radius = obs_r + ob.inflation + (max_length_ ); 
-    double search_radius = obs_r + ob.inflation + delta;
+    double search_radius = obs_r + ob.inflation + gap_coverage_inflation + delta;
 
     // std::unordered_set<int> freed_indices;
     std::set<int> freed_indices;
@@ -6112,8 +6028,6 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
         // ======================================================
         // Remove the obstacle from the threat set
         node->threats.erase(ob.name);
-        if (node->getIndex()==2203) 
-            std::cout<<"threat removed for 2203: "<<ob.name<<"\n";
         // ======================================================
 
 

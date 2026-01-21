@@ -470,7 +470,7 @@ int main(int argc, char** argv)
     // Variables to track time within the current slice
     double time_accumulated_in_slice = 0.0;
     auto slice_start_time = std::chrono::steady_clock::now();
-    bool stopMechanism = true;
+    bool stopMechanism = false;
 
     while (g_running && rclcpp::ok()) 
     {

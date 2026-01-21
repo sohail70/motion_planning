@@ -1452,10 +1452,10 @@ void RVizVisualization::publishObstacleFrame(
     };
 
     // 3. BUILD OBSTACLES (Using the helpers)
-    add_cylinders(safe_cyls, safe_radii, {0.0f, 0.4f, 1.0f, 0.5f}, "obs_cyl_safe");
+    add_cylinders(safe_cyls, safe_radii, {0.0f, 0.4f, 1.0f, 1.0f}, "obs_cyl_safe");
     add_cylinders(threat_cyls, threat_radii, {1.0f, 0.0f, 0.0f, 0.8f}, "obs_cyl_threat");
 
-    add_boxes(safe_boxes, {0.0f, 0.6f, 0.8f, 0.5f}, "obs_box_safe");
+    add_boxes(safe_boxes, {0.0f, 0.6f, 0.8f, 1.0f}, "obs_box_safe");
     add_boxes(threat_boxes, {1.0f, 0.0f, 0.0f, 0.8f}, "obs_box_threat");
 
     add_arrows(safe_vel_pos, safe_vel_val, {1.0f, 0.5f, 0.0f}, "obs_vel_safe"); 
@@ -1506,12 +1506,12 @@ void RVizVisualization::publishObstacleFrame(
         arrow_m.pose.orientation.z = robot_orientation[2];
         arrow_m.pose.orientation.w = robot_orientation[3];
 
-        arrow_m.scale.x = 1.0;  // Length
-        arrow_m.scale.y = 0.2;  // Width
+        arrow_m.scale.x = 1.5;  // Length
+        arrow_m.scale.y = 0.5;  // Width
         arrow_m.scale.z = 0.2;  // Head
 
-        arrow_m.color.r = robot_color[0];
-        arrow_m.color.g = robot_color[1];
+        arrow_m.color.r = 0;//robot_color[0];
+        arrow_m.color.g = 0;//robot_color[1];
         arrow_m.color.b = robot_color[2];
         arrow_m.color.a = 1.0;
 
@@ -1540,7 +1540,7 @@ void RVizVisualization::publishObstacleFrame(
         cyl_m.color.r = robot_color[0];
         cyl_m.color.g = robot_color[1];
         cyl_m.color.b = robot_color[2];
-        cyl_m.color.a = 0.3; // Transparent
+        cyl_m.color.a = 1.0; // Transparent
 
         frame_array.markers.push_back(cyl_m);
     }

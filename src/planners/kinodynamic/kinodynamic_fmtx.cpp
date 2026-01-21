@@ -73,7 +73,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
             default: 
                 RCLCPP_ERROR(rclcpp::get_logger("Planner_Obstacle_Update"), "Unsupported k-d tree dimension : %d", kd_dim);
         }
-        kdtree_ = std::make_shared<DynamicWeightedNanoFlann>(kd_dim, weights);
+        kdtree_ = std::make_shared<WeightedNanoFlann>(kd_dim, weights);
     } else if (use_kdtree == true && kdtree_type == "LieKDTree"){
         kdtree_ = std::make_unique<LieSplittingKDTree>(statespace_->getDimension(), statespace_);
     } else {
@@ -1144,8 +1144,18 @@ void KinodynamicFMTX::plan() {
                                         // ======================================================
                     // NEW: CONTEXT-AWARE COLLISION CHECKING
                     // ======================================================
+                    // if (!x->threats.empty()|| !best_parent_for_x->threats.empty()) {
                     if (!x->threats.empty()) {
                         // Check ONLY the obstacles in the threat set
+                        // // ======================================================
+                        // // Check union of threats from both nodes --> child threats is sufficient
+                        // // ======================================================
+                        // std::unordered_set<std::string> all_threats = x->threats;
+                        // all_threats.insert(best_parent_for_x->threats.begin(), 
+                        //                 best_parent_for_x->threats.end());
+
+
+
                         for (const std::string& obs_name : x->threats) {
                             if (previous_obstacles_.count(obs_name)) {
                                 const Obstacle& ob = previous_obstacles_[obs_name];
@@ -5226,8 +5236,15 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     
-    // Use tube radius + small buffer for edges
-    double search_radius = obs_r + ob.inflation + (max_length_); 
+    // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
+    // 4. THE FIX: Gap Coverage Inflation
+    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // Total = R + 0.414R = 1.414R.
+
+    double search_radius = obs_r + ob.inflation + neighborhood_radius_ + gap_coverage_inflation;
 
     // std::unordered_set<int> orphan_indices;
     std::set<int> orphan_indices;
@@ -5258,6 +5275,12 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
     std::vector<int> filtered_orphan_indices;
     for (int idx : orphan_indices) {
         FMTNode* node = tree_[idx].get();
+        // ======================================================
+        // NEW: ADD THREAT
+        // ======================================================
+        // Mark this node as being under threat from this specific obstacle
+        node->threats.insert(ob.name);
+        // ======================================================
         // Skip root or nodes with no parent (shouldn't happen in tree except root, but good to be safe)
         if (node->getParent() == nullptr) continue; 
 
@@ -5277,13 +5300,6 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
 
     for (int idx : initial_hit_list) {
         propagation_queue.push(tree_[idx].get());
-        auto node = tree_[idx].get();
-        // ======================================================
-        // NEW: ADD THREAT
-        // ======================================================
-        // Mark this node as being under threat from this specific obstacle
-        node->threats.insert(ob.name);
-        // ======================================================
     }
 
     while (!propagation_queue.empty()) {
@@ -5363,7 +5379,16 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
 
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-    double search_radius = obs_r + ob.inflation + (max_length_ ); 
+
+    // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
+    // 4. THE FIX: Gap Coverage Inflation
+    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // Total = R + 0.414R = 1.414R.
+
+    double search_radius = obs_r + ob.inflation + neighborhood_radius_+ gap_coverage_inflation;                   
 
     // std::unordered_set<int> freed_indices;
     std::set<int> freed_indices;

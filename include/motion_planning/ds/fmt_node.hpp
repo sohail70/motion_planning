@@ -115,8 +115,8 @@ public:
 
     // "Threats": The set of obstacles that are currently moving in the vicinity of this node.
     // If this set is NOT empty, this node is "Dirty" and must be repaired.
-    // std::unordered_set<std::string> threats;
-    std::set<std::string> threats;
+    std::unordered_set<std::string> threats;
+    // std::set<std::string> threats;
 
 
 private:
