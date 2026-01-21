@@ -304,12 +304,47 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
     // v_coast is the velocity we coast at from t_1 to t_2
     double dt1 = t1;
     double dt2 = delta_t - t2;
-    if (std::abs(dt1) < EPS) dt1 = EPS; // Avoid division by zero
-    if (std::abs(dt2) < EPS) dt2 = EPS;
 
-    a1 = (v_coast - v_start) / dt1;
-    a2 = (v_end - v_coast) / dt2;
+    ///////////////////////////////////////////////////////////
+    ///// EITHER THIS section
+
+    // if (std::abs(dt1) < EPS) dt1 = EPS; // Avoid division by zero
+    // if (std::abs(dt2) < EPS) dt2 = EPS;
+    // a1 = (v_coast - v_start) / dt1;
+    // a2 = (v_end - v_coast) / dt2;
+    ////// OR this section! //////////////// I added this later as max velocity constraint for each velocity component because steering1D steers for each dim separately
+
+    // NEW: Enforce Max Velocity Limit
+    // Define your max velocity here (or pass it as an argument)
+    double v_limit = max_velocity_; 
     
+    if (std::abs(v_coast) > v_limit) {
+        // If the coasting velocity exceeds the limit, clamp it.
+        // Note: This changes the physics. The robot will accelerate to v_limit,
+        // coast, and then decelerate. It might take longer or require more distance.
+        v_coast = (v_coast > 0) ? v_limit : -v_limit;
+        
+        // Recalculate accelerations a1 and a2 based on this clamped velocity
+        // a = (v_final - v_initial) / t
+        if (dt1 > 1e-9) a1 = (v_coast - v_start) / dt1;
+        if (dt2 > 1e-9) a2 = (v_end - v_coast) / dt2;
+        
+        // IMPORTANT: You must check if these new a1/a2 exceed max_acceleration!
+        // If they do, this trajectory is physically impossible with these constraints.
+        if (std::abs(a1) > a_max + EPS || std::abs(a2) > a_max + EPS) {
+             // std::cout << "  Cannot reach target distance while respecting max velocity limit.\n";
+             return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
+        }
+    } else {
+        // Original logic
+        if (std::abs(dt1) < EPS) dt1 = EPS;
+        if (std::abs(dt2) < EPS) dt2 = EPS;
+        a1 = (v_coast - v_start) / dt1;
+        a2 = (v_end - v_coast) / dt2;
+    }
+    ////////////////////////////////////////////////////////////////////
+
+
     // Clamp accelerations to their max value
     a1 = std::max(-a_max, std::min(a_max, a1));
     a2 = std::max(-a_max, std::min(a_max, a2));

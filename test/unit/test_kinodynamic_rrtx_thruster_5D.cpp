@@ -138,6 +138,7 @@ int main(int argc, char **argv) {
     manager_params.setParam("vis_frequency_hz", 30);  // Obstacle visualization rate
     manager_params.setParam("follow_path", true);
 
+    double time_budget_ = 25.0;
     Params gazebo_params;
     gazebo_params.setParam("robot_model_name", "tugbot");
     gazebo_params.setParam("default_robot_x", 48.0); 
@@ -146,10 +147,12 @@ int main(int argc, char **argv) {
     gazebo_params.setParam("use_range", false); 
     gazebo_params.setParam("sensor_range", 20.0);
     gazebo_params.setParam("estimation", true);
-    gazebo_params.setParam("inflation", 0.5); 
+    gazebo_params.setParam("inflation", 0.75); 
     gazebo_params.setParam("persistent_static_obstacles", false);
     gazebo_params.setParam("fcl", false);
     gazebo_params.setParam("bullet", false);
+    gazebo_params.setParam("initial_budget_time", time_budget_);
+    manager_params.setParam("inflation", gazebo_params.getParam<double>("inflation"));  // Obstacle visualization rate
 
     Params planner_params;
     planner_params.setParam("num_of_samples", num_samples);
@@ -169,10 +172,10 @@ int main(int argc, char **argv) {
     auto visualization = std::make_shared<RVizVisualization>(vis_node);
     auto sim_clock = vis_node->get_clock();
 
-    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_1_obs.sdf");
+    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_1_obs.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc_uncrowded.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box.sdf");
-    // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10.sdf");
+    auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10_slow.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight.sdf");
     // auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_many_constant_acc.sdf");
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
@@ -190,21 +193,20 @@ int main(int argc, char **argv) {
     // The robot's INITIAL state is the GOAL of the search tree.
     // It starts with a full time budget.
     Eigen::VectorXd robot_initial_state(dim);
-    double time_budget = 40.0;
-    robot_initial_state << 48.0, 48.0, 0.0, 0.0, time_budget;
+    robot_initial_state << 48.0, 48.0, 0.0, 0.0, time_budget_;
     problem_def->setGoal(robot_initial_state);
 
     // Define 5D bounds, including velocity limits.
     Eigen::VectorXd lower_bounds(dim), upper_bounds(dim);
     double max_vel = 15.0; // Max velocity in any direction
     lower_bounds << -50.0, -50.0, -max_vel, -max_vel, 0.0;
-    upper_bounds << 50.0, 50.0,  max_vel,  max_vel, time_budget;
+    upper_bounds << 50.0, 50.0,  max_vel,  max_vel, time_budget_;
     problem_def->setBounds(lower_bounds, upper_bounds);
 
     // Create the thruster state space with max acceleration.
     double max_acceleration = 5.0; // m/s^2
-    auto ros_manager = std::make_shared<ROS2Manager>(obstacle_checker, visualization, manager_params);
-    auto statespace = std::make_shared<ThrusterSteerStateSpace>(dim, max_acceleration, seed);
+    auto ros_manager = std::make_shared<ThrusterROS2Manager>(obstacle_checker, visualization, manager_params, robot_initial_state ,time_budget_);
+    auto statespace = std::make_shared<ThrusterSteerStateSpace>(dim, max_acceleration, max_vel, seed);
     auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicRRTX, statespace, problem_def, obstacle_checker);
 
     auto kinodynamic_planner = dynamic_cast<KinodynamicRRTX*>(planner.get());
@@ -228,14 +230,19 @@ int main(int argc, char **argv) {
     RCLCPP_INFO(vis_node->get_logger(), "Initial plan complete. Executing...");
 
     // Visualization timer for the search tree
+    const int tree_visualization_hz = 10; // Visualize the tree only 2 times per second.
     auto tree_vis_timer = vis_node->create_wall_timer(
-        std::chrono::milliseconds(200),
-        [&]() { if (kinodynamic_planner) kinodynamic_planner->visualizeTree(); });
+        std::chrono::milliseconds(1000 / tree_visualization_hz),
+        [&kinodynamic_planner]() { // Use a lambda to call the visualizeTree function
+            if (kinodynamic_planner) {
+                kinodynamic_planner->visualizeTree();
+            }
+        });
 
 
     // --- Main Execution and Replanning Loop ---
-    resetAndPauseSimulation();
-    std::this_thread::sleep_for(std::chrono::milliseconds(800));
+    // resetAndPauseSimulation();
+    // std::this_thread::sleep_for(std::chrono::milliseconds(800));
 
     const double goal_tolerance = 3.0;
 
@@ -251,7 +258,7 @@ int main(int argc, char **argv) {
     std::vector<LogEntry> log_data;
     auto global_start = std::chrono::steady_clock::now();
 
-    rclcpp::Rate loop_rate(20); // Replanning loop can run slower
+    // rclcpp::Rate loop_rate(20); // Replanning loop can run slower
 
 
     // 1. Cast the shared_ptr to the specific Gazebo class
@@ -259,7 +266,7 @@ int main(int argc, char **argv) {
     // 3. Initialize the RRTx timers ONCE
     // STEP 3: Grab the actual "Frozen" positions from Gazebo
     if (gazebo_checker) {
-        gazebo_checker->processLatestPoseInfo();
+        gazebo_checker->processLatestPoseInfo(0);
         
         // Initialize timers based on the exact Budget (e.g., 25.0)
         double initial_T = robot_initial_state(2); 
@@ -274,18 +281,27 @@ int main(int argc, char **argv) {
 
     executor.add_node(ros_manager);
     executor.add_node(vis_node); // Don't mind the straight line connection which passes through static obstacles! i didnt want to spent time visualizing correct traj but just wanted to check if the graph can reach the robot or not!
-    std::thread executor_thread([&executor]() { executor.spin(); });
+    // std::thread executor_thread([&executor]() { executor.spin(); });
     RCLCPP_INFO(vis_node->get_logger(), "Starting execution and monitoring loop.");
 
 
     // Start profiling
     CALLGRIND_START_INSTRUMENTATION;
-
-
-
+        // --- CONFIGURATION ---
+    const double slice_time = 0.02;       // The robot moves this amount every slice (e.g., 0.05s)
+    // const double gazebo_max_step = 0.001; // Physics engine step size
+    
+    // std::cout << "[CONFIG] Slice Time: " << slice_time << "s | Gazebo Step: " << gazebo_max_step << "s" << std::endl;
     std::vector<Eigen::VectorXd> current_viz_path; 
+    
+    // Variables to track time within the current slice
+    double time_accumulated_in_slice = 0.0;
+    auto slice_start_time = std::chrono::steady_clock::now();
+    bool stopMechanism = false;
+
     while (g_running && rclcpp::ok()) {
         // --- 1. Time Limit Check (Restored) ---
+        executor.spin_some();
         if (limited) {
             auto now = std::chrono::steady_clock::now();
             if (now - start_time > time_limit) {
@@ -300,18 +316,23 @@ int main(int argc, char **argv) {
         // [CRITICAL ORDER FIX]: Update Planner State FIRST so it knows where the robot IS.
         Eigen::VectorXd current_sim_state = ros_manager->getCurrentKinodynamicState();
         if (current_sim_state.size() == 0) {
-            loop_rate.sleep();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
-        
+        // std::cout<<"speed: "<<std::sqrt(current_sim_state[2]*current_sim_state[2] + current_sim_state[3]*current_sim_state[3])<<"\n";
+        // std::cout<<"vx: "<<current_sim_state[2] << ", vy: " <<current_sim_state[3]<<"\n";
+
         // Update the planner's internal robot node immediately
         kinodynamic_planner->setRobotState(current_sim_state); 
         double T_robot = current_sim_state(current_sim_state.size()-1);
 
+        // 2. Convert to Forward Simulation Time
+        // If Budget started at 20.0, and is now 18.5, then Sim Time is 1.5
+        double sim_time = time_budget_ - T_robot; 
 
         // --- 3. Detect Events ---
         // Grab the frozen physics state
-        gazebo_checker->processLatestPoseInfo();
+        gazebo_checker->processLatestPoseInfo(sim_time);
         
         // Calculate which obstacles have flipped relative to the Robot's T
         ObstacleVector turned_obs = gazebo_checker->checkAndRepairObstacles(T_robot);
@@ -326,66 +347,44 @@ int main(int argc, char **argv) {
         // }
 
         if (!turned_obs.empty()) {
-            // 1. Start Timer
             auto start_update = std::chrono::steady_clock::now();
-
-            // 2. Run the heavy function
             kinodynamic_planner->updateObstacleSamples(turned_obs);
-
-            // 3. Stop Timer & Calculate
             auto end_update = std::chrono::steady_clock::now();
             double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
-
-            // 4. Log result
-            // Assuming you have a node logger available (e.g. from your visualizer or the main node)
+            
+            // Log
+            std::string obs_names;
+            for (size_t i = 0; i < turned_obs.size(); ++i) {
+                obs_names += turned_obs[i].name;
+                if (i < turned_obs.size() - 1) obs_names += ", ";
+            }
             RCLCPP_INFO(rclcpp::get_logger("RRTx_Timing"), 
-                "updateObstacleSamples took: %.2f ms | Obstacles processed: %zu", 
-                duration_ms, turned_obs.size());
+                "updateObstacleSamples took: %.2f ms | Processed: [ %s ]", 
+                duration_ms, obs_names.c_str());
         }
 
         auto calc_end = std::chrono::steady_clock::now();
 
 
-        // --- 5. Sync Threats (Restored) ---
-        // Visualize collisions (turn obstacles RED if hit)
+        // --- 4. UPDATE VISUALIZATION & THREATS ---
         std::vector<Obstacle> culprits = obstacle_checker->getAndClearCulprits();
         ros_manager->updateThreats(culprits);
 
-        // --- 6. Check Goal ---
-        double distance_to_goal = (current_sim_state.head<2>() - tree_root_state.head<2>()).norm();
-        if (distance_to_goal < goal_tolerance) {
-            RCLCPP_INFO(vis_node->get_logger(), "Goal Reached!");
-            ros_manager->updateThreats({}); // Clear threats on success
-            g_running = false;
-            continue;
-        }
-
-        // --- 7. Get & Set Path (No Emergency Stop) ---
         auto new_executable_path = kinodynamic_planner->getPathPositions();
-        
         if (!new_executable_path.empty()) {
-            // Found a valid path -> Update the manager
             ros_manager->setPlannedThrusterTrajectory(new_executable_path);
             current_viz_path = new_executable_path;
-        } 
-        // ELSE: Path is empty (planner failed this cycle). 
-        // DO NOTHING. Do NOT stop. The RosManager will keep interpolating 
-        // the previous valid path or drift naturally.
+        }
 
-        // --- 8. Visualize Path (Restored) ---
-        // We visualize every frame so the line doesn't disappear
         if (!current_viz_path.empty()) {
             kinodynamic_planner->visualizePath(current_viz_path);
         }
 
-        // --- 9. Logging ---
+        // --- 5. LOGGING ---
         LogEntry entry;
         const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
-        
-        entry.elapsed_s = std::chrono::duration<double>(loop_start_time - global_start).count();
-        // Calculate duration in ms for the heavy lifting part
+        entry.elapsed_s = std::chrono::duration<double>(slice_start_time - global_start).count();
         entry.duration_ms = std::chrono::duration<double, std::milli>(calc_end - calc_start).count(); 
-        
         entry.obstacle_checks = metrics.obstacle_checks;
         entry.orphaned_nodes = metrics.orphaned_nodes;
         entry.path_cost = metrics.path_cost;
@@ -393,75 +392,79 @@ int main(int argc, char **argv) {
         entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
         log_data.push_back(entry);
 
-        stepGazebo(50);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        // loop_rate.sleep();
-
-
-
-
-        // ////////////////////////////////////////////////////
-        // // Get the trajectory the robot is currently trying to execute.
-        // auto current_path = kinodynamic_planner->getPathPositions();
-
-        // // PROACTIVELY VALIDATE THE CURRENT PATH
-        // // bool is_path_still_safe = kinodynamic_planner->isPathStillValid(current_path, current_state);
-
-        // // REPLAN IF, AND ONLY IF, THE CURRENT PATH IS UNSAFE
-        // // if (!is_path_still_safe) {
-        //     RCLCPP_WARN(vis_node->get_logger(), "Collision predicted on current path! Triggering replan...");
-        //     auto snapshot = obstacle_checker->getAtomicSnapshot();
-        //     auto start = std::chrono::steady_clock::now();
-        //     kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
-        //     auto end = std::chrono::steady_clock::now();
-        //     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        //     std::cout << "Time taken for the update : " << duration.count() << " milliseconds\n";
-        //     sim_durations.push_back(duration.count());
-        //     double elapsed_s = std::chrono::duration<double>(start - global_start).count();
-        //     double duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
-        //     sim_duration_2.emplace_back(elapsed_s, duration_ms);
-
-        //     /////-----
-        //     LogEntry entry;
-        //     entry.elapsed_s = std::chrono::duration<double>(start - global_start).count();
-        //     entry.duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
-        //     /////-----
-
-
-        //     kinodynamic_planner->setRobotState(ros_manager->getCurrentKinodynamicState());
-
-        //     // Get the new path to execute.
-        //     auto new_path = kinodynamic_planner->getPathPositions();
-        //     ////--------
-        //     const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
-        //     entry.obstacle_checks = metrics.obstacle_checks;
-        //     entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
-        //     entry.orphaned_nodes = metrics.orphaned_nodes;
-        //     entry.path_cost = metrics.path_cost;
-        //     entry.time_to_goal = kinodynamic_planner->getRobotTimeToGo();
-            
-        //     log_data.push_back(entry);
-        //     /////--------
-
-        //     // --- 3. SYNC THREATS & VISUALIZE ---
-        //     // 3.1 Extract all obstacles that caused a collision during the search phase
-        //     std::vector<Obstacle> culprits = obstacle_checker->getAndClearCulprits();
-
-        //     // 3.2 SEND TO MANAGER: This causes the specific obstacles to turn RED in Gazebo/RViz
-        //     ros_manager->updateThreats(culprits);
-
-
-        //     if (!new_path.empty()) {
-        //         ros_manager->setPlannedThrusterTrajectory(new_path);
-        //         kinodynamic_planner->visualizePath(new_path);
-        //     } else {
-        //         RCLCPP_ERROR(vis_node->get_logger(), "Replanning failed to find a new path!");
-        //         // Consider adding safety stop logic here.
-        //     }
-        // // }
+        // --- 6. SLICE MANAGEMENT (FIXED) ---
         
-        // // Wait for the next cycle.
-        // loop_rate.sleep();
+        // Calculate how much "wall clock" time passed during this iteration
+        auto now = std::chrono::steady_clock::now();
+        double dt_wall = std::chrono::duration<double>(now - slice_start_time).count();
+        
+        // Add this time to our accumulator
+        time_accumulated_in_slice += dt_wall;
+
+        // Check if we have filled the slice
+        if (time_accumulated_in_slice >= slice_time) {
+            
+            // --- SLICE COMPLETE ---
+            
+            // 1. Step Physics by exactly 'slice_time'
+            // int steps_needed = static_cast<int>(slice_time / gazebo_max_step);
+            // stepGazebo(steps_needed);
+            
+            // // 2. Step Robot by exactly 'slice_time'
+            // ros_manager->stepSimulation(slice_time);
+
+
+            // ======================================================
+            // NEW: SAFETY CHECK BEFORE MOVING
+            // ======================================================
+            if (!stopMechanism || kinodynamic_planner->isRobotSafe()) {
+                // 2. Step Robot by exactly 'slice_time'
+                ros_manager->stepSimulation(slice_time);
+            } else {
+                // ROBOT IS LOST / TRAPPED
+                ros_manager->stepStationary(slice_time);
+
+            }
+            // ======================================================
+
+            // 3. Reset Accumulator
+            time_accumulated_in_slice = 0.0;
+            slice_start_time = std::chrono::steady_clock::now();
+
+            // ======================================================
+            // MOVE PRINT HERE
+            // ======================================================
+            Eigen::VectorXd updated_state = ros_manager->getCurrentKinodynamicState();
+            T_robot = updated_state(updated_state.size()-1);
+            
+
+            if (stopMechanism && T_robot <= 0) {
+                std::cout << "T_ROBOT: " << T_robot << std::endl; 
+                std::cout << "LOST DEADLINE! \n";
+                break;
+            }
+            // ======================================================
+
+
+
+
+            // 4. Check Goal (Only check after moving)
+            // Eigen::VectorXd updated_state = ros_manager->getCurrentSimulatedState();
+            double distance_to_goal = (updated_state.head<2>() - tree_root_state.head<2>()).norm();
+            if (distance_to_goal < goal_tolerance) {
+                RCLCPP_INFO(vis_node->get_logger(), "Goal Reached!");
+                ros_manager->updateThreats({});
+                g_running = false;
+            }
+        } else {
+            // --- CRITICAL FIX: SLEEP THE LOOP ---
+            // If we haven't filled the slice yet, sleep for the remaining time.
+            // This prevents the loop from spinning thousands of times per second.
+            double remaining_time = slice_time - time_accumulated_in_slice;
+            if (remaining_time > 0.0) {
+                std::this_thread::sleep_for(std::chrono::duration<double>(remaining_time));
+            }
+        }
     }
     // Stop profiling
     CALLGRIND_STOP_INSTRUMENTATION;
@@ -513,9 +516,6 @@ int main(int argc, char **argv) {
     RCLCPP_INFO(vis_node->get_logger(), "Shutting down.");
     g_running = false;
     executor.cancel();
-    if (executor_thread.joinable()) {
-        executor_thread.join();
-    }
     rclcpp::shutdown();
     return 0;
 }

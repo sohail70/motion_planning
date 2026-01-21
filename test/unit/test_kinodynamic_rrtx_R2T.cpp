@@ -254,7 +254,7 @@ int main(int argc, char** argv)
 
     // --- Main Execution and Replanning Loop ---
     // resetAndPauseSimulation();
-    std::this_thread::sleep_for(std::chrono::milliseconds(800));
+    // std::this_thread::sleep_for(std::chrono::milliseconds(800));
 
 
     const double goal_tolerance = 3.0;
