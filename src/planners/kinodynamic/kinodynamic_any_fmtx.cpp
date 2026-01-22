@@ -1447,9 +1447,9 @@ void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
     // // If we already culled this node for the current radius, skip it.
     // // This turns the amortized cost of culling into O(1) per node.
     // std::cout<<v->last_culled_radius_<<" , "<< neighborhood_radius_<<"\n";
-    // if (v->last_culled_radius_ == neighborhood_radius_) {
-    //     return;
-    // }
+    if (v->last_culled_radius_ == neighborhood_radius_) {
+        return;
+    }
 
 
     // We only need to iterate over the Outgoing (Forward) neighbors.
