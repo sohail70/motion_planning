@@ -279,7 +279,7 @@ void KinodynamicANYRRTX::setup(const Params& params, std::shared_ptr<Visualizati
     factor = params.getParam<double>("factor");
     std::cout<<"factor: "<<factor<<"\n";
     // delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
-    delta = 20.0;
+    delta = params.getParam<double>("delta");
     std::cout << "Computed value of delta: " << delta << std::endl;
 
 
@@ -660,7 +660,7 @@ void KinodynamicANYRRTX::reduceInconsistency() {
             
             // 2. Check if the queue has passed the robot
             // We stop if the smallest key in the queue is greater than the robot's cost.
-            bool queue_past_robot = (min_key > vbot_node_->getCost());
+            bool queue_past_robot = (min_key > vbot_node_->getCost() + bridge_cost_);
             
             // STOP CONDITION:
             // If the robot is consistent AND the queue only contains nodes more expensive than the robot,
@@ -1125,6 +1125,7 @@ void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
     auto it = outgoing.begin();
     while (it != outgoing.end()) {
         auto [neighbor, edge] = *it;
+        // std::cout<<edge.cached_trajectory.cost<<" , "<<neighborhood_radius_<<"\n";
         if (!edge.is_initial && 
             edge.cached_trajectory.cost > neighborhood_radius_+0.01 &&// (v->getStateValue() - neighbor->getStateValue()).norm() > neighborhood_radius_ &&
             neighbor != v->getParent() ) 
@@ -1133,7 +1134,9 @@ void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
             if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
                 // Only remove temporary incoming edges (Nr⁻)
                 if (!incoming_it->second.is_initial) {
+                    std::cout<<"before incoming: "<< incoming.size()<<"\n";
                     incoming.erase(incoming_it);
+                    std::cout<<"after incoming: "<< incoming.size()<<"\n";
                 }
             }
             it = outgoing.erase(it);
@@ -3013,7 +3016,7 @@ void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) {
             cost_of_current_path = bridge.cost + vbot_node_->getCost();
             robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
-            return;
+            // return;
         }
     }
     RRTxNode* best_candidate_node = nullptr;
@@ -3038,6 +3041,7 @@ void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
                 best_candidate_node = candidate;
                 best_candidate_bridge = bridge;
                 best_candidate_cost = cost;
+                bridge_cost_ = bridge.cost;
             }
         }
         if (best_candidate_node) break;

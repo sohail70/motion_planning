@@ -4,7 +4,7 @@
 #include "motion_planning/state_space/rdt_statespace.hpp"
 #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
-#include "motion_planning/utils/ros2_manager_r2t.hpp"
+#include "motion_planning/utils/ros2_manager_dubin.hpp"
 #include "motion_planning/utils/logs.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
 #include <atomic>
@@ -133,7 +133,7 @@ int main(int argc, char** argv)
     manager_params.setParam("vis_frequency_hz", 30);  // Obstacle visualization rate
     manager_params.setParam("follow_path", true);
 
-    double time_budget_ = 20.0;
+    double time_budget_ = 40.0;
     Params gazebo_params;
     gazebo_params.setParam("robot_model_name", "tugbot");
     gazebo_params.setParam("default_robot_x", 48.0); // in case you want to test the planner without running gz sim
@@ -145,7 +145,7 @@ int main(int argc, char** argv)
     gazebo_params.setParam("kf_model_type", "cv");
     gazebo_params.setParam("fcl", false);
     gazebo_params.setParam("bullet", false);
-    gazebo_params.setParam("inflation", 0.75); // <-- VERIFY THIS IS A REASONABLE, NON-ZERO VALUE
+    gazebo_params.setParam("inflation", 0.5); // <-- VERIFY THIS IS A REASONABLE, NON-ZERO VALUE
     gazebo_params.setParam("persistent_static_obstacles", false);
     gazebo_params.setParam("initial_budget_time", time_budget_);
     
@@ -161,9 +161,9 @@ int main(int argc, char** argv)
     planner_params.setParam("obs_cache", false);
     planner_params.setParam("partial_plot", false);
     planner_params.setParam("use_heuristic", false);
-    planner_params.setParam("kd_dim", 3); // 2 or 3 only for R2T
+    planner_params.setParam("kd_dim", 4); // 2 or 3 only for R2T
     // planner_params.setParam("mode", 1); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
-    planner_params.setParam("delta", 15); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
+    planner_params.setParam("delta", 20); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
 
     // --- Object Initialization ---
     // A single node is shared for visualization purposes
@@ -185,30 +185,29 @@ int main(int argc, char** argv)
     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
 
-    // --- Planner and Problem Definition ---
-    const int dim = 3;
-    const int spatial_dim = 2;
+    // --- Planner and Problem Definition (4D Dubins) ---
+    const int dim = 4;
     auto problem_def = std::make_shared<ProblemDefinition>(dim);
-    Eigen::VectorXd tree_root_state(3);
-    tree_root_state << -48.0, -48.0, 0.0; // Destination: x, y, time-to-go
-    problem_def->setStart(tree_root_state); // "Start" of the backward search
 
-    Eigen::VectorXd robot_initial_state(3);
-    robot_initial_state << 48.0, 48.0, time_budget_; // Initial robot state: x, y, total time budget
-    problem_def->setGoal(robot_initial_state); // "Goal" of the backward search
+    Eigen::VectorXd tree_root_state(4);
+    tree_root_state << -48.0, -48.0, -3 * M_PI / 4.0, 0.0; // Goal: x, y, theta, time-to-go
+    problem_def->setStart(tree_root_state);
 
-    Eigen::VectorXd lower_bounds(3), upper_bounds(3);
-    lower_bounds << -50.0, -50.0, 0.0;
-    upper_bounds << 50.0, 50.0, time_budget_; // Max time-to-go for any sample
+    Eigen::VectorXd robot_initial_state(4);
+    robot_initial_state << 48.0, 48.0, M_PI / 4.0, time_budget_; // Start: x, y, theta, time budget
+    problem_def->setGoal(robot_initial_state);
+
+    Eigen::VectorXd lower_bounds(4), upper_bounds(4);
+    lower_bounds << -50.0, -50.0, -M_PI, 0.0;
+    upper_bounds << 50.0, 50.0, M_PI, time_budget_;
     problem_def->setBounds(lower_bounds, upper_bounds);
 
-
-    double min_velocity = 0.0;
+    double min_turning_radius = 2.0;
+    double min_velocity = 2.0;
     double max_velocity = 20.0;
-    double robot_velocity = 10.0;
-    // Create the single, consolidated R2TROSManager
-    auto ros_manager = std::make_shared<R2TROS2Manager>(obstacle_checker, visualization, manager_params,robot_velocity, robot_initial_state,time_budget_);
-    auto statespace = std::make_shared<RDTStateSpace>(spatial_dim, min_velocity , max_velocity , robot_velocity, 30000, seed);
+
+    auto ros_manager = std::make_shared<DubinsROS2Manager>(obstacle_checker, visualization, manager_params, robot_initial_state, time_budget_);
+    auto statespace = std::make_shared<DubinsTimeStateSpace>(min_turning_radius, min_velocity, max_velocity, seed);
     auto planner = PlannerFactory::getInstance().createPlanner(PlannerType::KinodynamicANYRRTX, statespace, problem_def, obstacle_checker);
     
     auto kinodynamic_planner = dynamic_cast<KinodynamicANYRRTX*>(planner.get());
@@ -258,20 +257,9 @@ int main(int argc, char** argv)
         ros_manager->setPath(current_executable_path);
     }
 
-
-    kinodynamic_planner->dumpTreeToCSV("rrtx_tree_nodes.csv");
-
-
-    // Anchor the robot to the initial plan
-    kinodynamic_planner->setRobotState(robot_initial_state);
-    
-    current_executable_path = kinodynamic_planner->getPathPositions();
-    if (!current_executable_path.empty()) {
-        ros_manager->setPath(current_executable_path);
-    }
     RCLCPP_INFO(vis_node->get_logger(), "Initial plan complete. Executing...");
 
-
+    kinodynamic_planner->dumpTreeToCSV("rrtx_tree_nodes.csv");
 
     const int tree_visualization_hz = 10; // Visualize the tree only 2 times per second.
     auto tree_vis_timer = vis_node->create_wall_timer(

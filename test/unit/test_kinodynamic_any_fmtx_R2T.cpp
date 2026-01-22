@@ -99,7 +99,7 @@ int main(int argc, char** argv)
 
 
 
-    int num_samples = 2;
+    int num_samples = 1;
     double factor = 2.0;
     unsigned int seed = 42;
     int run_secs = 30;
@@ -177,6 +177,8 @@ int main(int argc, char** argv)
     planner_params.setParam("use_knn", false); // In FMTX you get more connection using knn than radial due to obvious reasons!(having steer constraints!)
     planner_params.setParam("precache_neighbors", false);
     // planner_params.setParam("mode", 1); //1: prune false 2: prune true
+    planner_params.setParam("delta", 15); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
+
     // --- Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("fmtx_visualizer",
         rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)}));

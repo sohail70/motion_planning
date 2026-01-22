@@ -278,7 +278,8 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
     // Since i want to put a cap on the number of samples and i want RRTX to be as close as to FMTX im gonna set step size (delta) to this:
     factor = params.getParam<double>("factor");
     std::cout<<"factor: "<<factor<<"\n";
-    delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
+    delta = params.getParam<double>("delta");
+    delta = factor * gamma_ * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d); // FOR COMPARISON WITH FMTX
     // delta = 15.0;
     std::cout << "Computed value of delta: " << delta << std::endl;
 
@@ -708,7 +709,7 @@ void KinodynamicRRTX::reduceInconsistency() {
             
             // 2. Check if the queue has passed the robot
             // We stop if the smallest key in the queue is greater than the robot's cost.
-            bool queue_past_robot = (min_key > vbot_node_->getCost());
+            bool queue_past_robot = (min_key > vbot_node_->getCost() + bridge_cost_);
             
             // STOP CONDITION:
             // If the robot is consistent AND the queue only contains nodes more expensive than the robot,
@@ -3076,6 +3077,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
                 best_candidate_node = candidate;
                 best_candidate_bridge = bridge;
                 best_candidate_cost = cost;
+                bridge_cost_ = bridge.cost;
             }
         }
         if (best_candidate_node) break;

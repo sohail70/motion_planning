@@ -163,6 +163,7 @@ int main(int argc, char** argv)
     planner_params.setParam("use_heuristic", false);
     planner_params.setParam("kd_dim", 3); // 2 or 3 only for R2T
     // planner_params.setParam("mode", 1); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
+    planner_params.setParam("delta", 15); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
 
     // --- Object Initialization ---
     // A single node is shared for visualization purposes

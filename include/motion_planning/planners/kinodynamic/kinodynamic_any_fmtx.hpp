@@ -125,10 +125,12 @@ class KinodynamicANYFMTX : public Planner {
             // void updateNeighbors(int node_index);
             bool updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node);
 
+            void cullNeighbors(FMTNode* v);
             
             // Helper to recalculate radius
             void updateNeighborhoodRadius();
 
+            Eigen::VectorXd saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta);
 
     
             std::shared_ptr<State> start_;
@@ -220,6 +222,7 @@ class KinodynamicANYFMTX : public Planner {
             double delta;
             // Master set to accumulate nodes for re-queuing before the final batch push
             std::unordered_set<FMTNode*> pending_requeue_nodes_;
+            double bridge_cost_;
 
 
 

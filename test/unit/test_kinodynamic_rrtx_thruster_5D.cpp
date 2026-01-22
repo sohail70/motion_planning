@@ -165,6 +165,7 @@ int main(int argc, char **argv) {
     planner_params.setParam("use_heuristic", false); // TODO: I need to verify if its legit workingor not.
     planner_params.setParam("kd_dim", 3); // 2 or 3 for only 2nd order thruster and 4 incase you do 3rd order [x, y, z, vx, vy, vz, time]
     planner_params.setParam("mode", 2); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
+    planner_params.setParam("delta", 25); // 1: full node centric | 2: full obstalce centric | 3: node centric plus a map to obstalce check against speicific obstalces
 
     // ---  Object Initialization ---
     auto vis_node = std::make_shared<rclcpp::Node>("rrtx_thruster_visualizer",

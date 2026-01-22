@@ -42,7 +42,7 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
     use_heuristic= params.getParam<bool>("use_heuristic");
     partial_plot = params.getParam<bool>("partial_plot");
     static_obs_presence = params.getParam<bool>("static_obs_presence");
-    obs_cache = params.getParam<bool>("obs_cache");
+    // obs_cache = params.getParam<bool>("obs_cache");
     lower_bounds_ = problem_->getLowerBound();
     upper_bounds_ = problem_->getUpperBound();
     use_kdtree = params.getParam<bool>("use_kdtree");
@@ -117,7 +117,7 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
     }
 
     factor = params.getParam<double>("factor");
-    delta = 15.0;
+    delta = params.getParam<double>("delta");
     // Calculate initial radius based on N=2 (Start + Goal)
     updateNeighborhoodRadius();
 
@@ -537,8 +537,13 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
         edge_info.distance = traj.cost;
         edge_info.is_trajectory_computed = true;
         edge_info.cached_trajectory = traj;
+        edge_info.is_initial = true; // <--- INITIAL for v
 
         new_node->forwardNeighbors()[neighbor] = edge_info;
+
+        // Update the neighbor's backward map.
+        // For the neighbor (u), this edge (u <- v) is TEMPORARY.
+        edge_info.is_initial = false; // <--- TEMPORARY for u
         neighbor->backwardNeighbors()[new_node] = edge_info;
     }
 
@@ -547,13 +552,74 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
         edge_info.distance = traj.cost;
         edge_info.is_trajectory_computed = true;
         edge_info.cached_trajectory = traj;
+        edge_info.is_initial = true; // <--- INITIAL for v
 
         new_node->backwardNeighbors()[neighbor] = edge_info;
+
+        // Update the neighbor's forward map.
+        // For the neighbor (u), this edge (u -> v) is TEMPORARY.
+        edge_info.is_initial = false; // <--- TEMPORARY for u
         neighbor->forwardNeighbors()[new_node] = edge_info;
     }
     
     new_node->neighbors_cached_ = true;
     return true;
+}
+
+
+Eigen::VectorXd KinodynamicANYFMTX::saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta) {
+    int dimension = newPoint.size();
+    Eigen::VectorXd saturatedPoint = newPoint;
+
+    switch (dimension) {
+        case 3: { // State: (x, y, time)
+            double dist = (newPoint - closestPoint).norm();
+            if (dist > delta) {
+                saturatedPoint = closestPoint + (newPoint - closestPoint) * (delta / dist);
+            }
+            break;
+        }
+
+        case 4: { // State: (x, y, theta, time)
+            constexpr int X = 0, Y = 1, THETA = 2, TIME = 3;
+
+            // Distance is calculated on Euclidean components (x, y, time)
+            Eigen::Vector3d p1(newPoint(X), newPoint(Y), newPoint(TIME));
+            Eigen::Vector3d p2(closestPoint(X), closestPoint(Y), closestPoint(TIME));
+            double dist = (p1 - p2).norm();
+
+            if (dist > delta) {
+                double scale = delta / dist;
+                // Saturate Euclidean parts
+                saturatedPoint(X) = closestPoint(X) + (newPoint(X) - closestPoint(X)) * scale;
+                saturatedPoint(Y) = closestPoint(Y) + (newPoint(Y) - closestPoint(Y)) * scale;
+                saturatedPoint(TIME) = closestPoint(TIME) + (newPoint(TIME) - closestPoint(TIME)) * scale;
+
+                // Saturate angle along the shortest path
+                double thetaDiff = normalizeAngle(newPoint(THETA) - closestPoint(THETA));
+                saturatedPoint(THETA) = closestPoint(THETA) + thetaDiff * scale;
+            }
+            // Always normalize the final angle
+            saturatedPoint(THETA) = normalizeAngle(saturatedPoint(THETA));
+            break;
+        }
+
+        case 5: { // State: (x, y, vx, vy, time)
+            // For this state space, all components are Euclidean.
+            // We calculate distance and saturate across all 5 dimensions.
+            double dist = (newPoint - closestPoint).norm();
+            if (dist > delta) {
+                saturatedPoint = closestPoint + (newPoint - closestPoint) * (delta / dist);
+            }
+            break;
+        }
+
+        default:
+            // Handle unsupported dimensions
+            throw std::runtime_error("Unsupported state dimension for saturate function: " + std::to_string(dimension));
+    }
+
+    return saturatedPoint;
 }
 
 
@@ -566,6 +632,17 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
     for (int i = 0; i < num_samples; ++i) {
         // 1. Generate Sample
         Eigen::VectorXd sample_val = statespace_->sampleUniform(lower_bounds_, upper_bounds_)->getValue();
+
+
+        // //////// INCASE YOU WANNA USE SATURATE TO GUIDE THE SAMPLES --> THIS IS NOT NECESSARY UNLESS YOU ONLY WANNA ADD ONE SAMPLE OR YOU WANNA COMPARE WITH RRTX!///////////
+        std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample_val.head(kd_dim), 1);
+        FMTNode* nearest_node = tree_[nearest_indices[0]].get();
+        Eigen::VectorXd nearest_state = nearest_node->getStateValue();
+        
+        // 4. Saturate (Steer)
+        sample_val = saturate(sample_val, nearest_state, delta);
+        // ///////////////////////////////////////////////////////
+
 
         // 2. Create Node Object (Temporarily)
         // We create the node to get the pointer, but we don't push it to tree_ yet.
@@ -587,7 +664,9 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
         int node_index = tree_.size();
         tree_.push_back(node);
         
-        // Add to KD-Tree kdtree_->addPoint(sample_val); 
+
+        // Add to KD-Tree --> BUT WE ONLY PUT THE ONES WE SPECIFIED IN THE PARAMETER
+        kdtree_->addPoint(sample_val.head(kd_dim)); 
         
         added_node_indices.push_back(node_index);
         new_samples_viz.push_back(sample_val);
@@ -1364,6 +1443,55 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
 
 
 
+void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
+    // // If we already culled this node for the current radius, skip it.
+    // // This turns the amortized cost of culling into O(1) per node.
+    // std::cout<<v->last_culled_radius_<<" , "<< neighborhood_radius_<<"\n";
+    // if (v->last_culled_radius_ == neighborhood_radius_) {
+    //     return;
+    // }
+
+
+    // We only need to iterate over the Outgoing (Forward) neighbors.
+    // This covers all temporary edges created by this node pointing to newer nodes.
+    auto& outgoing = v->forwardNeighbors();
+    auto it = outgoing.begin();
+    
+    while (it != outgoing.end()) {
+        auto [neighbor, edge] = *it;
+        
+        // Cull if:
+        // 1. It is a temporary edge (!is_initial)
+        // 2. It is outside the current radius
+        // 3. It is NOT the parent (we must preserve the tree structure)
+        if (!edge.is_initial && 
+            edge.cached_trajectory.cost > neighborhood_radius_ + 0.01 &&
+            neighbor != v->getParent()) 
+        {
+            // std::cout<<"rn: "<<neighborhood_radius_<< ", distance: "<< edge.cached_trajectory.geometric_distance<<"\n";
+            // Remove the reverse link from the neighbor's Incoming (Backward) map
+            auto& incoming = neighbor->backwardNeighbors();
+            if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
+                // Only remove if it is also temporary (symmetry check)
+                if (!incoming_it->second.is_initial) {
+                    std::cout<<"before incoming: "<< incoming.size()<<"\n";
+                    incoming.erase(incoming_it);
+                    std::cout<<"after incoming: "<< incoming.size()<<"\n";
+                }
+            }
+            // std::cout<<"before outgoing: "<< outgoing.size()<<"\n";
+            // Remove the forward link
+            it = outgoing.erase(it);
+            // std::cout<<"after outgoing: "<< outgoing.size()<<"\n";
+        } else {
+            ++it;
+        }
+    }
+    // Mark this node as clean for this radius
+    v->last_culled_radius_ = neighborhood_radius_;
+
+}
+
 
 void KinodynamicANYFMTX::plan() {
   
@@ -1371,7 +1499,7 @@ void KinodynamicANYFMTX::plan() {
     //        (partial_update ? (robot_node_== nullptr || v_open_heap_.top().first < robot_node_->getCost() ||
     //                            robot_node_->getCost() == INFINITY || robot_node_->in_queue_ == true) : true)) {
 
-    addBatchOfSamples(1); // Add a small batch (e.g., 10) instead of 1
+    addBatchOfSamples(num_of_samples_); // Add a small batch (e.g., 10) instead of 1
     while (true) {
         // // 1. ANYTIME LOGIC: Refill heap if empty or low
         // // if ( tree_.size() < num_of_samples_) {
@@ -1405,11 +1533,10 @@ void KinodynamicANYFMTX::plan() {
         // We can safely access .top() here because we checked !empty() above.
         if (partial_update) {
             double top_cost = v_open_heap_.top().first;
-            
             // If robot is valid, and the best node in heap is worse than robot's current cost, stop.
             if (robot_node_ != nullptr && 
                 robot_node_->getCost() != INFINITY && 
-                top_cost >= robot_node_->getCost()) {
+                top_cost >= robot_node_->getCost() + bridge_cost_) {
                 break;
             }
         }
@@ -1421,6 +1548,10 @@ void KinodynamicANYFMTX::plan() {
         double cost = top_element.first;  // Changed .min_key to .first
         FMTNode* z = top_element.second;  // Changed .index to .second
         int zIndex = z->getIndex();
+
+        // Before we expand z, we remove any temporary neighbors 
+        // that are now outside the shrinking radius.
+        cullNeighbors(z);
 
         // // ======================================================
         // // NEW: VISUALIZE 'z' (The Expanding Node)
@@ -1523,6 +1654,10 @@ void KinodynamicANYFMTX::plan() {
                 last_replan_metrics_.rewire_neighbor_searches += x->forwardNeighbors().size();
 
 
+                // Since x might be unvisited (never popped), its neighbors 
+                // might contain stale temporary edges from an older, larger radius.
+                // We must clean them now to ensure we pick a valid parent.
+                cullNeighbors(x);
 
 
                 // total_neighbor_iterations += x->forwardNeighbors().size();
@@ -4546,6 +4681,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_pos, const E
              robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
         }
     }
+
 }
 std::vector<Trajectory> KinodynamicANYFMTX::getPathAsTrajectories() const
 {
@@ -6236,7 +6372,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) {
             cost_of_current_path = bridge.cost + robot_node_->getCost();
             robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
-            return;
+            // return;
         }
     }
 
@@ -6266,6 +6402,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
                 best_candidate_node = candidate;
                 best_candidate_bridge = bridge;
                 best_candidate_cost = cost;
+                bridge_cost_ = bridge.cost;
             }
         }
         if (best_candidate_node) break;

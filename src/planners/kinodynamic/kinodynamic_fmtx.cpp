@@ -999,7 +999,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 void KinodynamicFMTX::plan() {
   
     while (!v_open_heap_.empty() &&
-           (partial_update ? (robot_node_== nullptr || v_open_heap_.top().first < robot_node_->getCost() ||
+           (partial_update ? (robot_node_== nullptr || v_open_heap_.top().first < robot_node_->getCost() + bridge_cost_||
                                robot_node_->getCost() == INFINITY || robot_node_->in_queue_ == true) : true)) {
 
 
@@ -5647,6 +5647,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
                 best_candidate_node = candidate;
                 best_candidate_bridge = bridge;
                 best_candidate_cost = cost;
+                bridge_cost_ = bridge.cost;
             }
         }
         if (best_candidate_node) break;

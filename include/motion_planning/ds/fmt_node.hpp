@@ -118,6 +118,8 @@ public:
     std::unordered_set<std::string> threats;
     // std::set<std::string> threats;
 
+    double last_culled_radius_ = -1.0; // Initialize to invalid radius
+
 
 private:
     std::shared_ptr<State> state_;

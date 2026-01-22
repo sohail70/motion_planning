@@ -209,6 +209,7 @@ class KinodynamicFMTX : public Planner {
             std::unordered_set<FMTNode*> pending_requeue_nodes_;
 
 
+            double bridge_cost_;
 
 };
 
