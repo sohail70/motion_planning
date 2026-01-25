@@ -5666,6 +5666,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         // We are trapped. No nodes in radius are safe.
         robot_node_ = nullptr;
         robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        bridge_cost_= std::numeric_limits<double>::infinity();
         RCLCPP_WARN_THROTTLE(rclcpp::get_logger("FMTx"), *clock_, 1000, "LOST SAFE ANCHOR!");
     }
 

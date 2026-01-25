@@ -8,6 +8,7 @@
 #include "motion_planning/ds/fmt_node.hpp"
 #include "motion_planning/ds/bit_node.hpp"
 #include "motion_planning/ds/ifmt_node.hpp"
+#include "motion_planning/ds/dstar_lite_node.hpp"
 #pragma once
 
 // struct FMTComparator {
@@ -72,6 +73,27 @@ struct RRTxComparator {
     }
 };
 
+struct DStarLiteComparator {
+    bool operator()(const std::pair<double, DStarLiteNode*>& a, 
+                   const std::pair<double, DStarLiteNode*>& b) const {
+        DStarLiteNode* nA = a.second;
+        DStarLiteNode* nB = b.second;
+
+        // 1. Compare Primary Key (k1)
+        // Use an epsilon for floating point comparisons
+        if (std::abs(nA->k1 - nB->k1) > 1e-9) {
+            return nA->k1 < nB->k1;
+        }
+
+        // 2. If k1 is equal, compare Secondary Key (k2)
+        if (std::abs(nA->k2 - nB->k2) > 1e-9) {
+            return nA->k2 < nB->k2;
+        }
+
+        // 3. Tie-breaker (optional, but good for stability)
+        return nA->getIndex() < nB->getIndex();
+    }
+};
 
 
 template <typename NodeType, typename Comparator>

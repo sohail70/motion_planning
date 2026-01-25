@@ -31,6 +31,8 @@ enum class PlannerType{
     KinodynamicRRTX,
     KinodynamicANYFMTX,
     KinodynamicANYRRTX,
+    KinodynamicPRMStarDStarLite,
+    
 };
 
 
