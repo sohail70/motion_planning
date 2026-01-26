@@ -177,7 +177,7 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
     num_of_samples_ = params.getParam<int>("num_of_samples");
     partial_update = params.getParam<bool>("partial_update");
     static_obs_presence = params.getParam<bool>("static_obs_presence");
-
+    is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
     lower_bounds_ = problem_->getLowerBound();
     upper_bounds_ = problem_->getUpperBound();
     use_kdtree = params.getParam<bool>("use_kdtree");
@@ -298,6 +298,15 @@ Eigen::VectorXd KinodynamicRRTX::saturate(const Eigen::VectorXd& newPoint, const
     Eigen::VectorXd saturatedPoint = newPoint;
 
     switch (dimension) {
+        case 2: { // State: (x, y)
+            double dist = (newPoint - closestPoint).norm();
+            if (dist > delta) {
+                saturatedPoint = closestPoint + (newPoint - closestPoint) * (delta / dist);
+            }
+            break;
+        }
+
+
         case 3: { // State: (x, y, time)
             double dist = (newPoint - closestPoint).norm();
             if (dist > delta) {
@@ -445,24 +454,67 @@ void KinodynamicRRTX::plan() {
 }
 
 
+// bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
+//     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
+//     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
+    
+//     auto trajs_from_v_to_u = findParent(new_node, neighbors);
+
+//     if (!new_node->getParent()) {
+//         sample_counter--;
+//         return false;
+//     }
+
+//     tree_.push_back(new_node);
+//     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
+//     kdtree_->buildTree(); 
+
+//     // Algorithm 2 lines 7-13 implementation
+//     const double t_now = clock_->now().seconds();
+//     const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
+//     for (auto const& [neighbor, v_to_u_traj] : trajs_from_v_to_u) {
+//         // Persistent outgoing from new node (N⁰+)
+//         // Establish the Edge (new_node -> neighbor) using the pre-computed trajectory.
+//         if (v_to_u_traj.is_valid) {
+//             new_node->addNeighbor(neighbor, true, false, v_to_u_traj);
+//         }
+        
+//         // double time_to_goal_at_u = neighbor->getTimeToGoal();
+//         // const double global_edge_start_time_at_u = t_arrival_predicted - time_to_goal_at_u;
+//         // Temporary outgoing from neighbors (Nr+)
+//         // Establish the Edge (neighbor -> new_node) by computing it now.
+//         /*
+//             One thing that bothers me here is collision checking with the current obstalces would me some nodes to not find their neighbors 
+//             and later when the obstalce moves then we do not update this.
+//             I think RRTx relies on continuous sampling but for now i use a pre-plan obstalce free phase in my test to gather all the neighbors correctly
+//         */
+//         Trajectory u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
+//         if (u_to_v_traj.is_valid && obs_checker_->isTrajectorySafe(u_to_v_traj, neighbor->getTimeToGoal() )) {
+//             neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
+//         }
+//     }
+    
+//     return true;
+// }
+
 bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
     
     auto trajs_from_v_to_u = findParent(new_node, neighbors);
-
     if (!new_node->getParent()) {
         sample_counter--;
         return false;
     }
-
+    
     tree_.push_back(new_node);
     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
     kdtree_->buildTree(); 
-
+    
     // Algorithm 2 lines 7-13 implementation
     const double t_now = clock_->now().seconds();
     const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
+    
     for (auto const& [neighbor, v_to_u_traj] : trajs_from_v_to_u) {
         // Persistent outgoing from new node (N⁰+)
         // Establish the Edge (new_node -> neighbor) using the pre-computed trajectory.
@@ -470,17 +522,36 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
             new_node->addNeighbor(neighbor, true, false, v_to_u_traj);
         }
         
-        // double time_to_goal_at_u = neighbor->getTimeToGoal();
-        // const double global_edge_start_time_at_u = t_arrival_predicted - time_to_goal_at_u;
         // Temporary outgoing from neighbors (Nr+)
         // Establish the Edge (neighbor -> new_node) by computing it now.
-        /*
-            One thing that bothers me here is collision checking with the current obstalces would me some nodes to not find their neighbors 
-            and later when the obstalce moves then we do not update this.
-            I think RRTx relies on continuous sampling but for now i use a pre-plan obstalce free phase in my test to gather all the neighbors correctly
-        */
-        Trajectory u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
-        if (u_to_v_traj.is_valid && obs_checker_->isTrajectorySafe(u_to_v_traj, neighbor->getTimeToGoal() )) {
+        
+        bool is_safe = false;
+        Trajectory u_to_v_traj;
+
+        // --- OPTIMIZATION FOR GEOMETRIC CASE ---
+        if (is_geometric_mode_) {
+            // In geometric mode, steer(neighbor, new_node) is identical to steer(new_node, neighbor).
+            // We can reuse the already computed 'v_to_u_traj' to save CPU cycles.
+            
+            // 1. Reuse the trajectory object
+            u_to_v_traj = v_to_u_traj;
+            
+            // 2. Check safety
+            // Note: In geometric mode, isTrajectorySafe ignores the time argument (we pass 0.0).
+            // We only check if v_to_u_traj was valid. If it wasn't, u_to_v_traj isn't either.
+            if (v_to_u_traj.is_valid) {
+                is_safe = obs_checker_->isTrajectorySafe(u_to_v_traj, 0.0);
+            }
+        } else {
+            // --- KINODYNAMIC CASE ---
+            // Compute the reverse trajectory (u -> v)
+            u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
+            if (u_to_v_traj.is_valid) {
+                is_safe = obs_checker_->isTrajectorySafe(u_to_v_traj, neighbor->getTimeToGoal());
+            }
+        }
+
+        if (is_safe) {
             neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
         }
     }
@@ -3326,14 +3397,28 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob, std::vector<Eigen::Vect
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
 
-    // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
-    // 4. THE FIX: Gap Coverage Inflation
-    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
-    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
-    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
-    // Total = R + 0.414R = 1.414R.
-    double search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+    // // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
+    // // 4. THE FIX: Gap Coverage Inflation
+    // // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    // double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // // Total = R + 0.414R = 1.414R.
+    // double search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+
+
+    double search_radius;
+    
+    // --- GEOMETRIC VS KINODYNAMIC RADIUS ---
+    if (is_geometric_mode_) {
+        // In geometric mode, we just need to cover the obstacle size + robot size + delta
+        search_radius = obs_r + ob.inflation + delta;
+    } else {
+        // Kinodynamic mode: Add gap coverage for the "tube" samples
+        double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+        search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+    }
+
 
 
     // --- 2. PASS 1: Gather Unique Nodes ---
@@ -3480,15 +3565,30 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob, std::vector<Eigen::Vect
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     
-    // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
-    // 4. THE FIX: Gap Coverage Inflation
-    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
-    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
-    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
-    // Total = R + 0.414R = 1.414R.
+    // // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
+    // // 4. THE FIX: Gap Coverage Inflation
+    // // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    // double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // // Total = R + 0.414R = 1.414R.
 
-    double search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+    // double search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+
+
+    double search_radius;
+    
+    // --- GEOMETRIC VS KINODYNAMIC RADIUS ---
+    if (is_geometric_mode_) {
+        // In geometric mode, we just need to cover the obstacle size + robot size + delta
+        search_radius = obs_r + ob.inflation + delta;
+    } else {
+        // Kinodynamic mode: Add gap coverage for the "tube" samples
+        double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+        search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+    }
+
+
 
     // --- 2. PASS 1: Gather Unique Nodes ---
     // We use a set to ensure each node is processed only once per obstacle update,
@@ -3595,8 +3695,20 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& turned_obstacl
 
     last_replan_metrics_ = ReplanMetrics();
     
-    // Get the exact planning time for synchronization
-    double T_robot = robot_continuous_state_(robot_continuous_state_.size() - 1);
+    // // Get the exact planning time for synchronization
+    // double T_robot = robot_continuous_state_(robot_continuous_state_.size() - 1);
+
+    // --- ROBOT TIME HANDLING ---
+    double T_robot = 0.0;
+    if (!is_geometric_mode_) {
+        // Only extract T_robot if we are in kinodynamic mode
+        if (robot_continuous_state_.size() > 0) {
+            T_robot = robot_continuous_state_(robot_continuous_state_.size() - 1);
+        }
+    }
+
+
+    
     
     std::vector<Eigen::VectorXd> debug_invalidated_nodes;
     std::vector<Eigen::VectorXd> debug_repaired_nodes;

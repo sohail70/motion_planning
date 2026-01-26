@@ -524,5 +524,6 @@ private:
     bool use_deterministic_override_ = true; // Set this to TRUE to force math model
 
     double initial_budget_time_ ;
+    bool is_geometric_mode_;
 
 };

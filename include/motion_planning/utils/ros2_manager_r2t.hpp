@@ -590,116 +590,122 @@ public:
         // Add to edge list
         robot_trace_edges_.push_back({start_pt, end_pt});
 
-        // // 6. VISUALIZATION: Robot Arrow & Trace (EDGES)
-    // if (visualizer_) {
-    //     // A. Robot Arrow
-    //     Eigen::Vector3d robot_pos_3d(current_interpolated_state_(0), current_interpolated_state_(1), 0.0);
-    //     Eigen::Quaterniond q(Eigen::AngleAxisd(last_known_theta_, Eigen::Vector3d::UnitZ()));
-    //     Eigen::VectorXd orientation_quat(4); orientation_quat << q.x(), q.y(), q.z(), q.w();
-        
-    //     std::vector<float> color = is_in_collision_state_ ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.8f, 0.1f, 0.8f};
-    //     visualizer_->visualizeRobotArrow(robot_pos_3d, orientation_quat, "map", color, "simulated_robot");
+            // // 6. VISUALIZATION: Robot Arrow & Trace (EDGES)
+        // if (visualizer_) {
+        //     // A. Robot Arrow
+        //     Eigen::Vector3d robot_pos_3d(current_interpolated_state_(0), current_interpolated_state_(1), 0.0);
+        //     Eigen::Quaterniond q(Eigen::AngleAxisd(last_known_theta_, Eigen::Vector3d::UnitZ()));
+        //     Eigen::VectorXd orientation_quat(4); orientation_quat << q.x(), q.y(), q.z(), q.w();
+            
+        //     std::vector<float> color = is_in_collision_state_ ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.8f, 0.1f, 0.8f};
+        //     visualizer_->visualizeRobotArrow(robot_pos_3d, orientation_quat, "map", color, "simulated_robot");
 
-    //     // B. Robot Trace (Add Edges)
-    //     // FIX: Remove the distance check. Always add the edge.
-    //     // This ensures continuity even if the robot moves slowly.
-        
-    //     // B. Robot Trace (Add Edges)
-    //     // FIX: Remove the distance check. Always add the edge.
-        
-    //     // Create a 3D point for start and end (Z=0)
-    //     Eigen::VectorXd start_pt(3); start_pt << prev_state(0), prev_state(1), 0.0; // <--- ADDED SEMICOLON HERE
-    //     Eigen::VectorXd end_pt(3);   end_pt << current_interpolated_state_(0), current_interpolated_state_(1), 0.0;
-        
-    //     // Add to edge list
-    //     robot_trace_edges_.push_back({start_pt, end_pt});
-        
-    //     // C. Publish Trace (Throttled to every 10 steps)
-    //     // Keep the throttle here to save network bandwidth, but the list is now complete.
-    //     static int trace_pub_throttle = 0;
-    //     if (++trace_pub_throttle % 2 == 0) {
-    //         visualizer_->visualizeEdges(robot_trace_edges_, "map", "1.0,1.0,0.0", "robot_trace_edges");
+        //     // B. Robot Trace (Add Edges)
+        //     // FIX: Remove the distance check. Always add the edge.
+        //     // This ensures continuity even if the robot moves slowly.
+            
+        //     // B. Robot Trace (Add Edges)
+        //     // FIX: Remove the distance check. Always add the edge.
+            
+        //     // Create a 3D point for start and end (Z=0)
+        //     Eigen::VectorXd start_pt(3); start_pt << prev_state(0), prev_state(1), 0.0; // <--- ADDED SEMICOLON HERE
+        //     Eigen::VectorXd end_pt(3);   end_pt << current_interpolated_state_(0), current_interpolated_state_(1), 0.0;
+            
+        //     // Add to edge list
+        //     robot_trace_edges_.push_back({start_pt, end_pt});
+            
+        //     // C. Publish Trace (Throttled to every 10 steps)
+        //     // Keep the throttle here to save network bandwidth, but the list is now complete.
+        //     static int trace_pub_throttle = 0;
+        //     if (++trace_pub_throttle % 2 == 0) {
+        //         visualizer_->visualizeEdges(robot_trace_edges_, "map", "1.0,1.0,0.0", "robot_trace_edges");
+        //     }
+        // }
+    }
+
+    // void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+    //     std::lock_guard<std::mutex> lock(path_mutex_);
+    //     if (new_path_from_main.size() < 2) {
+    //         is_path_set_ = false;
+    //         return;
     //     }
-    // }
-}
-
-// void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
-//     std::lock_guard<std::mutex> lock(path_mutex_);
-//     if (new_path_from_main.size() < 2) {
-//         is_path_set_ = false;
-//         return;
-//     }
-    
-//     if (!is_path_set_) {
-//         current_path_ = new_path_from_main;
-//         current_sim_time_ = current_path_.front()(2); 
-//         current_interpolated_state_ = current_path_.front();
-//         is_path_set_ = true;
-//     } else {
-//         std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
-//         stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
-//         stitched_path.front()(2) = current_sim_time_;
-//         current_path_ = stitched_path;
-//     }
-// }    
-
-void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
-    std::lock_guard<std::mutex> lock(path_mutex_);
-    if (new_path_from_main.size() < 2) {
-        is_path_set_ = false;
-        return;
-    }
-    
-    if (!is_path_set_) {
-        // First time setup
-        current_path_ = new_path_from_main;
-        // Sync manager time to the path's start time
-        current_sim_time_ = current_path_.front()(2); 
-        current_interpolated_state_ = current_path_.front();
-        is_path_set_ = true;
-    } else {
-        // --- THE FIX ---
-        // 1. Create a copy of the new path
-        std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
         
-        // 2. Stitch the POSITION (x, y) to where the robot actually is right now
-        stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
+    //     if (!is_path_set_) {
+    //         current_path_ = new_path_from_main;
+    //         current_sim_time_ = current_path_.front()(2); 
+    //         current_interpolated_state_ = current_path_.front();
+    //         is_path_set_ = true;
+    //     } else {
+    //         std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
+    //         stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
+    //         stitched_path.front()(2) = current_sim_time_;
+    //         current_path_ = stitched_path;
+    //     }
+    // }    
+
+    void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+        std::lock_guard<std::mutex> lock(path_mutex_);
+        if (new_path_from_main.size() < 2) {
+            is_path_set_ = false;
+            return;
+        }
         
-        // 3. CRITICAL: Do NOT overwrite the Time!
-        // Keep the time from the planner (new_path_from_main).
-        // This ensures the path is temporally consistent with the planner's graph.
-        // stitched_path.front()(2) = current_sim_time_; // <--- REMOVE THIS LINE
-        
-        // 4. Update the path
-        current_path_ = stitched_path;
+        if (!is_path_set_) {
+            // First time setup
+            current_path_ = new_path_from_main;
+            // Sync manager time to the path's start time
+            current_sim_time_ = current_path_.front()(2); 
+            current_interpolated_state_ = current_path_.front();
+            is_path_set_ = true;
+        } else {
+            // --- THE FIX ---
+            // 1. Create a copy of the new path
+            std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
+            
+            // 2. Stitch the POSITION (x, y) to where the robot actually is right now
+            stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
+            
+            // 3. CRITICAL: Do NOT overwrite the Time!
+            // Keep the time from the planner (new_path_from_main).
+            // This ensures the path is temporally consistent with the planner's graph.
+            // stitched_path.front()(2) = current_sim_time_; // <--- REMOVE THIS LINE
+            
+            // 4. Update the path
+            current_path_ = stitched_path;
 
-        // 5. OPTIONAL: Sync Manager Time?
-        // If the planner's time is significantly different from the manager's time,
-        // it implies a jump. We should snap the manager to the path to prevent interpolation errors.
-        // However, usually, we just let stepSimulation handle the progression.
-        // If you want to be safe, you can uncomment the following, but it might cause "teleporting" if the planner is slow:
-        // current_sim_time_ = current_path_.front()(2); 
+            // 5. OPTIONAL: Sync Manager Time?
+            // If the planner's time is significantly different from the manager's time,
+            // it implies a jump. We should snap the manager to the path to prevent interpolation errors.
+            // However, usually, we just let stepSimulation handle the progression.
+            // If you want to be safe, you can uncomment the following, but it might cause "teleporting" if the planner is slow:
+            // current_sim_time_ = current_path_.front()(2); 
+        }
     }
-}
 
 
 
-Eigen::VectorXd getCurrentSimulatedState() {
-    std::lock_guard<std::mutex> lock(path_mutex_);
-    return current_interpolated_state_;
-}
-
-int getCollisionCount() const { return collision_count_.load(); }
-
-void updateThreats(const std::vector<Obstacle>& culprits) {
-    current_threat_names_.clear();
-    for (const auto& obs : culprits) {
-        current_threat_names_.insert(obs.name);
+    Eigen::VectorXd getCurrentSimulatedState() {
+        std::lock_guard<std::mutex> lock(path_mutex_);
+        return current_interpolated_state_;
     }
-}
-double getCurrentSimTime() const {
-    return current_sim_time_;
-}
+
+    int getCollisionCount() const { return collision_count_.load(); }
+
+    void updateThreats(const std::vector<Obstacle>& culprits) {
+        current_threat_names_.clear();
+        for (const auto& obs : culprits) {
+            current_threat_names_.insert(obs.name);
+        }
+    }
+    double getCurrentSimTime() const {
+        return current_sim_time_;
+    }
+
+
+    // only for geometric case!
+    void setExternalSimTime(double t) {
+        current_sim_time_ = t;
+    }
 
 private:
 std::shared_ptr<ObstacleChecker> obstacle_checker_;

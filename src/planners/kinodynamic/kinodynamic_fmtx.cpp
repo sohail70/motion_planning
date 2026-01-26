@@ -42,6 +42,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     use_heuristic= params.getParam<bool>("use_heuristic");
     partial_plot = params.getParam<bool>("partial_plot");
     static_obs_presence = params.getParam<bool>("static_obs_presence");
+    is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
     obs_cache = params.getParam<bool>("obs_cache");
     lower_bounds_ = problem_->getLowerBound();
     upper_bounds_ = problem_->getUpperBound();
@@ -84,7 +85,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
     std::cout << "Taking care of the samples: \n \n";
-    bool use_rrtx_saved_samples_ = true;
+    bool use_rrtx_saved_samples_ = false;
     if (use_rrtx_saved_samples_) {
         std::string filepath = "/home/sohail/motion_planning/build/rrtx_tree_nodes.csv";
                std::cout << "Loading nodes from file: " << filepath << "\n";
@@ -1008,12 +1009,34 @@ void KinodynamicFMTX::plan() {
         FMTNode* z = top_element.second;  // Changed .index to .second
         int zIndex = z->getIndex();
 
+
+        // // =========================================================================================
+        // // VISUALIZATION: CURRENT 'Z' NODE (BLUE)
+        // // =========================================================================================
+        // if (visualization_) {
+        //     // Visualize the node we just popped from the Open set
+        //     visualization_->visualizeNodes({z->getStateValue().head<2>()}, "map", 
+        //                                  {0.0f, 0.0f, 1.0f}, // Blue
+        //                                  "fmtx_current_z");
+        // }
+        // // =========================================================================================
+
+
+
         // Find neighbors for z if they haven't been found yet.
         if (!neighbor_precache)
             near(z->getIndex());
         // --- STAGE 1: IDENTIFY POTENTIALLY SUBOPTIMAL NEIGHBORS ---
         // Iterate through all neighbors 'x' of the expanding node 'z'.
         for (auto& [x, edge_info_from_z] : z->backwardNeighbors()) { //backward means incoming . forward is outgoing
+
+                    // if (visualization_) {
+                    //     // Visualize the neighbor 'x' being considered for update
+                    //     visualization_->visualizeNodes({x->getStateValue().head<2>()}, "map", 
+                    //                                  {1.0f, 1.0f, 0.0f}, // Yellow
+                    //                                  "fmtx_current_x");
+                    // }
+
 
 
             // The edge we care about is from child 'x' to parent 'z' in our backward search.
@@ -1127,6 +1150,17 @@ void KinodynamicFMTX::plan() {
                 }
 
 
+                double node_time_to_goal = 0.0;
+                if (!is_geometric_mode_) {
+                    // Only access time if we are in kinodynamic mode
+                    if (x->getStateValue().size() > 2) {
+                        node_time_to_goal = x->getTimeToGoal();
+                    }
+                }
+                // In geometric mode, node_time_to_goal remains 0.0, which is fine 
+                // because isTrajectorySafeAgainstSingleObstacle ignores it.
+
+
 
 
                 // if (costUpdated[x]) {
@@ -1161,7 +1195,8 @@ void KinodynamicFMTX::plan() {
                                 const Obstacle& ob = previous_obstacles_[obs_name];
                                 
                                 // Check against this specific threat
-                                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, x->getTimeToGoal(), ob)) {
+                                // if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, x->getTimeToGoal(), ob)) {
+                                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, node_time_to_goal, ob)) {
                                     obstacle_free = false;
                                     break; // Blocked by this threat
                                 }
@@ -1192,9 +1227,23 @@ void KinodynamicFMTX::plan() {
                         x->setCost(min_cost_for_x);
                         x->setParent(best_parent_for_x, best_traj_for_x);
 
-                        // x->setTimeToGoal(min_time_for_x);
-                        double absolute_t = x->getStateValue().tail<1>()[0];
-                        x->setTimeToGoal(absolute_t);
+                        ////////////////////////////
+                        // // x->setTimeToGoal(min_time_for_x);
+                        // double absolute_t = x->getStateValue().tail<1>()[0];
+                        // x->setTimeToGoal(absolute_t);
+
+                        if (!is_geometric_mode_) {
+                            // Kinodynamic: Set time from state vector
+                            if (x->getStateValue().size() > 2) {
+                                double absolute_t = x->getStateValue().tail<1>()[0];
+                                x->setTimeToGoal(absolute_t);
+                            }
+                        } else {
+                            // Geometric: Time is irrelevant, set to 0 or leave default
+                            x->setTimeToGoal(0.0);
+                        }
+                        ////////////////////////////
+
 
 
                         x->setFinalDerivatives(best_traj_for_x.final_velocity, best_traj_for_x.final_acceleration);
@@ -1273,10 +1322,71 @@ void KinodynamicFMTX::plan() {
 //     node->neighbors_cached_ = true;
 // }
 
+// This one works but cant handle geoemtric!
+// void KinodynamicFMTX::near(int node_index) {
+//     auto node = tree_[node_index].get();
+//     if (node->neighbors_cached_) return;
+//     //  Get candidate neighbors (common to both strategies)
+//     std::vector<size_t> candidate_indices;
+//     if (use_knn) {
+//         if (k_neighbors_ > 0) {
+//             candidate_indices = kdtree_->knnSearch(node->getStateValue().head(kd_dim), k_neighbors_);
+//         }
+//     } else {
+//         if (neighborhood_radius_ > 0) {
+//             candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim), neighborhood_radius_);
+//         }
+//     }
+
+//     // --- Populate maps based on the state space's PREFERRED strategy ---
+//     if (statespace_->prefersLazyNear()) {
+//        // --- LAZY STRATEGY (for Min-Snap) ---
+//         for (int idx : candidate_indices) {
+//             if (idx == node_index) continue;
+//             FMTNode* neighbor = tree_[idx].get();
+
+//             EdgeInfo placeholder_edge; // is_trajectory_computed is false by default
+//             placeholder_edge.distance = std::numeric_limits<double>::infinity();
+
+//             node->forwardNeighbors()[neighbor] = placeholder_edge;
+//             node->backwardNeighbors()[neighbor] = placeholder_edge;
+//             neighbor->forwardNeighbors()[node] = placeholder_edge;
+//             neighbor->backwardNeighbors()[node] = placeholder_edge;
+//         }
+//     } else {
+//         // --- PROACTIVE STRATEGY (for RDT, etc.) ---
+//         for (int idx : candidate_indices) {
+//             if (idx == node_index) continue;
+//             FMTNode* neighbor = tree_[idx].get();
+
+//             // Test FORWARD connection
+//             Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+//             if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_)) {
+//                 node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
+//                 neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
+//                 max_length_ = std::max(max_length_, traj_forward.cost);
+//             }
+
+//             // Test BACKWARD connection
+//             Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
+//             if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_)) {
+//                 node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
+//                 neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
+//                 max_length_ = std::max(max_length_, traj_backward.cost);
+//             }
+//         }
+//     }
+    
+//     // This should be outside the if/else to apply to both cases
+//     node->neighbors_cached_ = true;
+// }
+
+
 void KinodynamicFMTX::near(int node_index) {
     auto node = tree_[node_index].get();
     if (node->neighbors_cached_) return;
-    //  Get candidate neighbors (common to both strategies)
+
+    // Get candidate neighbors (common to both strategies)
     std::vector<size_t> candidate_indices;
     if (use_knn) {
         if (k_neighbors_ > 0) {
@@ -1291,13 +1401,13 @@ void KinodynamicFMTX::near(int node_index) {
     // --- Populate maps based on the state space's PREFERRED strategy ---
     if (statespace_->prefersLazyNear()) {
        // --- LAZY STRATEGY (for Min-Snap) ---
+       // Note: Lazy strategy doesn't compute trajectories here, so no change needed.
+       // The symmetry optimization applies when trajectories are actually computed later.
         for (int idx : candidate_indices) {
             if (idx == node_index) continue;
             FMTNode* neighbor = tree_[idx].get();
-
             EdgeInfo placeholder_edge; // is_trajectory_computed is false by default
             placeholder_edge.distance = std::numeric_limits<double>::infinity();
-
             node->forwardNeighbors()[neighbor] = placeholder_edge;
             node->backwardNeighbors()[neighbor] = placeholder_edge;
             neighbor->forwardNeighbors()[node] = placeholder_edge;
@@ -1305,31 +1415,47 @@ void KinodynamicFMTX::near(int node_index) {
         }
     } else {
         // --- PROACTIVE STRATEGY (for RDT, etc.) ---
+        
+
         for (int idx : candidate_indices) {
             if (idx == node_index) continue;
             FMTNode* neighbor = tree_[idx].get();
 
             // Test FORWARD connection
             Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+            
             if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_)) {
+                // Add Forward Edge (Node -> Neighbor)
                 node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
                 neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
                 max_length_ = std::max(max_length_, traj_forward.cost);
-            }
 
-            // Test BACKWARD connection
-            Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-            if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_)) {
-                node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
-                neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
-                max_length_ = std::max(max_length_, traj_backward.cost);
+                // --- OPTIMIZATION FOR GEOMETRIC CASE ---
+                if (is_geometric_mode_){
+                    // In geometric mode, backward is identical to forward.
+                    // We reuse the forward trajectory object.
+                    node->backwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
+                    neighbor->forwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
+                } else {
+                    // --- KINODYNAMIC CASE ---
+                    // Test BACKWARD connection (Neighbor -> Node)
+                    Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
+                    if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_)) {
+                        node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
+                        neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
+                        max_length_ = std::max(max_length_, traj_backward.cost);
+                    }
+                }
             }
         }
     }
     
-    // This should be outside the if/else to apply to both cases
     node->neighbors_cached_ = true;
 }
+
+
+
+
 // // for lazy steer eval because caching does call steer twice as much! but caching gives faster time performance 
 // void KinodynamicFMTX::near(int node_index) {
 //     auto node = tree_[node_index].get();
@@ -5078,8 +5204,18 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& turned_obstacl
         return false;
     }
 
-    // Get exact planning time for tube generation
-    double T_robot = robot_continuous_state_(robot_continuous_state_.size() - 1);
+    // // Get exact planning time for tube generation
+    // double T_robot = robot_continuous_state_(robot_continuous_state_.size() - 1);
+
+    // --- ROBOT TIME HANDLING ---
+    double T_robot = 0.0;
+    if (!is_geometric_mode_) {
+        // Only extract T_robot if we are in kinodynamic mode
+        if (robot_continuous_state_.size() > 0) {
+            T_robot = robot_continuous_state_(robot_continuous_state_.size() - 1);
+        }
+    }
+
 
     for (const auto& incoming_ob : turned_obstacles) {
         
@@ -5236,15 +5372,28 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     
-    // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
-    // 4. THE FIX: Gap Coverage Inflation
-    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
-    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
-    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
-    // Total = R + 0.414R = 1.414R.
+    // // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
+    // // 4. THE FIX: Gap Coverage Inflation
+    // // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    // double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // // Total = R + 0.414R = 1.414R.
 
-    double search_radius = obs_r + ob.inflation + neighborhood_radius_ + gap_coverage_inflation;
+    // double search_radius = obs_r + ob.inflation + neighborhood_radius_ + gap_coverage_inflation;
+
+    double search_radius;
+    
+    // --- GEOMETRIC VS KINODYNAMIC RADIUS ---
+    if (is_geometric_mode_) {
+        // In geometric mode, we just need to cover the obstacle size + robot size + delta
+        search_radius = obs_r + ob.inflation + neighborhood_radius_;
+    } else {
+        // Kinodynamic mode: Add gap coverage for the "tube" samples
+        double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+        search_radius = obs_r + ob.inflation + neighborhood_radius_ + gap_coverage_inflation;
+    }
+
 
     // std::unordered_set<int> orphan_indices;
     std::set<int> orphan_indices;
@@ -5367,6 +5516,39 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
             v_open_heap_.add(valid_node, valid_node->getCost() + h_value);
         }
     }
+
+    // // =========================================================================================
+    // // 7. [NEW] VISUALIZATION: ORPHANS (RED) & BOUNDARY (MAGENTA)
+    // // =========================================================================================
+    // if (visualization_) {
+    //     // A. Prepare Orphaned Nodes (Red)
+    //     std::vector<Eigen::VectorXd> orphan_positions;
+    //     orphan_positions.reserve(orphan_indices.size());
+    //     for (int idx : orphan_indices) {
+    //         // Extract 2D position (x, y) for visualization
+    //         orphan_positions.push_back(tree_[idx]->getStateValue().head<2>());
+    //     }
+
+    //     // B. Prepare Boundary Nodes (Magenta)
+    //     std::vector<Eigen::VectorXd> boundary_positions;
+    //     boundary_positions.reserve(boundary_nodes_to_requeue.size());
+    //     for (FMTNode* node : boundary_nodes_to_requeue) {
+    //         boundary_positions.push_back(node->getStateValue().head<2>());
+    //     }
+
+    //     // C. Publish
+    //     // Visualize Orphans in Red (1, 0, 0)
+    //     visualization_->visualizeNodes(orphan_positions, "map", 
+    //                                  {1.0f, 0.0f, 0.0f}, 
+    //                                  "fmtx_orphans");
+
+    //     // Visualize Boundary in Magenta (1, 0, 1) - High visibility against Green/Red
+    //     visualization_->visualizeNodes(boundary_positions, "map", 
+    //                                  {1.0f, 0.0f, 1.0f}, 
+    //                                  "fmtx_boundary");
+    // }
+    // // =========================================================================================
+
 }
 
 
@@ -5380,15 +5562,28 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
 
-    // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
-    // 4. THE FIX: Gap Coverage Inflation
-    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
-    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
-    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
-    // Total = R + 0.414R = 1.414R.
+    // // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
+    // // 4. THE FIX: Gap Coverage Inflation
+    // // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    // double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // // Total = R + 0.414R = 1.414R.
 
-    double search_radius = obs_r + ob.inflation + neighborhood_radius_+ gap_coverage_inflation;                   
+    // double search_radius = obs_r + ob.inflation + neighborhood_radius_+ gap_coverage_inflation;                   
+
+    double search_radius;
+    
+    // --- GEOMETRIC VS KINODYNAMIC RADIUS ---
+    if (is_geometric_mode_) {
+        // In geometric mode, we just need to cover the obstacle size + robot size + delta
+        search_radius = obs_r + ob.inflation + neighborhood_radius_;
+    } else {
+        // Kinodynamic mode: Add gap coverage for the "tube" samples
+        double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+        search_radius = obs_r + ob.inflation + neighborhood_radius_ + gap_coverage_inflation;
+    }
+
 
     // std::unordered_set<int> freed_indices;
     std::set<int> freed_indices;

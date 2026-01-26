@@ -22,6 +22,8 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
     use_fcl = params.getParam<bool>("fcl", false);
     use_bullet = params.getParam<bool>("bullet", false);
     spatial_dim_ = params.getParam<int>("spatial_dim", 2); // Defaults to 2 for backward compatibility
+    is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
+
 
 
     initial_budget_time_ = params.getParam<double>("initial_budget_time");
@@ -1067,6 +1069,38 @@ bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
     auto logger = rclcpp::get_logger("GazeboChecker");
     // 1. Basic Validity Checks
     if (!trajectory.is_valid || trajectory.path_points.empty()) return false;
+
+
+    // --- GEOMETRIC MODE LOGIC ---
+    if (is_geometric_mode_) {
+        // In geometric mode, we treat the obstacle as a static circle at its CURRENT position.
+        // We check the distance from the trajectory segment to this point.
+        
+        const Eigen::VectorXd& p1 = trajectory.path_points[0];
+        const Eigen::VectorXd& p2 = trajectory.path_points[1];
+        
+        Eigen::Vector2d r_start = p1.head<2>();
+        Eigen::Vector2d r_end   = p2.head<2>();
+        
+        // Obstacle Position (Static snapshot)
+        Eigen::Vector2d obs_pos(ob.position.x(), ob.position.y());
+        
+        double obs_size = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius :
+                          std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+        
+        double threshold_dist = robot_radius_ + obs_size + inflation;
+        double threshold_sq = threshold_dist * threshold_dist;
+
+        // Use your existing helper function
+        double dist_sq = distanceSqrdPointToSegment(obs_pos, r_start, r_end);
+        
+        return (dist_sq >= threshold_sq);
+    }
+
+
+
+
+
     if (ob.predicted_path.empty()) return true;
 
     // 2. Setup Thresholds
@@ -4734,6 +4768,19 @@ std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
     double currentTime) const 
 {
     std::vector<Eigen::Vector3d> path;
+
+    // --- GEOMETRIC MODE ---
+    // We don't care about time or future movement. 
+    // We just need the obstacle's current position for the collision checker.
+    if (is_geometric_mode_) {
+        // We use Z=0.0 for the time component. 
+        // The collision checker (isTrajectorySafeAgainstSingleObstacle) will ignore this Z value 
+        // and treat the obstacle as a static circle at (X, Y).
+        path.emplace_back(ob.position.x(), ob.position.y(), 0.0);
+        return path;
+    }
+
+
     
     if (!ob.is_dynamic || !ob.has_ground_truth) return path;
 

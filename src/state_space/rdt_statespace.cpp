@@ -4,13 +4,16 @@
 #include <stdexcept>
 #include <random>
 
-RDTStateSpace::RDTStateSpace(int euclidean_dimension, double min_velocity, double max_velocity, double robot_velocity, int initial_capacity, unsigned int seed)
-    // The total dimension is the number of spatial dimensions plus one for time.
-    : StateSpace(euclidean_dimension + 1, initial_capacity),
+RDTStateSpace::RDTStateSpace(int euclidean_dimension, double min_velocity, double max_velocity, double robot_velocity, int initial_capacity, unsigned int seed, bool is_geometric_mode)
+    // // The total dimension is the number of spatial dimensions plus one for time.
+    // : StateSpace(euclidean_dimension + 1, initial_capacity),
+    : StateSpace(is_geometric_mode ? euclidean_dimension : euclidean_dimension + 1, initial_capacity), 
+
       euclidean_dim_(euclidean_dimension),
       min_velocity_(min_velocity),
       max_velocity_(max_velocity),
-      robot_velocity_(robot_velocity)
+      robot_velocity_(robot_velocity),
+      is_geometric_mode_(is_geometric_mode)
 {
     
     std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
@@ -223,6 +226,36 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
     // Extract spatial and time components
     const Eigen::VectorXd& from_spatial = from.head(euclidean_dim_);
     const Eigen::VectorXd& to_spatial   = to.head(euclidean_dim_);
+
+
+    // --- GEOMETRIC MODE LOGIC ---
+    if (is_geometric_mode_) {
+        // 1. Distance is purely spatial
+        double spatial_distance = (to_spatial - from_spatial).norm();
+
+        // 2. Check max step size (delta)
+        // Assuming you have access to delta or pass it in. 
+        // For now, let's assume any distance is valid as long as it's collision free, 
+        // or you check against a fixed delta if needed.
+        
+        traj.is_valid = true;
+        traj.cost = spatial_distance; // Cost is just distance
+        traj.geometric_distance = spatial_distance;
+        traj.time_duration = 0.0; // No time in geometric mode
+        traj.total_duration = 0.0;
+        
+        traj.path_points.push_back(from);
+        traj.path_points.push_back(to);
+
+        // Envelope for collision checking
+        traj.envelope_center.head<2>() = (from.head<2>() + to.head<2>()) / 2.0;
+        traj.envelope_radius = spatial_distance / 2.0;
+
+        return traj;
+    }
+
+
+
     double from_time = from(dimension_ - 1); // time-to-go for the new node
     double to_time   = to(dimension_ - 1);   // time-to-go for the existing node
 

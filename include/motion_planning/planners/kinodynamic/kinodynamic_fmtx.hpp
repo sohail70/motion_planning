@@ -210,6 +210,7 @@ class KinodynamicFMTX : public Planner {
 
 
             double bridge_cost_;
+            bool is_geometric_mode_;
 
 };
 
