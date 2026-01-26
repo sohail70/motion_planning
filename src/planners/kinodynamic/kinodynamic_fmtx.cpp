@@ -1194,6 +1194,8 @@ void KinodynamicFMTX::plan() {
                             if (previous_obstacles_.count(obs_name)) {
                                 const Obstacle& ob = previous_obstacles_[obs_name];
                                 
+                                last_replan_metrics_.obstacle_checks++;
+
                                 // Check against this specific threat
                                 // if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, x->getTimeToGoal(), ob)) {
                                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, node_time_to_goal, ob)) {
@@ -5433,6 +5435,9 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
         // Skip root or nodes with no parent (shouldn't happen in tree except root, but good to be safe)
         if (node->getParent() == nullptr) continue; 
 
+        // This checks the edge connecting the node to its parent
+        last_replan_metrics_.obstacle_checks++;        
+
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(node->getParentTrajectory(), node->getTimeToGoal(), ob)) {
             filtered_orphan_indices.push_back(idx);
         }
@@ -5810,6 +5815,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         // Use robot_sim_time so collision check is synced with the world
         if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) {
+            last_replan_metrics_.obstacle_checks += obs_checker_->getObstaclesSize();
             cost_of_current_path = bridge.cost + robot_node_->getCost();
             robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
             return;
@@ -5833,9 +5839,12 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
             if (candidate->getCost() == INFINITY) continue;
 
             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
-            
+
+            if (!bridge.is_valid) continue;
+
+            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
             // CRITICAL: Check if this candidate connection is safe
-            if (!bridge.is_valid || !obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) continue;
+            if (!obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) continue;
 
             double cost = bridge.cost + candidate->getCost();
             if (cost < best_candidate_cost) {

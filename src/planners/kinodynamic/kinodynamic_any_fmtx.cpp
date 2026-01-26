@@ -1724,6 +1724,9 @@ void KinodynamicANYFMTX::plan() {
                     
                     if (x->is_new) {  // ---> I used the union threats in the addBatchSamples function last for loop but i need to make sure if removeObstalce will remove it logically or not! (given all the neighbors of the new node are having the up to date threat set since i use the union some obstalce  might linger!)
                     // if (false) {
+
+                        last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
+
                         // CASE 1: NEW SAMPLE
                         // We haven't checked this node against the world yet.
                         // Perform a full check against ALL obstacles.
@@ -1749,6 +1752,7 @@ void KinodynamicANYFMTX::plan() {
                         for (const std::string& obs_name : x->threats) {
                             if (previous_obstacles_.count(obs_name)) {
                                 const Obstacle& ob = previous_obstacles_[obs_name];
+                                last_replan_metrics_.obstacle_checks++;
                                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, x->getTimeToGoal(), ob)) {
                                     obstacle_free = false;
                                     break;
@@ -6018,6 +6022,8 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
         // Skip root or nodes with no parent (shouldn't happen in tree except root, but good to be safe)
         if (node->getParent() == nullptr) continue; 
 
+        last_replan_metrics_.obstacle_checks++;
+
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(node->getParentTrajectory(), node->getTimeToGoal(), ob)) {
             filtered_orphan_indices.push_back(idx);
         }
@@ -6370,6 +6376,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         // Use robot_sim_time so collision check is synced with the world
         if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) {
+            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
             cost_of_current_path = bridge.cost + robot_node_->getCost();
             robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
             // return;
@@ -6393,9 +6400,16 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
             if (candidate->getCost() == INFINITY) continue;
 
             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+
+            if (!bridge.is_valid) continue;
             
+
+            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
+
             // CRITICAL: Check if this candidate connection is safe
-            if (!bridge.is_valid || !obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) continue;
+            if (!obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) continue;
+
+
 
             double cost = bridge.cost + candidate->getCost();
             if (cost < best_candidate_cost) {

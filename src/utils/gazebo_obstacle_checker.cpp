@@ -4206,6 +4206,9 @@ ObstacleVector GazeboObstacleChecker::getObstacles() const {
     return filtered_obstacles;
 }
 
+int GazeboObstacleChecker::getObstaclesSize() const {
+    return obstacle_positions_.size();
+}
 
 
 // Add rectangle collision detection implementations

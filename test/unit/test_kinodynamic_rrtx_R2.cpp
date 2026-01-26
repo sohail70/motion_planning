@@ -145,7 +145,7 @@ int main(int argc, char** argv)
     gazebo_params.setParam("kf_model_type", "cv");
     gazebo_params.setParam("fcl", false);
     gazebo_params.setParam("bullet", false);
-    gazebo_params.setParam("inflation", 0.75); // <-- VERIFY THIS IS A REASONABLE, NON-ZERO VALUE
+    gazebo_params.setParam("inflation", 0); // <-- VERIFY THIS IS A REASONABLE, NON-ZERO VALUE
     gazebo_params.setParam("persistent_static_obstacles", false);
     gazebo_params.setParam("initial_budget_time", time_budget_);
     manager_params.setParam("inflation", gazebo_params.getParam<double>("inflation"));  // Obstacle visualization rate
@@ -222,6 +222,7 @@ int main(int argc, char** argv)
 
     std::vector<Eigen::VectorXd> current_executable_path;
 
+    kinodynamic_planner->resetMetrics(); 
     // --- Perform the INITIAL Plan ---
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
     // obstacle_checker->getAtomicSnapshot();
@@ -245,6 +246,27 @@ int main(int argc, char** argv)
         // ros_manager->setPath(current_executable_path);
     }
     RCLCPP_INFO(vis_node->get_logger(), "Initial plan complete. Executing...");
+
+    // ======================================================
+    std::vector<LogEntry> log_data;
+    LogEntry initial_entry;
+    initial_entry.elapsed_s = 0;
+    initial_entry.duration_ms = duration.count();
+    
+    // Get the metrics accumulated during planner->plan()
+    const auto& initial_metrics = kinodynamic_planner->getLastReplanMetrics();
+    // At first there is no obstalce we can put zero below! 
+    initial_entry.obstacle_checks = initial_metrics.obstacle_checks;
+    initial_entry.rewire_neighbor_searches = initial_metrics.rewire_neighbor_searches;
+    initial_entry.orphaned_nodes = initial_metrics.orphaned_nodes;
+    initial_entry.path_cost = initial_metrics.path_cost;
+    
+    // For time_to_goal, we use the initial robot state
+    initial_entry.time_to_goal = robot_initial_state(robot_initial_state.size() - 1);
+    
+    // Push this entry to your log vector
+    log_data.push_back(initial_entry);
+    // ======================================================
 
 
 
@@ -278,7 +300,6 @@ int main(int argc, char** argv)
 
     int counter = 0;
 
-    std::vector<LogEntry> log_data;
 
     auto global_start = std::chrono::steady_clock::now();
     // rclcpp::Rate loop_rate(20); // Frequency to check for replan triggers
@@ -469,7 +490,37 @@ int main(int argc, char** argv)
 
         // --- 2. REPAIR GRAPH ---
         if (!all_obs.empty()) {
+            auto start_update = std::chrono::steady_clock::now();
             kinodynamic_planner->updateObstacleSamples(all_obs);
+            auto end_update = std::chrono::steady_clock::now();
+            double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
+            RCLCPP_INFO(rclcpp::get_logger("FMTx_Timing"), 
+                "updateObstacleSamples took: %.2f ms ", 
+                duration_ms);
+
+            // ======================================================
+            LogEntry entry;
+            const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
+            
+            // FIX 1: Use loop_start_time instead of undefined slice_start_time
+            entry.elapsed_s = std::chrono::duration<double>(loop_start_time - global_start).count();
+            
+            // FIX 2: For geometric case, time_to_goal is usually 0 or irrelevant. 
+            // We set it to 0.0 here.
+            entry.time_to_goal = 0.0; 
+            
+            entry.duration_ms = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - loop_start_time // Use actual loop time
+            ).count(); 
+            
+            entry.obstacle_checks = metrics.obstacle_checks;
+            entry.orphaned_nodes = metrics.orphaned_nodes;
+            entry.path_cost = metrics.path_cost;
+            entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
+            
+            log_data.push_back(entry);
+            // ======================================================
+
         }
 
         // --- 3. MANUAL VISUALIZATION (The Fix) ---
@@ -516,7 +567,7 @@ int main(int argc, char** argv)
             safe_boxes, threat_boxes, safe_vel_pos, safe_vel_val, threat_vel_pos, threat_vel_val,
             empty_trace, 
             robot_pos, orientation_quat, robot_color, 
-            0.75, // inflation
+            0, // inflation
             "map"
         );
 

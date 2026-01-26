@@ -431,8 +431,11 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
             I think RRTx relies on continuous sampling but for now i use a pre-plan obstalce free phase in my test to gather all the neighbors correctly
         */
         Trajectory u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
-        if (u_to_v_traj.is_valid && obs_checker_->isTrajectorySafe(u_to_v_traj, neighbor->getTimeToGoal() )) {
-            neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
+        if (u_to_v_traj.is_valid) {
+            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
+            if (obs_checker_->isTrajectorySafe(u_to_v_traj, neighbor->getTimeToGoal())) {
+                neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
+            }
         }
     }
     
@@ -473,16 +476,21 @@ std::unordered_map<RRTxNode*, Trajectory> KinodynamicANYRRTX::findParent(std::sh
         */
         // double time_to_goal_at_v = candidate->getTimeToGoal() + traj_from_v_to_u.time_duration;
         // const double global_edge_start_time_at_v = t_arrival_predicted - time_to_goal_at_v;
-        if (traj_from_v_to_u.cost <= neighborhood_radius_+0.01 && obs_checker_->isTrajectorySafe(traj_from_v_to_u, v->getTimeToGoal())) {
-            const double candidate_lmc = candidate->getLMC() + traj_from_v_to_u.cost;
 
-            if (candidate_lmc < min_lmc && candidate_lmc < v->getLMC()) {
-                min_lmc = candidate_lmc;
-                best_parent = candidate.get();
-                best_traj = traj_from_v_to_u; 
-                best_dist = traj_from_v_to_u.geometric_distance;
+        if (traj_from_v_to_u.cost <= neighborhood_radius_+0.01) {
+            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
+            if (obs_checker_->isTrajectorySafe(traj_from_v_to_u, v->getTimeToGoal())) {
+                const double candidate_lmc = candidate->getLMC() + traj_from_v_to_u.cost;
+
+                if (candidate_lmc < min_lmc && candidate_lmc < v->getLMC()) {
+                    min_lmc = candidate_lmc;
+                    best_parent = candidate.get();
+                    best_traj = traj_from_v_to_u; 
+                    best_dist = traj_from_v_to_u.geometric_distance;
+                }
             }
         }
+
     }
 
     if (best_parent) {
@@ -511,6 +519,7 @@ void KinodynamicANYRRTX::rewireNeighbors(RRTxNode* v) {
     if (inconsistency <= epsilon_) return;
 
     cullNeighbors(v);
+    last_replan_metrics_.rewire_neighbor_searches += v->incomingEdges().size();
 
     for (auto& [u, edge] : v->incomingEdges()) {
         // if (u == v->getParent() || !isValidEdge(u, v, edge)) continue;
@@ -521,7 +530,6 @@ void KinodynamicANYRRTX::rewireNeighbors(RRTxNode* v) {
         //     std::cout<<edge.distance <<"\n";
         if (u == v->getParent() ) continue;
 
-        last_replan_metrics_.rewire_neighbor_searches++;
 
         const double candidate_lmc = v->getLMC() + edge.distance;
         if (u->getLMC() > candidate_lmc) {
@@ -1069,7 +1077,7 @@ void KinodynamicANYRRTX::updateLMC(RRTxNode* v) {
     // Trajectory best_traj = v->getParentTrajectory();
     Trajectory* best_traj = nullptr;
 
-    
+    last_replan_metrics_.rewire_neighbor_searches += v->outgoingEdges().size();
 
     // Iterate over outgoing edges (v → u)
     for (auto& [u, edge] : v->outgoingEdges()) {
@@ -1080,7 +1088,6 @@ void KinodynamicANYRRTX::updateLMC(RRTxNode* v) {
 
 
         if (Vc_T_.count(u->getIndex()) || edge.distance == INFINITY) continue;
-        last_replan_metrics_.rewire_neighbor_searches++;
         const double candidate_lmc = u->getLMC() + edge.distance;
         if (candidate_lmc < min_lmc) {
             min_lmc = candidate_lmc;
@@ -3014,6 +3021,7 @@ void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
         // Use robot_time_to_go so collision check is synced with the world
         if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) {
+            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
             cost_of_current_path = bridge.cost + vbot_node_->getCost();
             robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
             // return;
@@ -3033,9 +3041,13 @@ void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
             RRTxNode* candidate = tree_[idx].get();
             if (candidate->getCost() == INFINITY) continue;
             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
-            
+            if (!bridge.is_valid) continue;
+
+            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
+
             // CRITICAL: Check if this candidate connection is safe
-            if (!bridge.is_valid || !obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) continue;
+            if (!obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) continue;
+
             double cost = bridge.cost + candidate->getCost();
             if (cost < best_candidate_cost) {
                 best_candidate_node = candidate;
@@ -3329,13 +3341,14 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob, std::vector<Eigen::V
             if (edge.distance == INFINITY) {
                 const double ttg = node->getTimeToGoal();
                 
+                last_replan_metrics_.obstacle_checks++;
                 // JULIA LOGIC STEP 2: Was it blocked by THIS specific obstacle?
                 // We check against the OLD prediction path (ob)
                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, ttg, ob)) {
                     
                     // JULIA LOGIC STEP 3: Is it still blocked by ANY OTHER obstacle?
                     // obs_checker_->isTrajectorySafe checks the current snapshot of all obstacles
-                    last_replan_metrics_.obstacle_checks++;
+                    last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
                     if (obs_checker_->isTrajectorySafe(edge.cached_trajectory, ttg)) {
                         
                         // It's finally free! Restore it.
@@ -3491,6 +3504,8 @@ void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob, std::vector<Eigen::V
 
             const double edge_start_ttg = node->getTimeToGoal();
             
+            last_replan_metrics_.obstacle_checks++;
+
             // Explicit Check against the specific obstacle being added
             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, edge_start_ttg, ob)) {
                 // Invalidate Edge

@@ -135,6 +135,7 @@ public:
     void publishPath(const std::vector<Eigen::VectorXd>& waypoints);
 
     ObstacleVector getObstacles() const override;
+    int getObstaclesSize() const override;
 
     bool checkFootprintCollision(const Eigen::Vector2d& position,
                                 double yaw,

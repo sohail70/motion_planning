@@ -236,6 +236,7 @@ int main(int argc, char **argv) {
     kinodynamic_planner->setClock(sim_clock);
     planner->setup(planner_params, visualization);
 
+    kinodynamic_planner->resetMetrics(); 
     // Initial Plan
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
     auto start = std::chrono::steady_clock::now();
@@ -257,6 +258,29 @@ int main(int argc, char **argv) {
         // Set the robot's starting state in the manager to initialize its clock.
         ros_manager->setInitialState(robot_initial_state);
     }
+
+
+    // ======================================================
+    std::vector<LogEntry> log_data;
+    LogEntry initial_entry;
+    initial_entry.elapsed_s = 0;
+    initial_entry.duration_ms = duration.count();
+    
+    // Get the metrics accumulated during planner->plan()
+    const auto& initial_metrics = kinodynamic_planner->getLastReplanMetrics();
+    // At first there is no obstalce we can put zero below! 
+    initial_entry.obstacle_checks = initial_metrics.obstacle_checks;
+    initial_entry.rewire_neighbor_searches = initial_metrics.rewire_neighbor_searches;
+    initial_entry.orphaned_nodes = initial_metrics.orphaned_nodes;
+    initial_entry.path_cost = initial_metrics.path_cost;
+    
+    // For time_to_goal, we use the initial robot state
+    initial_entry.time_to_goal = robot_initial_state(robot_initial_state.size() - 1);
+    
+    // Push this entry to your log vector
+    log_data.push_back(initial_entry);
+    // ======================================================
+
     
     RCLCPP_INFO(vis_node->get_logger(), "Initial plan complete. Executing...");
 
@@ -278,7 +302,6 @@ int main(int argc, char **argv) {
     auto time_limit = std::chrono::seconds(run_secs);
     auto global_start = std::chrono::steady_clock::now();
 
-    std::vector<LogEntry> log_data;
  
     CALLGRIND_START_INSTRUMENTATION;
     while (g_running && rclcpp::ok()) {

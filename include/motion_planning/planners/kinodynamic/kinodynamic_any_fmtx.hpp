@@ -111,6 +111,7 @@ class KinodynamicANYFMTX : public Planner {
             };
 
             const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
+            void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
             double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
 
             std::vector<Trajectory> getPathAsTrajectories() const;

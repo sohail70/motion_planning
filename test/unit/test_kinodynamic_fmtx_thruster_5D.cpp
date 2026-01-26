@@ -224,9 +224,17 @@ int main(int argc, char **argv) {
     kinodynamic_planner->setClock(sim_clock);
     planner->setup(planner_params, visualization);
 
+    kinodynamic_planner->resetMetrics(); 
     // --- Initial Plan ---
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
+    auto start = std::chrono::steady_clock::now();
     planner->plan();
+    auto end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    if (duration.count() > 0) {
+        std::cout << "time taken for the initial plan : " << duration.count() 
+                << " milliseconds\n";
+    }
     kinodynamic_planner->setRobotState(robot_initial_state);
     auto path = kinodynamic_planner->getPathPositions();
     if (!path.empty()) {
@@ -236,6 +244,27 @@ int main(int argc, char **argv) {
     }
     
     RCLCPP_INFO(vis_node->get_logger(), "Initial plan complete. Executing...");
+
+    // ======================================================
+    std::vector<LogEntry> log_data;
+    LogEntry initial_entry;
+    initial_entry.elapsed_s = 0;
+    initial_entry.duration_ms = duration.count();
+    
+    // Get the metrics accumulated during planner->plan()
+    const auto& initial_metrics = kinodynamic_planner->getLastReplanMetrics();
+    // At first there is no obstalce we can put zero below! 
+    initial_entry.obstacle_checks = initial_metrics.obstacle_checks;
+    initial_entry.rewire_neighbor_searches = initial_metrics.rewire_neighbor_searches;
+    initial_entry.orphaned_nodes = initial_metrics.orphaned_nodes;
+    initial_entry.path_cost = initial_metrics.path_cost;
+    
+    // For time_to_goal, we use the initial robot state
+    initial_entry.time_to_goal = robot_initial_state(robot_initial_state.size() - 1);
+    
+    // Push this entry to your log vector
+    log_data.push_back(initial_entry);
+    // ======================================================
 
     const int tree_visualization_hz = 10; // Visualize the tree only 2 times per second.
     auto tree_vis_timer = vis_node->create_wall_timer(
@@ -261,7 +290,6 @@ int main(int argc, char **argv) {
     auto time_limit = std::chrono::seconds(run_secs);
 
 
-    std::vector<LogEntry> log_data;
     auto global_start = std::chrono::steady_clock::now();
     
     // 1. Cast the shared_ptr to the specific Gazebo class
@@ -360,6 +388,25 @@ int main(int argc, char **argv) {
             RCLCPP_INFO(rclcpp::get_logger("RRTx_Timing"), 
                 "updateObstacleSamples took: %.2f ms | Processed: [ %s ]", 
                 duration_ms, obs_names.c_str());
+
+            // ======================================================
+            LogEntry entry;
+            const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
+            
+            // Time since the start of the simulation
+            entry.elapsed_s = std::chrono::duration<double>(slice_start_time - global_start).count();
+            
+            // Duration of the calculation (updateObstacleSamples + internal plan)
+            entry.duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count(); 
+            
+            entry.obstacle_checks = metrics.obstacle_checks;
+            entry.orphaned_nodes = metrics.orphaned_nodes;
+            entry.path_cost = metrics.path_cost;
+            entry.time_to_goal = T_robot;
+            entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
+            
+            log_data.push_back(entry);
+            // ======================================================
         }
 
         auto calc_end = std::chrono::steady_clock::now();
@@ -379,17 +426,7 @@ int main(int argc, char **argv) {
             kinodynamic_planner->visualizePath(current_viz_path);
         }
 
-        // --- 5. LOGGING ---
-        LogEntry entry;
-        const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
-        entry.elapsed_s = std::chrono::duration<double>(slice_start_time - global_start).count();
-        entry.duration_ms = std::chrono::duration<double, std::milli>(calc_end - calc_start).count(); 
-        entry.obstacle_checks = metrics.obstacle_checks;
-        entry.orphaned_nodes = metrics.orphaned_nodes;
-        entry.path_cost = metrics.path_cost;
-        entry.time_to_goal = T_robot;
-        entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
-        log_data.push_back(entry);
+  
 
         // --- 6. SLICE MANAGEMENT (FIXED) ---
         
