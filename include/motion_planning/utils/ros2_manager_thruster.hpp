@@ -195,7 +195,7 @@ public:
         robot_trace_edges_.push_back({start_pt, end_pt});
     }
 
-    void setPlannedThrusterTrajectory(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+    void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
         std::lock_guard<std::mutex> lock(path_mutex_);
         if (new_path_from_main.size() < 2) {
             is_path_set_ = false;
@@ -230,7 +230,7 @@ public:
         }
     }
 
-    Eigen::VectorXd getCurrentKinodynamicState() {
+    Eigen::VectorXd getCurrentSimulatedState() {
         std::lock_guard<std::mutex> lock(path_mutex_);
         return current_interpolated_state_;
     }

@@ -230,7 +230,7 @@ int main(int argc, char **argv) {
     kinodynamic_planner->setRobotState(robot_initial_state);
     auto path = kinodynamic_planner->getPathPositions(); // Returns the correct format directly
     if (!path.empty()) {
-        ros_manager->setPlannedThrusterTrajectory(path);
+        ros_manager->setPath(path);
         // Set the robot's starting state in the manager to initialize its clock.
         ros_manager->setInitialState(robot_initial_state);
     }
@@ -342,7 +342,7 @@ int main(int argc, char **argv) {
 
         // --- 2. Get Robot State & Correct Order ---
         // [CRITICAL ORDER FIX]: Update Planner State FIRST so it knows where the robot IS.
-        Eigen::VectorXd current_sim_state = ros_manager->getCurrentKinodynamicState();
+        Eigen::VectorXd current_sim_state = ros_manager->getCurrentSimulatedState();
         if (current_sim_state.size() == 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
@@ -419,7 +419,7 @@ int main(int argc, char **argv) {
 
         auto new_executable_path = kinodynamic_planner->getPathPositions();
         if (!new_executable_path.empty()) {
-            ros_manager->setPlannedThrusterTrajectory(new_executable_path);
+            ros_manager->setPath(new_executable_path);
             current_viz_path = new_executable_path;
         }
 
@@ -470,7 +470,7 @@ int main(int argc, char **argv) {
             // ======================================================
             // MOVE PRINT HERE
             // ======================================================
-            Eigen::VectorXd updated_state = ros_manager->getCurrentKinodynamicState();
+            Eigen::VectorXd updated_state = ros_manager->getCurrentSimulatedState();
             T_robot = updated_state(updated_state.size()-1);
             
 
