@@ -1,0 +1,63 @@
+# Experiment Configuration
+experiment:
+  name: "FMTX_Thruster_Test"
+  planner_type: "KinodynamicFMTX"
+  state_space_type: "Thruster"
+  manager_type: "Thruster"
+
+# Simulation Settings
+simulation:
+  time_budget: 25.0
+  duration_limit: 20
+  slice_time: 0.02
+  seed: 42
+
+# Robot & State Space Definition
+robot:
+  # Start: x, y, vx, vy, time_budget
+  start_state: [48.0, 48.0, 0.0, 0.0, 25.0]
+  # Goal: x, y, vx, vy, time_to_go
+  goal_state:  [-48.0, -48.0, 0.0, 0.0, 0.0]
+  
+  dimensions: 5
+  spatial_dim: 2
+  # Bounds: x, y, vx, vy, time
+  bounds_min: [-50.0, -50.0, -15.0, -15.0, 0.0]
+  bounds_max: [ 50.0,  50.0,  15.0,  15.0, 25.0]
+  
+  # Dynamics
+  min_velocity: 0.0
+  max_velocity: 15.0
+  max_acceleration: 5.0 # Specific to Thruster
+
+# Planner Parameters
+planner_params:
+  num_of_samples: 10
+  factor: 1.5
+  use_kdtree: true
+  kdtree_type: "NanoFlann"
+  partial_update: true
+  kd_dim: 3 # 3 for 2nd order thruster (x,y,time) usually, or 5 if using full state for KD
+  precache_neighbors: true
+  use_heuristic: false
+
+# Manager / Gazebo Parameters
+manager_params:
+  use_sim_time: true
+  sim_time_step: -0.04
+  sim_frequency_hz: 50
+  vis_frequency_hz: 30
+  follow_path: true
+  inflation: 0.75
+
+gazebo_params:
+  robot_model_name: "tugbot"
+  world_name: "default"
+  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10_slow.sdf"
+  use_range: false
+  sensor_range: 20.0
+  estimation: true
+  inflation: 0.75
+  fcl: false
+  bullet: true # Thruster often uses bullet for collision
+  persistent_static_obstacles: false

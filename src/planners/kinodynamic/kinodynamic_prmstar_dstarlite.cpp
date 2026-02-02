@@ -601,7 +601,7 @@ std::vector<DStarLiteNode*> KinodynamicPRMStarDStarLite::getNeighbors(DStarLiteN
     return result;
 }
 
-bool KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& turned_obstacles) {
+void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& turned_obstacles) {
     bool graph_changed = false;
 
     for (const auto& ob : turned_obstacles) {
@@ -644,7 +644,7 @@ bool KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& tu
         computeShortestPath();
     }
 
-    return graph_changed;
+    return;
 }
 
 void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {

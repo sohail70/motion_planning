@@ -22,18 +22,13 @@ public:
     virtual void setStart(const Eigen::VectorXd& start) override;
     virtual void setGoal(const Eigen::VectorXd& goal) override;
 
-    bool updateObstacleSamples(const ObstacleVector& turned_obstacles);
+    void updateObstacleSamples(const ObstacleVector& turned_obstacles);
     std::vector<Eigen::VectorXd> getPathPositions();
 
     void setRobotState(const Eigen::VectorXd& robot_state);
     void visualizeGraph();
 
-    struct ReplanMetrics {
-        long long rewire_neighbor_searches = 0;
-        int obstacle_checks = 0;
-        int orphaned_nodes = 0;
-        double path_cost = 0.0;
-    };
+
     const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
     void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
 

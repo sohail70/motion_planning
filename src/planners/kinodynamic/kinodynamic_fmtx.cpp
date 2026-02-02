@@ -5194,16 +5194,16 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 // ============================================================================
 // 1. updateObstacleSamples (The Manager)
 // ============================================================================
-bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& turned_obstacles) {
+void KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& turned_obstacles) {
     // Return true to satisfy the Planner interface
-    if (turned_obstacles.empty()) return true;
+    if (turned_obstacles.empty()) return;
 
     last_replan_metrics_ = ReplanMetrics();
     in_dynamic = true;
 
     if (robot_continuous_state_.size() == 0) {
         RCLCPP_WARN(rclcpp::get_logger("Planner_Obstacle_Update"), "Robot state not set.");
-        return false;
+        return;
     }
 
     // // Get exact planning time for tube generation
@@ -5247,7 +5247,6 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& turned_obstacl
 
 
     plan();
-    return true; // Success
 }
 
 // // ============================================================================

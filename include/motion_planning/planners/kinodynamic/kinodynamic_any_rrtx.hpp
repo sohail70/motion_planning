@@ -52,12 +52,7 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     void dumpTreeToCSV(const std::string& filename) const;
 
 
-    struct ReplanMetrics {
-        long long rewire_neighbor_searches = 0;
-        int obstacle_checks = 0;
-        int orphaned_nodes = 0;
-        double path_cost = 0.0;
-    };
+
 
     const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
     void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }

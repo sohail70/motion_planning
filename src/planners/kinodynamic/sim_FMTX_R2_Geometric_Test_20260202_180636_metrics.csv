@@ -1,0 +1,2 @@
+elapsed_s,duration_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes,collision_count
+4.2498e-05,2925.07,0,0,1094,0,0,0

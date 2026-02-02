@@ -96,8 +96,8 @@ int main(int argc, char** argv)
     signal(SIGINT, sigint_handler);
 
 
-    int num_samples = 20;
-    double factor = 1.0;
+    int num_samples = 1000;
+    double factor = 2.0;
     unsigned int seed = 42;
     int run_secs = 30;
 

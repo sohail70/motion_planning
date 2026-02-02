@@ -13,6 +13,7 @@
 #include <sstream>
 #include <iomanip> 
 #include <utility> // for std::pair
+#include "motion_planning/utils/ros2_manager_base.hpp"
 
 // Helper functions to extract spatial parts of a state vector
 inline Eigen::VectorXd getSpatialPosition(const Eigen::VectorXd& full_state) {
@@ -26,7 +27,7 @@ inline Eigen::VectorXd getSpatialVelocity(const Eigen::VectorXd& full_state) {
     return full_state.segment(D_spatial_dim, D_spatial_dim);
 }
 
-class ThrusterROS2Manager : public rclcpp::Node {
+class ThrusterROS2Manager : public ROS2ManagerBase {
 public:
     // Full constructor with obstacle checking
     ThrusterROS2Manager(
@@ -35,10 +36,8 @@ public:
         const Params& params,
         const Eigen::VectorXd& initial_sim_state,
         double initial_budget_time)
-        : Node("ros2_manager_thruster",
-               rclcpp::NodeOptions().parameter_overrides(
-                   {rclcpp::Parameter("use_sim_time", params.getParam<bool>("use_sim_time", false))}
-               )),
+        // : Node("ros2_manager_thruster", rclcpp::NodeOptions().parameter_overrides( {rclcpp::Parameter("use_sim_time", params.getParam<bool>("use_sim_time", false))})),
+        : ROS2ManagerBase("ros2_manager_thruster", rclcpp::NodeOptions().parameter_overrides( {rclcpp::Parameter("use_sim_time", params.getParam<bool>("use_sim_time", false))})),
           obstacle_checker_(obstacle_checker),
           visualizer_(visualizer),
           is_path_set_(false),

@@ -67,6 +67,16 @@ struct TupleComparator {
 };
 
 
+struct ReplanMetrics {
+    long long rewire_neighbor_searches = 0;
+    int obstacle_checks = 0;
+    int orphaned_nodes = 0;
+    double path_cost = 0.0;
+};
+
+
+
+
 
 class Planner {
  public:
@@ -78,11 +88,29 @@ class Planner {
     
     virtual void setup(const Params& params , std::shared_ptr<Visualization> visualization) = 0;
     virtual void plan() = 0;
-    // virtual std::vector<int> getPathIndex() const = 0;
+
+    // --- New methods required by main.cpp ---
+    // Default implementations are provided where possible to avoid breaking existing geometric planners
+    virtual void setClock(std::shared_ptr<rclcpp::Clock> clock) { }
+    
+    virtual void setRobotState(const Eigen::VectorXd& state) { }
+    
+    virtual std::vector<Eigen::VectorXd> getPathPositions() const { return {}; } 
+
+    virtual void updateObstacleSamples(const ObstacleVector& obstacles) { }
+
+    virtual void visualizePath(const std::vector<Eigen::VectorXd>& path) {}
+
+
+    virtual void visualizeTree() {};
+
+    virtual const ReplanMetrics& getLastReplanMetrics() const { 
+        static ReplanMetrics empty_metrics; 
+        return empty_metrics; 
+    }
+
 
  protected:
 
 
 };
-
-

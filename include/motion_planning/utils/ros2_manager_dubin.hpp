@@ -12,8 +12,9 @@
 #include <vector>
 #include <algorithm>
 #include <utility> // for std::pair
+#include "motion_planning/utils/ros2_manager_base.hpp"
 
-class DubinsROS2Manager : public rclcpp::Node {
+class DubinsROS2Manager : public ROS2ManagerBase {
 public:
     DubinsROS2Manager(
         std::shared_ptr<ObstacleChecker> obstacle_checker,
@@ -21,7 +22,8 @@ public:
         const Params& params,
         const Eigen::VectorXd& initial_sim_state,
         double initial_budget_time) 
-        : Node("dubins_ros2_manager", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)})),
+        // : Node("dubins_ros2_manager", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)})),
+        : ROS2ManagerBase("dubins_ros2_manager", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)})),
           obstacle_checker_(obstacle_checker),
           visualizer_(visualizer),
           is_path_set_(false),

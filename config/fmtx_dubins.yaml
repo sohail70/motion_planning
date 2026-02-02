@@ -1,0 +1,52 @@
+experiment:
+  name: "FMTX_Dubins_Test"
+  planner_type: "KinodynamicFMTX"
+  state_space_type: "Dubins"
+  manager_type: "Dubins"
+
+simulation:
+  time_budget: 40.0
+  duration_limit: 30
+  slice_time: 0.02
+  seed: 42
+
+robot:
+  start_state: [48.0, 48.0, 0.785, 40.0] # x, y, theta, time_budget
+  goal_state:  [-48.0, -48.0, -2.356, 0.0] # x, y, theta, time_to_go
+  dimensions: 4
+  spatial_dim: 2
+  bounds_min: [-50.0, -50.0, -3.14159, 0.0]
+  bounds_max: [50.0, 50.0, 3.14159, 40.0]
+  
+  min_velocity: 2.0
+  max_velocity: 20.0
+  min_turning_radius: 2.0 # Used here
+
+planner_params:
+  num_of_samples: 100
+  factor: 3.0
+  use_kdtree: true
+  kdtree_type: "NanoFlann"
+  partial_update: true
+  kd_dim: 4 # Important for Dubins
+  precache_neighbors: true
+  use_heuristic: false
+
+manager_params:
+  use_sim_time: true
+  sim_time_step: -0.04
+  sim_frequency_hz: 50
+  vis_frequency_hz: 30
+  follow_path: true
+  inflation: 0.5
+
+gazebo_params:
+  robot_model_name: "tugbot"
+  world_name: "default"
+  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf"
+  use_range: false
+  estimation: true
+  inflation: 0.5
+  fcl: false
+  bullet: false
+  persistent_static_obstacles: false

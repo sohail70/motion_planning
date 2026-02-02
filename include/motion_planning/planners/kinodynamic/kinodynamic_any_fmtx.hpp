@@ -80,7 +80,7 @@ class KinodynamicANYFMTX : public Planner {
             std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles, double scale_factor);
             std::pair<std::unordered_set<int>,std::unordered_set<int>> findSamplesNearObstaclesDual(const ObstacleVector& obstacles, double scale_factor);
 
-            bool updateObstacleSamples(const ObstacleVector& obstacles);
+            void updateObstacleSamples(const ObstacleVector& obstacles);
             std::unordered_set<int> getDescendants(int node_index);
 
             void addNewObstacle(const Obstacle& ob);
@@ -103,12 +103,7 @@ class KinodynamicANYFMTX : public Planner {
             void setClock(rclcpp::Clock::SharedPtr clock);
 
 
-            struct ReplanMetrics {
-                long long rewire_neighbor_searches = 0;
-                int obstacle_checks = 0;
-                int orphaned_nodes = 0;
-                double path_cost = 0.0;
-            };
+
 
             const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
             void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }

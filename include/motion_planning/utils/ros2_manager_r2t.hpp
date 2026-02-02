@@ -439,8 +439,8 @@
 #include <vector>
 #include <algorithm>
 #include <utility> // for std::pair
-
-class R2TROS2Manager : public rclcpp::Node {
+#include "motion_planning/utils/ros2_manager_base.hpp"
+class R2TROS2Manager : public ROS2ManagerBase {
 public:
     R2TROS2Manager(
         std::shared_ptr<ObstacleChecker> obstacle_checker,
@@ -449,7 +449,8 @@ public:
         double robot_velocity,
         const Eigen::VectorXd& initial_sim_state,
         double initial_budget_time) 
-        : Node("r2t_ros_manager", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)})),
+        // : Node("r2t_ros_manager", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)})),
+        : ROS2ManagerBase("r2t_ros_manager", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)})),
           obstacle_checker_(obstacle_checker),
           visualizer_(visualizer),
           is_path_set_(false),
