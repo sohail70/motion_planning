@@ -11,14 +11,17 @@ public:
     using NeighborMap = boost::container::flat_map<DStarLiteNode*, EdgeInfo>;
 
     explicit DStarLiteNode(std::shared_ptr<State> state, int index = -1)
-        : state_(state), index_(index), 
-          g(std::numeric_limits<double>::infinity()), 
-          rhs(std::numeric_limits<double>::infinity()), 
-          priority_key_(std::numeric_limits<double>::infinity()),
-          heap_index_(-1), in_queue_(false),
-          neighbors_cached_(false),
-          best_parent_(nullptr) { // Initialize best_parent_ here
-    }
+        : state_(state), index_(index),
+        g(std::numeric_limits<double>::infinity()),
+        rhs(std::numeric_limits<double>::infinity()),
+        priority_key_(std::numeric_limits<double>::infinity()),
+        heap_index_(-1), in_queue_(false),
+        neighbors_cached_(false),
+        best_parent_(nullptr),
+        time_to_goal_(INFINITY),   // initialize time
+        k1(std::numeric_limits<double>::infinity()),
+        k2(std::numeric_limits<double>::infinity())
+    {}
 
     // Accessors
     const Eigen::VectorXd& getStateValue() const { return state_->getValue(); }
@@ -33,6 +36,9 @@ public:
         return best_parent_trajectory_;
     }
 
+
+    double getTimeToGoal() const noexcept { return time_to_goal_; }
+    void setTimeToGoal(double time) noexcept { time_to_goal_ = time; }
     // D* Lite Data
     double g;
     double rhs;
@@ -46,6 +52,8 @@ public:
     // Priority Queue Helpers
     size_t heap_index_;
     bool in_queue_;
+
+    double time_to_goal_;
 
     double k1;
     double k2;

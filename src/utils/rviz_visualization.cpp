@@ -262,6 +262,77 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
 
 
 
+void RVizVisualization::visualizeEdges(
+    const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges,
+    const std::string& frame_id,
+    const std::array<float,3>& color,
+    float alpha,
+    float line_width,
+    const std::string& ns,
+    int marker_id,
+    bool dashed,
+    double dash_length)
+{
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = frame_id;
+    marker.header.stamp = node_->now();
+    marker.ns = ns;
+    marker.id = marker_id;
+    marker.type = visualization_msgs::msg::Marker::LINE_LIST;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+
+    marker.scale.x = line_width;   // thickness
+    marker.color.r = color[0];
+    marker.color.g = color[1];
+    marker.color.b = color[2];
+    marker.color.a = alpha;
+
+    // Optionally create dashed lines by splitting each segment into short segments
+    for (const auto& e : edges) {
+        Eigen::Vector2d p0 = e.first.head<2>();
+        Eigen::Vector2d p1 = e.second.head<2>();
+        Eigen::Vector2d diff = p1 - p0;
+        double len = diff.norm();
+
+        if (!dashed || len <= 2.0 * dash_length) {
+            geometry_msgs::msg::Point s, t;
+            s.x = p0.x(); s.y = p0.y(); s.z = (e.first.size() > 2 ? e.first.z() : 0.0);
+            t.x = p1.x(); t.y = p1.y(); t.z = (e.second.size() > 2 ? e.second.z() : 0.0);
+            marker.points.push_back(s);
+            marker.points.push_back(t);
+            continue;
+        }
+
+        Eigen::Vector2d dir = diff / len;
+        double cursor = 0.0;
+        bool draw = true;
+        while (cursor < len) {
+            double seg_start = cursor;
+            double seg_end = std::min(cursor + dash_length, len);
+            if (draw) {
+                Eigen::Vector2d a = p0 + dir * seg_start;
+                Eigen::Vector2d b = p0 + dir * seg_end;
+                geometry_msgs::msg::Point sa, sb;
+                sa.x = a.x(); sa.y = a.y(); sa.z = (e.first.size() > 2 ? e.first.z() : 0.0);
+                sb.x = b.x(); sb.y = b.y(); sb.z = (e.second.size() > 2 ? e.second.z() : 0.0);
+                marker.points.push_back(sa);
+                marker.points.push_back(sb);
+            }
+            // advance: gap after dash
+            cursor += dash_length;
+            cursor += dash_length; // gap length equal to dash_length (tweak if wanted)
+            draw = true; // keep drawing each other dash (pattern already enforces gaps)
+        }
+    }
+
+    // Optional: set small lifetime so markers refresh cleanly (0 => persist until overwritten)
+    // marker.lifetime = rclcpp::Duration::from_seconds(0.0);
+
+    // publish; use one publisher (or the one you already use)
+    marker_pub_->publish(marker);
+}
+
+
 void RVizVisualization::visualizeCylinder(
     const std::vector<Eigen::VectorXd>& obstacles, 
     const std::vector<double>& radii, 

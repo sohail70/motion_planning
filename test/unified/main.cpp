@@ -203,6 +203,7 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ros_manager = std::dynamic_pointer_cast<R2TROS2Manager>(ros_manager); 
     // --- 7. Planner Factory ---
     PlannerType p_type = PlannerType::KinodynamicFMTX; 
     bool is_anytime = false;
@@ -219,6 +220,7 @@ int main(int argc, char** argv) {
     planner->setup(planner_params, visualization);
     
     auto kinodynamic_planner = std::dynamic_pointer_cast<Planner>(planner); 
+    // kinodynamic_planner = std::dynamic_pointer_cast<KinodynamicFMTX>(planner); 
     if (kinodynamic_planner) kinodynamic_planner->setClock(sim_clock);
 
     // --- 8. Initial Plan ---
@@ -226,7 +228,7 @@ int main(int argc, char** argv) {
     auto start_t = std::chrono::steady_clock::now();
     
     if (is_anytime) {
-        auto warmup_duration = std::chrono::milliseconds(750); 
+        auto warmup_duration = std::chrono::milliseconds(1000); 
         auto warmup_start = std::chrono::steady_clock::now();
         while (std::chrono::steady_clock::now() - warmup_start < warmup_duration) {
             planner->plan(); 
@@ -245,6 +247,12 @@ int main(int argc, char** argv) {
     if (!path.empty() && ros_manager) {
         ros_manager->setPath(path);
     }
+
+    if (cfg.planner_type == "KinodynamicRRTX"){
+        auto rrtx_planner = dynamic_cast<KinodynamicRRTX*>(planner.get());
+        rrtx_planner->dumpTreeToCSV("rrtx_tree_nodes.csv");
+    }
+
 
     // --- 9. Executor Setup ---
     rclcpp::executors::StaticSingleThreadedExecutor executor;
@@ -291,6 +299,13 @@ int main(int argc, char** argv) {
                 }
             }
 
+            // Eigen::VectorXd current_sim_state = start_vec;
+            // // Resize the vector to have one extra element (preserving old values)
+            // current_sim_state.conservativeResize(start_vec.size() + 1);
+            
+            // // Set the new last element to zero
+            // current_sim_state(start_vec.size()) = 0.0;
+            // kinodynamic_planner->setRobotState(current_sim_state);
             sim_time += 1.0 / loop_rate_hz;
             gazebo_checker->processLatestPoseInfo(sim_time);
             ObstacleVector all_obs = gazebo_checker->getObstacles();
@@ -301,7 +316,7 @@ int main(int argc, char** argv) {
                 auto end_update = std::chrono::steady_clock::now();
                 double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
 
-                RCLCPP_INFO(rclcpp::get_logger("FMTx_Timing"), 
+                RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), 
                     "updateObstacleSamples took: %.2f ms", duration_ms);
 
                 LogEntry entry;
@@ -355,7 +370,7 @@ int main(int argc, char** argv) {
             // VISUALIZE PATH AND TREE (This was missing)
             auto new_executable_path = kinodynamic_planner->getPathPositions();
             if (!new_executable_path.empty()) {
-                kinodynamic_planner->visualizePath(new_executable_path);
+                // kinodynamic_planner->visualizePath(new_executable_path);
             }
             kinodynamic_planner->visualizeTree();
 
@@ -391,12 +406,18 @@ int main(int argc, char** argv) {
                 kinodynamic_planner->updateObstacleSamples(turned_obs);
                 auto end_update = std::chrono::steady_clock::now();
                 double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
-                RCLCPP_INFO(rclcpp::get_logger("FMTx_Timing"), 
+                RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), 
                     "updateObstacleSamples took: %.2f ms", duration_ms);
             }
             
             if (is_anytime) {
-                 kinodynamic_planner->plan();
+                auto start_update = std::chrono::steady_clock::now();
+                kinodynamic_planner->plan();
+                auto end_update = std::chrono::steady_clock::now();
+                double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
+                if(!turned_obs.empty())
+                    RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), 
+                        "plan took: %.2f ms", duration_ms);
             }
             auto calc_end = std::chrono::steady_clock::now();
 

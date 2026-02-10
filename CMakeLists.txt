@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.10)
 project(MotionPlanning)
 # add_compile_options(-g -O0)  # Force debug symbols and disable optimizations
 set(CMAKE_CXX_STANDARD 17)
-# set(CMAKE_BUILD_TYPE Release)
-set(CMAKE_BUILD_TYPE RelWithDebInfo)
+set(CMAKE_BUILD_TYPE Release)
+# set(CMAKE_BUILD_TYPE RelWithDebInfo)
 # set(CMAKE_BUILD_TYPE Debug)
 
 
@@ -248,10 +248,10 @@ add_test(NAME test_kinodynamic_fmtx_R2T COMMAND test_kinodynamic_fmtx_R2T)
 # add_test(NAME test_kinodynamic_fmtx_dubin_4D COMMAND test_kinodynamic_fmtx_dubin_4D)
 
 
-# add_executable(test_kinodynamic_fmtx_thruster_5D test/unit/test_kinodynamic_fmtx_thruster_5D.cpp)
-# target_link_libraries(test_kinodynamic_fmtx_thruster_5D motion_planning gz_obs)
-# ament_target_dependencies(test_kinodynamic_fmtx_thruster_5D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
-# add_test(NAME test_kinodynamic_fmtx_thruster_5D COMMAND test_kinodynamic_fmtx_thruster_5D)
+add_executable(test_kinodynamic_fmtx_thruster_5D test/unit/test_kinodynamic_fmtx_thruster_5D.cpp)
+target_link_libraries(test_kinodynamic_fmtx_thruster_5D motion_planning gz_obs)
+ament_target_dependencies(test_kinodynamic_fmtx_thruster_5D rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+add_test(NAME test_kinodynamic_fmtx_thruster_5D COMMAND test_kinodynamic_fmtx_thruster_5D)
 
 
 # # add_executable(test_kinodynamic_fmtx_min_snap_5D test/unit/test_kinodynamic_fmtx_min_snap_5D.cpp)

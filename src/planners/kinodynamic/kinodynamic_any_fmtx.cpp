@@ -572,6 +572,14 @@ Eigen::VectorXd KinodynamicANYFMTX::saturate(const Eigen::VectorXd& newPoint, co
     Eigen::VectorXd saturatedPoint = newPoint;
 
     switch (dimension) {
+        case 2: { // State: (x, y)
+            double dist = (newPoint - closestPoint).norm();
+            if (dist > delta) {
+                saturatedPoint = closestPoint + (newPoint - closestPoint) * (delta / dist);
+            }
+            break;
+        }
+
         case 3: { // State: (x, y, time)
             double dist = (newPoint - closestPoint).norm();
             if (dist > delta) {
@@ -5283,10 +5291,10 @@ void KinodynamicANYFMTX::visualizeTree() {
                              ? static_cast<double>(total_forward_neighbors) / connected_nodes_count 
                              : 0.0;
     
-    std::cout << "[FMTX INFO] Total nodes: " << tree_.size()
-              << " | Connected: " << connected_nodes_count
-              << " | Max Neighbors: " << max_forward_neighbors
-              << " | Avg Neighbors: " << std::fixed << std::setprecision(2) << average_neighbors << std::endl;
+    // std::cout << "[FMTX INFO] Total nodes: " << tree_.size()
+    //           << " | Connected: " << connected_nodes_count
+    //           << " | Max Neighbors: " << max_forward_neighbors
+    //           << " | Avg Neighbors: " << std::fixed << std::setprecision(2) << average_neighbors << std::endl;
     
     // visualization_->visualizeNodes(tree_nodes, "map", 
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color

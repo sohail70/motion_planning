@@ -23,10 +23,10 @@ public:
     virtual void setGoal(const Eigen::VectorXd& goal) override;
 
     void updateObstacleSamples(const ObstacleVector& turned_obstacles);
-    std::vector<Eigen::VectorXd> getPathPositions();
+    std::vector<Eigen::VectorXd> getPathPositions() const;
 
     void setRobotState(const Eigen::VectorXd& robot_state);
-    void visualizeGraph();
+    void visualizeTree();
 
 
     const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
@@ -44,6 +44,7 @@ private:
     void initialize(DStarLiteNode* start, DStarLiteNode* goal);
     void updateVertex(DStarLiteNode* u);
     void computeShortestPath();
+    double computeShortestPathDijkstraMode();
 
     // --- PRM* Construction ---
     void near(int node_index); // NEW: Neighbor caching function
@@ -67,7 +68,8 @@ private:
 
     std::vector<std::unique_ptr<DStarLiteNode>> nodes_;
     
-    DStarLitePQ open_queue_; 
+    // DStarLitePQ open_queue_; 
+    DStarLitePriorityQueue open_queue_;
     
     DStarLiteNode* start_node_;
     DStarLiteNode* goal_node_;
@@ -94,4 +96,19 @@ private:
     void cacheNeighbors(DStarLiteNode* u);
 
     std::unordered_map<std::string, Obstacle> previous_obstacles_;
+
+    bool is_geometric_mode_;
+
+    DStarLiteNode* last_start_node = nullptr; 
+    std::unordered_map<DStarLiteNode*, DStarLiteNode*> dijkstra_tree_parents_;
+
+
+    int grid_dim_per_side_; // Stores the N for an NxN grid
+    bool use_grid_sampling_;
+
+
+    void debugCompareDijkstraVsDStarLite();
+    
+    DStarLiteKey calculateKey(DStarLiteNode* u);
+
 };

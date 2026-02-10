@@ -223,9 +223,133 @@ public:
 
     bool empty() const { return heap_.empty(); }
 };
+//////////////////////////////////
+
+// 1. Define the Key exactly as the paper does
+struct DStarLiteKey {
+    double k1;
+    double k2;
+
+    // Lexicographical comparison: k1 first, then k2
+    bool operator<(const DStarLiteKey& other) const {
+        if (std::abs(k1 - other.k1) > 1e-9) return k1 < other.k1;
+        return k2 < other.k2 - 1e-9;
+    }
+
+    bool operator<=(const DStarLiteKey& other) const {
+        return (*this < other) || (std::abs(k1 - other.k1) < 1e-9 && std::abs(k2 - other.k2) < 1e-9);
+    }
+};
+
+// 2. A specialized Queue that uses the DStarLiteKey
+class DStarLitePriorityQueue {
+private:
+    std::vector<std::pair<DStarLiteKey, DStarLiteNode*>> heap_;
+
+    void heapifyUp(size_t idx) {
+        while (idx > 0) {
+            size_t p = (idx - 1) / 2;
+            if (heap_[idx].first < heap_[p].first) {
+                swap(idx, p);
+                idx = p;
+            } else break;
+        }
+    }
+
+void swapNodes(size_t i, size_t j) {
+    std::swap(heap_[i], heap_[j]);
+    heap_[i].second->heap_index_ = i;
+    heap_[j].second->heap_index_ = j;
+}
+    void heapifyDown(size_t idx) {
+        while (true) {
+            size_t l = 2 * idx + 1;
+            size_t r = 2 * idx + 2;
+            size_t smallest = idx;
+
+            // Check left child
+            if (l < heap_.size() && heap_[l].first < heap_[smallest].first) {
+                smallest = l;
+            }
+            
+            // Check right child - FIX: use heap_[smallest].first for comparison
+            if (r < heap_.size() && heap_[r].first < heap_[smallest].first) {
+                smallest = r;
+            }
+
+            if (smallest != idx) {
+                swapNodes(idx, smallest);
+                idx = smallest;
+            } else {
+                break;
+            }
+        }
+    }
+
+    void swap(size_t i, size_t j) {
+        std::swap(heap_[i], heap_[j]);
+        heap_[i].second->heap_index_ = i;
+        heap_[j].second->heap_index_ = j;
+    }
+
+public:
+    void add(DStarLiteNode* node, DStarLiteKey key) {
+        if (node->in_queue_) { update(node, key); return; }
+        node->in_queue_ = true;
+        node->k1 = key.k1; node->k2 = key.k2; // Keep node in sync
+        heap_.push_back({key, node});
+        node->heap_index_ = heap_.size() - 1;
+        heapifyUp(node->heap_index_);
+    }
 
 
+void clear() {
+        for (auto& pair : heap_) {
+            pair.second->in_queue_ = false;
+            pair.second->heap_index_ = -1;
+        }
+        heap_.clear();
+    }
 
+    void update(DStarLiteNode* node, DStarLiteKey new_key) {
+        if (!node->in_queue_) return;
+        size_t idx = node->heap_index_;
+        DStarLiteKey old_key = heap_[idx].first;
+        heap_[idx].first = new_key;
+        node->k1 = new_key.k1; node->k2 = new_key.k2;
+        if (new_key < old_key) heapifyUp(idx);
+        else heapifyDown(idx);
+    }
+
+    void remove(DStarLiteNode* node) {
+        if (!node->in_queue_) return;
+        size_t idx = node->heap_index_;
+        swap(idx, heap_.size() - 1);
+        heap_.pop_back();
+        node->in_queue_ = false;
+        if (idx < heap_.size()) {
+            heapifyUp(idx);
+            heapifyDown(idx);
+        }
+    }
+
+    DStarLiteKey topKey() const {
+        if (heap_.empty()) return {std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+        return heap_[0].first;
+    }
+
+    DStarLiteNode* pop() {
+        if (heap_.empty()) return nullptr;
+        DStarLiteNode* node = heap_[0].second;
+        remove(node);
+        return node;
+    }
+    
+    bool empty() const { return heap_.empty(); }
+};
+
+
+//////////////////////////////////
 template <typename NodeType, typename Comparator>
 class PriorityQueue2 {
 private:

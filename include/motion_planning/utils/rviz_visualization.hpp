@@ -24,6 +24,7 @@ public:
     void visualizeEdges(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id, const std::string& color_str) override;
     void visualizeEdges(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id, const std::string& color_str,const std::string& ns) override;
 
+    void visualizeEdges( const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id, const std::array<float,3>& color, float alpha, float line_width, const std::string& ns, int marker_id, bool dashed = false, double dash_length = 0.5);
     void visualizeCylinder(const std::vector<Eigen::VectorXd>& obstacles, const std::vector<double>& radii, const std::string& frame_id , const std::vector<float>& color , const std::string& ns);
     void visualizeSpheres( const std::vector<Eigen::VectorXd>& obstacles_positions, const std::vector<double>& radii, const std::string& frame_id, const std::vector<float>& color, const std::string& ns);
 

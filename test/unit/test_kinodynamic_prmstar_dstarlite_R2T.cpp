@@ -243,7 +243,7 @@ int main(int argc, char** argv)
         std::cout << "time taken for the initial plan : " << duration.count() 
                 << " milliseconds\n";
     }
-    kinodynamic_planner->visualizeGraph();
+    kinodynamic_planner->visualizeTree();
 
     // kinodynamic_planner->printCacheStatus();
 
@@ -264,7 +264,7 @@ int main(int argc, char** argv)
         std::chrono::milliseconds(1000 / tree_visualization_hz),
         [&kinodynamic_planner]() { // Use a lambda to call the visualizeTree function
             if (kinodynamic_planner) {
-                kinodynamic_planner->visualizeGraph();
+                kinodynamic_planner->visualizeTree();
             }
         });
 

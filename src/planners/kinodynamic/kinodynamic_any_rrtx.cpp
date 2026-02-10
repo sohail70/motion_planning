@@ -297,6 +297,14 @@ Eigen::VectorXd KinodynamicANYRRTX::saturate(const Eigen::VectorXd& newPoint, co
     Eigen::VectorXd saturatedPoint = newPoint;
 
     switch (dimension) {
+        case 2: { // State: (x, y)
+            double dist = (newPoint - closestPoint).norm();
+            if (dist > delta) {
+                saturatedPoint = closestPoint + (newPoint - closestPoint) * (delta / dist);
+            }
+            break;
+        }
+
         case 3: { // State: (x, y, time)
             double dist = (newPoint - closestPoint).norm();
             if (dist > delta) {
@@ -417,7 +425,9 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
     for (auto const& [neighbor, v_to_u_traj] : trajs_from_v_to_u) {
         // Persistent outgoing from new node (N⁰+)
         // Establish the Edge (new_node -> neighbor) using the pre-computed trajectory.
-        if (v_to_u_traj.is_valid) {
+        // NO explicit collision check needed here. 
+        // If it was unsafe or invalid, findParent set cost to INF, so this check fails automatically.
+        if (v_to_u_traj.cost <= neighborhood_radius_ + 0.01) {
             new_node->addNeighbor(neighbor, true, false, v_to_u_traj);
         }
         
@@ -431,7 +441,7 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
             I think RRTx relies on continuous sampling but for now i use a pre-plan obstalce free phase in my test to gather all the neighbors correctly
         */
         Trajectory u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
-        if (u_to_v_traj.is_valid) {
+        if (u_to_v_traj.is_valid && u_to_v_traj.cost <= neighborhood_radius_ + 0.01) {
             last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
             if (obs_checker_->isTrajectorySafe(u_to_v_traj, neighbor->getTimeToGoal())) {
                 neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
@@ -448,12 +458,17 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
 
 
 
-std::unordered_map<RRTxNode*, Trajectory> KinodynamicANYRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
+std::vector<std::pair<RRTxNode*, Trajectory>> KinodynamicANYRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
     double min_lmc = INFINITY; // v is a new node so it has not LMC yet (you can also use v->getLMC() instead of INFINITY)
     RRTxNode* best_parent = nullptr;
     double best_dist = 0.0;
     Trajectory best_traj;
-    std::unordered_map<RRTxNode*, Trajectory> all_trajectories_from_v_to_u;
+
+    // std::unordered_map<RRTxNode*, Trajectory> all_trajectories_from_v_to_u;
+
+    std::vector<std::pair<RRTxNode*, Trajectory>> all_trajectories_from_v_to_u;
+    all_trajectories_from_v_to_u.reserve(candidates.size());
+
     // const double t_now = clock_->now().seconds();
     // const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
 
@@ -465,29 +480,37 @@ std::unordered_map<RRTxNode*, Trajectory> KinodynamicANYRRTX::findParent(std::sh
 
         Trajectory traj_from_v_to_u = statespace_->steer(v->getStateValue(), candidate->getStateValue());
 
-        all_trajectories_from_v_to_u.insert({candidate.get(), traj_from_v_to_u});
+        // all_trajectories_from_v_to_u.insert({candidate.get(), traj_from_v_to_u});
 
-        if (!traj_from_v_to_u.is_valid) {
-            continue;
-        }
         /*
           The obstalce check we do here right now is the v->u  (new node to neighbors) and can also be used for the v->u trajcetories in extend function
           obstalce check (maybe later use a map or something) but u->v should be done in extend.
         */
-        // double time_to_goal_at_v = candidate->getTimeToGoal() + traj_from_v_to_u.time_duration;
-        // const double global_edge_start_time_at_v = t_arrival_predicted - time_to_goal_at_v;
+        // If it looks feasible, we MUST check collision here to know if it's a valid parent.
+        if (traj_from_v_to_u.is_valid && traj_from_v_to_u.cost <= neighborhood_radius_ + 0.01) {
+            
+            // Perform the expensive check ONCE
+            if (!obs_checker_->isTrajectorySafe(traj_from_v_to_u, v->getTimeToGoal())) {
+                // COLLISION: Mark cost as INFINITY so extend() ignores it later
+                traj_from_v_to_u.cost = std::numeric_limits<double>::infinity();
+            }
+        } else {
+            // If invalid or too far, effectively infinite for our purposes
+             traj_from_v_to_u.cost = std::numeric_limits<double>::infinity();
+        }
 
-        if (traj_from_v_to_u.cost <= neighborhood_radius_+0.01) {
-            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
-            if (obs_checker_->isTrajectorySafe(traj_from_v_to_u, v->getTimeToGoal())) {
-                const double candidate_lmc = candidate->getLMC() + traj_from_v_to_u.cost;
+        // 3. Store result (carrying the INF cost if unsafe)
+        all_trajectories_from_v_to_u.push_back({candidate.get(), traj_from_v_to_u});
 
-                if (candidate_lmc < min_lmc && candidate_lmc < v->getLMC()) {
-                    min_lmc = candidate_lmc;
-                    best_parent = candidate.get();
-                    best_traj = traj_from_v_to_u; 
-                    best_dist = traj_from_v_to_u.geometric_distance;
-                }
+        // 4. Parent Selection (Only picks if cost is finite)
+        if (traj_from_v_to_u.cost != std::numeric_limits<double>::infinity()) {
+            const double candidate_lmc = candidate->getLMC() + traj_from_v_to_u.cost;
+
+            if (candidate_lmc < min_lmc && candidate_lmc < v->getLMC()) {
+                min_lmc = candidate_lmc;
+                best_parent = candidate.get();
+                best_traj = traj_from_v_to_u; 
+                best_dist = traj_from_v_to_u.geometric_distance;
             }
         }
 
@@ -1412,10 +1435,10 @@ void KinodynamicANYRRTX::visualizeTree() {
                              ? static_cast<double>(total_forward_neighbors) / connected_nodes_count 
                              : 0.0;
     
-    std::cout << "[FMTX INFO] Total nodes: " << tree_.size()
-              << " | Connected: " << connected_nodes_count
-              << " | Max Neighbors: " << max_forward_neighbors
-              << " | Avg Neighbors: " << std::fixed << std::setprecision(2) << average_neighbors << std::endl;
+    // std::cout << "[FMTX INFO] Total nodes: " << tree_.size()
+    //           << " | Connected: " << connected_nodes_count
+    //           << " | Max Neighbors: " << max_forward_neighbors
+    //           << " | Avg Neighbors: " << std::fixed << std::setprecision(2) << average_neighbors << std::endl;
     
     // visualization_->visualizeNodes(tree_nodes, "map", 
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color

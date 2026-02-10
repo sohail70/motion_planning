@@ -133,7 +133,7 @@ private:
 
 
     double cost_; // This is optimization cost
-    double time_to_goal_; // This is the pure accumulated time
+    double time_to_goal_;
     int index_;
     bool on_obstacle; // not using this now! maybe later instead of samples_in_obstalce!
 

@@ -86,7 +86,7 @@ private:
     double lmc_;
     double cost_;
     int index_;
-    double time_to_goal_; // This is the pure accumulated time
+    double time_to_goal_;
     std::vector<RRTxNode*> children_; // Successor nodes
     double parent_edge_dist_;
 
