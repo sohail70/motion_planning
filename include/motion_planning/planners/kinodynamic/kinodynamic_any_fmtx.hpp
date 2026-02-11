@@ -219,6 +219,7 @@ class KinodynamicANYFMTX : public Planner {
             // Master set to accumulate nodes for re-queuing before the final batch push
             std::unordered_set<FMTNode*> pending_requeue_nodes_;
             double bridge_cost_;
+            bool is_geometric_mode_;
 
 
 

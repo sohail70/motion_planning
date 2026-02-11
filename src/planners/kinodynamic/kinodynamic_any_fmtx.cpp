@@ -42,6 +42,8 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
     use_heuristic= params.getParam<bool>("use_heuristic");
     partial_plot = params.getParam<bool>("partial_plot");
     static_obs_presence = params.getParam<bool>("static_obs_presence");
+    is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
+
     // obs_cache = params.getParam<bool>("obs_cache");
     lower_bounds_ = problem_->getLowerBound();
     upper_bounds_ = problem_->getUpperBound();
@@ -514,13 +516,33 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
             valid_outgoing.push_back({neighbor, traj_outgoing});
         }
 
+        // // 2. Check Backward (Neighbor -> New)
+        // // We check this too because if this exists, the neighbor needs to know about this node
+        // // even if the node can't reach the neighbor directly (though usually we want both).
+        // Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
+        // if (traj_incoming.is_valid) {
+        //     valid_incoming.push_back({neighbor, traj_incoming});
+        // }
+
         // 2. Check Backward (Neighbor -> New)
-        // We check this too because if this exists, the neighbor needs to know about this node
-        // even if the node can't reach the neighbor directly (though usually we want both).
-        Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
-        if (traj_incoming.is_valid) {
-            valid_incoming.push_back({neighbor, traj_incoming});
+        if (is_geometric_mode_) {
+            // --- OPTIMIZATION FOR GEOMETRIC CASE ---
+            // In geometric mode, symmetry guarantees backward validity and cost equal forward.
+            // We reuse the outgoing trajectory to save a collision check and steer computation.
+            if (traj_outgoing.is_valid) {
+                valid_incoming.push_back({neighbor, traj_outgoing});
+            }
+        } else {
+            // --- KINODYNAMIC CASE ---
+            // We check this too because if this exists, the neighbor needs to know about this node
+            // even if the node can't reach the neighbor directly (though usually we want both).
+            Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
+            if (traj_incoming.is_valid) {
+                valid_incoming.push_back({neighbor, traj_incoming});
+            }
         }
+
+
     }
 
     // --- DECISION POINT ---
@@ -1450,56 +1472,31 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
 // }
 
 
-
+// MIND that i didnt use 4 separate list and optimized it by using two sets with a boolean flag so removing the outgoing neighbor is enough for cullneighbor
 void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
-    // // If we already culled this node for the current radius, skip it.
-    // // This turns the amortized cost of culling into O(1) per node.
-    // std::cout<<v->last_culled_radius_<<" , "<< neighborhood_radius_<<"\n";
-    if (v->last_culled_radius_ == neighborhood_radius_) {
-        return;
-    }
+    if (v->last_culled_radius_ == neighborhood_radius_) return;
 
-
-    // We only need to iterate over the Outgoing (Forward) neighbors.
-    // This covers all temporary edges created by this node pointing to newer nodes.
     auto& outgoing = v->forwardNeighbors();
     auto it = outgoing.begin();
     
     while (it != outgoing.end()) {
         auto [neighbor, edge] = *it;
         
-        // Cull if:
-        // 1. It is a temporary edge (!is_initial)
-        // 2. It is outside the current radius
-        // 3. It is NOT the parent (we must preserve the tree structure)
         if (!edge.is_initial && 
             edge.cached_trajectory.cost > neighborhood_radius_ + 0.01 &&
             neighbor != v->getParent()) 
         {
-            // std::cout<<"rn: "<<neighborhood_radius_<< ", distance: "<< edge.cached_trajectory.geometric_distance<<"\n";
-            // Remove the reverse link from the neighbor's Incoming (Backward) map
-            auto& incoming = neighbor->backwardNeighbors();
-            if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
-                // Only remove if it is also temporary (symmetry check)
-                if (!incoming_it->second.is_initial) {
-                    std::cout<<"before incoming: "<< incoming.size()<<"\n";
-                    incoming.erase(incoming_it);
-                    std::cout<<"after incoming: "<< incoming.size()<<"\n";
-                }
-            }
-            // std::cout<<"before outgoing: "<< outgoing.size()<<"\n";
-            // Remove the forward link
+            // PERFECT ASYMMETRIC CULL: 
+            // We delete the temporary edge from memory, but leave the 
+            // neighbor's initial edge intact to preserve optimality.
             it = outgoing.erase(it);
-            // std::cout<<"after outgoing: "<< outgoing.size()<<"\n";
         } else {
             ++it;
         }
     }
-    // Mark this node as clean for this radius
+    
     v->last_culled_radius_ = neighborhood_radius_;
-
 }
-
 
 void KinodynamicANYFMTX::plan() {
   
@@ -1648,7 +1645,7 @@ void KinodynamicANYFMTX::plan() {
             // If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
             // If x is already connected, this condition acts as a "witness" that a better path *might* exist.
             //    It proves x's current cost is suboptimal and justifies the more expensive search that follows.
-            if (x->getCost() > cost_via_z) {
+            if (x->getCost() > cost_via_z ) {
                 // // checks++;
                 // if (costUpdated[x]) {
                 //     // std::cout<<"Node " << x->getIndex() 
@@ -1666,6 +1663,15 @@ void KinodynamicANYFMTX::plan() {
                 // might contain stale temporary edges from an older, larger radius.
                 // We must clean them now to ensure we pick a valid parent.
                 cullNeighbors(x);
+
+                // 2. THE BOUNCER: Did 'z' survive the cull?
+                // If 'x' deleted 'z', the edge is illegal and 'cost_via_z' was a lie.
+                // even if we do not use this if contion it will reach the "if (best_parent_for_x != nullptr && min_cost_for_x < x->getCost()) " line
+                // and it will see that x's new parent is not better than its previous one but mind that if we dont use these two lines of defenses 
+                // then x will connect to a suboptimal parent and cant find its previous parent because of in_queue if condtion in the bellman update
+                if (x->forwardNeighbors().count(z) == 0) {
+                    continue; // Skip Stage 2 and Stage 3 entirely!
+                }
 
 
                 // total_neighbor_iterations += x->forwardNeighbors().size();
@@ -1710,6 +1716,13 @@ void KinodynamicANYFMTX::plan() {
                     }
                 }
 
+                double node_time_to_goal = 0.0;
+                if (!is_geometric_mode_) {
+                    // Only access time if we are in kinodynamic mode
+                    if (x->getStateValue().size() > 2) {
+                        node_time_to_goal = x->getTimeToGoal();
+                    }
+                }
 
 
 
@@ -1720,7 +1733,8 @@ void KinodynamicANYFMTX::plan() {
                 // }
 
                 // --- STAGE 3: UPDATE (if a better parent was found) ---
-                if (best_parent_for_x != nullptr) {
+                // if (best_parent_for_x != nullptr) {
+                if (best_parent_for_x != nullptr && min_cost_for_x < x->getCost()) { // The second && is the second line of defense if the cullNeighbor(x) deletes z and we are here for somereason! because the if condtion right after cullNiehgbor(x) would caught the lie and we never reach here but still its good to be safe!
                     bool obstacle_free = true;
                     // obstacle_free = obs_checker_->isTrajectorySafe( best_traj_for_x, x->getTimeToGoal());
                     // last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
@@ -1738,7 +1752,7 @@ void KinodynamicANYFMTX::plan() {
                         // CASE 1: NEW SAMPLE
                         // We haven't checked this node against the world yet.
                         // Perform a full check against ALL obstacles.
-                        obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, x->getTimeToGoal());
+                        obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, node_time_to_goal);
                         
                         // Mark as old so we don't full-check it again next time.
                         x->is_new = false;
@@ -1761,7 +1775,7 @@ void KinodynamicANYFMTX::plan() {
                             if (previous_obstacles_.count(obs_name)) {
                                 const Obstacle& ob = previous_obstacles_[obs_name];
                                 last_replan_metrics_.obstacle_checks++;
-                                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, x->getTimeToGoal(), ob)) {
+                                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, node_time_to_goal, ob)) {
                                     obstacle_free = false;
                                     break;
                                 }
@@ -1842,10 +1856,21 @@ void KinodynamicANYFMTX::plan() {
                         x->setCost(min_cost_for_x);
                         x->setParent(best_parent_for_x, best_traj_for_x);
 
-                        // x->setTimeToGoal(min_time_for_x);
-                        double absolute_t = x->getStateValue().tail<1>()[0];
-                        x->setTimeToGoal(absolute_t);
-
+                        /////////////////
+                        // // x->setTimeToGoal(min_time_for_x);
+                        // double absolute_t = x->getStateValue().tail<1>()[0];
+                        // x->setTimeToGoal(absolute_t);
+                        if (!is_geometric_mode_) {
+                            // Kinodynamic: Set time from state vector
+                            if (x->getStateValue().size() > 2) {
+                                double absolute_t = x->getStateValue().tail<1>()[0];
+                                x->setTimeToGoal(absolute_t);
+                            }
+                        } else {
+                            // Geometric: Time is irrelevant, set to 0 or leave default
+                            x->setTimeToGoal(0.0);
+                        }
+                        //////////////////
 
                         x->setFinalDerivatives(best_traj_for_x.final_velocity, best_traj_for_x.final_acceleration);
 
@@ -5263,9 +5288,9 @@ void KinodynamicANYFMTX::visualizeTree() {
     tree_nodes.reserve(tree_.size());
 
     // --- Variables for statistics ---
-    long long total_forward_neighbors = 0;
-    size_t max_forward_neighbors = 0;
-    int connected_nodes_count = 0;
+long long total_active_forward = 0;
+long long total_backward = 0;
+int connected_nodes_count = 0;
     
     for (const auto& node_ptr : tree_) {
         FMTNode* child_node = node_ptr.get();
@@ -5273,13 +5298,12 @@ void KinodynamicANYFMTX::visualizeTree() {
 
         tree_nodes.push_back(node_ptr->getStateValue().head(2)); // TODO: For min snap it needs to be 3!!! I need spatial dim variable!
 
-        if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
+        FMTNode* node = node_ptr.get();
+        
+        if (node->getCost() != std::numeric_limits<double>::infinity()) {
             connected_nodes_count++;
-            size_t current_neighbors = child_node->forwardNeighbors().size();
-            total_forward_neighbors += current_neighbors;
-            if (current_neighbors > max_forward_neighbors) {
-                max_forward_neighbors = current_neighbors;
-            }
+            total_active_forward += node->forwardNeighbors().size();
+            total_backward += node->backwardNeighbors().size();
         }
 
         if (parent_node) {
@@ -5287,14 +5311,13 @@ void KinodynamicANYFMTX::visualizeTree() {
         }
     }
 
-    double average_neighbors = (connected_nodes_count > 0) 
-                             ? static_cast<double>(total_forward_neighbors) / connected_nodes_count 
-                             : 0.0;
-    
-    // std::cout << "[FMTX INFO] Total nodes: " << tree_.size()
-    //           << " | Connected: " << connected_nodes_count
-    //           << " | Max Neighbors: " << max_forward_neighbors
-    //           << " | Avg Neighbors: " << std::fixed << std::setprecision(2) << average_neighbors << std::endl;
+double avg_fwd = (connected_nodes_count > 0) ? (double)total_active_forward / connected_nodes_count : 0.0;
+double avg_bwd = (connected_nodes_count > 0) ? (double)total_backward / connected_nodes_count : 0.0;
+
+std::cout << "--- Planner Stats ---" << std::endl;
+std::cout << "Radius: " << neighborhood_radius_ << " (Delta: " << delta << ")" << std::endl;
+std::cout << "Avg Forward (Active): " << avg_fwd << std::endl;
+std::cout << "Avg Backward (Active): " << avg_bwd << std::endl;
     
     // visualization_->visualizeNodes(tree_nodes, "map", 
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
@@ -5806,7 +5829,14 @@ void KinodynamicANYFMTX::updateObstacleSamples(const ObstacleVector& turned_obst
     }
 
     // Get exact planning time for tube generation
-    double T_robot = robot_continuous_state_(robot_continuous_state_.size() - 1);
+    double T_robot = 0.0;
+    if (!is_geometric_mode_) {
+        // Only extract T_robot if we are in kinodynamic mode
+        if (robot_continuous_state_.size() > 0) {
+            T_robot = robot_continuous_state_(robot_continuous_state_.size() - 1);
+        }
+    }
+
 
     for (const auto& incoming_ob : turned_obstacles) {
         
@@ -5962,18 +5992,30 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     
-    // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
-    // 4. THE FIX: Gap Coverage Inflation
-    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
-    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
-    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
-    // Total = R + 0.414R = 1.414R.
+    // // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
+    // // 4. THE FIX: Gap Coverage Inflation
+    // // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    // double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // // Total = R + 0.414R = 1.414R.
 
 
-    // Use tube radius + small buffer for edges
-    // double search_radius = obs_r + ob.inflation + (max_length_); 
-    double search_radius = obs_r + ob.inflation + gap_coverage_inflation + delta; 
+    // // Use tube radius + small buffer for edges
+    // // double search_radius = obs_r + ob.inflation + (max_length_); 
+    // double search_radius = obs_r + ob.inflation + gap_coverage_inflation + delta; 
+
+    double search_radius;
+    if (is_geometric_mode_) {
+        // In geometric mode, we just need to cover the obstacle size + robot size + delta
+        search_radius = obs_r + ob.inflation + delta;
+    } else {
+        // Kinodynamic mode: Add gap coverage for the "tube" samples
+        double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+        search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+    }
+
+
 
     // std::unordered_set<int> orphan_indices;
     std::set<int> orphan_indices;
@@ -6147,16 +6189,30 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
 
-    // 4. THE FIX: Gap Coverage Inflation
-    // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
-    // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
-    double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-    // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
-    // Total = R + 0.414R = 1.414R.
+    // // 4. THE FIX: Gap Coverage Inflation
+    // // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+    // // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
+    // double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+    // // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
+    // // Total = R + 0.414R = 1.414R.
 
 
-    // double search_radius = obs_r + ob.inflation + (max_length_ ); 
-    double search_radius = obs_r + ob.inflation + gap_coverage_inflation + delta;
+    // // double search_radius = obs_r + ob.inflation + (max_length_ ); 
+    // double search_radius = obs_r + ob.inflation + gap_coverage_inflation + delta;
+
+
+    double search_radius;
+    
+    // --- GEOMETRIC VS KINODYNAMIC RADIUS ---
+    if (is_geometric_mode_) {
+        // In geometric mode, we just need to cover the obstacle size + robot size + delta
+        search_radius = obs_r + ob.inflation + delta;
+    } else {
+        // Kinodynamic mode: Add gap coverage for the "tube" samples
+        double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+        search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+    }
+
 
     // std::unordered_set<int> freed_indices;
     std::set<int> freed_indices;

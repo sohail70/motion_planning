@@ -1296,6 +1296,18 @@ void KinodynamicRRTX::updateLMC(RRTxNode* v) {
 
 
 
+/*
+    Imagine u is old node and v is new node so u would be original neighbor of v and v would be u's running
+    when the rn shrinks and we call cullNeighbor for u for example the temp outgoing edge from u to v gets erased 
+    but since it still exists in v's incoming neighbors this could cause an issue in the addnewobstalce process of making it inf 
+    incase its on obstacle! imagine we are looping through u's outgoing neighbor in addNewObstacle function then we cant find v because   
+    it got deleted in the cullNeighbor then we cant do a symmetric lines of code we do in the for loop to make the v's incoming edge to inf
+    then in rewire process planner thinks that edge is safe but it isnt!   
+    we either have to use a new flat map container in the rrtx node which i used this method or do another loop on incoming edges in the          
+    addnewobstalce and removeobstacle. 
+    I also think the julia implmentation of rrtx has this bug! but the pseudo code in the paper is fine.
+    so all in all if we didnt amend like this then addNewObstacle couldnt find some dangered edges!
+*/
 
 void KinodynamicRRTX::cullNeighbors(RRTxNode* v) {
     // Optimization: If we have capped samples, the radius stops shrinking.
