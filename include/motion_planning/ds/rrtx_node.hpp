@@ -71,6 +71,7 @@ public:
     size_t heap_index_;  // Tracks position in the priority queue
     int bad_count = 0;
 
+    EdgeMap culled_outgoing_edges_; // Ghost edges (Sender forgot, but Receiver remembered) --> u forgot but v remembers (u is old and v is new)
 
 private:
     std::shared_ptr<State> state_;

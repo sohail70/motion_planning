@@ -228,7 +228,7 @@ int main(int argc, char** argv) {
     auto start_t = std::chrono::steady_clock::now();
     
     if (is_anytime) {
-        auto warmup_duration = std::chrono::milliseconds(1000); 
+        auto warmup_duration = std::chrono::milliseconds(200); 
         auto warmup_start = std::chrono::steady_clock::now();
         while (std::chrono::steady_clock::now() - warmup_start < warmup_duration) {
             planner->plan(); 
@@ -330,6 +330,15 @@ int main(int argc, char** argv) {
                 entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
                 log_data.push_back(entry);
             }
+
+            if (is_anytime) {
+                auto start_plan = std::chrono::steady_clock::now();
+                kinodynamic_planner->plan();
+                auto end_plan = std::chrono::steady_clock::now();
+                double plan_ms = std::chrono::duration<double, std::milli>(end_plan - start_plan).count();
+                RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), "plan took: %.2f ms", plan_ms);
+            }
+
 
             // --- VISUALIZATION (Fixed) ---
             std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; 

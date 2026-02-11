@@ -33,8 +33,8 @@ robot:
 
 # Planner Parameters
 planner_params:
-  num_of_samples: 500
-  factor: 2.0
+  num_of_samples: 1000
+  factor: 3.0
   use_kdtree: true
   kdtree_type: "NanoFlann"
   partial_update: false
