@@ -664,14 +664,14 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
         Eigen::VectorXd sample_val = statespace_->sampleUniform(lower_bounds_, upper_bounds_)->getValue();
 
 
-        // //////// INCASE YOU WANNA USE SATURATE TO GUIDE THE SAMPLES --> THIS IS NOT NECESSARY UNLESS YOU ONLY WANNA ADD ONE SAMPLE OR YOU WANNA COMPARE WITH RRTX!///////////
-        std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample_val.head(kd_dim), 1);
-        FMTNode* nearest_node = tree_[nearest_indices[0]].get();
-        Eigen::VectorXd nearest_state = nearest_node->getStateValue();
+    //    // //////// INCASE YOU WANNA USE SATURATE TO GUIDE THE SAMPLES --> THIS IS NOT NECESSARY UNLESS YOU ONLY WANNA ADD ONE SAMPLE OR YOU WANNA COMPARE WITH RRTX!///////////
+    //     std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample_val.head(kd_dim), 1);
+    //     FMTNode* nearest_node = tree_[nearest_indices[0]].get();
+    //     Eigen::VectorXd nearest_state = nearest_node->getStateValue();
         
-        // 4. Saturate (Steer)
-        sample_val = saturate(sample_val, nearest_state, delta);
-        // ///////////////////////////////////////////////////////
+    //     // 4. Saturate (Steer)
+    //     sample_val = saturate(sample_val, nearest_state, delta);
+    //     // ///////////////////////////////////////////////////////
 
 
         // 2. Create Node Object (Temporarily)
@@ -1556,7 +1556,7 @@ void KinodynamicANYFMTX::plan() {
 
         // Before we expand z, we remove any temporary neighbors 
         // that are now outside the shrinking radius.
-        cullNeighbors(z);
+        // cullNeighbors(z);
 
         // // ======================================================
         // // NEW: VISUALIZE 'z' (The Expanding Node)
@@ -1612,25 +1612,25 @@ void KinodynamicANYFMTX::plan() {
             //     }
             // }
 
-            // LAZY COMPUTATION  ---
-            if (statespace_->prefersLazyNear() && !edge_info_from_x.is_trajectory_computed) {
-                // If this is a lazy state space, compute the true trajectory from x to z now.
-                edge_info_from_x.cached_trajectory = statespace_->steer(
-                    x->getStateValue(), z->getStateValue(), 
-                    z->getFinalVelocity(), z->getFinalAcceleration()
-                );
+            // // LAZY COMPUTATION  ---
+            // if (statespace_->prefersLazyNear() && !edge_info_from_x.is_trajectory_computed) {
+            //     // If this is a lazy state space, compute the true trajectory from x to z now.
+            //     edge_info_from_x.cached_trajectory = statespace_->steer(
+            //         x->getStateValue(), z->getStateValue(), 
+            //         z->getFinalVelocity(), z->getFinalAcceleration()
+            //     );
 
-                edge_info_from_x.is_trajectory_computed = true;
-                // Update the distance with the true cost
-                edge_info_from_x.distance = edge_info_from_x.cached_trajectory.cost;
+            //     edge_info_from_x.is_trajectory_computed = true;
+            //     // Update the distance with the true cost
+            //     edge_info_from_x.distance = edge_info_from_x.cached_trajectory.cost;
 
-                // Add symmetric caching ---
-                // Update the corresponding forward neighbor entry in node 'x' to prevent re-computation.
-                if (x->forwardNeighbors().count(z)) {
-                    // Assign the entire updated EdgeInfo struct to ensure all fields are synchronized.
-                    x->forwardNeighbors().at(z) = edge_info_from_x;
-                }
-            }
+            //     // Add symmetric caching ---
+            //     // Update the corresponding forward neighbor entry in node 'x' to prevent re-computation.
+            //     if (x->forwardNeighbors().count(z)) {
+            //         // Assign the entire updated EdgeInfo struct to ensure all fields are synchronized.
+            //         x->forwardNeighbors().at(z) = edge_info_from_x;
+            //     }
+            // }
 
 
 
@@ -1662,7 +1662,7 @@ void KinodynamicANYFMTX::plan() {
                 // Since x might be unvisited (never popped), its neighbors 
                 // might contain stale temporary edges from an older, larger radius.
                 // We must clean them now to ensure we pick a valid parent.
-                cullNeighbors(x);
+                // cullNeighbors(x);
 
                 // 2. THE BOUNCER: Did 'z' survive the cull?
                 // If 'x' deleted 'z', the edge is illegal and 'cost_via_z' was a lie.
@@ -1686,22 +1686,22 @@ void KinodynamicANYFMTX::plan() {
                                 
                 for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
                     if (y->in_queue_) { // We only consider parents that are in V_open.
-                        // Check if the trajectory is already computed ---
-                        if (statespace_->prefersLazyNear() && !edge_info_xy.is_trajectory_computed) {
-                            // If not, compute it ONCE and cache it symmetrically.
-                            edge_info_xy.cached_trajectory = statespace_->steer(
-                                x->getStateValue(), y->getStateValue(), 
-                                y->getFinalVelocity(), y->getFinalAcceleration()
-                            );
-                            edge_info_xy.is_trajectory_computed = true;
+                        // // Check if the trajectory is already computed ---
+                        // if (statespace_->prefersLazyNear() && !edge_info_xy.is_trajectory_computed) {
+                        //     // If not, compute it ONCE and cache it symmetrically.
+                        //     edge_info_xy.cached_trajectory = statespace_->steer(
+                        //         x->getStateValue(), y->getStateValue(), 
+                        //         y->getFinalVelocity(), y->getFinalAcceleration()
+                        //     );
+                        //     edge_info_xy.is_trajectory_computed = true;
 
-                            // Symmetrically cache for the other direction to prevent re-computation later.
-                            if (y->backwardNeighbors().count(x)) {
-                                auto& symmetric_edge = y->backwardNeighbors().at(x);
-                                symmetric_edge.cached_trajectory = edge_info_xy.cached_trajectory;
-                                symmetric_edge.is_trajectory_computed = true;
-                            }
-                        }
+                        //     // Symmetrically cache for the other direction to prevent re-computation later.
+                        //     if (y->backwardNeighbors().count(x)) {
+                        //         auto& symmetric_edge = y->backwardNeighbors().at(x);
+                        //         symmetric_edge.cached_trajectory = edge_info_xy.cached_trajectory;
+                        //         symmetric_edge.is_trajectory_computed = true;
+                        //     }
+                        // }
                         
                         const Trajectory& traj_xy = edge_info_xy.cached_trajectory;
                         
@@ -1754,8 +1754,11 @@ void KinodynamicANYFMTX::plan() {
                         // Perform a full check against ALL obstacles.
                         obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, node_time_to_goal);
                         
+                        /*
+                            we can't do this here because what if the obstacle_free is false. we need to do it in the deepest region of the code
+                        */
                         // Mark as old so we don't full-check it again next time.
-                        x->is_new = false;
+                        // x->is_new = false;
                         
                     // } else if (!x->threats.empty() || ! best_parent_for_x->threats.empty()){
                     } else if (!x->threats.empty()){
@@ -1856,6 +1859,9 @@ void KinodynamicANYFMTX::plan() {
                         x->setCost(min_cost_for_x);
                         x->setParent(best_parent_for_x, best_traj_for_x);
 
+
+                        // Mark as old so we don't full-check it again next time.
+                        if (x->is_new) x->is_new = false;
                         /////////////////
                         // // x->setTimeToGoal(min_time_for_x);
                         // double absolute_t = x->getStateValue().tail<1>()[0];
@@ -5288,9 +5294,9 @@ void KinodynamicANYFMTX::visualizeTree() {
     tree_nodes.reserve(tree_.size());
 
     // --- Variables for statistics ---
-long long total_active_forward = 0;
-long long total_backward = 0;
-int connected_nodes_count = 0;
+    long long total_active_forward = 0;
+    long long total_backward = 0;
+    int connected_nodes_count = 0;
     
     for (const auto& node_ptr : tree_) {
         FMTNode* child_node = node_ptr.get();
@@ -5311,18 +5317,19 @@ int connected_nodes_count = 0;
         }
     }
 
-double avg_fwd = (connected_nodes_count > 0) ? (double)total_active_forward / connected_nodes_count : 0.0;
-double avg_bwd = (connected_nodes_count > 0) ? (double)total_backward / connected_nodes_count : 0.0;
+    // double avg_fwd = (connected_nodes_count > 0) ? (double)total_active_forward / connected_nodes_count : 0.0;
+    // double avg_bwd = (connected_nodes_count > 0) ? (double)total_backward / connected_nodes_count : 0.0;
 
-std::cout << "--- Planner Stats ---" << std::endl;
-std::cout << "Radius: " << neighborhood_radius_ << " (Delta: " << delta << ")" << std::endl;
-std::cout << "Avg Forward (Active): " << avg_fwd << std::endl;
-std::cout << "Avg Backward (Active): " << avg_bwd << std::endl;
-    
+    // std::cout << "--- Planner Stats ---" << std::endl;
+    // std::cout << "Radius: " << neighborhood_radius_ << " (Delta: " << delta << ")" << std::endl;
+    // std::cout << "Avg Forward (Active): " << avg_fwd << std::endl;
+    // std::cout << "Avg Backward (Active): " << avg_bwd << std::endl;
+        
     // visualization_->visualizeNodes(tree_nodes, "map", 
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
+    std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
     visualization_->visualizeEdges(edges, "map");
 }
 

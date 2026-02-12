@@ -228,7 +228,7 @@ int main(int argc, char** argv) {
     auto start_t = std::chrono::steady_clock::now();
     
     if (is_anytime) {
-        auto warmup_duration = std::chrono::milliseconds(200); 
+        auto warmup_duration = std::chrono::milliseconds(250); 
         auto warmup_start = std::chrono::steady_clock::now();
         while (std::chrono::steady_clock::now() - warmup_start < warmup_duration) {
             planner->plan(); 

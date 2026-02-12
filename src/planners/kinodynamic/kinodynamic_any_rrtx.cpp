@@ -1614,6 +1614,7 @@ void KinodynamicANYRRTX::visualizeTree() {
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
+    std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
     visualization_->visualizeEdges(edges, "map");
 }
 

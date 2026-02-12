@@ -1,8 +1,8 @@
 #include "motion_planning/planners/kinodynamic/kinodynamic_prmstar_dstarlite.hpp"
 
-#define DEBUG_WITH_DIJKSTRA_ 1
+#define DEBUG_WITH_DIJKSTRA_ 0
 #define USE_INVALIDATING_SET_STRATEGY 1
-#define USE_GRID_SAMPLING 1
+#define USE_GRID_SAMPLING 0
 
 // Constructor
 KinodynamicPRMStarDStarLite::KinodynamicPRMStarDStarLite(
@@ -33,7 +33,7 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
     factor_ = params.getParam<double>("factor", 1.0);
     neighbor_precache_ = params.getParam<bool>("precache_neighbors", false);
     is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
-    bool use_grid_sampling;
+    bool use_grid_sampling = false;
 #if USE_GRID_SAMPLING
     use_grid_sampling = true;
 #endif

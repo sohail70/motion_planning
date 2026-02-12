@@ -8,7 +8,7 @@ experiment:
 # Simulation Settings
 simulation:
   time_budget: 0.0 # Not used in geometric mode
-  duration_limit: 30
+  duration_limit: 10
   slice_time: 0.05 # Geometric updates can be slower
   seed: 42
 
@@ -31,7 +31,7 @@ robot:
 
 # Planner Parameters
 planner_params:
-  num_of_samples: 1500
+  num_of_samples: 500
   factor: 2.0
   delta: 15.0
   partial_plot: "true" 
