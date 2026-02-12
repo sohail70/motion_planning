@@ -2962,10 +2962,13 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     } else if (vbot_node_ && cost_of_current_path != std::numeric_limits<double>::infinity()) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
         robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
+        // The cost changes slightly every frame as the robot moves towards the anchor.
+        last_replan_metrics_.path_cost = cost_of_current_path;
     } else {
         // We are trapped. No nodes in radius are safe.
         vbot_node_ = nullptr;
         robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
         RCLCPP_WARN(rclcpp::get_logger("RRTx_Anchor"), "Anchor Status: NULL (Robot is lost or searching...)");
     }
 
@@ -3348,7 +3351,7 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& turned_obstacl
     if (mode != 2) return;
     if (turned_obstacles.empty()) return;
 
-    last_replan_metrics_ = ReplanMetrics();
+    // last_replan_metrics_ = ReplanMetrics();
     
     // // Get the exact planning time for synchronization
     // double T_robot = robot_continuous_state_(robot_continuous_state_.size() - 1);

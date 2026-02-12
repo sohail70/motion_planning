@@ -71,6 +71,7 @@ class InformedANYFMTA : public Planner {
                 bool& connected
             );
 
+            int getTreeSize() { return tree_.size();}
 
             
  private:

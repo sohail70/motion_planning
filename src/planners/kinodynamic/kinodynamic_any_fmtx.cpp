@@ -664,14 +664,17 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
         Eigen::VectorXd sample_val = statespace_->sampleUniform(lower_bounds_, upper_bounds_)->getValue();
 
 
-    //    // //////// INCASE YOU WANNA USE SATURATE TO GUIDE THE SAMPLES --> THIS IS NOT NECESSARY UNLESS YOU ONLY WANNA ADD ONE SAMPLE OR YOU WANNA COMPARE WITH RRTX!///////////
-    //     std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample_val.head(kd_dim), 1);
-    //     FMTNode* nearest_node = tree_[nearest_indices[0]].get();
-    //     Eigen::VectorXd nearest_state = nearest_node->getStateValue();
+       // //////// INCASE YOU WANNA USE SATURATE TO GUIDE THE SAMPLES --> THIS IS NOT NECESSARY UNLESS YOU ONLY WANNA ADD ONE SAMPLE OR YOU WANNA COMPARE WITH RRTX!///////////
+        std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample_val.head(kd_dim), 1);
+        FMTNode* nearest_node = tree_[nearest_indices[0]].get();
+        Eigen::VectorXd nearest_state = nearest_node->getStateValue();
         
-    //     // 4. Saturate (Steer)
-    //     sample_val = saturate(sample_val, nearest_state, delta);
-    //     // ///////////////////////////////////////////////////////
+        // 4. Saturate (Steer)
+        sample_val = saturate(sample_val, nearest_state, delta);
+        // ///////////////////////////////////////////////////////
+        // if (!obs_checker_->isObstacleFree(sample_val)) {
+        //     continue;
+        // }
 
 
         // 2. Create Node Object (Temporarily)
@@ -1556,7 +1559,7 @@ void KinodynamicANYFMTX::plan() {
 
         // Before we expand z, we remove any temporary neighbors 
         // that are now outside the shrinking radius.
-        // cullNeighbors(z);
+        cullNeighbors(z);
 
         // // ======================================================
         // // NEW: VISUALIZE 'z' (The Expanding Node)
@@ -1662,7 +1665,7 @@ void KinodynamicANYFMTX::plan() {
                 // Since x might be unvisited (never popped), its neighbors 
                 // might contain stale temporary edges from an older, larger radius.
                 // We must clean them now to ensure we pick a valid parent.
-                // cullNeighbors(x);
+                cullNeighbors(x);
 
                 // 2. THE BOUNCER: Did 'z' survive the cull?
                 // If 'x' deleted 'z', the edge is illegal and 'cost_via_z' was a lie.
@@ -1747,18 +1750,23 @@ void KinodynamicANYFMTX::plan() {
                     if (x->is_new) {  // ---> I used the union threats in the addBatchSamples function last for loop but i need to make sure if removeObstalce will remove it logically or not! (given all the neighbors of the new node are having the up to date threat set since i use the union some obstalce  might linger!)
                     // if (false) {
 
-                        last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
-
-                        // CASE 1: NEW SAMPLE
-                        // We haven't checked this node against the world yet.
-                        // Perform a full check against ALL obstacles.
-                        obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, node_time_to_goal);
+                        bool initially_blocked = false;
                         
-                        /*
-                            we can't do this here because what if the obstacle_free is false. we need to do it in the deepest region of the code
-                        */
-                        // Mark as old so we don't full-check it again next time.
-                        // x->is_new = false;
+                        // We check all obstacles once to populate the threat set
+                        for (const auto& ob : obs_checker_->getObstacles()) {
+                            last_replan_metrics_.obstacle_checks++;
+                            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, node_time_to_goal, ob)) {
+                                x->threats.insert(ob.name);
+                                initially_blocked = true;
+                            }
+                        }
+
+                        // IMMEDIATE TRANSITION
+                        x->is_new = false; // It is no longer "New"; we now know exactly what threatens it.
+
+                        if (initially_blocked) {
+                            continue; // Skip connection for now; it's logically blocked.
+                        }
                         
                     // } else if (!x->threats.empty() || ! best_parent_for_x->threats.empty()){
                     } else if (!x->threats.empty()){
@@ -1860,8 +1868,6 @@ void KinodynamicANYFMTX::plan() {
                         x->setParent(best_parent_for_x, best_traj_for_x);
 
 
-                        // Mark as old so we don't full-check it again next time.
-                        if (x->is_new) x->is_new = false;
                         /////////////////
                         // // x->setTimeToGoal(min_time_for_x);
                         // double absolute_t = x->getStateValue().tail<1>()[0];
@@ -5329,7 +5335,7 @@ void KinodynamicANYFMTX::visualizeTree() {
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
-    std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
+    // std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
     visualization_->visualizeEdges(edges, "map");
 }
 
@@ -5827,7 +5833,7 @@ void KinodynamicANYFMTX::updateObstacleSamples(const ObstacleVector& turned_obst
     // Return true to satisfy the Planner interface
     if (turned_obstacles.empty()) return;
 
-    last_replan_metrics_ = ReplanMetrics();
+    // last_replan_metrics_ = ReplanMetrics();
     in_dynamic = true;
 
     if (robot_continuous_state_.size() == 0) {
@@ -6501,10 +6507,13 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     } else if (robot_node_ && cost_of_current_path != std::numeric_limits<double>::infinity()) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
+        // The cost changes slightly every frame as the robot moves towards the anchor.
+        last_replan_metrics_.path_cost = cost_of_current_path;
     } else {
         // We are trapped. No nodes in radius are safe.
         robot_node_ = nullptr;
         robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
         RCLCPP_WARN_THROTTLE(rclcpp::get_logger("FMTx"), *clock_, 1000, "LOST SAFE ANCHOR!");
     }
 

@@ -108,6 +108,7 @@ struct LogEntry {
     long long rewire_neighbor_searches = 0;
     int orphaned_nodes = 0;
     int collision_count = 0;
+    int tree_size = 0;
 };
 
 std::atomic<bool> g_running{true};
@@ -227,11 +228,20 @@ int main(int argc, char** argv) {
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
     auto start_t = std::chrono::steady_clock::now();
     
+    bool fixed_sample = true;
     if (is_anytime) {
-        auto warmup_duration = std::chrono::milliseconds(250); 
-        auto warmup_start = std::chrono::steady_clock::now();
-        while (std::chrono::steady_clock::now() - warmup_start < warmup_duration) {
-            planner->plan(); 
+        if(!fixed_sample){
+            auto warmup_duration = std::chrono::milliseconds(500); 
+            auto warmup_start = std::chrono::steady_clock::now();
+            while (std::chrono::steady_clock::now() - warmup_start < warmup_duration) {
+                planner->plan(); 
+            }
+        }
+        else{
+            const int TARGET_SAMPLES = 500;
+            while (kinodynamic_planner->getTreeSize() < TARGET_SAMPLES) {
+                planner->plan();
+            }
         }
     } else {
         planner->plan();
@@ -291,6 +301,9 @@ int main(int argc, char** argv) {
         while (g_running && rclcpp::ok()) {
             auto loop_start_time = std::chrono::steady_clock::now();
             executor.spin_some();
+
+            // RESET METRICS AT START OF SLICE
+            kinodynamic_planner->resetMetrics();
             
             if (limited) {
                 if (std::chrono::steady_clock::now() - start_time > time_limit) {
@@ -328,6 +341,7 @@ int main(int argc, char** argv) {
                 entry.orphaned_nodes = metrics.orphaned_nodes;
                 entry.path_cost = metrics.path_cost;
                 entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
+                entry.tree_size = kinodynamic_planner->getTreeSize();
                 log_data.push_back(entry);
             }
 
@@ -397,6 +411,10 @@ int main(int argc, char** argv) {
         
         while (g_running && rclcpp::ok()) {
             executor.spin_some();
+
+            // RESET METRICS AT START OF SLICE
+            kinodynamic_planner->resetMetrics();
+
             Eigen::VectorXd current_sim_state = ros_manager->getCurrentSimulatedState();
             if (current_sim_state.size() == 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -440,6 +458,7 @@ int main(int argc, char** argv) {
                 entry.path_cost = metrics.path_cost;
                 entry.time_to_goal = T_robot;
                 entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
+                entry.tree_size = kinodynamic_planner->getTreeSize();
                 log_data.push_back(entry);
             }
 
@@ -495,11 +514,18 @@ int main(int argc, char** argv) {
         return 1;
     }
     
-    out << "elapsed_s,duration_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes,collision_count\n";
+    out << "elapsed_s,duration_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes,collision_count,tree_size\n";
+
     for (const auto& entry : log_data) {
-        out << entry.elapsed_s << "," << entry.duration_ms << "," << entry.time_to_goal << ","
-            << entry.path_cost << "," << entry.obstacle_checks << "," << entry.rewire_neighbor_searches << ","
-            << entry.orphaned_nodes << "," << entry.collision_count << "\n";
+        out << entry.elapsed_s << "," 
+            << entry.duration_ms << "," 
+            << entry.time_to_goal << ","
+            << entry.path_cost << "," 
+            << entry.obstacle_checks << "," 
+            << entry.rewire_neighbor_searches << ","
+            << entry.orphaned_nodes << "," 
+            << entry.collision_count << ","
+            << entry.tree_size << "\n";
     }
     out.close();
     

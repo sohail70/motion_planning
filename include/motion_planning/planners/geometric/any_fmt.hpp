@@ -38,6 +38,7 @@ class ANYFMT : public Planner {
             
             void addBatchOfSamples(int num_samples);
             void updateNeighbors(int node_index);
+            int getTreeSize() { return tree_.size();}
  private:
             std::shared_ptr<State> start_;
             std::shared_ptr<State> goal_;

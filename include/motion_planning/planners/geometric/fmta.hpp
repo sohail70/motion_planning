@@ -36,6 +36,7 @@ class FMTA : public Planner {
 
             double heuristic(int current_index);
             void clearPlannerState();
+            int getTreeSize() { return tree_.size();}
 
  private:
             std::shared_ptr<State> start_;

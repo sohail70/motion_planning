@@ -101,6 +101,7 @@ class Planner {
 
     virtual void visualizePath(const std::vector<Eigen::VectorXd>& path) {}
 
+    virtual int getTreeSize() = 0;
 
     virtual void visualizeTree() {};
 
@@ -108,6 +109,9 @@ class Planner {
         static ReplanMetrics empty_metrics; 
         return empty_metrics; 
     }
+
+
+    virtual void resetMetrics() {}
 
 
  protected:

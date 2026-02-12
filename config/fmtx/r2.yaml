@@ -8,7 +8,7 @@ experiment:
 # Simulation Settings
 simulation:
   time_budget: 0.0 # Not used in geometric mode
-  duration_limit: 30
+  duration_limit: 10
   slice_time: 0.05 # Geometric updates can be slower
   seed: 42
 
@@ -51,13 +51,13 @@ manager_params:
   sim_frequency_hz: 50
   vis_frequency_hz: 30
   follow_path: false # False for geometric (we don't move the robot sim)
-  inflation: 0.5
+  inflation: 0.0
 
 gazebo_params:
   robot_model_name: "tugbot"
   world_name: "default"
   sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf"
-  inflation: 0.5
+  inflation: 0.0
   default_robot_x: 48.0  
   default_robot_y: 48.0
   use_range: false

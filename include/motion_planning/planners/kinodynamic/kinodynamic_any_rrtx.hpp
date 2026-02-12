@@ -59,7 +59,7 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
 
     bool isRobotSafe();
-
+    int getTreeSize() { return tree_.size();}
  private:
     // Core data structures
     std::vector<std::shared_ptr<RRTxNode>> tree_;

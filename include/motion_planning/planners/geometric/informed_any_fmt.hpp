@@ -42,6 +42,7 @@ class InformedANYFMT : public Planner {
             Eigen::VectorXd sampleInEllipsoid(const Eigen::VectorXd& center, const Eigen::MatrixXd& R, double a, double b);
             Eigen::MatrixXd computeRotationMatrix(const Eigen::VectorXd& dir);
             Eigen::VectorXd sampleUnitBall(int d);
+            int getTreeSize() { return tree_.size();}
 
  private:
             std::shared_ptr<State> start_;

@@ -112,6 +112,7 @@ class KinodynamicANYFMTX : public Planner {
             std::vector<Trajectory> getPathAsTrajectories() const;
 
             bool isRobotSafe();
+            int getTreeSize() { return tree_.size();}
 
             // Adds a batch of samples to the existing tree and updates structures
             void addBatchOfSamples(int num_samples);

@@ -112,7 +112,7 @@ class KinodynamicFMTX : public Planner {
             std::vector<Trajectory> getPathAsTrajectories() const;
 
             bool isRobotSafe();
-
+            int getTreeSize() { return tree_.size();}
  private:
             std::shared_ptr<State> start_;
             std::shared_ptr<State> goal_;

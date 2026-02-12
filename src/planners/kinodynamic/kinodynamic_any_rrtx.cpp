@@ -524,6 +524,7 @@ std::vector<std::pair<RRTxNode*, Trajectory>> KinodynamicANYRRTX::findParent(std
         // If it looks feasible, we MUST check collision here to know if it's a valid parent.
         if (traj_from_v_to_u.is_valid && traj_from_v_to_u.cost <= neighborhood_radius_ + 0.01) {
             
+            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
             // Perform the expensive check ONCE
             if (!obs_checker_->isTrajectorySafe(traj_from_v_to_u, v->getTimeToGoal())) {
                 // COLLISION: Mark cost as INFINITY so extend() ignores it later
@@ -1614,7 +1615,7 @@ void KinodynamicANYRRTX::visualizeTree() {
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
-    std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
+    // std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
     visualization_->visualizeEdges(edges, "map");
 }
 
@@ -3261,10 +3262,13 @@ void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     } else if (vbot_node_ && cost_of_current_path != std::numeric_limits<double>::infinity()) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
         robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
+        // The cost changes slightly every frame as the robot moves towards the anchor.
+        last_replan_metrics_.path_cost = cost_of_current_path;
     } else {
         // We are trapped. No nodes in radius are safe.
         vbot_node_ = nullptr;
         robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
         RCLCPP_WARN(rclcpp::get_logger("RRTx_Anchor"), "Anchor Status: NULL (Robot is lost or searching...)");
     }
 
@@ -3581,7 +3585,7 @@ void KinodynamicANYRRTX::updateObstacleSamples(const ObstacleVector& turned_obst
     if (mode != 2) return;
     if (turned_obstacles.empty()) return;
 
-    last_replan_metrics_ = ReplanMetrics();
+    // last_replan_metrics_ = ReplanMetrics();
     
     // Get the exact planning time for synchronization
     double T_robot = 0.0;

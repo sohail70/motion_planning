@@ -51,6 +51,7 @@ class FMTX : public Planner {
             void clearPlannerState();
             
             void dumpTreeToCSV(const std::string& filename) const;
+            int getTreeSize() { return tree_.size();}
 
  private:
             std::shared_ptr<State> start_;

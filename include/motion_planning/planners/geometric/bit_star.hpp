@@ -49,7 +49,7 @@ public:
     void prune();
     void pruneSamples();
     void updateChildrenCosts(std::shared_ptr<BITNode> node);
-
+    int getTreeSize() { return tree_.size();}
 private:
 
 

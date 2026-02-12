@@ -35,6 +35,7 @@ class FMT : public Planner {
 
 
             void clearPlannerState();
+            int getTreeSize() { return tree_.size();}
 
  private:
             std::shared_ptr<State> start_;
