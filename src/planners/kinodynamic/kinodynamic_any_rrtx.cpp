@@ -266,10 +266,17 @@ void KinodynamicANYRRTX::setup(const Params& params, std::shared_ptr<Visualizati
     // v_indices_.insert(1); 
     ///////////////////Neighborhood Radius////////////////////////////////
     dimension_ = statespace_->getDimension();
-    int d = dimension_;
+    // dimension_ = kd_dim;
+    int d = kd_dim;
     // double mu = std::pow(problem_->getUpperBound()[0] - problem_->getLowerBound()[0] , 2);
     Eigen::VectorXd range = upper_bounds_ - lower_bounds_;
-    double mu = range.prod(); // .prod() computes the product of all coefficients
+    // double mu = range.prod(); // .prod() computes the product of all coefficients
+    double mu = 1.0;
+    for(int i = 0; i < d; ++i) {
+        mu *= range(i);
+    }
+
+
     std::cout<<"mu "<<mu<<"\n";
     double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
     // gamma_ = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //FMT star gamma
@@ -770,7 +777,8 @@ void KinodynamicANYRRTX::reduceInconsistency() {
 
 
 double KinodynamicANYRRTX::shrinkingBallRadius() const {
-    auto rad = factor * gamma_ * pow(log(tree_.size()) / tree_.size(), 1.0/dimension_);
+    int d = kd_dim;
+    auto rad = factor * gamma_ * pow(log(tree_.size()) / tree_.size(), 1.0/d);
     return std::min(rad, delta);
     // return 15.0;
 

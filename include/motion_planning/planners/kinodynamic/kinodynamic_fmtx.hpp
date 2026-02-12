@@ -102,7 +102,19 @@ class KinodynamicFMTX : public Planner {
 
             void setClock(rclcpp::Clock::SharedPtr clock);
 
+            double getAvgNodeDegree() const override {
+                if (tree_.empty()) return 0.0;
+                
+                long long total_edges = 0;
+                for (const auto& node_ptr : tree_) {
+                    // Count outgoing edges (forward neighbors)
+                    total_edges += node_ptr->forwardNeighbors().size();
+                }
+                
+                return static_cast<double>(total_edges) / tree_.size();
+            }
 
+            double getNeighborhoodRadius(){return neighborhood_radius_;}
 
             const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
             void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }

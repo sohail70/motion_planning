@@ -53,7 +53,18 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
 
 
 
-
+    double getAvgNodeDegree() const {
+        if (tree_.empty()) return 0.0;
+        
+        long long total_edges = 0;
+        for (const auto& node_ptr : tree_) {
+            total_edges += node_ptr->outgoingEdges().size(); 
+        }
+        
+        return static_cast<double>(total_edges) / tree_.size();
+    }
+    
+    double getNeighborhoodRadius(){return neighborhood_radius_;}
     const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
     void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
     double getRobotTimeToGo() const { return robot_current_time_to_goal_; }

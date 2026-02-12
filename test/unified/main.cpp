@@ -109,6 +109,8 @@ struct LogEntry {
     int orphaned_nodes = 0;
     int collision_count = 0;
     int tree_size = 0;
+    double avg_degree = 0.0;
+    double neighborhood_radius = 0.0;
 };
 
 std::atomic<bool> g_running{true};
@@ -342,15 +344,19 @@ int main(int argc, char** argv) {
                 entry.path_cost = metrics.path_cost;
                 entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
                 entry.tree_size = kinodynamic_planner->getTreeSize();
+                entry.avg_degree = kinodynamic_planner->getAvgNodeDegree();
+                entry.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
                 log_data.push_back(entry);
             }
 
             if (is_anytime) {
-                auto start_plan = std::chrono::steady_clock::now();
-                kinodynamic_planner->plan();
-                auto end_plan = std::chrono::steady_clock::now();
-                double plan_ms = std::chrono::duration<double, std::milli>(end_plan - start_plan).count();
-                RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), "plan took: %.2f ms", plan_ms);
+                if (kinodynamic_planner->getTreeSize() < 700) {
+                    auto start_plan = std::chrono::steady_clock::now();
+                    kinodynamic_planner->plan();
+                    auto end_plan = std::chrono::steady_clock::now();
+                    double plan_ms = std::chrono::duration<double, std::milli>(end_plan - start_plan).count();
+                    RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), "plan took: %.2f ms", plan_ms);
+                }
             }
 
 
@@ -438,13 +444,16 @@ int main(int argc, char** argv) {
             }
             
             if (is_anytime) {
-                auto start_update = std::chrono::steady_clock::now();
-                kinodynamic_planner->plan();
-                auto end_update = std::chrono::steady_clock::now();
-                double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
-                if(!turned_obs.empty())
-                    RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), 
-                        "plan took: %.2f ms", duration_ms);
+                if (kinodynamic_planner->getTreeSize() < 700) {
+                    auto start_update = std::chrono::steady_clock::now();
+                    kinodynamic_planner->plan();
+                    auto end_update = std::chrono::steady_clock::now();
+                    double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
+                    // if(!turned_obs.empty())
+                        RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), 
+                            "plan took: %.2f ms", duration_ms);
+                }
+                
             }
             auto calc_end = std::chrono::steady_clock::now();
 
@@ -459,6 +468,8 @@ int main(int argc, char** argv) {
                 entry.time_to_goal = T_robot;
                 entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
                 entry.tree_size = kinodynamic_planner->getTreeSize();
+                entry.avg_degree = kinodynamic_planner->getAvgNodeDegree();
+                entry.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
                 log_data.push_back(entry);
             }
 
@@ -514,7 +525,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     
-    out << "elapsed_s,duration_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes,collision_count,tree_size\n";
+    out << "elapsed_s,duration_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes,collision_count,tree_size,avg_degree,radius\n";
 
     for (const auto& entry : log_data) {
         out << entry.elapsed_s << "," 
@@ -525,7 +536,9 @@ int main(int argc, char** argv) {
             << entry.rewire_neighbor_searches << ","
             << entry.orphaned_nodes << "," 
             << entry.collision_count << ","
-            << entry.tree_size << "\n";
+            << entry.tree_size << ","
+            << entry.avg_degree << ","
+            << entry.neighborhood_radius << "\n";
     }
     out.close();
     

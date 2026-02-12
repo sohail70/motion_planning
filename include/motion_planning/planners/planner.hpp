@@ -110,7 +110,9 @@ class Planner {
         return empty_metrics; 
     }
 
+    virtual double getNeighborhoodRadius() {return 0;};
 
+    virtual double getAvgNodeDegree() const { return 0.0; }
     virtual void resetMetrics() {}
 
 

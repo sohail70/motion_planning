@@ -234,13 +234,20 @@ void KinodynamicANYFMTX::updateNeighborhoodRadius() {
     int N = tree_.size();
     if (N <= 1) return;
 
-    int d = statespace_->getDimension();
+    // int d = statespace_->getDimension();
+    int d = kd_dim;
     Eigen::VectorXd range = upper_bounds_ - lower_bounds_;
-    double mu = range.prod();
+    // double mu = range.prod();
+    double mu = 1.0;
+    for(int i = 0; i < d; ++i) {
+        mu *= range(i);
+    }
     double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1.0);
     
     // Gamma calculation (consistent with your setup)
     double gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
+    // double gamma = std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star hence so much faster performance
+
     
     neighborhood_radius_ = factor * gamma * std::pow(std::log(N) / N, 1.0 / d);
     neighborhood_radius_ = std::min(delta, neighborhood_radius_);
@@ -512,7 +519,7 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
         
         // 1. Check Forward (New -> Neighbor)
         Trajectory traj_outgoing = statespace_->steer(sample_val, neighbor->getStateValue());
-        if (traj_outgoing.is_valid) {
+        if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + 0.01) {
             valid_outgoing.push_back({neighbor, traj_outgoing});
         }
 
@@ -529,7 +536,7 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
             // --- OPTIMIZATION FOR GEOMETRIC CASE ---
             // In geometric mode, symmetry guarantees backward validity and cost equal forward.
             // We reuse the outgoing trajectory to save a collision check and steer computation.
-            if (traj_outgoing.is_valid) {
+            if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + 0.01) {
                 valid_incoming.push_back({neighbor, traj_outgoing});
             }
         } else {
@@ -537,7 +544,7 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
             // We check this too because if this exists, the neighbor needs to know about this node
             // even if the node can't reach the neighbor directly (though usually we want both).
             Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
-            if (traj_incoming.is_valid) {
+            if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + 0.01) {
                 valid_incoming.push_back({neighbor, traj_incoming});
             }
         }

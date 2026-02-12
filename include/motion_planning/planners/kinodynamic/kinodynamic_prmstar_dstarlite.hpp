@@ -31,11 +31,13 @@ public:
 
     const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
     void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
+
     void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
 
     void printNodeDetails(const std::string& prefix, DStarLiteNode* node);
     int getTreeSize() { return nodes_.size();}
 
+    double getNeighborhoodRadius(){return connection_radius_;}
 private:
     // --- D* Lite Core ---
     double heuristic(DStarLiteNode* a, DStarLiteNode* b);
