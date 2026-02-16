@@ -324,12 +324,19 @@ void clear() {
     void remove(DStarLiteNode* node) {
         if (!node->in_queue_) return;
         size_t idx = node->heap_index_;
-        swap(idx, heap_.size() - 1);
+        swapNodes(idx, heap_.size() - 1); // Use your custom swapNodes function!
         heap_.pop_back();
         node->in_queue_ = false;
+        node->heap_index_ = -1; // Keep it clean
+        
         if (idx < heap_.size()) {
-            heapifyUp(idx);
-            heapifyDown(idx);
+            // NEW FIX: Determine direction based on parent
+            size_t p = (idx > 0) ? (idx - 1) / 2 : 0;
+            if (idx > 0 && heap_[idx].first < heap_[p].first) {
+                heapifyUp(idx);
+            } else {
+                heapifyDown(idx);
+            }
         }
     }
 

@@ -2916,7 +2916,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
             cost_of_current_path = bridge.cost + vbot_node_->getCost();
             robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
-            return;
+            // return;
         }
     }
     RRTxNode* best_candidate_node = nullptr;

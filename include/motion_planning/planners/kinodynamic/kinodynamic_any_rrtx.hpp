@@ -71,6 +71,18 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
 
     bool isRobotSafe();
     int getTreeSize() { return tree_.size();}
+
+
+    struct ScalingMetrics {
+        long long total_samples = 0;
+        long long total_extend_edges = 0;  // Edges checked during extend()
+        long long total_rewire_edges = 0;  // Edges checked during rewireNeighbors()
+        long long total_lmc_edges = 0;     // Edges checked during updateLMC()
+        long long total_reduce_iterations = 0; // Total pops from inconsistency queue
+    };
+    ScalingMetrics metrics_;
+
+
  private:
     // Core data structures
     std::vector<std::shared_ptr<RRTxNode>> tree_;
@@ -93,7 +105,7 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
 
     // Algorithm parameters
     double neighborhood_radius_;
-    double epsilon_ = 1e-6;
+    double epsilon_;
     double gamma_;
     double delta = 20.0; 
     double factor;

@@ -236,6 +236,7 @@ class KinodynamicANYFMTX : public Planner {
             bool is_geometric_mode_;
 
 
+            double epsilon;
 
 };
 

@@ -26,6 +26,7 @@ planner_params:
   num_of_samples: 1
   factor: 3.0
   delta: 20.0
+  epsilon: 0.1
   use_kdtree: true
   kdtree_type: "NanoFlann"
   partial_update: true

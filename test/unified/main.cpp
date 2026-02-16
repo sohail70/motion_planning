@@ -88,7 +88,11 @@ void populateParams(Params& p, const std::map<std::string, std::string>& map) {
         try {
             if (kv.second == "true" || kv.second == "false") {
                 p.setParam(kv.first, kv.second == "true");
-            } else if (kv.second.find('.') != std::string::npos) {
+            } 
+            // V-- ADDED 'e' AND 'E' TO DETECT SCIENTIFIC NOTATION
+            else if (kv.second.find('.') != std::string::npos || 
+                     kv.second.find('e') != std::string::npos || 
+                     kv.second.find('E') != std::string::npos) {
                 p.setParam(kv.first, std::stod(kv.second));
             } else {
                 p.setParam(kv.first, std::stoi(kv.second));
@@ -350,13 +354,13 @@ int main(int argc, char** argv) {
             }
 
             if (is_anytime) {
-                if (kinodynamic_planner->getTreeSize() < 700) {
+                // if (kinodynamic_planner->getTreeSize() < 700) {
                     auto start_plan = std::chrono::steady_clock::now();
                     kinodynamic_planner->plan();
                     auto end_plan = std::chrono::steady_clock::now();
                     double plan_ms = std::chrono::duration<double, std::milli>(end_plan - start_plan).count();
                     RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), "plan took: %.2f ms", plan_ms);
-                }
+                // }
             }
 
 
@@ -444,7 +448,7 @@ int main(int argc, char** argv) {
             }
             
             if (is_anytime) {
-                if (kinodynamic_planner->getTreeSize() < 700) {
+                // if (kinodynamic_planner->getTreeSize() < 700) {
                     auto start_update = std::chrono::steady_clock::now();
                     kinodynamic_planner->plan();
                     auto end_update = std::chrono::steady_clock::now();
@@ -452,7 +456,7 @@ int main(int argc, char** argv) {
                     // if(!turned_obs.empty())
                         RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), 
                             "plan took: %.2f ms", duration_ms);
-                }
+                // }
                 
             }
             auto calc_end = std::chrono::steady_clock::now();

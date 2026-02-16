@@ -5818,7 +5818,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
             last_replan_metrics_.obstacle_checks += obs_checker_->getObstaclesSize();
             cost_of_current_path = bridge.cost + robot_node_->getCost();
             robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
-            return;
+            // return;
         }
     }
 

@@ -36,6 +36,7 @@ planner_params:
   factor: 1.3
   use_kdtree: true
   delta: 40.0
+  epsilon: 0.1
   kdtree_type: "NanoFlann"
   partial_update: true
   partial_plot: true
@@ -58,7 +59,7 @@ manager_params:
 gazebo_params:
   robot_model_name: "tugbot"
   world_name: "default"
-  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10_sloww.sdf"
+  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10_slow.sdf"
   default_robot_x: 48.0  
   default_robot_y: 48.0
   use_range: false

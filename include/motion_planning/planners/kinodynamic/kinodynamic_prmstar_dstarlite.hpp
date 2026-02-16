@@ -28,6 +28,8 @@ public:
     void setRobotState(const Eigen::VectorXd& robot_state);
     void visualizeTree();
 
+    
+    void recomputeRHS(DStarLiteNode* s);
 
     const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
     void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
@@ -56,6 +58,7 @@ private:
     std::vector<DStarLiteNode*> getNeighbors(DStarLiteNode* u);
     DStarLiteNode* findNearestNode(const Eigen::VectorXd& state);
 
+    void propagateDescendants();
     // --- Dynamic Obstacle Handling ---
     void addNewObstacle(const Obstacle& ob);
     void removeObstacle(const Obstacle& ob);
@@ -114,5 +117,6 @@ private:
     void debugCompareDijkstraVsDStarLite();
     
     DStarLiteKey calculateKey(DStarLiteNode* u);
+    std::unordered_set<DStarLiteNode*> orphans_;
 
 };

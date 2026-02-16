@@ -58,7 +58,7 @@ manager_params:
 gazebo_params:
   robot_model_name: "tugbot"
   world_name: "default"
-  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf"
+  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_1_obs.sdf"
   inflation: 0.75
   default_robot_x: 48.0  
   default_robot_y: 48.0

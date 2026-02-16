@@ -185,7 +185,7 @@ void KinodynamicANYRRTX::setup(const Params& params, std::shared_ptr<Visualizati
     use_kdtree = params.getParam<bool>("use_kdtree");
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
     mode = params.getParam<int>("mode", 2); // Obstacle centric is default for rrtx
-
+    epsilon_ = params.getParam<double>("epsilon", 1e-4);
     kd_dim = params.getParam<int>("kd_dim",2);
 
 
@@ -369,54 +369,110 @@ Eigen::VectorXd KinodynamicANYRRTX::saturate(const Eigen::VectorXd& newPoint, co
 
 void KinodynamicANYRRTX::plan() {
     // 1. Calculate Radius (Do this every iteration as the tree grows)
-    neighborhood_radius_ = shrinkingBallRadius();
+    for (int i = 0; i < num_of_samples_; ++i) {
+        neighborhood_radius_ = shrinkingBallRadius();
 
-    // 2. Sample a point
-    Eigen::VectorXd sample = Eigen::VectorXd::Random(dimension_);
-    sample = (lower_bounds_.array() + (upper_bounds_ - lower_bounds_).array() * ((sample.array() + 1.0) / 2.0)).matrix();
-    
-    sample_counter++;
-    
-    // 3. Find Nearest
-    std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample.head(kd_dim), 1);
-    RRTxNode* nearest_node = tree_[nearest_indices[0]].get();
-    Eigen::VectorXd nearest_state = nearest_node->getStateValue();
-    
-    // 4. Saturate (Steer)
-    sample = saturate(sample, nearest_state, delta);
+        // 2. Sample a point
+        Eigen::VectorXd sample = Eigen::VectorXd::Random(dimension_);
+        sample = (lower_bounds_.array() + (upper_bounds_ - lower_bounds_).array() * ((sample.array() + 1.0) / 2.0)).matrix();
+        
+        sample_counter++;
+        
+        // 3. Find Nearest
+        std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample.head(kd_dim), 1);
+        RRTxNode* nearest_node = tree_[nearest_indices[0]].get();
+        Eigen::VectorXd nearest_state = nearest_node->getStateValue();
+        
+        // 4. Saturate (Steer)
+        sample = saturate(sample, nearest_state, delta);
 
-    // 5. Attempt to extend tree
-    bool node_added = false;
-    if (obs_checker_->isObstacleFree(sample)) {
-        node_added = extend(sample);
+        // 5. Attempt to extend tree
+        bool node_added = false;
+        if (obs_checker_->isObstacleFree(sample)) {
+            node_added = extend(sample);
+        }
+            
+        // 6. If added, rewire and reduce inconsistency
+        if (node_added) {
+            RRTxNode* new_node = tree_.back().get();
+            
+            // Add to active node set
+            v_indices_.insert(tree_.size()-1);
+            
+            // Update node costs and neighbors
+            /*
+                Is rewireNeighbors Necessary here? isnt reduceInconsistency function has rewire neighbor in it? Its is necessary here for new samples!
+                imagine the robot is near root and we added a new sample to the envrionment far away 
+                from robot then if we dont rewire neighbors then those neighbors wont get into the queue
+                to later be processed by reducinconsistency.
+            */
+            rewireNeighbors(new_node); 
+            reduceInconsistency();
+            new_node->setCost(new_node->getLMC());
+        }
+        // Function returns here. Main loop will call it again.
     }
-        
-    // 6. If added, rewire and reduce inconsistency
-    if (node_added) {
-        RRTxNode* new_node = tree_.back().get();
-        
-        // Add to active node set
-        v_indices_.insert(tree_.size()-1);
-        
-        // Update node costs and neighbors
-        /*
-            Is rewireNeighbors Necessary here? isnt reduceInconsistency function has rewire neighbor in it? Its is necessary here for new samples!
-            imagine the robot is near root and we added a new sample to the envrionment far away 
-            from robot then if we dont rewire neighbors then those neighbors wont get into the queue
-            to later be processed by reducinconsistency.
-        */
-        rewireNeighbors(new_node); 
-        reduceInconsistency();
-        new_node->setCost(new_node->getLMC());
-    }
-    // Function returns here. Main loop will call it again.
 }
+
+// void KinodynamicANYRRTX::plan() {
+//     // Reset slice metrics for this batch print
+//     long long slice_extend_edges = 0;
+//     long long slice_rewire_edges = 0;
+//     long long slice_reduce_iters = 0;
+
+//     for (int i = 0; i < num_of_samples_; ++i) {
+//         neighborhood_radius_ = shrinkingBallRadius();
+
+//         Eigen::VectorXd sample = Eigen::VectorXd::Random(dimension_);
+//         sample = (lower_bounds_.array() + (upper_bounds_ - lower_bounds_).array() * ((sample.array() + 1.0) / 2.0)).matrix();
+//         sample_counter++;
+        
+//         std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample.head(kd_dim), 1);
+//         RRTxNode* nearest_node = tree_[nearest_indices[0]].get();
+//         sample = saturate(sample, nearest_node->getStateValue(), delta);
+
+//         if (obs_checker_->isObstacleFree(sample)) {
+//             // --- TRACK EXTEND WORK ---
+//             long long edges_before = metrics_.total_extend_edges;
+//             if (extend(sample)) {
+//                 RRTxNode* new_node = tree_.back().get();
+//                 v_indices_.insert(tree_.size()-1);
+
+//                 // --- TRACK REWIRE/REDUCE WORK ---
+//                 long long rewire_before = metrics_.total_rewire_edges;
+//                 long long reduce_before = metrics_.total_reduce_iterations;
+                
+//                 rewireNeighbors(new_node); 
+//                 reduceInconsistency();
+                
+//                 new_node->setCost(new_node->getLMC());
+
+//                 slice_rewire_edges += (metrics_.total_rewire_edges - rewire_before);
+//                 slice_reduce_iters += (metrics_.total_reduce_iterations - reduce_before);
+//             }
+//             slice_extend_edges += (metrics_.total_extend_edges - edges_before);
+//         }
+//     }
+
+//     metrics_.total_samples += num_of_samples_;
+
+//     std::cout << "[RRTX SCALING] Tree: " << tree_.size() 
+//               << " | Batch Extend Edges: " << slice_extend_edges 
+//               << " | Batch Rewire Edges: " << slice_rewire_edges 
+//               << " | Reduce Iterations: " << slice_reduce_iters << "\n";
+// }
+
+
+
 
 
 bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
     
+    // metrics_.total_extend_edges += neighbors.size(); // TRACKING
+
+
     auto trajs_from_v_to_u = findParent(new_node, neighbors);
 
     if (!new_node->getParent()) {
@@ -594,6 +650,8 @@ void KinodynamicANYRRTX::rewireNeighbors(RRTxNode* v) {
     if (inconsistency <= epsilon_) return;
 
     cullNeighbors(v);
+    // metrics_.total_rewire_edges += v->incomingEdges().size(); // TRACKING
+
     last_replan_metrics_.rewire_neighbor_searches += v->incomingEdges().size();
 
     for (auto& [u, edge] : v->incomingEdges()) {
@@ -734,6 +792,7 @@ void KinodynamicANYRRTX::rewireNeighbors(RRTxNode* v) {
 // }
 void KinodynamicANYRRTX::reduceInconsistency() {
     while (!inconsistency_queue_.empty()) {
+
         auto top_element = inconsistency_queue_.top();
         double min_key = top_element.first;
         
@@ -754,6 +813,8 @@ void KinodynamicANYRRTX::reduceInconsistency() {
         }
         
         inconsistency_queue_.pop();
+        // metrics_.total_reduce_iterations++;
+
         RRTxNode* node = top_element.second;
         int node_idx = node->getIndex();
         
@@ -1147,6 +1208,8 @@ std::unordered_set<int> KinodynamicANYRRTX::findSamplesNearObstacles(
 
 void KinodynamicANYRRTX::updateLMC(RRTxNode* v) {
     cullNeighbors(v);
+    // metrics_.total_lmc_edges += v->outgoingEdges().size(); // TRACKING
+
     double min_lmc = v->getLMC();
     RRTxNode* best_parent = nullptr;
     double best_edge_distance = INFINITY;  // Track the distance of the best edge
@@ -1623,7 +1686,7 @@ void KinodynamicANYRRTX::visualizeTree() {
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
-    // std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
+    std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
     visualization_->visualizeEdges(edges, "map");
 }
 

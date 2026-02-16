@@ -3,7 +3,7 @@
 #define DEBUG_WITH_DIJKSTRA_ 0
 #define USE_INVALIDATING_SET_STRATEGY 1
 #define USE_GRID_SAMPLING 0
-
+#define USE_PROPAGATE_DESCENDANTS 0  // This is not standard D* Lite but i put it for test purposes
 // Constructor
 KinodynamicPRMStarDStarLite::KinodynamicPRMStarDStarLite(
     std::shared_ptr<StateSpace> statespace, 
@@ -586,65 +586,119 @@ void KinodynamicPRMStarDStarLite::initialize(DStarLiteNode* start, DStarLiteNode
 //     }
 // }
 
+
+
+// void KinodynamicPRMStarDStarLite::updateVertex(DStarLiteNode* u) {
+//     if (u == goal_node_) {
+//         u->rhs = 0.0;
+//         u->best_parent_ = nullptr;
+//         u->best_parent_trajectory_ = Trajectory();
+//     } 
+//     else {
+//         double min_rhs = std::numeric_limits<double>::infinity();
+//         DStarLiteNode* best_parent = nullptr;
+//         Trajectory best_traj;
+
+// #if DEBUG_WITH_DIJKSTRA_
+//         // Debug Mode: Sorting for Determinism
+//         for (auto& [succ, edge_info] : u->forward_neighbors_) {
+//             if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
+//             if (succ->g == std::numeric_limits<double>::infinity()) continue;
+//             double cost = edge_info.distance + succ->g;
+//             if (cost < min_rhs) min_rhs = cost;
+//         }
+//         if (std::isfinite(min_rhs)) {
+//             std::vector<DStarLiteNode*> candidates;
+//             candidates.reserve(4);
+//             for (auto& [succ, edge_info] : u->forward_neighbors_) {
+//                 if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
+//                 if (succ->g == std::numeric_limits<double>::infinity()) continue;
+//                 double cost = edge_info.distance + succ->g;
+//                 if (std::abs(cost - min_rhs) < 1e-9) candidates.push_back(succ);
+//             }
+//             if (!candidates.empty()) {
+//                 std::sort(candidates.begin(), candidates.end(), [](DStarLiteNode* a, DStarLiteNode* b) { return a->getIndex() < b->getIndex(); });
+//                 best_parent = candidates[0];
+//                 best_traj = u->forward_neighbors_[best_parent].cached_trajectory;
+//             }
+//         }
+// #else
+//         // Production Mode: Fast One-Pass
+//         for (auto& [succ, edge_info] : u->forward_neighbors_) {
+//             // BOTH STRATEGIES: Trust the distance value
+//             if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
+//             if (succ->g == std::numeric_limits<double>::infinity()) continue;
+
+//             double cost = edge_info.distance + succ->g;
+//             if (cost < min_rhs) {
+//                 min_rhs = cost;
+//                 best_parent = succ;
+//                 best_traj = edge_info.cached_trajectory;
+//             }
+//         }
+// #endif
+
+//         u->rhs = min_rhs;
+//         // u->best_parent_ = best_parent;
+//         // u->best_parent_trajectory_ = best_traj;
+//         u->setBestParent(best_parent, best_traj);
+//     }
+
+//     if (u->in_queue_) open_queue_.remove(u);
+//     if (u->g != u->rhs) open_queue_.add(u, calculateKey(u));
+// }
+
 void KinodynamicPRMStarDStarLite::updateVertex(DStarLiteNode* u) {
-    if (u == goal_node_) {
-        u->rhs = 0.0;
-        u->best_parent_ = nullptr;
-        u->best_parent_trajectory_ = Trajectory();
+    bool is_consistent = (u->g == u->rhs);
+    
+    if (!is_consistent && u->in_queue_) {
+        // Line 07": Update priority
+        open_queue_.update(u, calculateKey(u));
     } 
-    else {
-        double min_rhs = std::numeric_limits<double>::infinity();
-        DStarLiteNode* best_parent = nullptr;
-        Trajectory best_traj;
+    else if (!is_consistent && !u->in_queue_) {
+        // Line 08": Insert into queue
+        open_queue_.add(u, calculateKey(u));
+    } 
+    else if (is_consistent && u->in_queue_) {
+        // Line 09": Remove from queue
+        open_queue_.remove(u);
+    }
+}
 
+// Equivalent to Line 27": rhs(s) = min_{s' in Succ(s)} (c(s, s') + g(s'))
+void KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
+    if (s == goal_node_) return; // Goal is always 0
+    
+    double min_rhs = std::numeric_limits<double>::infinity();
+    DStarLiteNode* best_parent = nullptr;
+    Trajectory best_traj;
+
+    for (auto& [succ, edge_info] : s->forward_neighbors_) {
+        // Trust the edge distance (handled by obstacle invalidation logic)
+        if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
+        if (succ->g == std::numeric_limits<double>::infinity()) continue;
+
+        double cost = edge_info.distance + succ->g;
+        if (cost < min_rhs - 1e-9) {
+            min_rhs = cost;
+            best_parent = succ;
+            best_traj = edge_info.cached_trajectory;
+        }
 #if DEBUG_WITH_DIJKSTRA_
-        // Debug Mode: Sorting for Determinism
-        for (auto& [succ, edge_info] : u->forward_neighbors_) {
-            if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
-            if (succ->g == std::numeric_limits<double>::infinity()) continue;
-            double cost = edge_info.distance + succ->g;
-            if (cost < min_rhs) min_rhs = cost;
-        }
-        if (std::isfinite(min_rhs)) {
-            std::vector<DStarLiteNode*> candidates;
-            candidates.reserve(4);
-            for (auto& [succ, edge_info] : u->forward_neighbors_) {
-                if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
-                if (succ->g == std::numeric_limits<double>::infinity()) continue;
-                double cost = edge_info.distance + succ->g;
-                if (std::abs(cost - min_rhs) < 1e-9) candidates.push_back(succ);
-            }
-            if (!candidates.empty()) {
-                std::sort(candidates.begin(), candidates.end(), [](DStarLiteNode* a, DStarLiteNode* b) { return a->getIndex() < b->getIndex(); });
-                best_parent = candidates[0];
-                best_traj = u->forward_neighbors_[best_parent].cached_trajectory;
-            }
-        }
-#else
-        // Production Mode: Fast One-Pass
-        for (auto& [succ, edge_info] : u->forward_neighbors_) {
-            // BOTH STRATEGIES: Trust the distance value
-            if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
-            if (succ->g == std::numeric_limits<double>::infinity()) continue;
-
-            double cost = edge_info.distance + succ->g;
-            if (cost < min_rhs) {
-                min_rhs = cost;
+        // 2. TIE-BREAKER: Equal cost, but lower Node Index
+        else if (std::abs(cost - min_rhs) <= 1e-9) {
+            if (best_parent && succ->getIndex() < best_parent->getIndex()) {
+                // Keep min_rhs the same, but switch to the preferred parent
                 best_parent = succ;
                 best_traj = edge_info.cached_trajectory;
             }
         }
 #endif
-
-        u->rhs = min_rhs;
-        u->best_parent_ = best_parent;
-        u->best_parent_trajectory_ = best_traj;
     }
 
-    if (u->in_queue_) open_queue_.remove(u);
-    if (u->g != u->rhs) open_queue_.add(u, calculateKey(u));
+    s->rhs = min_rhs;
+    s->setBestParent(best_parent, best_traj);
 }
-
 
 void KinodynamicPRMStarDStarLite::printNodeDetails(const std::string& prefix, DStarLiteNode* node) {
     if (!node) {
@@ -661,127 +715,140 @@ void KinodynamicPRMStarDStarLite::printNodeDetails(const std::string& prefix, DS
               << std::endl;
 }
 
+// void KinodynamicPRMStarDStarLite::computeShortestPath() {
+//     if (!start_node_ || !goal_node_) return;
+
+//     // Paper condition: while (U.TopKey() < CalculateKey(s_start) OR rhs(s_start) != g(s_start))
+//     while (open_queue_.topKey() < calculateKey(start_node_) || start_node_->rhs != start_node_->g) {
+//     // while (!open_queue_.empty()) { //FOR DEBUG
+        
+//         DStarLiteKey k_old = open_queue_.topKey();
+//         DStarLiteNode* u = open_queue_.pop();
+//         if (!u) break;
+
+//         DStarLiteKey k_new = calculateKey(u);
+
+//         if (k_old < k_new) {
+//             // Lazy update: the key in the heap was stale, re-insert with fresh k_m
+//             open_queue_.add(u, k_new);
+//         } 
+//         else if (u->g > u->rhs) {
+//             // Overconsistent: cost decreased
+//             u->g = u->rhs;
+//             // Propagate to predecessors (backward neighbors)
+//             for (auto& [pred, edge_info] : u->backward_neighbors_) {
+//                 updateVertex(pred);
+//             }
+//         } 
+//         else {
+//             // Underconsistent: cost increased
+//             u->g = std::numeric_limits<double>::infinity();
+//             // Update u itself and all predecessors
+//             updateVertex(u);
+//             for (auto& [pred, edge_info] : u->backward_neighbors_) {
+//                 updateVertex(pred);
+//             }
+//         }
+//     }
+// }
+
+
 void KinodynamicPRMStarDStarLite::computeShortestPath() {
     if (!start_node_ || !goal_node_) return;
 
-    // Paper condition: while (U.TopKey() < CalculateKey(s_start) OR rhs(s_start) != g(s_start))
-    // while (open_queue_.topKey() < calculateKey(start_node_) || start_node_->rhs != start_node_->g) {
-    while (!open_queue_.empty()) { //FOR DEBUG
-        
+    // // Line 10": while U.TopKey() < CalculateKey(s_start) OR rhs(s_start) > g(s_start)
+    // // Note: D* Lite optimized version strictly uses > here, not !=
+    // while (!open_queue_.empty() && 
+    //        (open_queue_.topKey() < calculateKey(start_node_) || start_node_->rhs > start_node_->g)) {
+
+    // 1. Get the standard discrete key for the anchor node
+    DStarLiteKey target_key = calculateKey(start_node_);
+    
+    // 2. INFLATE the key by the continuous bridge cost. 
+    // This perfectly mirrors your RRTx logic: min_key > vbot_node_->getCost() + bridge_cost_
+    // It forces the queue to resolve the local continuous neighborhood around the robot.
+    if (std::isfinite(bridge_cost_)) {
+        target_key.k1 += bridge_cost_;
+        target_key.k2 += bridge_cost_;
+    }
+
+#if DEBUG_WITH_DIJKSTRA_
+    while (!open_queue_.empty()){
+#endif
+
+#if !DEBUG_WITH_DIJKSTRA_
+        // 3. Modified Termination Condition
+    while (!open_queue_.empty() && 
+            (open_queue_.topKey() < target_key || start_node_->rhs > start_node_->g)) {
+#endif      
+    
+        // Lines 11"-13"
         DStarLiteKey k_old = open_queue_.topKey();
-        DStarLiteNode* u = open_queue_.pop();
+        DStarLiteNode* u = open_queue_.pop(); // Pop automatically does U.Remove(u)
         if (!u) break;
 
         DStarLiteKey k_new = calculateKey(u);
 
+        // Line 14"
         if (k_old < k_new) {
-            // Lazy update: the key in the heap was stale, re-insert with fresh k_m
+            // Lazy update
             open_queue_.add(u, k_new);
         } 
+        // Line 16": Overconsistent (Found a shortcut!)
         else if (u->g > u->rhs) {
-            // Overconsistent: cost decreased
             u->g = u->rhs;
-            // Propagate to predecessors (backward neighbors)
+            
+            // PUSH LOGIC (Lines 19"-21"): O(1) per predecessor!
             for (auto& [pred, edge_info] : u->backward_neighbors_) {
+                if (pred != goal_node_) {
+                    double new_cost = edge_info.distance + u->g;
+                    // If this new path through u is better, PUSH the update
+                    if (pred->rhs > new_cost + 1e-9) {
+                        pred->rhs = new_cost;
+                        pred->setBestParent(u, edge_info.cached_trajectory);
+                    }
+#if DEBUG_WITH_DIJKSTRA_
+                    // 2. TIE-BREAKER: Equal cost, but lower Node Index
+                    else if (std::abs(pred->rhs - new_cost) <= 1e-9) {
+                        if (pred->getParent() && u->getIndex() < pred->getParent()->getIndex()) {
+                            pred->rhs = new_cost; // strictly speaking, cost is the same
+                            pred->setBestParent(u, edge_info.cached_trajectory);
+                        }
+                    }
+#endif
+
+                }
                 updateVertex(pred);
             }
         } 
+        // Line 22": Underconsistent (Path was blocked!)
         else {
-            // Underconsistent: cost increased
+            double g_old = u->g;
             u->g = std::numeric_limits<double>::infinity();
-            // Update u itself and all predecessors
-            updateVertex(u);
+            
+            // Lines 25"-28": Process Predecessors
             for (auto& [pred, edge_info] : u->backward_neighbors_) {
+                // BRILLIANT FILTER: Only rescan if the predecessor actually relied on u!
+                // if (pred->rhs != std::numeric_limits<double>::infinity() && 
+                //     std::abs(pred->rhs - (edge_info.distance + g_old)) < 1e-9) {
+                    
+                //     recomputeRHS(pred); // O(K) scan ONLY for affected nodes
+                // }
+               if (pred->getParent() == u) {
+                    recomputeRHS(pred); 
+                } 
                 updateVertex(pred);
             }
+            
+            // Process u itself (part of Pred(u) U {u})
+            if (u != goal_node_ && std::abs(u->rhs - g_old) < 1e-9) {
+                recomputeRHS(u);
+            }
+            updateVertex(u);
         }
     }
 }
-// double KinodynamicPRMStarDStarLite::computeShortestPathDijkstraMode() {
-//     if (!start_node_ || !goal_node_) return -1.0;
 
-//     using NodePair = std::pair<double, DStarLiteNode*>;
-//     auto cmp = [](const NodePair& a, const NodePair& b){ return a.first > b.first; };
-//     std::priority_queue<NodePair, std::vector<NodePair>, decltype(cmp)> pq(cmp);
-
-//     std::unordered_map<DStarLiteNode*, double> local_g_map;
-//     std::unordered_map<DStarLiteNode*, DStarLiteNode*> local_parent_map;
-
-//     const double EPS = 1e-9;
-
-//     // init from goal (cost-to-go of goal == 0)
-//     pq.push({0.0, goal_node_});
-//     local_g_map[goal_node_] = 0.0;
-//     local_parent_map[goal_node_] = nullptr;
-
-//     while (!pq.empty()) {
-//         auto [cur_cost, u] = pq.top(); pq.pop();
-
-//         // stale entry check
-//         auto it = local_g_map.find(u);
-//         if (it != local_g_map.end() && it->second + EPS < cur_cost) {
-//             continue;
-//         }
-
-//         // For correctness on directed graphs we must iterate predecessors:
-
-//         // For correctness on directed graphs we must iterate predecessors:
-//         for (auto& [pred, edge_info] : u->backward_neighbors_) {
-//             if (!edge_info.is_trajectory_computed) continue;
-//             if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
-
-//             double edge_start_time = pred->getTimeToGoal();
-//             if (!obs_checker_->isTrajectorySafe(edge_info.cached_trajectory, edge_start_time)) continue;
-
-//             double new_cost = cur_cost + edge_info.distance;
-            
-//             auto itpred = local_g_map.find(pred);
-//             bool should_update = false;
-
-//             if (itpred == local_g_map.end()) {
-//                 should_update = true; // First time seeing node
-//             } 
-//             else if (new_cost < itpred->second - 1e-9) {
-//                 should_update = true; // Strictly cheaper
-//             }
-//             else if (std::abs(new_cost - itpred->second) < 1e-9) {
-//                 // TIE-BREAKER: Prefer Lower Index (Matches your D* Lite sort)
-//                 if (local_parent_map.find(pred) != local_parent_map.end()) {
-//                     DStarLiteNode* current_parent = local_parent_map[pred];
-//                     if (current_parent && u->getIndex() < current_parent->getIndex()) {
-//                         should_update = true;
-//                     }
-//                 }
-//             }
-
-//             if (should_update) {
-//                 local_g_map[pred] = new_cost;
-//                 local_parent_map[pred] = u; 
-//                 pq.push({new_cost, pred});
-//             }
-//         }
-//     }
-
-//     double dijkstra_cost = -1.0;
-//     auto it_start = local_g_map.find(start_node_);
-//     if (it_start != local_g_map.end()) {
-//         dijkstra_cost = it_start->second;
-//         std::cout << "[Dijkstra Mode] Exhaustive search complete. Start cost: " << dijkstra_cost << std::endl;
-
-//         double main_planner_cost = start_node_->g;
-//         if (std::isfinite(main_planner_cost) && std::abs(dijkstra_cost - main_planner_cost) < 1e-6) {
-//             std::cout << "\033[1;32m[SUCCESS] Dijkstra Cost matches D* Lite Cost!\033[0m" << std::endl;
-//         } else {
-//             std::cout << "\033[1;31m[FAILURE] Cost Mismatch! Dijkstra: " << dijkstra_cost 
-//                       << " vs D* Lite: " << main_planner_cost << "\033[0m" << std::endl;
-//         }
-//     } else {
-//         std::cout << "[Dijkstra Mode] Start node is unreachable in current world." << std::endl;
-//     }
-
-//     dijkstra_tree_parents_ = local_parent_map;
-//     return dijkstra_cost;
-// }
 
 
 double KinodynamicPRMStarDStarLite::computeShortestPathDijkstraMode() {
@@ -1048,6 +1115,9 @@ void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& tu
         // Add NEW Tube
         addNewObstacle(stored_ob);
     }
+#if USE_PROPAGATE_DESCENDANTS
+    propagateDescendants();
+#endif
 
     // 2. Trigger D* Lite Repair
     // if (graph_changed) {
@@ -1239,6 +1309,52 @@ void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& tu
 //         if (u_needs_update) updateVertex(u);
 //     }
 // }
+void KinodynamicPRMStarDStarLite::propagateDescendants() {
+    if (orphans_.empty()) return;
+
+    std::queue<DStarLiteNode*> q;
+    std::unordered_set<DStarLiteNode*> processed_orphans;
+
+    // 1. Initialize Queue
+    for (auto u : orphans_) {
+        q.push(u);
+    }
+
+    // 2. BFS to find all descendants
+    while (!q.empty()) {
+        DStarLiteNode* curr = q.front(); 
+        q.pop();
+        
+        processed_orphans.insert(curr);
+
+        for (DStarLiteNode* child : curr->children_) {
+            if (processed_orphans.find(child) == processed_orphans.end()) {
+                q.push(child);
+            }
+        }
+    }
+
+    // 3. The "Kill" Phase (Bypass the Priority Queue)
+    for (DStarLiteNode* u : processed_orphans) {
+        u->g = std::numeric_limits<double>::infinity();
+        u->rhs = std::numeric_limits<double>::infinity();
+        u->setBestParent(nullptr, Trajectory());
+        
+        if (u->in_queue_) {
+            open_queue_.remove(u);
+        }
+    }
+
+    // 4. The "Re-Integrate" Phase
+    // Force them to look at their forward neighbors. If a neighbor survived,
+    // this orphan will get a finite RHS and jump BACK into the queue as overconsistent!
+    for (DStarLiteNode* u : processed_orphans) {
+        recomputeRHS(u); // <-- ADDED THIS: Node needs to see if any neighbors survived
+        updateVertex(u);
+    }
+
+    orphans_.clear();
+}
 
 
 void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
@@ -1292,6 +1408,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
                 if (edge_info.distance != std::numeric_limits<double>::infinity()) {
                     edge_info.distance = std::numeric_limits<double>::infinity();
                     u_needs_update = true;
+                    if (u->getParent() == v) orphans_.insert(u);
                 }
 
 #if USE_INVALIDATING_SET_STRATEGY
@@ -1316,6 +1433,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
                         if (it_rev->second.distance != std::numeric_limits<double>::infinity()) {
                             it_rev->second.distance = std::numeric_limits<double>::infinity();
                             rev_changed = true;
+                            if (v->getParent() == u) orphans_.insert(v);
                         }
 #if USE_INVALIDATING_SET_STRATEGY
                         it_rev->second.invalidating_obstacles.insert(ob.name);
@@ -1328,14 +1446,22 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
                             it_rev_back->second.invalidating_obstacles.insert(ob.name);
 #endif
                         }
-                        if (rev_changed) updateVertex(v);
+                        if (rev_changed) {
+                            recomputeRHS(v); // <-- ADDED THIS: Symmetry edge was broken
+                            updateVertex(v);
+                        }
                     }
                 }
             }
         }
-        if (u_needs_update) updateVertex(u);
+        if (u_needs_update){
+            recomputeRHS(u); // (You correctly added this one in your last message!)
+            updateVertex(u);
+        }
     }
 }
+
+
 void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob_to_remove) {
     if (ob_to_remove.predicted_path.empty()) return;
 
@@ -1447,16 +1573,19 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob_to_remove) {
                                 it_rev_back->second.invalidating_obstacles.erase(ob_to_remove.name);
 #endif
                             }
+                            recomputeRHS(v); // <-- ADDED THIS: Symmetry edge was restored
                             updateVertex(v);
                         }
                     }
                 }
             }
         }
-        if (u_needs_update) updateVertex(u);
+        if (u_needs_update) {
+            recomputeRHS(u); // <-- ADDED THIS: Forward edge was restored
+            updateVertex(u);
+        }
     }
 }
-
 void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_state) {
     robot_continuous_state_ = robot_state;
 
@@ -1795,11 +1924,11 @@ void KinodynamicPRMStarDStarLite::visualizeTree() {
         }
     }
 
-    std::cout << "[Viz] total_nodes=" << nodes_.size()
-              << " dslite_nodes=" << count_dslite_nodes
-              << " dijkstra_nodes=" << dijkstra_nodes_pos.size()
-              << " dslite_tree_edges=" << dslite_tree_edges.size()
-              << " dijkstra_tree_edges=" << dijkstra_tree_edges.size() << std::endl;
+    // std::cout << "[Viz] total_nodes=" << nodes_.size()
+    //           << " dslite_nodes=" << count_dslite_nodes
+    //           << " dijkstra_nodes=" << dijkstra_nodes_pos.size()
+    //           << " dslite_tree_edges=" << dslite_tree_edges.size()
+    //           << " dijkstra_tree_edges=" << dijkstra_tree_edges.size() << std::endl;
 
     // // Draw all nodes (light gray)
     // visualization_->visualizeNodes(all_node_positions, "map",
@@ -1827,9 +1956,9 @@ void KinodynamicPRMStarDStarLite::visualizeTree() {
 
     // draw D* Lite overlay (thin, slightly transparent)
     visualization_->visualizeEdges(dslite_tree_edges, "map",
-        std::array<float,3>{0.0f, 1.0f, 0.0f},   // green
-        0.85f,                                   // alpha (slightly transparent)
-        0.02f,                                   // thin line
+        std::array<float,3>{1.0f, 1.0f, 1.0f},   // gray
+        0.5f,                                   // alpha (slightly transparent)
+        0.05f,                                   // thin line
         "dslite_tree",                           // namespace
         2,                                       // marker id
         false,                                   // dashed
