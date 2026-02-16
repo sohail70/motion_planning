@@ -23,7 +23,7 @@ robot:
   min_turning_radius: 2.0 # Used here
 
 planner_params:
-  num_of_samples: 1000
+  num_of_samples: 500
   factor: 3.0
   delta: 15.0
   use_kdtree: true
@@ -48,7 +48,7 @@ manager_params:
 gazebo_params:
   robot_model_name: "tugbot"
   world_name: "default"
-  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf"
+  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circlee.sdf"
   default_robot_x: 48.0  
   default_robot_y: 48.0
   use_range: false

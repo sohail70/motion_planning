@@ -69,7 +69,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
                 weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
                 break;
             case 5:
-                weights << 1.0, 1.0, 1.0, 1.0, 1.0; // Weights for x, y, z, yaw, time
+                weights << 1.0, 1.0, 1.0, 1.0, 1.0; // Weights for x, y, vx, vy, time
                 break;
             default: 
                 RCLCPP_ERROR(rclcpp::get_logger("Planner_Obstacle_Update"), "Unsupported k-d tree dimension : %d", kd_dim);
@@ -200,6 +200,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
         
         // Build the tree all at once after we fill the data.
         kdtree_->buildTree();
+        // kdtree_->printData();
 
     }
 
@@ -1272,6 +1273,34 @@ void KinodynamicFMTX::plan() {
 
     } 
 
+    // // =========================================================================
+    // // FMTX DEBUG: PRINT FULL GRAPH CONNECTIVITY
+    // // =========================================================================
+    // std::cout << "\n================ FMTX GRAPH CONNECTIVITY ================\n";
+    // for (const auto& node_ptr : tree_) {
+    //     if (!node_ptr) continue;
+    //     FMTNode* node = node_ptr.get();
+    //     FMTNode* parent = node->getParent();
+    //     int parent_idx = parent ? parent->getIndex() : -1;
+
+    //     std::cout << "Node [" << node->getIndex() << "] | Cost: " << node->getCost() 
+    //               << " | Parent: [" << parent_idx << "]\n";
+    //     std::cout << "  Outgoing Neighbors:\n";
+        
+    //     if (node->forwardNeighbors().empty()) {
+    //         std::cout << "    (none)\n";
+    //     } else {
+    //         for (const auto& [neighbor, edge] : node->forwardNeighbors()) {
+    //             std::cout << "    -> Node [" << neighbor->getIndex() 
+    //                       << "] | Edge Cost: " << edge.distance 
+    //                       << " | Geom Dist: " << edge.cached_trajectory.geometric_distance << "\n";
+    //         }
+    //     }
+    // }
+    // std::cout << "=========================================================\n\n";
+
+
+
 }
 
 
@@ -1397,7 +1426,7 @@ void KinodynamicFMTX::near(int node_index) {
         }
     } else {
         if (neighborhood_radius_ > 0) {
-            candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim), neighborhood_radius_);
+            candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
         }
     }
 
@@ -1427,7 +1456,7 @@ void KinodynamicFMTX::near(int node_index) {
             // Test FORWARD connection
             Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
             
-            if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_)) {
+            if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_ + 0.01)) {
                 // Add Forward Edge (Node -> Neighbor)
                 node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
                 neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
@@ -1443,7 +1472,7 @@ void KinodynamicFMTX::near(int node_index) {
                     // --- KINODYNAMIC CASE ---
                     // Test BACKWARD connection (Neighbor -> Node)
                     Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-                    if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_)) {
+                    if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_ + 0.01)) {
                         node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
                         neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
                         max_length_ = std::max(max_length_, traj_backward.cost);
@@ -4656,6 +4685,7 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::smoothPath(const std::vector<Eigen
 
 // Edge + Nodes --> straight line
 void KinodynamicFMTX::visualizeTree() {
+    // std::cout<<"--------------------------- \n";
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
     if (!tree_.empty()) {
         edges.reserve(tree_.size());
@@ -4676,6 +4706,7 @@ void KinodynamicFMTX::visualizeTree() {
         tree_nodes.push_back(node_ptr->getStateValue().head(2)); // TODO: For min snap it needs to be 3!!! I need spatial dim variable!
 
         if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
+            // std::cout<<"INDEX: "<<child_node->getIndex()<<" , COST: "<<child_node->getCost()<<"\n";
             connected_nodes_count++;
             size_t current_neighbors = child_node->forwardNeighbors().size();
             total_forward_neighbors += current_neighbors;
@@ -5410,6 +5441,8 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
             query << point_3d.x(), point_3d.y();
         } else if (kd_dim == 4) {
             query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        } else if (kd_dim == 5) {
+            query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z(); 
         }
 
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
@@ -5600,6 +5633,8 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
         else if (kd_dim == 4) {
             query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        }else if (kd_dim == 5) {
+            query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z(); 
         }
 
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);

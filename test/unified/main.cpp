@@ -486,6 +486,7 @@ int main(int argc, char** argv) {
                 kinodynamic_planner->visualizePath(new_path);
             }
             kinodynamic_planner->visualizeTree();
+            // kinodynamic_planner->visualizeTreeReal();
 
             auto now = std::chrono::steady_clock::now();
             double dt_wall = std::chrono::duration<double>(now - slice_start_time).count();

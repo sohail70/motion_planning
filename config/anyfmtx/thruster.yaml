@@ -42,7 +42,7 @@ planner_params:
   partial_plot: true
   static_obs_presence: true
   obs_cache: false
-  kd_dim: 3 # 3 for 2nd order thruster (x,y,time) usually, or 5 if using full state for KD
+  kd_dim: 5
   precache_neighbors: true
   use_heuristic: false
   is_geometric_mode: false

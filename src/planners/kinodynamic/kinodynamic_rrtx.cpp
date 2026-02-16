@@ -211,6 +211,11 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
                     weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
                 }
                 break;
+            case 5: // (x, y, vx, vy, time) - From your Dubins example
+                {
+                    weights << 1.0, 1.0, 1.0, 1.0, 1.0; 
+                }
+                break;
             default: 
                 RCLCPP_ERROR(rclcpp::get_logger("Planner_Obstacle_Update"), "Unsupported k-d tree dimension : %d", kd_dim);
         }
@@ -231,29 +236,27 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
     std::cout << "--- \n";
     setGoal(problem_->getGoal()); //robots current position
 
-    // put the start and goal node in kdtree
     if (use_kdtree == true) {
+        // // Put all the points at once because fmtx doesnt need incremental addition
         // kdtree_->addPoints(statespace_->getSamplesCopy());
+        // // Build the tree all at once after we fill the data_ in the KDTree
         // kdtree_->buildTree();
 
         // Get the full 3D (or 4D) samples from the state space.
         Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
 
-        // Define how many spatial dimensions you have.
-        //    This makes the code robust for future changes (e.g., to 3D space).
-        //    Assuming (x, y, time), the spatial dimension is 2.
-        int spatial_dimension = kd_dim; // For (x, y)
-        // For a future Dubins (x, y, theta, time) planner, this would still be 2.
-
-        // Use .leftCols() to create a new matrix with only the spatial data.
-        //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
-        Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(spatial_dimension).eval();
+        // // Use .leftCols() to create a new matrix with only the kd_dim data.
+        // //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
+        Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(kd_dim).eval();
         
         // Pass the 2D spatial matrix to the KD-tree.
         kdtree_->addPoints(spatial_samples_only);
+        // kdtree_->addPoints(all_samples);
         
         // Build the tree all at once after we fill the data.
         kdtree_->buildTree();
+        // kdtree_->printData();
+
     }
 
     /////////////////////////SETTING UP DS//////////////
@@ -412,12 +415,41 @@ void KinodynamicRRTX::plan() {
             reduceInconsistency();
             new_node->setCost(new_node->getLMC());
         }
-        
+        // std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        // visualizeTree();
     }
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Planning time: " << duration.count() << " ms" << std::endl;
+
+
+
+    // // =========================================================================
+    // // RRTX DEBUG: PRINT FULL GRAPH CONNECTIVITY
+    // // =========================================================================
+    // std::cout << "\n================ RRTX GRAPH CONNECTIVITY ================\n";
+    // for (const auto& node_ptr : tree_) {
+    //     if (!node_ptr) continue;
+    //     RRTxNode* node = node_ptr.get();
+    //     RRTxNode* parent = node->getParent();
+    //     int parent_idx = parent ? parent->getIndex() : -1;
+
+    //     std::cout << "Node [" << node->getIndex() << "] | Cost: " << node->getCost() 
+    //               << " | Parent: [" << parent_idx << "]\n";
+    //     std::cout << "  Outgoing Neighbors:\n";
+        
+    //     if (node->outgoingEdges().empty()) {
+    //         std::cout << "    (none)\n";
+    //     } else {
+    //         for (const auto& [neighbor, edge] : node->outgoingEdges()) {
+    //             std::cout << "    -> Node [" << neighbor->getIndex() 
+    //                       << "] | Edge Cost: " << edge.distance 
+    //                       << " | Geom Dist: " << edge.cached_trajectory.geometric_distance << "\n";
+    //         }
+    //     }
+    // }
+    // std::cout << "=========================================================\n\n";
 
 
 
@@ -516,6 +548,8 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     
     tree_.push_back(new_node);
     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
+
+
     kdtree_->buildTree(); 
     
     // Algorithm 2 lines 7-13 implementation
@@ -1532,6 +1566,7 @@ bool KinodynamicRRTX::isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& 
 // }
 
 void KinodynamicRRTX::visualizeTree() {
+    // std::cout<<"--------------------------- \n";
     // Using a more appropriate name since the edges are straight lines.
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
     // std::cout<<vbot_node_->getCost()<<"\n";
@@ -1551,6 +1586,8 @@ void KinodynamicRRTX::visualizeTree() {
 
         // If a node has a parent, it forms a valid edge in the tree.
         if (parent_node) {
+            
+            // std::cout<<"INDEX: "<<child_node->getIndex()<<" , COST: "<<child_node->getCost()<<"\n";
             // Add a single, straight-line edge from the parent's state to the child's state.
             // No need to check for intermediate points.
             edges.emplace_back(parent_node->getStateValue(), child_node->getStateValue());
@@ -1566,6 +1603,52 @@ void KinodynamicRRTX::visualizeTree() {
     // Visualize the collected straight-line edges.
     visualization_->visualizeEdges(edges, "map");
 }
+
+
+
+void KinodynamicRRTX::visualizeTreeReal() {
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+    if (!tree_.empty()) {
+        edges.reserve(tree_.size() * 50); 
+    }
+    
+    std::vector<Eigen::VectorXd> tree_nodes;
+    tree_nodes.reserve(tree_.size());
+
+    int connected_nodes_count = 0;
+    
+    for (const auto& node_ptr : tree_) {
+        RRTxNode* child_node = node_ptr.get();
+        RRTxNode* parent_node = child_node->getParent();
+
+        tree_nodes.push_back(child_node->getStateValue().head(3));
+
+        if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
+            connected_nodes_count++;
+        }
+
+        if (parent_node) {
+
+            const Trajectory& traj = child_node->getParentTrajectory();
+
+            if (traj.is_valid && traj.path_points.size() > 1) {
+                
+                for (size_t i = 0; i < traj.path_points.size() - 1; ++i) {
+                    edges.emplace_back(traj.path_points[i].head(3), traj.path_points[i+1].head(3));
+                }
+            } else {
+                edges.emplace_back(parent_node->getStateValue().head(3), child_node->getStateValue().head(3));
+            }
+        }
+    }
+
+    
+    // Visualization calls
+    // visualization_->visualizeNodes(tree_nodes, "map", {0.0f, 1.0f, 0.0f}, "tree_nodes");
+    // visualization_->visualizeEdges(edges, "map", "1.0,1.0,1.0", "tree_edges");
+    visualization_->visualizeEdges(edges, "map");
+}
+
 
 
 void KinodynamicRRTX::visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints) {
@@ -3436,6 +3519,7 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
         if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
         else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        else if (kd_dim == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
         
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
@@ -3507,6 +3591,7 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
         if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
         else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        else if (kd_dim == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
         
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));

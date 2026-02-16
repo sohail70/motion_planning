@@ -82,8 +82,86 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
     // NOTE: We do NOT manually add Start/Goal here anymore.
     // We will generate the grid first, then pick corners.
 
-    // --- GRID SAMPLING LOGIC ---
-    if (use_grid_sampling) {
+
+    bool use_rrtx_saved_samples_ = true;
+    // 3. Build Graph (Sample + Identify Start/Goal)
+    if (use_rrtx_saved_samples_) {
+        std::cout << "Using RRTX saved samples." << std::endl;
+        std::string filepath = "/home/sohail/motion_planning/build/rrtx_tree_nodes.csv";
+        std::cout << "Loading nodes from file: " << filepath << "\n";
+        std::ifstream fin(filepath);
+        if (!fin.is_open()) {
+            throw std::runtime_error("Failed to open node file: " + filepath);
+        }
+
+        std::string line;
+        std::getline(fin, line); // Skip header
+
+        std::string cell;
+        while (std::getline(fin, line)) {
+            std::stringstream lineStream(line);
+            std::vector<double> state_values;
+            
+            std::getline(lineStream, cell, ','); // Skip node_id
+            for(int i = 0; i < statespace_->getDimension(); ++i) {
+                std::getline(lineStream, cell, ',');
+                state_values.push_back(std::stod(cell));
+            }
+
+            Eigen::Map<Eigen::VectorXd> state_vec(state_values.data(), state_values.size());
+            auto state_ptr = statespace_->addState(state_vec);
+            auto node = std::make_unique<DStarLiteNode>(state_ptr, nodes_.size());
+            
+            // Set time to goal based on the state vector
+            if (!is_geometric_mode_) {
+                double absolute_t = node->getStateValue().tail<1>()[0];
+                node->setTimeToGoal(absolute_t);
+            } else {
+                node->setTimeToGoal(0.0);
+            }
+            
+            nodes_.push_back(std::move(node));
+        }
+        fin.close();
+        std::cout << "Loaded " << nodes_.size() << " nodes from file.\n";
+
+        // Find Start and Goal nodes
+        // Remember D* Lite semantics: getGoal() = Search Root, getStart() = Robot Position
+        const Eigen::VectorXd& mission_goal = problem_def_->getGoal();   
+        const Eigen::VectorXd& mission_start = problem_def_->getStart(); 
+
+        DStarLiteNode* best_search_root = nullptr;
+        DStarLiteNode* best_robot_node = nullptr;
+        double min_dist_to_root = std::numeric_limits<double>::infinity();
+        double min_dist_to_robot = std::numeric_limits<double>::infinity();
+
+        for (const auto& node_ptr : nodes_) {
+            double dist_to_root = (node_ptr->getStateValue() - mission_goal).norm();
+            if (dist_to_root < min_dist_to_root) {
+                min_dist_to_root = dist_to_root;
+                best_search_root = node_ptr.get();
+            }
+
+            double dist_to_robot = (node_ptr->getStateValue() - mission_start).norm();
+            if (dist_to_robot < min_dist_to_robot) {
+                min_dist_to_robot = dist_to_robot;
+                best_robot_node = node_ptr.get();
+            }
+        }
+
+        if (!best_search_root) throw std::runtime_error("Could not find root node.");
+        if (!best_robot_node) throw std::runtime_error("Could not find robot node.");
+
+        // D* Lite reverse semantics assignment
+        start_node_ = best_search_root;
+        start_node_->setTimeToGoal(0.0); 
+
+        goal_node_ = best_robot_node; // TTG is already parsed from the CSV correctly
+
+        std::cout << "Successfully identified start and goal nodes." << "\n";
+
+    } // --- GRID SAMPLING LOGIC ---
+    else if (use_grid_sampling) {
         std::cout << "Using GRID sampling strategy." << std::endl;
         
         // 1. Calculate grid steps
@@ -371,7 +449,7 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
                     
                     // Test FORWARD connection (Node -> Neighbor)
                     Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
-                    if (traj_forward.is_valid) {
+                    if (traj_forward.is_valid && traj_forward.cost <= connection_radius_ + 0.01) {
                         EdgeInfo info_forward;
                         info_forward.distance = traj_forward.cost;
                         info_forward.distance_original = info_forward.distance;
@@ -390,7 +468,7 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
                         traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
                     }
                     
-                    if (traj_backward.is_valid) {
+                    if (traj_backward.is_valid && traj_backward.cost <= connection_radius_ + 0.01) {
                         EdgeInfo info_backward;
                         info_backward.distance = traj_backward.cost;
                         info_backward.distance_original = info_backward.distance;
@@ -1309,53 +1387,55 @@ void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& tu
 //         if (u_needs_update) updateVertex(u);
 //     }
 // }
-void KinodynamicPRMStarDStarLite::propagateDescendants() {
-    if (orphans_.empty()) return;
 
-    std::queue<DStarLiteNode*> q;
-    std::unordered_set<DStarLiteNode*> processed_orphans;
 
-    // 1. Initialize Queue
-    for (auto u : orphans_) {
-        q.push(u);
-    }
 
-    // 2. BFS to find all descendants
-    while (!q.empty()) {
-        DStarLiteNode* curr = q.front(); 
-        q.pop();
+// void KinodynamicPRMStarDStarLite::propagateDescendants() {
+//     if (orphans_.empty()) return;
+
+//     std::queue<DStarLiteNode*> q;
+//     std::unordered_set<DStarLiteNode*> processed_orphans;
+
+//     // 1. Initialize Queue
+//     for (auto u : orphans_) {
+//         q.push(u);
+//     }
+
+//     // 2. BFS to find all descendants
+//     while (!q.empty()) {
+//         DStarLiteNode* curr = q.front(); 
+//         q.pop();
         
-        processed_orphans.insert(curr);
+//         processed_orphans.insert(curr);
 
-        for (DStarLiteNode* child : curr->children_) {
-            if (processed_orphans.find(child) == processed_orphans.end()) {
-                q.push(child);
-            }
-        }
-    }
+//         for (DStarLiteNode* child : curr->children_) {
+//             if (processed_orphans.find(child) == processed_orphans.end()) {
+//                 q.push(child);
+//             }
+//         }
+//     }
 
-    // 3. The "Kill" Phase (Bypass the Priority Queue)
-    for (DStarLiteNode* u : processed_orphans) {
-        u->g = std::numeric_limits<double>::infinity();
-        u->rhs = std::numeric_limits<double>::infinity();
-        u->setBestParent(nullptr, Trajectory());
+//     // 3. The "Kill" Phase (Bypass the Priority Queue)
+//     for (DStarLiteNode* u : processed_orphans) {
+//         u->g = std::numeric_limits<double>::infinity();
+//         u->rhs = std::numeric_limits<double>::infinity();
+//         u->setBestParent(nullptr, Trajectory());
         
-        if (u->in_queue_) {
-            open_queue_.remove(u);
-        }
-    }
+//         if (u->in_queue_) {
+//             open_queue_.remove(u);
+//         }
+//     }
 
-    // 4. The "Re-Integrate" Phase
-    // Force them to look at their forward neighbors. If a neighbor survived,
-    // this orphan will get a finite RHS and jump BACK into the queue as overconsistent!
-    for (DStarLiteNode* u : processed_orphans) {
-        recomputeRHS(u); // <-- ADDED THIS: Node needs to see if any neighbors survived
-        updateVertex(u);
-    }
+//     // 4. The "Re-Integrate" Phase
+//     // Force them to look at their forward neighbors. If a neighbor survived,
+//     // this orphan will get a finite RHS and jump BACK into the queue as overconsistent!
+//     for (DStarLiteNode* u : processed_orphans) {
+//         recomputeRHS(u); // <-- ADDED THIS: Node needs to see if any neighbors survived
+//         updateVertex(u);
+//     }
 
-    orphans_.clear();
-}
-
+//     orphans_.clear();
+// }
 
 void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
     if (ob.predicted_path.empty()) return;
@@ -1377,211 +1457,197 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
         Eigen::VectorXd query(kd_dim_);
         if (kd_dim_ == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
         else if (kd_dim_ == 2) query << point_3d.x(), point_3d.y();
+        else if (kd_dim_ == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        else if (kd_dim_ == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
         
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
     }
 
-    // 3. Process Edges
-    for (int idx : unique_node_indices) {
-        DStarLiteNode* u = nodes_[idx].get();
-        bool u_needs_update = false;
-
-        for (auto& [v, edge_info] : u->forward_neighbors_) {
-            
+    // --- HELPER LAMBDA: Clean Encapsulation ---
+    auto checkAndBlockEdge = [&](DStarLiteNode* node, DStarLiteNode* neighbor, EdgeInfo& edge, bool& u_needs_update) {
 #if !USE_INVALIDATING_SET_STRATEGY
-            // STRATEGY B (Physics Only): 
-            // Optimization: If edge is already broken, we don't care who broke it.
-            // We will check all obstacles on removal anyway.
-            if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
+        if (edge.distance == std::numeric_limits<double>::infinity()) return; 
 #endif
+        const double edge_start_ttg = node->getTimeToGoal();
+        last_replan_metrics_.obstacle_checks++;
 
-            // STRATEGY A (Set):
-            // We MUST check collision even if edge is INF, to populate the set correctly.
-            // (Code falls through to collision check)
-
-            double edge_start_time = u->getTimeToGoal();
-
-            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_info.cached_trajectory, edge_start_time, ob)) {
-                
-                // 1. Block Forward
-                if (edge_info.distance != std::numeric_limits<double>::infinity()) {
-                    edge_info.distance = std::numeric_limits<double>::infinity();
-                    u_needs_update = true;
-                    if (u->getParent() == v) orphans_.insert(u);
-                }
-
+        // Physics Check
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, edge_start_ttg, ob)) {
+            
+            // 1. Mark as Blocked (Forward Edge)
+            if (edge.distance != std::numeric_limits<double>::infinity()) {
+                edge.distance = std::numeric_limits<double>::infinity();
+                u_needs_update = true;
+            }
+            
 #if USE_INVALIDATING_SET_STRATEGY
-                // Set Logic: Record the specific blocker
-                edge_info.invalidating_obstacles.insert(ob.name);
+            edge.invalidating_obstacles.insert(ob.name);
 #endif
 
-                // 2. Block Backward [SYNC]
-                auto it_back = v->backward_neighbors_.find(u);
-                if (it_back != v->backward_neighbors_.end()) {
-                    it_back->second.distance = std::numeric_limits<double>::infinity();
+            // 2. Symmetric Update (Backward Neighbor perspective)
+            if (neighbor->backward_neighbors_.count(node)) {
+                auto& inc_edge = neighbor->backward_neighbors_.at(node);
+                inc_edge.distance = std::numeric_limits<double>::infinity();
 #if USE_INVALIDATING_SET_STRATEGY
-                    it_back->second.invalidating_obstacles.insert(ob.name);
+                inc_edge.invalidating_obstacles.insert(ob.name);
 #endif
-                }
+            }
 
-                // 3. Geometric Symmetry
-                if (is_geometric_mode_) {
-                    auto it_rev = v->forward_neighbors_.find(u);
-                    if (it_rev != v->forward_neighbors_.end()) {
-                        bool rev_changed = false;
-                        if (it_rev->second.distance != std::numeric_limits<double>::infinity()) {
-                            it_rev->second.distance = std::numeric_limits<double>::infinity();
-                            rev_changed = true;
-                            if (v->getParent() == u) orphans_.insert(v);
-                        }
+            // 3. Geometric Mode Optimization (Break reverse path immediately)
+            if (is_geometric_mode_) {
+                if (neighbor->forward_neighbors_.count(node)) {
+                    auto& rev_edge = neighbor->forward_neighbors_.at(node);
+                    bool rev_changed = false;
+                    if (rev_edge.distance != std::numeric_limits<double>::infinity()) {
+                        rev_edge.distance = std::numeric_limits<double>::infinity();
+                        rev_changed = true;
+                    }
 #if USE_INVALIDATING_SET_STRATEGY
-                        it_rev->second.invalidating_obstacles.insert(ob.name);
+                    rev_edge.invalidating_obstacles.insert(ob.name);
 #endif
-                        
-                        auto it_rev_back = u->backward_neighbors_.find(v);
-                        if (it_rev_back != u->backward_neighbors_.end()) {
-                            it_rev_back->second.distance = std::numeric_limits<double>::infinity();
+                    if (node->backward_neighbors_.count(neighbor)) {
+                        auto& rev_inc_edge = node->backward_neighbors_.at(neighbor);
+                        rev_inc_edge.distance = std::numeric_limits<double>::infinity();
 #if USE_INVALIDATING_SET_STRATEGY
-                            it_rev_back->second.invalidating_obstacles.insert(ob.name);
+                        rev_inc_edge.invalidating_obstacles.insert(ob.name);
 #endif
-                        }
-                        if (rev_changed) {
-                            recomputeRHS(v); // <-- ADDED THIS: Symmetry edge was broken
-                            updateVertex(v);
-                        }
+                    }
+                    if (rev_changed) {
+                        recomputeRHS(neighbor); 
+                        updateVertex(neighbor);
                     }
                 }
             }
         }
-        if (u_needs_update){
-            recomputeRHS(u); // (You correctly added this one in your last message!)
+    };
+    // ------------------------------------------------
+
+    // 3. Process Nodes
+    for (int idx : unique_node_indices) {
+        DStarLiteNode* u = nodes_[idx].get();
+        bool u_needs_update = false;
+        
+        for (auto& [neighbor, edge] : u->forward_neighbors_) {
+            checkAndBlockEdge(u, neighbor, edge, u_needs_update);
+        }
+        
+        if (u_needs_update) {
+            recomputeRHS(u); 
             updateVertex(u);
         }
     }
 }
 
+void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
+    if (ob.predicted_path.empty()) return;
 
-void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob_to_remove) {
-    if (ob_to_remove.predicted_path.empty()) return;
-
-    // 1. Setup Radius
-    double obs_r = (ob_to_remove.type == Obstacle::CIRCLE) ? ob_to_remove.dimensions.radius : 
-                   std::hypot(ob_to_remove.dimensions.width/2.0, ob_to_remove.dimensions.height/2.0);
+    // 1. Calculate Radius
+    double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
+                   std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     double search_radius;
     if (is_geometric_mode_) {
-        search_radius = obs_r + ob_to_remove.inflation + connection_radius_;
+        search_radius = obs_r + ob.inflation + connection_radius_;
     } else {
         double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-        search_radius = obs_r + ob_to_remove.inflation + connection_radius_ + gap_coverage_inflation;
+        search_radius = obs_r + ob.inflation + connection_radius_ + gap_coverage_inflation;
     }
 
-    // 2. Gather Candidates
+    // 2. Gather Unique Nodes
     std::unordered_set<int> unique_node_indices;
-    for (const auto& point_3d : ob_to_remove.predicted_path) {
+    for (const auto& point_3d : ob.predicted_path) {
         Eigen::VectorXd query(kd_dim_);
         if (kd_dim_ == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
         else if (kd_dim_ == 2) query << point_3d.x(), point_3d.y();
+        else if (kd_dim_ == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        else if (kd_dim_ == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
         
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
     }
 
 #if !USE_INVALIDATING_SET_STRATEGY
-    // STRATEGY B: We need the full world state to check collisions
     ObstacleVector all_obstacles = obs_checker_->getObstacles();
 #endif
 
-    // 3. Restore Logic
-    for (int idx : unique_node_indices) {
-        DStarLiteNode* u = nodes_[idx].get();
-        bool u_needs_update = false;
+    // --- HELPER LAMBDA: Clean Encapsulation ---
+    auto checkAndRestoreEdge = [&](DStarLiteNode* node, DStarLiteNode* neighbor, EdgeInfo& edge, bool& u_needs_update) {
+        if (edge.distance == std::numeric_limits<double>::infinity()) {
+            bool should_restore = false;
 
-        for (auto& [v, edge_info] : u->forward_neighbors_) {
-            
-            // Common: Only check blocked edges
-            if (edge_info.distance == std::numeric_limits<double>::infinity()) {
-                
-                bool should_restore = false;
-
-// -----------------------------------------------------------
-// STRATEGY A: INVALIDATING SET (O(1))
-// -----------------------------------------------------------
 #if USE_INVALIDATING_SET_STRATEGY
-                
-                // 1. Was blocked by this?
-                if (edge_info.invalidating_obstacles.erase(ob_to_remove.name) > 0) {
-                    // 2. Is it empty now?
-                    if (edge_info.invalidating_obstacles.empty()) {
-                        should_restore = true;
-                    }
+            if (edge.invalidating_obstacles.erase(ob.name) > 0) {
+                if (edge.invalidating_obstacles.empty()) {
+                    should_restore = true;
                 }
-
-// -----------------------------------------------------------
-// STRATEGY B: PHYSICS CHECK ALL (O(N))
-// -----------------------------------------------------------
+            }
 #else
-                double edge_start_time = u->getTimeToGoal();
-
-                // 1. Was blocked by THIS (Old)?
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_info.cached_trajectory, edge_start_time, ob_to_remove)) {
-                    
-                    // 2. Is blocked by ANY OTHER (Current)?
-                    bool conflicts_with_other = false;
-                    for (const auto& other_ob : all_obstacles) {
-                        if (other_ob.name == ob_to_remove.name) continue; 
-
-                        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_info.cached_trajectory, edge_start_time, other_ob)) {
-                            conflicts_with_other = true;
-                            break; 
-                        }
-                    }
-                    if (!conflicts_with_other) {
-                        should_restore = true;
+            const double ttg = node->getTimeToGoal();
+            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, ttg, ob)) {
+                bool conflicts_with_other = false;
+                for (const auto& other_ob : all_obstacles) {
+                    if (other_ob.name == ob.name) continue; 
+                    last_replan_metrics_.obstacle_checks++;
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, ttg, other_ob)) {
+                        conflicts_with_other = true;
+                        break; 
                     }
                 }
+                if (!conflicts_with_other) {
+                    should_restore = true;
+                }
+            }
 #endif
-// -----------------------------------------------------------
 
-                if (should_restore) {
-                    // A. Restore Forward
-                    edge_info.distance = edge_info.distance_original;
-                    u_needs_update = true;
+            if (should_restore) {
+                // 1. Restore Forward
+                edge.distance = edge.distance_original;
+                u_needs_update = true;
+                
+                // 2. Restore Backward (Symmetry)
+                if (neighbor->backward_neighbors_.count(node)) {
+                    auto& inc_edge = neighbor->backward_neighbors_.at(node);
+                    inc_edge.distance = edge.distance_original;
+#if USE_INVALIDATING_SET_STRATEGY
+                    inc_edge.invalidating_obstacles.erase(ob.name);
+#endif
+                }
 
-                    // B. Restore Backward
-                    auto it_back = v->backward_neighbors_.find(u);
-                    if (it_back != v->backward_neighbors_.end()) {
-                        it_back->second.distance = it_back->second.distance_original;
+                // 3. Geometric Mode Optimization (Restore reverse path immediately)
+                if (is_geometric_mode_) {
+                    if (neighbor->forward_neighbors_.count(node)) {
+                        auto& rev_edge = neighbor->forward_neighbors_.at(node);
+                        rev_edge.distance = rev_edge.distance_original;
 #if USE_INVALIDATING_SET_STRATEGY
-                        it_back->second.invalidating_obstacles.erase(ob_to_remove.name);
+                        rev_edge.invalidating_obstacles.erase(ob.name);
 #endif
-                    }
-
-                    // C. Restore Symmetric
-                    if (is_geometric_mode_) {
-                        auto it_rev = v->forward_neighbors_.find(u);
-                        if (it_rev != v->forward_neighbors_.end()) {
-                            it_rev->second.distance = it_rev->second.distance_original;
+                        if (node->backward_neighbors_.count(neighbor)) {
+                            auto& rev_inc_edge = node->backward_neighbors_.at(neighbor);
+                            rev_inc_edge.distance = rev_inc_edge.distance_original;
 #if USE_INVALIDATING_SET_STRATEGY
-                            it_rev->second.invalidating_obstacles.erase(ob_to_remove.name);
+                            rev_inc_edge.invalidating_obstacles.erase(ob.name);
 #endif
-                            
-                            auto it_rev_back = u->backward_neighbors_.find(v);
-                            if (it_rev_back != u->backward_neighbors_.end()) {
-                                it_rev_back->second.distance = it_rev_back->second.distance_original;
-#if USE_INVALIDATING_SET_STRATEGY
-                                it_rev_back->second.invalidating_obstacles.erase(ob_to_remove.name);
-#endif
-                            }
-                            recomputeRHS(v); // <-- ADDED THIS: Symmetry edge was restored
-                            updateVertex(v);
                         }
+                        recomputeRHS(neighbor);
+                        updateVertex(neighbor);
                     }
                 }
             }
         }
+    };
+    // ------------------------------------------------
+
+    // 3. Process Nodes
+    for (int idx : unique_node_indices) {
+        DStarLiteNode* u = nodes_[idx].get();
+        bool u_needs_update = false;
+        
+        for (auto& [neighbor, edge] : u->forward_neighbors_) {
+            checkAndRestoreEdge(u, neighbor, edge, u_needs_update);
+        }
+        
         if (u_needs_update) {
-            recomputeRHS(u); // <-- ADDED THIS: Forward edge was restored
+            recomputeRHS(u);
             updateVertex(u);
         }
     }
@@ -1589,109 +1655,156 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob_to_remove) {
 void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_state) {
     robot_continuous_state_ = robot_state;
 
-    double robot_time;
-    // Extract time for collision checking
-    if(is_geometric_mode_)
-        robot_time = 0;
-    else
-        robot_time = robot_continuous_state_(robot_continuous_state_.size() - 1);
-    // --- 1. HYSTERESIS LOGIC ---
+    // Extract actual planner-time (Time-to-Go) from the state (last element)
+    double robot_time_to_go = 0.0;
+    if (!is_geometric_mode_ && robot_continuous_state_.size() > 0) {
+        robot_time_to_go = robot_continuous_state_(robot_continuous_state_.size() - 1);
+    }
+
+    // --- 1. QUERY POINT CONSTRUCTION ---
+    Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim_);
+    if (robot_continuous_state_.size() >= 2) {
+        query_point(0) = robot_continuous_state_(0);
+        query_point(1) = robot_continuous_state_(1);
+    }
+    if (kd_dim_ == 3) {
+        query_point(2) = robot_time_to_go;
+    } else if (kd_dim_ == 4) {
+        query_point(2) = robot_continuous_state_(2); 
+        query_point(3) = robot_time_to_go;
+    } else if (kd_dim_ == 5) {
+        query_point = robot_continuous_state_; 
+    }
+
+    // --- 2. HYSTERESIS LOGIC ---
     const double hysteresis_factor = 0.98;
     double cost_of_current_anchor = std::numeric_limits<double>::infinity();
     
     if (start_node_ && start_node_->g != std::numeric_limits<double>::infinity()) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, start_node_->getStateValue());
-        if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_time)) {
+        if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) {
+            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
             cost_of_current_anchor = bridge.cost + start_node_->g;
         }
     }
 
     DStarLiteNode* best_candidate_node = nullptr;
+    Trajectory best_candidate_bridge;
     double best_candidate_cost = std::numeric_limits<double>::infinity();
     
-    // --- 2. RADIUS EXPANSION LOGIC ---
+    // --- 3. RADIUS EXPANSION LOGIC ---
     double current_search_radius = connection_radius_;
     const int max_attempts = 5;
     const double radius_multiplier = 2.0;
-    
-    // std::cout << "\n========== [setRobotState] ==========" << std::endl;
-    // std::cout << "Robot Pos: (" << robot_state(0) << ", " << robot_state(1) << ")" << std::endl;
-    // std::cout << "Initial Radius: " << current_search_radius << std::endl;
 
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
         std::vector<size_t> candidate_indices;
         
-        // Search within current radius
         if (use_kdtree_) {
-            candidate_indices = kdtree_->radiusSearch(robot_state.head(kd_dim_), current_search_radius);
+            candidate_indices = kdtree_->radiusSearch(query_point, current_search_radius);
         }
 
-        // std::cout << "Attempt " << attempt << " (Radius: " << current_search_radius 
-        //           << "): Found " << candidate_indices.size() << " candidates." << std::endl;
-
-        // Evaluate Candidates
         for (size_t idx : candidate_indices) {
             DStarLiteNode* candidate = nodes_[idx].get();
 
-            // 1. CRITICAL: Candidate must be reachable from Goal (Finite G)
+            // CRITICAL: Candidate must be reachable from Goal (Finite G)
             if (candidate->g == std::numeric_limits<double>::infinity()) {
                 continue;
             }
 
-            // 2. Check Steering & Collision
+            // Check Steering & Collision
             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
-            
             if (!bridge.is_valid) continue;
-            if (!obs_checker_->isTrajectorySafe(bridge, robot_time)) continue;
 
-            // 3. Calculate Total Cost: Bridge Cost + Node Cost
+            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
+            if (!obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) continue;
+
             double total_cost = bridge.cost + candidate->g;
 
             if (total_cost < best_candidate_cost) {
                 best_candidate_cost = total_cost;
                 best_candidate_node = candidate;
+                best_candidate_bridge = bridge;
                 bridge_cost_ = bridge.cost;
             }
         }
 
-        // If we found a valid candidate, stop expanding
-        if (best_candidate_node) {
-            // std::cout << "  -> Found valid candidate in this radius." << std::endl;
-            break;
-        }
-
-        // Expand radius for next attempt
+        if (best_candidate_node) break;
         current_search_radius *= radius_multiplier;
     }
 
-    // --- 3. ASSIGNMENT ---
+    // --- 4. ASSIGNMENT ---
     if (best_candidate_node && best_candidate_cost < cost_of_current_anchor * hysteresis_factor) {
-        std::cout << ">>> SWITCHING Anchor to Node " << best_candidate_node->getIndex() 
-                  << " (Cost: " << best_candidate_cost << ") <<<" << std::endl;
-        
         // Update km (Key Modifier) for D* Lite if the start node changed
         if (start_node_ && start_node_ != best_candidate_node) {
             km_ += heuristic(start_node_, best_candidate_node);
-            // km_ += 0;
         }
         
         start_node_ = best_candidate_node;
+        last_replan_metrics_.path_cost = best_candidate_cost;
     } else if (start_node_ && cost_of_current_anchor != std::numeric_limits<double>::infinity()) {
-        // std::cout << ">>> KEEPING Current Anchor Node " << start_node_->getIndex() 
-        //           << " (Cost: " << cost_of_current_anchor << ") <<<" << std::endl;
+        last_replan_metrics_.path_cost = cost_of_current_anchor;
     } else {
-        std::cout << ">>> FAILURE: No valid anchor found even after expanding radius! <<<" << std::endl;
         start_node_ = nullptr;
-        bridge_cost_= std::numeric_limits<double>::infinity();
+        bridge_cost_ = std::numeric_limits<double>::infinity();
+        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
     }
-    
-    // std::cout << "======================================\n" << std::endl;
 
-    // // 4. Trigger Repair if necessary
-    // if (open_queue_.empty() && start_node_ && start_node_->g != start_node_->rhs) {
-    //      std::cout << "Triggering Repair..." << std::endl;
-    //      computeShortestPath();
-    // }
+    // =========================================================================================
+    // 5. INTERNAL DEBUG VISUALIZATION
+    // =========================================================================================
+    if (visualization_) {
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> debug_edges;
+        if (start_node_) {
+            Trajectory viz_bridge = statespace_->steer(robot_continuous_state_, start_node_->getStateValue());
+            
+            if (viz_bridge.path_points.size() >= 2) {
+                for (size_t i = 0; i < viz_bridge.path_points.size() - 1; ++i) {
+                    debug_edges.emplace_back(viz_bridge.path_points[i], viz_bridge.path_points[i+1]);
+                }
+            } else {
+                debug_edges.emplace_back(robot_continuous_state_, start_node_->getStateValue());
+            }
+            visualization_->visualizeEdges(debug_edges, "map", "0.0,1.0,1.0", "debug_anchor_trajectory");
+            
+            std::vector<Eigen::VectorXd> anchor_pt = { start_node_->getStateValue().head<2>() };
+            visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
+        } else {
+            // CLEAR THE VISUALIZATION
+            visualization_->visualizeEdges({}, "map", "0.0,0.0,0.0", "debug_anchor_trajectory");
+            visualization_->visualizeNodes({}, "map", {0.0f, 0.0f, 0.0f}, "debug_anchor_point");
+        }
+    }
+
+    // =========================================================================================
+    // 6. ANCHOR LOGGING (Manual Throttle)
+    // =========================================================================================
+    static auto last_log_time = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log_time).count() > 1000) {
+        if (start_node_) {
+            // Hardcoding 35.0 based on your Thruster config file 'time_budget'
+            double initial_budget = 35.0; 
+            double forward_sim_time = initial_budget - robot_time_to_go;
+
+            RCLCPP_WARN(
+                rclcpp::get_logger("DStarLite_Anchor"), 
+                "Anchor Connected: Node [%d] | Node Cost: %.2f | Total Path Cost: %.2f | T_Goal: %.2f | Sim_Time: %.2f", 
+                start_node_->getIndex(), 
+                start_node_->g, 
+                last_replan_metrics_.path_cost,
+                robot_time_to_go,
+                forward_sim_time
+            );
+        } else {
+            RCLCPP_WARN(
+                rclcpp::get_logger("DStarLite_Anchor"), 
+                "Anchor Status: NULL (Robot is lost or searching...)"
+            );
+        }
+        last_log_time = now;
+    }
 }
 
 // void KinodynamicPRMStarDStarLite::visualizeGraph() {
@@ -1874,12 +1987,38 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
 
 
 void KinodynamicPRMStarDStarLite::visualizeTree() {
-    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> dslite_tree_edges;
+std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> dslite_tree_edges;
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> other_valid_edges;
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> dijkstra_tree_edges;
     std::vector<Eigen::VectorXd> all_node_positions;
     std::vector<Eigen::VectorXd> dslite_nodes_pos;
     std::vector<Eigen::VectorXd> dijkstra_nodes_pos;
+
+    // =====================================================================
+    // 1. FAST BFS: Find the mathematically valid, connected tree
+    // =====================================================================
+    std::unordered_set<DStarLiteNode*> connected_to_goal;
+    if (goal_node_) {
+        std::queue<DStarLiteNode*> q;
+        connected_to_goal.insert(goal_node_);
+        q.push(goal_node_);
+
+        while (!q.empty()) {
+            DStarLiteNode* cur = q.front();
+            q.pop();
+
+            // Look at all predecessors (nodes that point TO 'cur')
+            for (const auto& [pred, edge_info] : cur->backward_neighbors_) {
+                // If 'pred' claims 'cur' as its parent AND the edge is physically safe
+                if (pred->best_parent_ == cur && edge_info.distance != std::numeric_limits<double>::infinity()) {
+                    if (connected_to_goal.insert(pred).second) {
+                        q.push(pred);
+                    }
+                }
+            }
+        }
+    }
+    // =====================================================================
 
     size_t count_dslite_nodes = 0;
 
@@ -1897,14 +2036,14 @@ void KinodynamicPRMStarDStarLite::visualizeTree() {
             dslite_nodes_pos.push_back(pos);
         }
 
-        // Draw forward edges for D* Lite tree (only edges with finite cost)
+        // Draw forward edges for D* Lite tree
         for (const auto& [neighbor, edge_info] : u->forward_neighbors_) {
             if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
             Eigen::Vector2d p1 = u->getStateValue().head<2>();
             Eigen::Vector2d p2 = neighbor->getStateValue().head<2>();
 
-            // If neighbor is the chosen parent (best_parent_) -> part of D* Lite tree
-            if (u->best_parent_ == neighbor) {
+            // ONLY draw the D* Lite edge if the node is actually connected to the goal
+            if (u->best_parent_ == neighbor && connected_to_goal.find(u) != connected_to_goal.end()) {
                 dslite_tree_edges.emplace_back(p1, p2);
             } else {
                 other_valid_edges.emplace_back(p1, p2);
@@ -1915,7 +2054,7 @@ void KinodynamicPRMStarDStarLite::visualizeTree() {
         auto it = dijkstra_tree_parents_.find(u);
         if (it != dijkstra_tree_parents_.end()) {
             dijkstra_nodes_pos.push_back(pos);
-            DStarLiteNode* parent = it->second; // your computeShortestPathDijkstraMode stored successor here
+            DStarLiteNode* parent = it->second; 
             if (parent) {
                 Eigen::Vector2d p1 = u->getStateValue().head<2>();
                 Eigen::Vector2d p2 = parent->getStateValue().head<2>();
@@ -1923,7 +2062,6 @@ void KinodynamicPRMStarDStarLite::visualizeTree() {
             }
         }
     }
-
     // std::cout << "[Viz] total_nodes=" << nodes_.size()
     //           << " dslite_nodes=" << count_dslite_nodes
     //           << " dijkstra_nodes=" << dijkstra_nodes_pos.size()

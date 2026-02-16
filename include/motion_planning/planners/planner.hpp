@@ -104,6 +104,7 @@ class Planner {
     virtual int getTreeSize() = 0;
 
     virtual void visualizeTree() {};
+    virtual void visualizeTreeReal() {};
 
     virtual const ReplanMetrics& getLastReplanMetrics() const { 
         static ReplanMetrics empty_metrics; 

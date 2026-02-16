@@ -71,7 +71,7 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
                 weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
                 break;
             case 5:
-                weights << 1.0, 1.0, 1.0, 1.0, 1.0; // Weights for x, y, z, yaw, time
+                weights << 1.0, 1.0, 1.0, 1.0, 1.0; // Weights for x, y, vx, vy, time
                 break;
             default: 
                 RCLCPP_ERROR(rclcpp::get_logger("Planner_Obstacle_Update"), "Unsupported k-d tree dimension : %d", kd_dim);
@@ -5824,7 +5824,10 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
             query << point_3d.x(), point_3d.y();
         } else if (kd_dim == 4) {
             query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        } else if (kd_dim == 5) {
+            query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z(); 
         }
+
 
         // Collect obstacle path for visualization
         viz_obstacle_path.push_back(point_3d.head(2));
@@ -6010,6 +6013,8 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
         else if (kd_dim == 4) {
             query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        } else if (kd_dim == 5) {
+            query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z(); 
         }
 
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);

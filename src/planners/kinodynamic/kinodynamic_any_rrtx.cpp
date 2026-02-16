@@ -206,6 +206,11 @@ void KinodynamicANYRRTX::setup(const Params& params, std::shared_ptr<Visualizati
                     weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
                 }
                 break;
+            case 5: // (x, y, vx, vy, time) - From your Dubins example
+                {
+                    weights << 1.0, 1.0, 1.0, 1.0, 1.0; 
+                }
+                break;
             default: 
                 RCLCPP_ERROR(rclcpp::get_logger("Planner_Obstacle_Update"), "Unsupported k-d tree dimension : %d", kd_dim);
         }
@@ -3739,6 +3744,7 @@ void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob) {
         if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
         else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        else if (kd_dim == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
         
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
@@ -3810,6 +3816,7 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
         if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
         else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        else if (kd_dim == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
         
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));

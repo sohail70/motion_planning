@@ -37,21 +37,21 @@ public:
     }
 
     void setBestParent(DStarLiteNode* p, const Trajectory& traj) {
-        if (best_parent_ == p) return;
+        // if (best_parent_ == p) return;
         
-        // Remove from old parent's children list
-        if (best_parent_) {
-            auto& siblings = best_parent_->children_;
-            siblings.erase(std::remove(siblings.begin(), siblings.end(), this), siblings.end());
-        }
+        // // Remove from old parent's children list
+        // if (best_parent_) {
+        //     auto& siblings = best_parent_->children_;
+        //     siblings.erase(std::remove(siblings.begin(), siblings.end(), this), siblings.end());
+        // }
         
         best_parent_ = p;
         best_parent_trajectory_ = traj;
         
-        // Add to new parent's children list
-        if (best_parent_) {
-            best_parent_->children_.push_back(this);
-        }
+        // // Add to new parent's children list
+        // if (best_parent_) {
+        //     best_parent_->children_.push_back(this);
+        // }
     }
 
 
@@ -80,7 +80,7 @@ public:
     // Members for caching the optimal parent (updated in updateVertex)
     DStarLiteNode* best_parent_; 
     Trajectory best_parent_trajectory_;
-    std::vector<DStarLiteNode*> children_;
+    // std::vector<DStarLiteNode*> children_;
 
 private:
     std::shared_ptr<State> state_;

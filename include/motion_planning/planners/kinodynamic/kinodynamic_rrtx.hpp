@@ -51,6 +51,7 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
 
     void dumpTreeToCSV(const std::string& filename) const;
 
+    void visualizeTreeReal();
     double getAvgNodeDegree() const {
         if (tree_.empty()) return 0.0;
         
