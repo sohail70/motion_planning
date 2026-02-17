@@ -676,7 +676,7 @@ std::vector<std::pair<RRTxNode*, Trajectory>> KinodynamicRRTX::findParent(std::s
 
 
         v->setLMC(min_lmc);
-        edge_length_[v->getIndex()] = best_dist;
+        // edge_length_[v->getIndex()] = best_dist;
     }
 
     return all_trajectories_from_v_to_u;
@@ -711,7 +711,7 @@ void KinodynamicRRTX::rewireNeighbors(RRTxNode* v) {
             u->setLMC(candidate_lmc);
             // makeParentOf(u, v, edge.distance);
             u->setParent(v,*(edge.cached_trajectory));
-            edge_length_[u->getIndex()] = edge.distance;
+            // edge_length_[u->getIndex()] = edge.distance;
             if (u->getCost() - candidate_lmc > epsilon_) {
                 verifyQueue(u);
             }
@@ -1483,7 +1483,7 @@ void KinodynamicRRTX::propagateDescendants() {
             int neighbor_idx = neighbor->getIndex();
             if (neighbor_idx == -1 || Vc_T_.count(neighbor_idx)) continue;
 
-            edge_length_[neighbor_idx] = -INFINITY;
+            // edge_length_[neighbor_idx] = -INFINITY;
             neighbor->setCost(INFINITY);
             verifyQueue(neighbor);
         }
@@ -1499,7 +1499,7 @@ void KinodynamicRRTX::propagateDescendants() {
             if (it != parent_edges.end() ) {
                 int parent_idx = parent->getIndex();
                 if (parent_idx != -1 && !Vc_T_.count(parent_idx)) {
-                    edge_length_[parent_idx] = -INFINITY;
+                    // edge_length_[parent_idx] = -INFINITY;
                     parent->setCost(INFINITY);
                     verifyQueue(parent);
                 }

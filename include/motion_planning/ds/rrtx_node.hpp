@@ -72,6 +72,7 @@ public:
     int bad_count = 0;
 
     EdgeMap culled_outgoing_edges_; // Ghost edges (Sender forgot, but Receiver remembered) --> u forgot but v remembers (u is old and v is new)
+    double last_culled_radius_ = -1.0;
 
 private:
     std::shared_ptr<State> state_;

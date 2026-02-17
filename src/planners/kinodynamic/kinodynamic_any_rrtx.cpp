@@ -638,7 +638,7 @@ std::vector<std::pair<RRTxNode*, Trajectory>> KinodynamicANYRRTX::findParent(std
 
 
         v->setLMC(min_lmc);
-        edge_length_[v->getIndex()] = best_dist;
+        // edge_length_[v->getIndex()] = best_dist;
     }
 
     return all_trajectories_from_v_to_u;
@@ -676,7 +676,7 @@ void KinodynamicANYRRTX::rewireNeighbors(RRTxNode* v) {
             u->setLMC(candidate_lmc);
             // makeParentOf(u, v, edge.distance);
             u->setParent(v,*(edge.cached_trajectory));
-            edge_length_[u->getIndex()] = edge.distance;
+            // edge_length_[u->getIndex()] = edge.distance;
             if (u->getCost() - candidate_lmc > epsilon_) {
                 verifyQueue(u);
             }
@@ -1421,33 +1421,43 @@ void KinodynamicANYRRTX::updateLMC(RRTxNode* v) {
 //     // // -----------------------------
 // }
 
-void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
-    auto& outgoing = v->outgoingEdges();
-    
-    // Create temporary map to avoid O(K^2) memory shifting
-    std::decay_t<decltype(outgoing)> kept_edges;
 
-    for (auto& pair : outgoing) {
-        auto neighbor = pair.first;
-        auto& edge = pair.second;
-        
-        // SAFE: Use edge.distance
+void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
+    // 1. PERFORMANCE TRIGGER: Only loop if radius has shrunk significantly (> 5%)
+    // The "> 0" check ensures we don't return on the very first call.
+    if (v->last_culled_radius_ > 0 && 
+        (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) {
+        return; 
+    }
+
+    auto& outgoing = v->outgoingEdges();
+    auto it = outgoing.begin();
+
+    while (it != outgoing.end()) {
+        auto neighbor = it->first;
+        auto& edge = it->second;
+
+        // CULL LOGIC:
+        // - Edge is not 'initial' (preserve birth-right connectivity)
+        // - Edge is too long (outside the current ball + small buffer)
+        // - Neighbor is not the current parent
         if (!edge.is_initial && 
-            edge.distance > neighborhood_radius_ + 0.01 && 
+            edge.cached_trajectory->cost > (neighborhood_radius_ + 0.01) && 
             neighbor != v->getParent()) 
         {
-            // Move to the passive map for obstacle updates
+            // Move it to the passive map (required for RRTX's obstacle repair)
             v->culled_outgoing_edges_[neighbor] = edge;
+            
+            // Remove from active map and get iterator to next
+            it = outgoing.erase(it);
         } else {
-            // Keep it in the active map
-            kept_edges.insert(kept_edges.end(), std::move(pair));
+            ++it;
         }
     }
-    
-    // O(1) pointer swap
-    outgoing = std::move(kept_edges);
-}
 
+    // 3. SET THE CHECKPOINT
+    v->last_culled_radius_ = neighborhood_radius_;
+}
 
 
 // void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
@@ -1589,7 +1599,7 @@ void KinodynamicANYRRTX::propagateDescendants() {
             int neighbor_idx = neighbor->getIndex();
             if (neighbor_idx == -1 || Vc_T_.count(neighbor_idx)) continue;
 
-            edge_length_[neighbor_idx] = -INFINITY;
+            // edge_length_[neighbor_idx] = -INFINITY;
             neighbor->setCost(INFINITY);
             verifyQueue(neighbor);
         }
@@ -1605,7 +1615,7 @@ void KinodynamicANYRRTX::propagateDescendants() {
             if (it != parent_edges.end() ) {
                 int parent_idx = parent->getIndex();
                 if (parent_idx != -1 && !Vc_T_.count(parent_idx)) {
-                    edge_length_[parent_idx] = -INFINITY;
+                    // edge_length_[parent_idx] = -INFINITY;
                     parent->setCost(INFINITY);
                     verifyQueue(parent);
                 }

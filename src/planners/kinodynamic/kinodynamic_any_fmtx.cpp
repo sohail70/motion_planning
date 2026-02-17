@@ -1400,7 +1400,8 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
 // void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
 //     // A brand new node ONLY has initial edges. Nothing to cull!
 //     if (v->is_new) return;
-//     if (v->last_culled_radius_ == neighborhood_radius_) return;
+//     // if (v->last_culled_radius_ == neighborhood_radius_) return;
+//     if ((v->last_culled_radius_ / neighborhood_radius_) < 1.00001) return;
 
 //     auto& outgoing = v->forwardNeighbors();
 //     auto it = outgoing.begin();
@@ -1426,31 +1427,32 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
 
 void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
     if (v->is_new) return;
-    // if (v->last_culled_radius_ == neighborhood_radius_) return;
-    if (std::abs(v->last_culled_radius_ - neighborhood_radius_) < 0.1) return;
+
+    // 1. PERFORMANCE TRIGGER: Only loop if radius shrunk by > 5%
+    // This saves massive amounts of CPU by skipping the loop entirely
+    // most of the time.
+    if (v->last_culled_radius_ > 0 && 
+        (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) return;
 
     auto& outgoing = v->forwardNeighbors();
-    
-    // Create temporary map to avoid O(K^2) memory shifting
-    std::decay_t<decltype(outgoing)> kept_edges;
+    auto it = outgoing.begin();
 
-    for (auto& pair : outgoing) {
-        auto neighbor = pair.first;
-        auto& edge = pair.second;
-        
-        // SAFE: Use edge.distance, NOT edge.cached_trajectory->cost!
-        bool should_cull = !edge.is_initial && 
-                           edge.distance > neighborhood_radius_ + 0.01 &&
-                           neighbor != v->getParent();
+    // IN-PLACE ERASE
+    while (it != outgoing.end()) {
+        // Structured bindings (auto& [neighbor, edge]) are available in C++17
+        auto& neighbor = it->first;
+        auto& edge = it->second;
 
-        if (!should_cull) {
-            // O(1) amortized insertion
-            kept_edges.insert(kept_edges.end(), std::move(pair)); 
+        if (!edge.is_initial && 
+            edge.cached_trajectory->cost > (neighborhood_radius_ + 0.01) &&
+            neighbor != v->getParent()) 
+        {
+            it = outgoing.erase(it);
+        } else {
+            ++it;
         }
     }
-    
-    // O(1) pointer swap
-    outgoing = std::move(kept_edges);
+
     v->last_culled_radius_ = neighborhood_radius_;
 }
 
@@ -1846,6 +1848,17 @@ void KinodynamicANYFMTX::plan() {
                     
  
                     if (obstacle_free) {
+                        // // --- DEBUG COUNTERS ---
+                        // static long long stage3_entered = 0;
+                        // static long long queue_updates = 0;
+                        // static long long queue_new_additions = 0;
+                        // static long long queue_cascade_additions = 0;
+                        // static long long queue_bypassed_epsilon = 0;
+                        
+                        // stage3_entered++;
+                        // // ----------------------
+
+
                         // if (costUpdated[x]) {
                         //     revisits++;
                         // }
@@ -1903,6 +1916,7 @@ void KinodynamicANYFMTX::plan() {
                         //     v_open_heap_.add(x, priorityCost); // add() also sets in_queue_ = true
                         // }
 
+                        // //////////////////////////
                         // THE EPSILON QUEUE BOUNCER --> we just dont put the 
                         if (x->in_queue_) {
                             // If it is already scheduled to be processed, give it the best cost
@@ -1912,6 +1926,35 @@ void KinodynamicANYFMTX::plan() {
                             // (or if it is a brand new node that must expand the wavefront)
                             v_open_heap_.add(x, priorityCost); 
                         }
+                        // /////////////////////////////
+
+                        // // THE EPSILON QUEUE BOUNCER WITH LOGS
+                        // if (x->in_queue_) {
+                        //     v_open_heap_.update(x, priorityCost);
+                        //     queue_updates++;
+                        // } else if (old_cost == INFINITY) {
+                        //     v_open_heap_.add(x, priorityCost); 
+                        //     queue_new_additions++;
+                        // } else if ((old_cost - min_cost_for_x) > epsilon) {
+                        //     v_open_heap_.add(x, priorityCost); 
+                        //     queue_cascade_additions++;
+                        // } else {
+                        //     // THE BOUNCER BLOCKED IT! 
+                        //     // The node improved, but not enough to wake up its neighbors.
+                        //     queue_bypassed_epsilon++;
+                        // }
+
+                        // // Print an update every 5000 times we enter Stage 3
+                        // if (stage3_entered % 100 == 0) {
+                        //     std::cout << "\033[1;35m[FMTX DEBUG] Stage 3: " << stage3_entered
+                        //               << " | Updates: " << queue_updates
+                        //               << " | New Additions: " << queue_new_additions
+                        //               << " | Cascades (> eps): " << queue_cascade_additions
+                        //               << " | Bypassed (< eps): " << queue_bypassed_epsilon << "\033[0m\n";
+                        // }
+
+
+
                     }
                 }
             } // End of STAGE 2/3 trigger
