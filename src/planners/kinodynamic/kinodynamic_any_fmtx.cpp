@@ -119,6 +119,7 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
 
     }
 
+    dimension_ = statespace_->getDimension();
     factor = params.getParam<double>("factor");
     delta = params.getParam<double>("delta");
     // Calculate initial radius based on N=2 (Start + Goal)
@@ -253,7 +254,7 @@ void KinodynamicANYFMTX::updateNeighborhoodRadius() {
     neighborhood_radius_ = factor * gamma * std::pow(std::log(N) / N, 1.0 / d);
     neighborhood_radius_ = std::min(delta, neighborhood_radius_);
     // neighborhood_radius_ = 15;
-    // std::cout<<neighborhood_radius_<<"\n";
+    // std::cout<<"Currenr rad: "<<neighborhood_radius_<<"\n";
 }
 
 // // We need to separate decision making! i.,e the above updateNeighbors will give seg fault because you update backward map but we we ignore it because there was not forward map!!! but that pointer in the backward map still exists!!! DANGEROUS!
@@ -545,7 +546,12 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
 
     for (int i = 0; i < num_samples; ++i) {
         // 1. Generate Sample
-        Eigen::VectorXd sample_val = statespace_->sampleUniform(lower_bounds_, upper_bounds_)->getValue();
+        // Eigen::VectorXd sample_val = statespace_->sampleUniform(lower_bounds_, upper_bounds_)->getValue();
+        Eigen::VectorXd sample_val = Eigen::VectorXd::Random(dimension_);
+        
+        // Scale from [-1, 1] to [lower_bounds, upper_bounds]
+        sample_val = lower_bounds_.array() + 
+                    (upper_bounds_ - lower_bounds_).array() * ((sample_val.array() + 1.0) / 2.0);
 
 
     //    // //////// INCASE YOU WANNA USE SATURATE TO GUIDE THE SAMPLES --> THIS IS NOT NECESSARY UNLESS YOU ONLY WANNA ADD ONE SAMPLE OR YOU WANNA COMPARE WITH RRTX!///////////
@@ -1420,7 +1426,8 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
 
 void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
     if (v->is_new) return;
-    if (v->last_culled_radius_ == neighborhood_radius_) return;
+    // if (v->last_culled_radius_ == neighborhood_radius_) return;
+    if (std::abs(v->last_culled_radius_ - neighborhood_radius_) < 0.1) return;
 
     auto& outgoing = v->forwardNeighbors();
     
@@ -1615,7 +1622,8 @@ void KinodynamicANYFMTX::plan() {
             // If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
             // If x is already connected, this condition acts as a "witness" that a better path *might* exist.
             //    It proves x's current cost is suboptimal and justifies the more expensive search that follows.
-            if (x->getCost() > cost_via_z + epsilon) {
+            // if (x->getCost() > cost_via_z + epsilon) {
+            if (x->getCost() > cost_via_z) {
                 // m_triggers++; // Suboptimal proof found
 
                 // // // checks++;
@@ -1858,6 +1866,9 @@ void KinodynamicANYFMTX::plan() {
 
                         
                         // costUpdated[x] = true;   // mark “done once”
+
+                        // CAPTURE OLD COST BEFORE OVERWRITING --> Need it for the epsilon consistency approach
+                        double old_cost = x->getCost();
                         x->setCost(min_cost_for_x);
                         x->setParent(best_parent_for_x, best_traj_for_x);
 
@@ -1886,10 +1897,20 @@ void KinodynamicANYFMTX::plan() {
 
                         double priorityCost = min_cost_for_x;
 
+                        // if (x->in_queue_) {
+                        //     v_open_heap_.update(x, priorityCost);
+                        // } else {
+                        //     v_open_heap_.add(x, priorityCost); // add() also sets in_queue_ = true
+                        // }
+
+                        // THE EPSILON QUEUE BOUNCER --> we just dont put the 
                         if (x->in_queue_) {
+                            // If it is already scheduled to be processed, give it the best cost
                             v_open_heap_.update(x, priorityCost);
-                        } else {
-                            v_open_heap_.add(x, priorityCost); // add() also sets in_queue_ = true
+                        } else if (old_cost == INFINITY || (old_cost - min_cost_for_x > epsilon)) {
+                            // If it is NOT in the queue, ONLY wake it up if the improvement is > epsilon 
+                            // (or if it is a brand new node that must expand the wavefront)
+                            v_open_heap_.add(x, priorityCost); 
                         }
                     }
                 }

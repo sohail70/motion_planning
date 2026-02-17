@@ -198,7 +198,7 @@ class KinodynamicANYFMTX : public Planner {
             std::unordered_set<int> dir;
             
             int kd_dim ; 
-
+            int dimension_;
             bool static_obs_presence;
             ObstacleVector seen_statics_;
 

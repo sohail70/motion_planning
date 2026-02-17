@@ -415,7 +415,6 @@ void KinodynamicANYRRTX::plan() {
             reduceInconsistency();
             new_node->setCost(new_node->getLMC());
         }
-        // Function returns here. Main loop will call it again.
     }
 }
 
@@ -845,6 +844,7 @@ void KinodynamicANYRRTX::reduceInconsistency() {
 double KinodynamicANYRRTX::shrinkingBallRadius() const {
     int d = kd_dim;
     auto rad = factor * gamma_ * pow(log(tree_.size()) / tree_.size(), 1.0/d);
+    // std::cout<<"current rad: "<<std::min(rad,delta)<<"\n";
     return std::min(rad, delta);
     // return 15.0;
 
