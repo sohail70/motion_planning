@@ -337,6 +337,70 @@ void KinodynamicANYFMTX::updateNeighborhoodRadius() {
 //     return true;
 // }
 
+// // Feb17 --> uses stack variable trajectory in edgeinfo
+// bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node) {
+//     std::vector<size_t> candidate_indices = kdtree_->radiusSearch(sample_val.head(kd_dim), neighborhood_radius_ + 0.01);
+    
+//     bool is_valid_sample = false;
+
+//     // --- PASS 1: OUTGOING VALIDATION & DIRECT COMMIT ---
+//     for (size_t idx : candidate_indices) {
+//         FMTNode* neighbor = tree_[idx].get();
+//         Trajectory traj_outgoing = statespace_->steer(sample_val, neighbor->getStateValue());
+        
+//         if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + 0.01) {
+//             is_valid_sample = true; 
+            
+//             EdgeInfo edge_info;
+//             edge_info.distance = traj_outgoing.cost;
+//             edge_info.is_trajectory_computed = true;
+//             edge_info.cached_trajectory = traj_outgoing;
+            
+//             // Commit Forward 
+//             edge_info.is_initial = true;
+//             new_node->forwardNeighbors()[neighbor] = edge_info;
+//             edge_info.is_initial = false;
+//             neighbor->backwardNeighbors()[new_node] = edge_info;
+            
+//             // Geometric Optimization
+//             if (is_geometric_mode_) {
+//                 edge_info.is_initial = true;
+//                 new_node->backwardNeighbors()[neighbor] = edge_info;
+//                 edge_info.is_initial = false;
+//                 neighbor->forwardNeighbors()[new_node] = edge_info;
+//             }
+//         }
+//     }
+
+//     // Bail early, no expensive steer checks wasted
+//     if (!is_valid_sample) {
+//         return false; 
+//     }
+
+//     // --- PASS 2: INCOMING VALIDATION (Kinodynamic Only) ---
+//     if (!is_geometric_mode_) {
+//         for (size_t idx : candidate_indices) {
+//             FMTNode* neighbor = tree_[idx].get();
+//             Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
+            
+//             if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + 0.01) {
+//                 EdgeInfo edge_info;
+//                 edge_info.distance = traj_incoming.cost;
+//                 edge_info.is_trajectory_computed = true;
+//                 edge_info.cached_trajectory = traj_incoming;
+                
+//                 edge_info.is_initial = true;
+//                 new_node->backwardNeighbors()[neighbor] = edge_info;
+//                 edge_info.is_initial = false;
+//                 neighbor->forwardNeighbors()[new_node] = edge_info;
+//             }
+//         }
+//     }
+    
+//     new_node->neighbors_cached_ = true;
+//     return true;
+// }
+
 bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node) {
     std::vector<size_t> candidate_indices = kdtree_->radiusSearch(sample_val.head(kd_dim), neighborhood_radius_ + 0.01);
     
@@ -350,10 +414,13 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
         if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + 0.01) {
             is_valid_sample = true; 
             
+            auto shared_traj_outgoing = std::make_shared<Trajectory>(std::move(traj_outgoing));
+            
             EdgeInfo edge_info;
-            edge_info.distance = traj_outgoing.cost;
+            edge_info.distance = shared_traj_outgoing->cost;
+            edge_info.distance_original = shared_traj_outgoing->cost;
             edge_info.is_trajectory_computed = true;
-            edge_info.cached_trajectory = traj_outgoing;
+            edge_info.cached_trajectory = shared_traj_outgoing;
             
             // Commit Forward 
             edge_info.is_initial = true;
@@ -383,10 +450,14 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
             Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
             
             if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + 0.01) {
+                
+                auto shared_traj_incoming = std::make_shared<Trajectory>(std::move(traj_incoming));
+                
                 EdgeInfo edge_info;
-                edge_info.distance = traj_incoming.cost;
+                edge_info.distance = shared_traj_incoming->cost;
+                edge_info.distance_original = shared_traj_incoming->cost;
                 edge_info.is_trajectory_computed = true;
-                edge_info.cached_trajectory = traj_incoming;
+                edge_info.cached_trajectory = shared_traj_incoming;
                 
                 edge_info.is_initial = true;
                 new_node->backwardNeighbors()[neighbor] = edge_info;
@@ -1319,31 +1390,60 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
 // }
 
 
-// // MIND that i didnt use 4 separate list and optimized it by using two sets with a boolean flag so removing the outgoing neighbor is enough for cullneighbor
+// // // MIND that i didnt use 4 separate list and optimized it by using two sets with a boolean flag so removing the outgoing neighbor is enough for cullneighbor
+// void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
+//     // A brand new node ONLY has initial edges. Nothing to cull!
+//     if (v->is_new) return;
+//     if (v->last_culled_radius_ == neighborhood_radius_) return;
+
+//     auto& outgoing = v->forwardNeighbors();
+//     auto it = outgoing.begin();
+    
+//     while (it != outgoing.end()) {
+//         auto [neighbor, edge] = *it;
+        
+//         if (!edge.is_initial && 
+//             edge.cached_trajectory->cost > neighborhood_radius_ + 0.01 &&
+//             neighbor != v->getParent()) 
+//         {
+//             // PERFECT ASYMMETRIC CULL: 
+//             // We delete the temporary edge from memory, but leave the 
+//             // neighbor's initial edge intact to preserve optimality.
+//             it = outgoing.erase(it);
+//         } else {
+//             ++it;
+//         }
+//     }
+    
+//     v->last_culled_radius_ = neighborhood_radius_;
+// }
+
 void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
-    // A brand new node ONLY has initial edges. Nothing to cull!
     if (v->is_new) return;
     if (v->last_culled_radius_ == neighborhood_radius_) return;
 
     auto& outgoing = v->forwardNeighbors();
-    auto it = outgoing.begin();
     
-    while (it != outgoing.end()) {
-        auto [neighbor, edge] = *it;
+    // Create temporary map to avoid O(K^2) memory shifting
+    std::decay_t<decltype(outgoing)> kept_edges;
+
+    for (auto& pair : outgoing) {
+        auto neighbor = pair.first;
+        auto& edge = pair.second;
         
-        if (!edge.is_initial && 
-            edge.cached_trajectory.cost > neighborhood_radius_ + 0.01 &&
-            neighbor != v->getParent()) 
-        {
-            // PERFECT ASYMMETRIC CULL: 
-            // We delete the temporary edge from memory, but leave the 
-            // neighbor's initial edge intact to preserve optimality.
-            it = outgoing.erase(it);
-        } else {
-            ++it;
+        // SAFE: Use edge.distance, NOT edge.cached_trajectory->cost!
+        bool should_cull = !edge.is_initial && 
+                           edge.distance > neighborhood_radius_ + 0.01 &&
+                           neighbor != v->getParent();
+
+        if (!should_cull) {
+            // O(1) amortized insertion
+            kept_edges.insert(kept_edges.end(), std::move(pair)); 
         }
     }
     
+    // O(1) pointer swap
+    outgoing = std::move(kept_edges);
     v->last_culled_radius_ = neighborhood_radius_;
 }
 
@@ -1504,7 +1604,7 @@ void KinodynamicANYFMTX::plan() {
 
 
 
-            const Trajectory& traj_xz = edge_info_from_x.cached_trajectory;
+            const Trajectory& traj_xz = *(edge_info_from_x.cached_trajectory);
             if (!traj_xz.is_valid) {
                 continue;
             }
@@ -1576,7 +1676,7 @@ void KinodynamicANYFMTX::plan() {
                         //     }
                         // }
                         
-                        const Trajectory& traj_xy = edge_info_xy.cached_trajectory;
+                        const Trajectory& traj_xy = *(edge_info_xy.cached_trajectory);
                         
                         if (traj_xy.is_valid) {
                             double cost_via_y = y->getCost() + traj_xy.cost;
@@ -1866,63 +1966,63 @@ void KinodynamicANYFMTX::plan() {
 //     node->neighbors_cached_ = true;
 // }
 
-void KinodynamicANYFMTX::near(int node_index) {
-    auto node = tree_[node_index].get();
-    if (node->neighbors_cached_) return;
-    //  Get candidate neighbors (common to both strategies)
-    std::vector<size_t> candidate_indices;
-    if (use_knn) {
-        if (k_neighbors_ > 0) {
-            candidate_indices = kdtree_->knnSearch(node->getStateValue().head(kd_dim), k_neighbors_);
-        }
-    } else {
-        if (neighborhood_radius_ > 0) {
-            candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
-        }
-    }
+// void KinodynamicANYFMTX::near(int node_index) {
+//     auto node = tree_[node_index].get();
+//     if (node->neighbors_cached_) return;
+//     //  Get candidate neighbors (common to both strategies)
+//     std::vector<size_t> candidate_indices;
+//     if (use_knn) {
+//         if (k_neighbors_ > 0) {
+//             candidate_indices = kdtree_->knnSearch(node->getStateValue().head(kd_dim), k_neighbors_);
+//         }
+//     } else {
+//         if (neighborhood_radius_ > 0) {
+//             candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
+//         }
+//     }
 
-    // --- Populate maps based on the state space's PREFERRED strategy ---
-    if (statespace_->prefersLazyNear()) {
-       // --- LAZY STRATEGY (for Min-Snap) ---
-        for (int idx : candidate_indices) {
-            if (idx == node_index) continue;
-            FMTNode* neighbor = tree_[idx].get();
+//     // --- Populate maps based on the state space's PREFERRED strategy ---
+//     if (statespace_->prefersLazyNear()) {
+//        // --- LAZY STRATEGY (for Min-Snap) ---
+//         for (int idx : candidate_indices) {
+//             if (idx == node_index) continue;
+//             FMTNode* neighbor = tree_[idx].get();
 
-            EdgeInfo placeholder_edge; // is_trajectory_computed is false by default
-            placeholder_edge.distance = std::numeric_limits<double>::infinity();
+//             EdgeInfo placeholder_edge; // is_trajectory_computed is false by default
+//             placeholder_edge.distance = std::numeric_limits<double>::infinity();
 
-            node->forwardNeighbors()[neighbor] = placeholder_edge;
-            node->backwardNeighbors()[neighbor] = placeholder_edge;
-            neighbor->forwardNeighbors()[node] = placeholder_edge;
-            neighbor->backwardNeighbors()[node] = placeholder_edge;
-        }
-    } else {
-        // --- PROACTIVE STRATEGY (for RDT, etc.) ---
-        for (int idx : candidate_indices) {
-            if (idx == node_index) continue;
-            FMTNode* neighbor = tree_[idx].get();
+//             node->forwardNeighbors()[neighbor] = placeholder_edge;
+//             node->backwardNeighbors()[neighbor] = placeholder_edge;
+//             neighbor->forwardNeighbors()[node] = placeholder_edge;
+//             neighbor->backwardNeighbors()[node] = placeholder_edge;
+//         }
+//     } else {
+//         // --- PROACTIVE STRATEGY (for RDT, etc.) ---
+//         for (int idx : candidate_indices) {
+//             if (idx == node_index) continue;
+//             FMTNode* neighbor = tree_[idx].get();
 
-            // Test FORWARD connection
-            Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
-            if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_ + 0.01)) {
-                node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
-                neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
-                max_length_ = std::max(max_length_, traj_forward.cost);
-            }
+//             // Test FORWARD connection
+//             Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+//             if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_ + 0.01)) {
+//                 node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
+//                 neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
+//                 max_length_ = std::max(max_length_, traj_forward.cost);
+//             }
 
-            // Test BACKWARD connection
-            Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-            if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_ + 0.01)) {
-                node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
-                neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
-                max_length_ = std::max(max_length_, traj_backward.cost);
-            }
-        }
-    }
+//             // Test BACKWARD connection
+//             Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
+//             if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_ + 0.01)) {
+//                 node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
+//                 neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
+//                 max_length_ = std::max(max_length_, traj_backward.cost);
+//             }
+//         }
+//     }
     
-    // This should be outside the if/else to apply to both cases
-    node->neighbors_cached_ = true;
-}
+//     // This should be outside the if/else to apply to both cases
+//     node->neighbors_cached_ = true;
+// }
 // // for lazy steer eval because caching does call steer twice as much! but caching gives faster time performance 
 // void KinodynamicANYFMTX::near(int node_index) {
 //     auto node = tree_[node_index].get();

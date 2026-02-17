@@ -72,7 +72,8 @@ void RRTxNode::addNeighbor(RRTxNode* target_node, bool is_outgoing_initial, bool
     outgoing_edge_info.distance = trajectory.cost; // Sorry for the bad name of distance! it shouldve been cost! or another better approach would be to add original_cost to the trajectory struct and handle this there!
     outgoing_edge_info.distance_original = trajectory.cost;
     outgoing_edge_info.is_initial = is_outgoing_initial; // Use the first boolean
-    outgoing_edge_info.cached_trajectory = trajectory;
+    // outgoing_edge_info.cached_trajectory = trajectory;
+    outgoing_edge_info.cached_trajectory = std::make_shared<Trajectory>(trajectory);
     outgoing_edge_info.is_trajectory_computed = true;
 
     // Add the edge to the current node's outgoing list.

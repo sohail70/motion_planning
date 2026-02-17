@@ -1062,29 +1062,29 @@ void KinodynamicFMTX::plan() {
             //     }
             // }
 
-            // LAZY COMPUTATION  ---
-            if (statespace_->prefersLazyNear() && !edge_info_from_x.is_trajectory_computed) {
-                // If this is a lazy state space, compute the true trajectory from x to z now.
-                edge_info_from_x.cached_trajectory = statespace_->steer(
-                    x->getStateValue(), z->getStateValue(), 
-                    z->getFinalVelocity(), z->getFinalAcceleration()
-                );
+            // // LAZY COMPUTATION  ---
+            // if (statespace_->prefersLazyNear() && !edge_info_from_x.is_trajectory_computed) {
+            //     // If this is a lazy state space, compute the true trajectory from x to z now.
+            //     edge_info_from_x.cached_trajectory = statespace_->steer(
+            //         x->getStateValue(), z->getStateValue(), 
+            //         z->getFinalVelocity(), z->getFinalAcceleration()
+            //     );
 
-                edge_info_from_x.is_trajectory_computed = true;
-                // Update the distance with the true cost
-                edge_info_from_x.distance = edge_info_from_x.cached_trajectory.cost;
+            //     edge_info_from_x.is_trajectory_computed = true;
+            //     // Update the distance with the true cost
+            //     edge_info_from_x.distance = edge_info_from_x.cached_trajectory.cost;
 
-                // Add symmetric caching ---
-                // Update the corresponding forward neighbor entry in node 'x' to prevent re-computation.
-                if (x->forwardNeighbors().count(z)) {
-                    // Assign the entire updated EdgeInfo struct to ensure all fields are synchronized.
-                    x->forwardNeighbors().at(z) = edge_info_from_x;
-                }
-            }
+            //     // Add symmetric caching ---
+            //     // Update the corresponding forward neighbor entry in node 'x' to prevent re-computation.
+            //     if (x->forwardNeighbors().count(z)) {
+            //         // Assign the entire updated EdgeInfo struct to ensure all fields are synchronized.
+            //         x->forwardNeighbors().at(z) = edge_info_from_x;
+            //     }
+            // }
 
 
 
-            const Trajectory& traj_xz = edge_info_from_x.cached_trajectory;
+            const Trajectory& traj_xz = *(edge_info_from_x.cached_trajectory);
             if (!traj_xz.is_valid) {
                 continue;
             }
@@ -1121,24 +1121,24 @@ void KinodynamicFMTX::plan() {
                 for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
                     if (y->in_queue_) { // We only consider parents that are in V_open.
 
-                        // Check if the trajectory is already computed ---
-                        if (statespace_->prefersLazyNear() && !edge_info_xy.is_trajectory_computed) {
-                            // If not, compute it ONCE and cache it symmetrically.
-                            edge_info_xy.cached_trajectory = statespace_->steer(
-                                x->getStateValue(), y->getStateValue(), 
-                                y->getFinalVelocity(), y->getFinalAcceleration()
-                            );
-                            edge_info_xy.is_trajectory_computed = true;
+                        // // Check if the trajectory is already computed ---
+                        // if (statespace_->prefersLazyNear() && !edge_info_xy.is_trajectory_computed) {
+                        //     // If not, compute it ONCE and cache it symmetrically.
+                        //     edge_info_xy.cached_trajectory = statespace_->steer(
+                        //         x->getStateValue(), y->getStateValue(), 
+                        //         y->getFinalVelocity(), y->getFinalAcceleration()
+                        //     );
+                        //     edge_info_xy.is_trajectory_computed = true;
 
-                            // Symmetrically cache for the other direction to prevent re-computation later.
-                            if (y->backwardNeighbors().count(x)) {
-                                auto& symmetric_edge = y->backwardNeighbors().at(x);
-                                symmetric_edge.cached_trajectory = edge_info_xy.cached_trajectory;
-                                symmetric_edge.is_trajectory_computed = true;
-                            }
-                        }
+                        //     // Symmetrically cache for the other direction to prevent re-computation later.
+                        //     if (y->backwardNeighbors().count(x)) {
+                        //         auto& symmetric_edge = y->backwardNeighbors().at(x);
+                        //         symmetric_edge.cached_trajectory = edge_info_xy.cached_trajectory;
+                        //         symmetric_edge.is_trajectory_computed = true;
+                        //     }
+                        // }
                         
-                        const Trajectory& traj_xy = edge_info_xy.cached_trajectory;
+                        const Trajectory& traj_xy = *(edge_info_xy.cached_trajectory);
                         
                         if (traj_xy.is_valid) {
                             double cost_via_y = y->getCost() + traj_xy.cost;
@@ -1414,6 +1414,79 @@ void KinodynamicFMTX::plan() {
 // }
 
 
+// // Feb 17 2025 : uses stack variable trajectory!
+// void KinodynamicFMTX::near(int node_index) {
+//     auto node = tree_[node_index].get();
+//     if (node->neighbors_cached_) return;
+
+//     // Get candidate neighbors (common to both strategies)
+//     std::vector<size_t> candidate_indices;
+//     if (use_knn) {
+//         if (k_neighbors_ > 0) {
+//             candidate_indices = kdtree_->knnSearch(node->getStateValue().head(kd_dim), k_neighbors_);
+//         }
+//     } else {
+//         if (neighborhood_radius_ > 0) {
+//             candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
+//         }
+//     }
+
+//     // // --- Populate maps based on the state space's PREFERRED strategy ---
+//     // if (statespace_->prefersLazyNear()) {
+//     //    // --- LAZY STRATEGY (for Min-Snap) ---
+//     //    // Note: Lazy strategy doesn't compute trajectories here, so no change needed.
+//     //    // The symmetry optimization applies when trajectories are actually computed later.
+//     //     for (int idx : candidate_indices) {
+//     //         if (idx == node_index) continue;
+//     //         FMTNode* neighbor = tree_[idx].get();
+//     //         EdgeInfo placeholder_edge; // is_trajectory_computed is false by default
+//     //         placeholder_edge.distance = std::numeric_limits<double>::infinity();
+//     //         node->forwardNeighbors()[neighbor] = placeholder_edge;
+//     //         node->backwardNeighbors()[neighbor] = placeholder_edge;
+//     //         neighbor->forwardNeighbors()[node] = placeholder_edge;
+//     //         neighbor->backwardNeighbors()[node] = placeholder_edge;
+//     //     }
+//     // } else {
+//     //     // --- PROACTIVE STRATEGY (for RDT, etc.) ---
+        
+
+//         for (int idx : candidate_indices) {
+//             if (idx == node_index) continue;
+//             FMTNode* neighbor = tree_[idx].get();
+
+//             // Test FORWARD connection
+//             Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+            
+//             if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_ + 0.01)) {
+//                 // Add Forward Edge (Node -> Neighbor)
+//                 node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
+//                 neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
+//                 max_length_ = std::max(max_length_, traj_forward.cost);
+
+//                 // --- OPTIMIZATION FOR GEOMETRIC CASE ---
+//                 if (is_geometric_mode_){
+//                     // In geometric mode, backward is identical to forward.
+//                     // We reuse the forward trajectory object.
+//                     node->backwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
+//                     neighbor->forwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
+//                 } else {
+//                     // --- KINODYNAMIC CASE ---
+//                     // Test BACKWARD connection (Neighbor -> Node)
+//                     Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
+//                     if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_ + 0.01)) {
+//                         node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
+//                         neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
+//                         max_length_ = std::max(max_length_, traj_backward.cost);
+//                     }
+//                 }
+//             }
+//         }
+//     // }
+    
+//     node->neighbors_cached_ = true;
+// }
+
+
 void KinodynamicFMTX::near(int node_index) {
     auto node = tree_[node_index].get();
     if (node->neighbors_cached_) return;
@@ -1430,53 +1503,54 @@ void KinodynamicFMTX::near(int node_index) {
         }
     }
 
-    // --- Populate maps based on the state space's PREFERRED strategy ---
-    if (statespace_->prefersLazyNear()) {
-       // --- LAZY STRATEGY (for Min-Snap) ---
-       // Note: Lazy strategy doesn't compute trajectories here, so no change needed.
-       // The symmetry optimization applies when trajectories are actually computed later.
-        for (int idx : candidate_indices) {
-            if (idx == node_index) continue;
-            FMTNode* neighbor = tree_[idx].get();
-            EdgeInfo placeholder_edge; // is_trajectory_computed is false by default
-            placeholder_edge.distance = std::numeric_limits<double>::infinity();
-            node->forwardNeighbors()[neighbor] = placeholder_edge;
-            node->backwardNeighbors()[neighbor] = placeholder_edge;
-            neighbor->forwardNeighbors()[node] = placeholder_edge;
-            neighbor->backwardNeighbors()[node] = placeholder_edge;
-        }
-    } else {
-        // --- PROACTIVE STRATEGY (for RDT, etc.) ---
+    for (int idx : candidate_indices) {
+        if (idx == node_index) continue;
+        FMTNode* neighbor = tree_[idx].get();
+
+        // Test FORWARD connection
+        Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
         
-
-        for (int idx : candidate_indices) {
-            if (idx == node_index) continue;
-            FMTNode* neighbor = tree_[idx].get();
-
-            // Test FORWARD connection
-            Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+        if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_ + 0.01)) {
             
-            if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_ + 0.01)) {
-                // Add Forward Edge (Node -> Neighbor)
-                node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
-                neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
-                max_length_ = std::max(max_length_, traj_forward.cost);
+            // Allocate trajectory to heap ONCE
+            auto shared_traj_forward = std::make_shared<Trajectory>(std::move(traj_forward));
+            
+            EdgeInfo edge_fwd;
+            edge_fwd.distance = shared_traj_forward->cost;
+            edge_fwd.distance_original = shared_traj_forward->cost;
+            edge_fwd.is_initial = true;
+            edge_fwd.cached_trajectory = shared_traj_forward;
+            edge_fwd.is_trajectory_computed = true;
 
-                // --- OPTIMIZATION FOR GEOMETRIC CASE ---
-                if (is_geometric_mode_){
-                    // In geometric mode, backward is identical to forward.
-                    // We reuse the forward trajectory object.
-                    node->backwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
-                    neighbor->forwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
-                } else {
-                    // --- KINODYNAMIC CASE ---
-                    // Test BACKWARD connection (Neighbor -> Node)
-                    Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-                    if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_ + 0.01)) {
-                        node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
-                        neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
-                        max_length_ = std::max(max_length_, traj_backward.cost);
-                    }
+            // Add Forward Edge (Node -> Neighbor)
+            node->forwardNeighbors()[neighbor] = edge_fwd;
+            neighbor->backwardNeighbors()[node] = edge_fwd;
+            max_length_ = std::max(max_length_, edge_fwd.distance);
+
+            // --- OPTIMIZATION FOR GEOMETRIC CASE ---
+            if (is_geometric_mode_) {
+                // In geometric mode, backward is identical to forward.
+                // We reuse the exact same EdgeInfo (and the same shared_ptr)
+                node->backwardNeighbors()[neighbor] = edge_fwd;
+                neighbor->forwardNeighbors()[node] = edge_fwd;
+            } else {
+                // --- KINODYNAMIC CASE ---
+                // Test BACKWARD connection (Neighbor -> Node)
+                Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
+                if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_ + 0.01)) {
+                    
+                    auto shared_traj_backward = std::make_shared<Trajectory>(std::move(traj_backward));
+                    
+                    EdgeInfo edge_bwd;
+                    edge_bwd.distance = shared_traj_backward->cost;
+                    edge_bwd.distance_original = shared_traj_backward->cost;
+                    edge_bwd.is_initial = true;
+                    edge_bwd.cached_trajectory = shared_traj_backward;
+                    edge_bwd.is_trajectory_computed = true;
+                    
+                    node->backwardNeighbors()[neighbor] = edge_bwd;
+                    neighbor->forwardNeighbors()[node] = edge_bwd;
+                    max_length_ = std::max(max_length_, edge_bwd.distance);
                 }
             }
         }
@@ -1484,7 +1558,6 @@ void KinodynamicFMTX::near(int node_index) {
     
     node->neighbors_cached_ = true;
 }
-
 
 
 

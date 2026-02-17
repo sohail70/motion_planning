@@ -1066,7 +1066,7 @@ bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
     double global_edge_start_time,
     const Obstacle& ob) const
 {
-    auto logger = rclcpp::get_logger("GazeboChecker");
+    // auto logger = rclcpp::get_logger("GazeboChecker");
     // 1. Basic Validity Checks
     if (!trajectory.is_valid || trajectory.path_points.empty()) return false;
 

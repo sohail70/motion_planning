@@ -676,7 +676,7 @@ void KinodynamicANYRRTX::rewireNeighbors(RRTxNode* v) {
 
             u->setLMC(candidate_lmc);
             // makeParentOf(u, v, edge.distance);
-            u->setParent(v,edge.cached_trajectory);
+            u->setParent(v,*(edge.cached_trajectory));
             edge_length_[u->getIndex()] = edge.distance;
             if (u->getCost() - candidate_lmc > epsilon_) {
                 verifyQueue(u);
@@ -1237,7 +1237,7 @@ void KinodynamicANYRRTX::updateLMC(RRTxNode* v) {
             min_lmc = candidate_lmc;
             best_parent = u;
             best_edge_distance = edge.distance;  // Capture the distance here
-            best_traj = &edge.cached_trajectory;
+            best_traj = edge.cached_trajectory.get();
         }
     }
 
@@ -1380,45 +1380,72 @@ void KinodynamicANYRRTX::updateLMC(RRTxNode* v) {
     so all in all if we didnt amend like this then addNewObstacle couldnt find some dangered edges!
 */
 
+// void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
+//     auto& outgoing = v->outgoingEdges();
+//     auto it = outgoing.begin();
+    
+//     // // Optional: Keep track if we culled anything this run to format the output nicely
+//     // bool culled_anything = false; 
+
+//     while (it != outgoing.end()) {
+//         auto [neighbor, edge] = *it;
+        
+//         // If the edge is temporary, too long, and not our parent
+//         if (!edge.is_initial && 
+//             edge.cached_trajectory->cost > neighborhood_radius_ + 0.01 && 
+//             neighbor != v->getParent()) 
+//         {
+//             // // --- DEBUG LOGGING ---
+//             // std::cout << "[CULL] Node [" << v->getIndex() << "] culled edge to Node [" << neighbor->getIndex() << "]"
+//             //           << " | Cost: " << edge.cached_trajectory.cost 
+//             //           << " > Rad: " << neighborhood_radius_ << "\n";
+//             // culled_anything = true;
+//             // // ---------------------
+
+//             // Move it to the passive map so obstacle updates can still find it
+//             v->culled_outgoing_edges_[neighbor] = edge;
+            
+//             // Remove it from the active planning map
+//             it = outgoing.erase(it);
+//         } else {
+//             ++it;
+//         }
+//     }
+
+//     // // --- DEBUG LOGGING SUMMARY ---
+//     // if (culled_anything) {
+//     //     std::cout << "       -> Node [" << v->getIndex() << "] now has " 
+//     //               << v->outgoingEdges().size() << " Active, "
+//     //               << v->culled_outgoing_edges_.size() << " Culled.\n";
+//     // }
+//     // // -----------------------------
+// }
+
 void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
     auto& outgoing = v->outgoingEdges();
-    auto it = outgoing.begin();
     
-    // // Optional: Keep track if we culled anything this run to format the output nicely
-    // bool culled_anything = false; 
+    // Create temporary map to avoid O(K^2) memory shifting
+    std::decay_t<decltype(outgoing)> kept_edges;
 
-    while (it != outgoing.end()) {
-        auto [neighbor, edge] = *it;
+    for (auto& pair : outgoing) {
+        auto neighbor = pair.first;
+        auto& edge = pair.second;
         
-        // If the edge is temporary, too long, and not our parent
+        // SAFE: Use edge.distance
         if (!edge.is_initial && 
-            edge.cached_trajectory.cost > neighborhood_radius_ + 0.01 && 
+            edge.distance > neighborhood_radius_ + 0.01 && 
             neighbor != v->getParent()) 
         {
-            // // --- DEBUG LOGGING ---
-            // std::cout << "[CULL] Node [" << v->getIndex() << "] culled edge to Node [" << neighbor->getIndex() << "]"
-            //           << " | Cost: " << edge.cached_trajectory.cost 
-            //           << " > Rad: " << neighborhood_radius_ << "\n";
-            // culled_anything = true;
-            // // ---------------------
-
-            // Move it to the passive map so obstacle updates can still find it
+            // Move to the passive map for obstacle updates
             v->culled_outgoing_edges_[neighbor] = edge;
-            
-            // Remove it from the active planning map
-            it = outgoing.erase(it);
         } else {
-            ++it;
+            // Keep it in the active map
+            kept_edges.insert(kept_edges.end(), std::move(pair));
         }
     }
-
-    // // --- DEBUG LOGGING SUMMARY ---
-    // if (culled_anything) {
-    //     std::cout << "       -> Node [" << v->getIndex() << "] now has " 
-    //               << v->outgoingEdges().size() << " Active, "
-    //               << v->culled_outgoing_edges_.size() << " Culled.\n";
-    // }
-    // // -----------------------------
+    
+    // O(1) pointer swap
+    outgoing = std::move(kept_edges);
 }
 
 
@@ -2518,240 +2545,240 @@ std::vector<Eigen::VectorXd> KinodynamicANYRRTX::smoothPath(const std::vector<Ei
 // }
 // //////////////////////////////////////////////////////////////////////////////
 
-/*
-    mind that i compared FMTx and RRTx in env with only dynamic obstalce so persisting static obstalce is not implemented here because right now
-    isObstalceFree considers all obstalces. it can be implemented later so that in addNewObstalce we dont check the old obstalces! but right now assume
-    everything moves, hence its new!
-    Although in FMTx i implmeneted something in findsamplesnearobstacle for static obs to be considered only once and since fmtx in its default form has delayed obstacle check
-    then its fine. even though one might argue in the prune true case (rrtx style proactive obstalce check) in fmtx we need some reconsideration if static obs are present
-*/
+// /*
+//     mind that i compared FMTx and RRTx in env with only dynamic obstalce so persisting static obstalce is not implemented here because right now
+//     isObstalceFree considers all obstalces. it can be implemented later so that in addNewObstalce we dont check the old obstalces! but right now assume
+//     everything moves, hence its new!
+//     Although in FMTx i implmeneted something in findsamplesnearobstacle for static obs to be considered only once and since fmtx in its default form has delayed obstacle check
+//     then its fine. even though one might argue in the prune true case (rrtx style proactive obstalce check) in fmtx we need some reconsideration if static obs are present
+// */
 
-// // This is not optimized because isTrajectorySafe is being used with all obstalces! but that added_indices was added because of a few obstalces at most, not all of them
-void KinodynamicANYRRTX::addNewObstacle(const std::vector<int>& added_indices) {
-    if (mode == 1) {
-        // We need a stable time anchor for all checks in this cycle.
-        int count = 0;
-        const double t_now = clock_->now().seconds();
-        const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
-        // std::cout<<"added indices : "<<added_indices.size()<<"\n";
-        for (int idx : added_indices) {
-            RRTxNode* node = tree_[idx].get();
-            bool node_itself_is_unusable = false;
+// // // This is not optimized because isTrajectorySafe is being used with all obstalces! but that added_indices was added because of a few obstalces at most, not all of them
+// void KinodynamicANYRRTX::addNewObstacle(const std::vector<int>& added_indices) {
+//     if (mode == 1) {
+//         // We need a stable time anchor for all checks in this cycle.
+//         int count = 0;
+//         const double t_now = clock_->now().seconds();
+//         const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
+//         // std::cout<<"added indices : "<<added_indices.size()<<"\n";
+//         for (int idx : added_indices) {
+//             RRTxNode* node = tree_[idx].get();
+//             bool node_itself_is_unusable = false;
 
-            if (ignore_sample) {
-                // In ignore_sample mode, if idx is in added_indices, we treat the node as unusable
-                // and mark it for special handling (e.g., its edges will be invalidated based on this mark).
-                samples_in_obstacles_.insert(idx);
-                node_itself_is_unusable = true;
-            } else {
-                /*
-                    In kinodynamic case since we are having time aware graph this optimization is not making sense and it might even add
-                    more conflicting nodes that may not even is necessary.
-                */
-                // ignore_sample is false: explicitly check if the node's location is now in an obstacle.
-                // if (!obs_checker_->isObstacleFree(node->getStateValue())) { // Check the node's point itself
-                //     node_itself_is_unusable = true;
-                // }
-            }
+//             if (ignore_sample) {
+//                 // In ignore_sample mode, if idx is in added_indices, we treat the node as unusable
+//                 // and mark it for special handling (e.g., its edges will be invalidated based on this mark).
+//                 samples_in_obstacles_.insert(idx);
+//                 node_itself_is_unusable = true;
+//             } else {
+//                 /*
+//                     In kinodynamic case since we are having time aware graph this optimization is not making sense and it might even add
+//                     more conflicting nodes that may not even is necessary.
+//                 */
+//                 // ignore_sample is false: explicitly check if the node's location is now in an obstacle.
+//                 // if (!obs_checker_->isObstacleFree(node->getStateValue())) { // Check the node's point itself
+//                 //     node_itself_is_unusable = true;
+//                 // }
+//             }
 
-            if (node_itself_is_unusable) {
-                // Node is inside an obstacle (or treated as such via ignore_sample).
-                // All its existing edges become invalid WITHOUT individual collision checks for these edges.
-                for (auto& [u, edge] : node->outgoingEdges()) {
-                    // Invalidate this edge (node -> u)
-                    edge.distance = INFINITY;
-                    // And its symmetric counterparts if your graph stores them this way
-                    if (u->incomingEdges().count(node)) {
-                        u->incomingEdges().at(node).distance = INFINITY;
-                    }
-                    if (u->outgoingEdges().count(node)) { // For u -> node
-                        u->outgoingEdges().at(node).distance = INFINITY;
-                    }
-                    if (node->incomingEdges().count(u)) { // For u -> node (from node's perspective)
-                        node->incomingEdges().at(u).distance = INFINITY;
-                    }
+//             if (node_itself_is_unusable) {
+//                 // Node is inside an obstacle (or treated as such via ignore_sample).
+//                 // All its existing edges become invalid WITHOUT individual collision checks for these edges.
+//                 for (auto& [u, edge] : node->outgoingEdges()) {
+//                     // Invalidate this edge (node -> u)
+//                     edge.distance = INFINITY;
+//                     // And its symmetric counterparts if your graph stores them this way
+//                     if (u->incomingEdges().count(node)) {
+//                         u->incomingEdges().at(node).distance = INFINITY;
+//                     }
+//                     if (u->outgoingEdges().count(node)) { // For u -> node
+//                         u->outgoingEdges().at(node).distance = INFINITY;
+//                     }
+//                     if (node->incomingEdges().count(u)) { // For u -> node (from node's perspective)
+//                         node->incomingEdges().at(u).distance = INFINITY;
+//                     }
 
-                    // If this invalidated edge was a parent link, handle orphaning
-                    if (u->getParent() == node) {
-                        u->setParent(nullptr, INFINITY);
-                        verifyOrphan(u);
-                    }
-                    // Note: if node->getParent() == u, this will be handled below
-                    // when 'node' itself is orphaned.
-                }
-                // Also invalidate any incoming edges to 'node' not caught by iterating its outgoingEdges' symmetry
-                // (This might be redundant if outgoingEdges and their symmetric pairs cover all connections)
-                // For example, if edges are strictly directed and only stored one way initially.
-                // However, the current symmetric updates in the loop above likely cover this.
+//                     // If this invalidated edge was a parent link, handle orphaning
+//                     if (u->getParent() == node) {
+//                         u->setParent(nullptr, INFINITY);
+//                         verifyOrphan(u);
+//                     }
+//                     // Note: if node->getParent() == u, this will be handled below
+//                     // when 'node' itself is orphaned.
+//                 }
+//                 // Also invalidate any incoming edges to 'node' not caught by iterating its outgoingEdges' symmetry
+//                 // (This might be redundant if outgoingEdges and their symmetric pairs cover all connections)
+//                 // For example, if edges are strictly directed and only stored one way initially.
+//                 // However, the current symmetric updates in the loop above likely cover this.
 
-                // Directly mark 'node' as unusable and orphan it.
-                node->setCost(INFINITY); // Assuming setCost updates the main cost (g-value)
-                node->setLMC(INFINITY);  // Assuming setLMC updates the lookahead-cost (rhs-value)
+//                 // Directly mark 'node' as unusable and orphan it.
+//                 node->setCost(INFINITY); // Assuming setCost updates the main cost (g-value)
+//                 node->setLMC(INFINITY);  // Assuming setLMC updates the lookahead-cost (rhs-value)
                 
-                RRTxNode* old_parent = node->getParent();
-                if (old_parent) {
-                    // If 'node' had a parent, its link to that parent is now broken.
-                    // The call to node->setParent below handles updating 'node'.
-                    // We might need to ensure 'old_parent' updates its children list if applicable,
-                    // though 'verifyOrphan(node)' and subsequent processing should handle graph consistency.
-                }
-                node->setParent(nullptr, INFINITY); // Sever parent link
-                verifyOrphan(node); // Ensure 'node' itself is processed by the orphan logic
+//                 RRTxNode* old_parent = node->getParent();
+//                 if (old_parent) {
+//                     // If 'node' had a parent, its link to that parent is now broken.
+//                     // The call to node->setParent below handles updating 'node'.
+//                     // We might need to ensure 'old_parent' updates its children list if applicable,
+//                     // though 'verifyOrphan(node)' and subsequent processing should handle graph consistency.
+//                 }
+//                 node->setParent(nullptr, INFINITY); // Sever parent link
+//                 verifyOrphan(node); // Ensure 'node' itself is processed by the orphan logic
 
-            } else {
-                // Node itself is in free space, and ignore_sample is false.
-                // Check its outgoing edges individually.
-                for (auto& [u, edge] : node->outgoingEdges()) {
-                    // We check the cached trajectory for the edge node -> u
-                    const Trajectory& traj_node_to_u = edge.cached_trajectory;
+//             } else {
+//                 // Node itself is in free space, and ignore_sample is false.
+//                 // Check its outgoing edges individually.
+//                 for (auto& [u, edge] : node->outgoingEdges()) {
+//                     // We check the cached trajectory for the edge node -> u
+//                     const Trajectory& traj_node_to_u = edge.cached_trajectory;
                     
-                    // Calculate the global time this edge starts.
-                    const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
-                    if (edge.distance != INFINITY) {
-                        obs_check++;
-                        last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
-                    }
-                    if (edge.distance != INFINITY &&
-                        !obs_checker_->isTrajectorySafe(traj_node_to_u, global_edge_start_time)) {
-                        // This specific edge (node -> u) is now blocked.
-                        count++;
-                        edge.distance = INFINITY;
-                        if (u->incomingEdges().count(node)) {
-                            u->incomingEdges().at(node).distance = INFINITY;
-                        }
-                        if (u->outgoingEdges().count(node)) {
-                            u->outgoingEdges().at(node).distance = INFINITY;
-                        }
-                        if (node->incomingEdges().count(u)) {
-                            node->incomingEdges().at(u).distance = INFINITY;
-                        }
+//                     // Calculate the global time this edge starts.
+//                     const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
+//                     if (edge.distance != INFINITY) {
+//                         obs_check++;
+//                         last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
+//                     }
+//                     if (edge.distance != INFINITY &&
+//                         !obs_checker_->isTrajectorySafe(traj_node_to_u, global_edge_start_time)) {
+//                         // This specific edge (node -> u) is now blocked.
+//                         count++;
+//                         edge.distance = INFINITY;
+//                         if (u->incomingEdges().count(node)) {
+//                             u->incomingEdges().at(node).distance = INFINITY;
+//                         }
+//                         if (u->outgoingEdges().count(node)) {
+//                             u->outgoingEdges().at(node).distance = INFINITY;
+//                         }
+//                         if (node->incomingEdges().count(u)) {
+//                             node->incomingEdges().at(u).distance = INFINITY;
+//                         }
 
-                        // Handle parent relationships
-                        if (u->getParent() == node) {
-                            u->setParent(nullptr, INFINITY);
-                            verifyOrphan(u);
-                        }
-                        if (node->getParent() == u) {
-                            node->setParent(nullptr, INFINITY);
-                            verifyOrphan(node);
-                        }
-                    }
-                }
-            }
-        }
-        // std::cout<<"OBSOLETE: "<<count<<"\n";
-    } else if (mode == 3){ // Collision checks with specific obstalces using a map of associations between added indices and obstacles
-        const double t_now = clock_->now().seconds();
-        const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
+//                         // Handle parent relationships
+//                         if (u->getParent() == node) {
+//                             u->setParent(nullptr, INFINITY);
+//                             verifyOrphan(u);
+//                         }
+//                         if (node->getParent() == u) {
+//                             node->setParent(nullptr, INFINITY);
+//                             verifyOrphan(node);
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//         // std::cout<<"OBSOLETE: "<<count<<"\n";
+//     } else if (mode == 3){ // Collision checks with specific obstalces using a map of associations between added indices and obstacles
+//         const double t_now = clock_->now().seconds();
+//         const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
 
-        for (int idx : added_indices) {
-            RRTxNode* node = tree_[idx].get();
+//         for (int idx : added_indices) {
+//             RRTxNode* node = tree_[idx].get();
             
-            // Find the specific obstacles threatening this node from our populated map.
-            auto it = node_to_threats_map_.find(idx);
-            if (it == node_to_threats_map_.end()) {
-                continue; // This node is not threatened, skip it.
-            }
-            const auto& threats = it->second;
+//             // Find the specific obstacles threatening this node from our populated map.
+//             auto it = node_to_threats_map_.find(idx);
+//             if (it == node_to_threats_map_.end()) {
+//                 continue; // This node is not threatened, skip it.
+//             }
+//             const auto& threats = it->second;
 
-            for (auto& [neighbor, edge] : node->outgoingEdges()) {
-                if (edge.distance == INFINITY) continue;
+//             for (auto& [neighbor, edge] : node->outgoingEdges()) {
+//                 if (edge.distance == INFINITY) continue;
                 
-                bool becomes_invalid = false;
-                const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
+//                 bool becomes_invalid = false;
+//                 const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
 
-                // Check the edge against ONLY its specific threats.
-                for (const auto& obs : threats) {
-                    last_replan_metrics_.obstacle_checks++;
-                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, global_edge_start_time, obs)) {
-                        becomes_invalid = true;
-                        break; // One collision is enough to invalidate the edge.
-                    }
-                }
+//                 // Check the edge against ONLY its specific threats.
+//                 for (const auto& obs : threats) {
+//                     last_replan_metrics_.obstacle_checks++;
+//                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, global_edge_start_time, obs)) {
+//                         becomes_invalid = true;
+//                         break; // One collision is enough to invalidate the edge.
+//                     }
+//                 }
 
-                if (becomes_invalid) {
-                    edge.distance = INFINITY;
-                    if (neighbor->incomingEdges().count(node)) {
-                        neighbor->incomingEdges().at(node).distance = INFINITY;
-                    }
-                    if (neighbor->getParent() == node) verifyOrphan(neighbor);
-                    if (node->getParent() == neighbor) verifyOrphan(node);
-                }
-            }
-        }
-    }
-}
-
-
+//                 if (becomes_invalid) {
+//                     edge.distance = INFINITY;
+//                     if (neighbor->incomingEdges().count(node)) {
+//                         neighbor->incomingEdges().at(node).distance = INFINITY;
+//                     }
+//                     if (neighbor->getParent() == node) verifyOrphan(neighbor);
+//                     if (node->getParent() == neighbor) verifyOrphan(node);
+//                 }
+//             }
+//         }
+//     }
+// }
 
 
-void KinodynamicANYRRTX::removeObstacle(const std::vector<int>& removed_indices) {
-    const double t_now = clock_->now().seconds();
-    const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
 
-    for (int idx : removed_indices) {
-        RRTxNode* node = tree_[idx].get();
-        bool node_was_in_ignored_obstacle_state = false;
 
-        if (ignore_sample) {
-            if (samples_in_obstacles_.count(idx)) {
-                samples_in_obstacles_.erase(idx); // Node is no longer "ignored as obstacle"
-                node_was_in_ignored_obstacle_state = true;
-            }
-        }
+// void KinodynamicANYRRTX::removeObstacle(const std::vector<int>& removed_indices) {
+//     const double t_now = clock_->now().seconds();
+//     const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
 
-        // Determine if the node's location itself is now clear to decide if its edges *can* be restored.
-        bool node_location_is_currently_free = obs_checker_->isObstacleFree(node->getStateValue());
+//     for (int idx : removed_indices) {
+//         RRTxNode* node = tree_[idx].get();
+//         bool node_was_in_ignored_obstacle_state = false;
 
-        if ((ignore_sample && node_was_in_ignored_obstacle_state) || // Was ignored, now un-ignored
-            (!ignore_sample && node_location_is_currently_free)) {   // Wasn't ignored, and its location is free
+//         if (ignore_sample) {
+//             if (samples_in_obstacles_.count(idx)) {
+//                 samples_in_obstacles_.erase(idx); // Node is no longer "ignored as obstacle"
+//                 node_was_in_ignored_obstacle_state = true;
+//             }
+//         }
+
+//         // Determine if the node's location itself is now clear to decide if its edges *can* be restored.
+//         bool node_location_is_currently_free = obs_checker_->isObstacleFree(node->getStateValue());
+
+//         if ((ignore_sample && node_was_in_ignored_obstacle_state) || // Was ignored, now un-ignored
+//             (!ignore_sample && node_location_is_currently_free)) {   // Wasn't ignored, and its location is free
             
-            // Only attempt to restore edges if the node itself is considered potentially usable.
-            // If !node_location_is_currently_free (and not ignore_sample), it means 'node' is *still*
-            // in some *other* obstacle, so its edges should remain unusable/INFINITE.
+//             // Only attempt to restore edges if the node itself is considered potentially usable.
+//             // If !node_location_is_currently_free (and not ignore_sample), it means 'node' is *still*
+//             // in some *other* obstacle, so its edges should remain unusable/INFINITE.
 
-            if (node_location_is_currently_free) { // Essential check for non-ignore_sample, good for ignore_sample too
-                for (auto& [u, edge] : node->outgoingEdges()) {
-                    bool should_attempt_restore = false;
-                    if (ignore_sample) {
-                        // If node was un-ignored, and neighbor u is also not in an ignored state
-                        if (node_was_in_ignored_obstacle_state && !samples_in_obstacles_.count(u->getIndex())) {
-                            should_attempt_restore = true;
-                        }
-                    } else { // Not ignore_sample
-                        if (edge.distance == INFINITY) { // Only consider edges that were previously blocked
-                            should_attempt_restore = true;
-                        }
-                    }
+//             if (node_location_is_currently_free) { // Essential check for non-ignore_sample, good for ignore_sample too
+//                 for (auto& [u, edge] : node->outgoingEdges()) {
+//                     bool should_attempt_restore = false;
+//                     if (ignore_sample) {
+//                         // If node was un-ignored, and neighbor u is also not in an ignored state
+//                         if (node_was_in_ignored_obstacle_state && !samples_in_obstacles_.count(u->getIndex())) {
+//                             should_attempt_restore = true;
+//                         }
+//                     } else { // Not ignore_sample
+//                         if (edge.distance == INFINITY) { // Only consider edges that were previously blocked
+//                             should_attempt_restore = true;
+//                         }
+//                     }
 
-                    if (should_attempt_restore) {
-                        // Crucially, check if the edge (node->u) is *actually* free now from any obstacle
-                        // Re-check the original trajectory for safety.
-                        const Trajectory& original_traj = edge.cached_trajectory;
-                        const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
-                        obs_check++;
-                        last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
-                        if (obs_checker_->isTrajectorySafe(original_traj, global_edge_start_time)) {
-                            edge.distance = edge.distance_original;
-                            if (u->incomingEdges().count(node)) u->incomingEdges().at(node).distance = edge.distance_original;
-                            if (u->outgoingEdges().count(node)) u->outgoingEdges().at(node).distance = edge.distance_original;
-                            if (node->incomingEdges().count(u)) node->incomingEdges().at(u).distance = edge.distance_original;
-                        }
-                        // If it's not free (e.g., blocked by another, different obstacle), its distance remains INFINITY or its current value.
-                    }
-                }
-            }
+//                     if (should_attempt_restore) {
+//                         // Crucially, check if the edge (node->u) is *actually* free now from any obstacle
+//                         // Re-check the original trajectory for safety.
+//                         const Trajectory& original_traj = edge.cached_trajectory;
+//                         const double global_edge_start_time = t_arrival_predicted - node->getTimeToGoal();
+//                         obs_check++;
+//                         last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
+//                         if (obs_checker_->isTrajectorySafe(original_traj, global_edge_start_time)) {
+//                             edge.distance = edge.distance_original;
+//                             if (u->incomingEdges().count(node)) u->incomingEdges().at(node).distance = edge.distance_original;
+//                             if (u->outgoingEdges().count(node)) u->outgoingEdges().at(node).distance = edge.distance_original;
+//                             if (node->incomingEdges().count(u)) node->incomingEdges().at(u).distance = edge.distance_original;
+//                         }
+//                         // If it's not free (e.g., blocked by another, different obstacle), its distance remains INFINITY or its current value.
+//                     }
+//                 }
+//             }
             
-            // After attempting to restore edges, update LMC and queue if inconsistent.
-            // This should happen if the node itself became free and thus usable.
-            updateLMC(node);
-            if (node->getCost() != node->getLMC()) {
-                verifyQueue(node);
-            }
-        }
-    }
-}
-/////////////////////////////////////////////////////////////////////////////////////////
+//             // After attempting to restore edges, update LMC and queue if inconsistent.
+//             // This should happen if the node itself became free and thus usable.
+//             updateLMC(node);
+//             if (node->getCost() != node->getLMC()) {
+//                 verifyQueue(node);
+//             }
+//         }
+//     }
+// }
+// /////////////////////////////////////////////////////////////////////////////////////////
 
 // // With 3 seconds horizon filter!
 
@@ -3760,7 +3787,7 @@ void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob) {
         last_replan_metrics_.obstacle_checks++;
 
         // Physics Check
-        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, edge_start_ttg, ob)) {
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
             // 1. Mark as Blocked
             edge.distance = std::numeric_limits<double>::infinity();
             
@@ -3840,12 +3867,12 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
             }
 #else
             const double ttg = node->getTimeToGoal();
-            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, ttg, ob)) {
+            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
                 bool conflicts_with_other = false;
                 for (const auto& other_ob : all_obstacles) {
                     if (other_ob.name == ob.name) continue; 
                     last_replan_metrics_.obstacle_checks++;
-                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, ttg, other_ob)) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, other_ob)) {
                         conflicts_with_other = true;
                         break; 
                     }

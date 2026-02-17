@@ -234,7 +234,7 @@ int main(int argc, char** argv) {
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
     auto start_t = std::chrono::steady_clock::now();
     
-    bool fixed_sample = true;
+    bool fixed_sample = false;
     if (is_anytime) {
         if(!fixed_sample){
             auto warmup_duration = std::chrono::milliseconds(500); 

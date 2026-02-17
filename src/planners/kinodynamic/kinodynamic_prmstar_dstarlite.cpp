@@ -411,72 +411,202 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
 //     node->neighbors_cached_ = true;
 // }
 
+// // Feb17 --> uses stack variable trajectory in edgeinfo
+// void KinodynamicPRMStarDStarLite::near(int node_index) {
+//     auto node = nodes_[node_index].get();
+//     if (node->neighbors_cached_) return;
+
+//     // --- GRID NEIGHBOR LOGIC ---
+//     if (use_grid_sampling_) {
+//         // 1. Convert linear index to 2D grid coordinates (row, col)
+//         // Assuming row-major order: index = row * width + col
+//         int row = node_index / grid_dim_per_side_;
+//         int col = node_index % grid_dim_per_side_;
+
+//         // 2. Define the 8 directions (dx, dy)
+//         // (Up, Down, Left, Right, and 4 Diagonals)
+//         int directions[8][2] = {
+//             {-1, 0}, {1, 0}, {0, -1}, {0, 1},  // Cardinals
+//             {-1, -1}, {-1, 1}, {1, -1}, {1, 1} // Diagonals
+//         };
+
+//         // 3. Iterate through directions
+//         for (int i = 0; i < 8; ++i) {
+//             int n_row = row + directions[i][0];
+//             int n_col = col + directions[i][1];
+
+//             // 4. Check boundaries (don't connect to nodes outside the grid)
+//             if (n_row >= 0 && n_row < grid_dim_per_side_ &&
+//                 n_col >= 0 && n_col < grid_dim_per_side_) {
+                
+//                 // 5. Convert back to linear index
+//                 int neighbor_idx = n_row * grid_dim_per_side_ + n_col;
+
+//                 // Safety check
+//                 if (neighbor_idx >= 0 && neighbor_idx < (int)nodes_.size()) {
+//                     DStarLiteNode* neighbor = nodes_[neighbor_idx].get();
+                    
+//                     // --- CONNECT NODES (Same logic as before) ---
+                    
+//                     // Test FORWARD connection (Node -> Neighbor)
+//                     Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+//                     if (traj_forward.is_valid && traj_forward.cost <= connection_radius_ + 0.01) {
+//                         EdgeInfo info_forward;
+//                         info_forward.distance = traj_forward.cost;
+//                         info_forward.distance_original = info_forward.distance;
+//                         info_forward.cached_trajectory = traj_forward;
+//                         info_forward.is_trajectory_computed = true;
+                        
+//                         node->forward_neighbors_[neighbor] = info_forward;
+//                         neighbor->backward_neighbors_[node] = info_forward;
+//                     }
+
+//                     // Test BACKWARD connection (Neighbor -> Node)
+//                     Trajectory traj_backward;
+//                     if (is_geometric_mode_) {
+//                         traj_backward = traj_forward;
+//                     } else {
+//                         traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
+//                     }
+                    
+//                     if (traj_backward.is_valid && traj_backward.cost <= connection_radius_ + 0.01) {
+//                         EdgeInfo info_backward;
+//                         info_backward.distance = traj_backward.cost;
+//                         info_backward.distance_original = info_backward.distance;
+//                         info_backward.cached_trajectory = traj_backward;
+//                         info_backward.is_trajectory_computed = true;
+                        
+//                         neighbor->forward_neighbors_[node] = info_backward;
+//                         node->backward_neighbors_[neighbor] = info_backward;
+//                     }
+//                 }
+//             }
+//         }
+//     } 
+//     // --- ORIGINAL KD-TREE LOGIC ---
+//     else {
+//         // 1. Get candidate neighbors
+//         std::vector<size_t> candidate_indices;
+//         if (use_knn_) {
+//             if (k_neighbors_ > 0) {
+//                 candidate_indices = kdtree_->knnSearch(node->getStateValue().head(kd_dim_), k_neighbors_);
+//             }
+//         } else {
+//             if (connection_radius_ > 0) {
+//                 candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim_), connection_radius_);
+//             }
+//         }
+
+//         // 2. Populate Neighbors
+//         for (int idx : candidate_indices) {
+//             if (idx == node_index) continue;
+//             DStarLiteNode* neighbor = nodes_[idx].get();
+
+//             // Test FORWARD connection
+//             Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+//             if (traj_forward.is_valid) {
+//                 EdgeInfo info_forward;
+//                 info_forward.distance = traj_forward.cost;
+//                 info_forward.distance_original = info_forward.distance;
+//                 info_forward.cached_trajectory = traj_forward;
+//                 info_forward.is_trajectory_computed = true;
+                
+//                 node->forward_neighbors_[neighbor] = info_forward;
+//                 neighbor->backward_neighbors_[node] = info_forward;
+//             }
+
+//             // Test BACKWARD connection
+//             Trajectory traj_backward;
+//             if (is_geometric_mode_) {
+//                 traj_backward = traj_forward;
+//             } else {
+//                 traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
+//             }
+//             if (traj_backward.is_valid) {
+//                 EdgeInfo info_backward;
+//                 info_backward.distance = traj_backward.cost;
+//                 info_backward.distance_original = info_backward.distance;
+//                 info_backward.cached_trajectory = traj_backward;
+//                 info_backward.is_trajectory_computed = true;
+                
+//                 neighbor->forward_neighbors_[node] = info_backward;
+//                 node->backward_neighbors_[neighbor] = info_backward;
+//             }
+//         }
+//     }
+
+//     node->neighbors_cached_ = true;
+// }
+
 void KinodynamicPRMStarDStarLite::near(int node_index) {
     auto node = nodes_[node_index].get();
     if (node->neighbors_cached_) return;
 
     // --- GRID NEIGHBOR LOGIC ---
     if (use_grid_sampling_) {
-        // 1. Convert linear index to 2D grid coordinates (row, col)
-        // Assuming row-major order: index = row * width + col
         int row = node_index / grid_dim_per_side_;
         int col = node_index % grid_dim_per_side_;
 
-        // 2. Define the 8 directions (dx, dy)
-        // (Up, Down, Left, Right, and 4 Diagonals)
         int directions[8][2] = {
             {-1, 0}, {1, 0}, {0, -1}, {0, 1},  // Cardinals
             {-1, -1}, {-1, 1}, {1, -1}, {1, 1} // Diagonals
         };
 
-        // 3. Iterate through directions
         for (int i = 0; i < 8; ++i) {
             int n_row = row + directions[i][0];
             int n_col = col + directions[i][1];
 
-            // 4. Check boundaries (don't connect to nodes outside the grid)
             if (n_row >= 0 && n_row < grid_dim_per_side_ &&
                 n_col >= 0 && n_col < grid_dim_per_side_) {
                 
-                // 5. Convert back to linear index
                 int neighbor_idx = n_row * grid_dim_per_side_ + n_col;
 
-                // Safety check
                 if (neighbor_idx >= 0 && neighbor_idx < (int)nodes_.size()) {
                     DStarLiteNode* neighbor = nodes_[neighbor_idx].get();
                     
-                    // --- CONNECT NODES (Same logic as before) ---
-                    
-                    // Test FORWARD connection (Node -> Neighbor)
+                    // Test FORWARD connection
                     Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+                    std::shared_ptr<Trajectory> shared_traj_forward; // Declare outside for reuse
+                    
                     if (traj_forward.is_valid && traj_forward.cost <= connection_radius_ + 0.01) {
+                        shared_traj_forward = std::make_shared<Trajectory>(std::move(traj_forward));
+                        
                         EdgeInfo info_forward;
-                        info_forward.distance = traj_forward.cost;
-                        info_forward.distance_original = info_forward.distance;
-                        info_forward.cached_trajectory = traj_forward;
+                        info_forward.distance = shared_traj_forward->cost;
+                        info_forward.distance_original = shared_traj_forward->cost;
+                        info_forward.cached_trajectory = shared_traj_forward;
                         info_forward.is_trajectory_computed = true;
                         
                         node->forward_neighbors_[neighbor] = info_forward;
                         neighbor->backward_neighbors_[node] = info_forward;
                     }
 
-                    // Test BACKWARD connection (Neighbor -> Node)
-                    Trajectory traj_backward;
+                    // Test BACKWARD connection
                     if (is_geometric_mode_) {
-                        traj_backward = traj_forward;
+                        if (shared_traj_forward) { // Only assign if forward was valid
+                            EdgeInfo info_backward;
+                            info_backward.distance = shared_traj_forward->cost;
+                            info_backward.distance_original = shared_traj_forward->cost;
+                            info_backward.cached_trajectory = shared_traj_forward; // Reuse exact pointer!
+                            info_backward.is_trajectory_computed = true;
+                            
+                            neighbor->forward_neighbors_[node] = info_backward;
+                            node->backward_neighbors_[neighbor] = info_backward;
+                        }
                     } else {
-                        traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-                    }
-                    
-                    if (traj_backward.is_valid && traj_backward.cost <= connection_radius_ + 0.01) {
-                        EdgeInfo info_backward;
-                        info_backward.distance = traj_backward.cost;
-                        info_backward.distance_original = info_backward.distance;
-                        info_backward.cached_trajectory = traj_backward;
-                        info_backward.is_trajectory_computed = true;
-                        
-                        neighbor->forward_neighbors_[node] = info_backward;
-                        node->backward_neighbors_[neighbor] = info_backward;
+                        Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
+                        if (traj_backward.is_valid && traj_backward.cost <= connection_radius_ + 0.01) {
+                            auto shared_traj_backward = std::make_shared<Trajectory>(std::move(traj_backward));
+                            
+                            EdgeInfo info_backward;
+                            info_backward.distance = shared_traj_backward->cost;
+                            info_backward.distance_original = shared_traj_backward->cost;
+                            info_backward.cached_trajectory = shared_traj_backward;
+                            info_backward.is_trajectory_computed = true;
+                            
+                            neighbor->forward_neighbors_[node] = info_backward;
+                            node->backward_neighbors_[neighbor] = info_backward;
+                        }
                     }
                 }
             }
@@ -484,7 +614,6 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
     } 
     // --- ORIGINAL KD-TREE LOGIC ---
     else {
-        // 1. Get candidate neighbors
         std::vector<size_t> candidate_indices;
         if (use_knn_) {
             if (k_neighbors_ > 0) {
@@ -496,18 +625,21 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
             }
         }
 
-        // 2. Populate Neighbors
         for (int idx : candidate_indices) {
             if (idx == node_index) continue;
             DStarLiteNode* neighbor = nodes_[idx].get();
 
             // Test FORWARD connection
             Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
+            std::shared_ptr<Trajectory> shared_traj_forward;
+            
             if (traj_forward.is_valid) {
+                shared_traj_forward = std::make_shared<Trajectory>(std::move(traj_forward));
+                
                 EdgeInfo info_forward;
-                info_forward.distance = traj_forward.cost;
-                info_forward.distance_original = info_forward.distance;
-                info_forward.cached_trajectory = traj_forward;
+                info_forward.distance = shared_traj_forward->cost;
+                info_forward.distance_original = shared_traj_forward->cost;
+                info_forward.cached_trajectory = shared_traj_forward;
                 info_forward.is_trajectory_computed = true;
                 
                 node->forward_neighbors_[neighbor] = info_forward;
@@ -515,28 +647,37 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
             }
 
             // Test BACKWARD connection
-            Trajectory traj_backward;
             if (is_geometric_mode_) {
-                traj_backward = traj_forward;
+                if (shared_traj_forward) { // Only assign if forward was valid
+                    EdgeInfo info_backward;
+                    info_backward.distance = shared_traj_forward->cost;
+                    info_backward.distance_original = shared_traj_forward->cost;
+                    info_backward.cached_trajectory = shared_traj_forward; // Reuse pointer
+                    info_backward.is_trajectory_computed = true;
+                    
+                    neighbor->forward_neighbors_[node] = info_backward;
+                    node->backward_neighbors_[neighbor] = info_backward;
+                }
             } else {
-                traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-            }
-            if (traj_backward.is_valid) {
-                EdgeInfo info_backward;
-                info_backward.distance = traj_backward.cost;
-                info_backward.distance_original = info_backward.distance;
-                info_backward.cached_trajectory = traj_backward;
-                info_backward.is_trajectory_computed = true;
-                
-                neighbor->forward_neighbors_[node] = info_backward;
-                node->backward_neighbors_[neighbor] = info_backward;
+                Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
+                if (traj_backward.is_valid) {
+                    auto shared_traj_backward = std::make_shared<Trajectory>(std::move(traj_backward));
+                    
+                    EdgeInfo info_backward;
+                    info_backward.distance = shared_traj_backward->cost;
+                    info_backward.distance_original = shared_traj_backward->cost;
+                    info_backward.cached_trajectory = shared_traj_backward;
+                    info_backward.is_trajectory_computed = true;
+                    
+                    neighbor->forward_neighbors_[node] = info_backward;
+                    node->backward_neighbors_[neighbor] = info_backward;
+                }
             }
         }
     }
 
     node->neighbors_cached_ = true;
 }
-
 
 
 void KinodynamicPRMStarDStarLite::plan() {
@@ -760,7 +901,7 @@ void KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
         if (cost < min_rhs - 1e-9) {
             min_rhs = cost;
             best_parent = succ;
-            best_traj = edge_info.cached_trajectory;
+            best_traj = *(edge_info.cached_trajectory);
         }
 #if DEBUG_WITH_DIJKSTRA_
         // 2. TIE-BREAKER: Equal cost, but lower Node Index
@@ -768,7 +909,7 @@ void KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
             if (best_parent && succ->getIndex() < best_parent->getIndex()) {
                 // Keep min_rhs the same, but switch to the preferred parent
                 best_parent = succ;
-                best_traj = edge_info.cached_trajectory;
+                best_traj = *(edge_info.cached_trajectory);
             }
         }
 #endif
@@ -883,14 +1024,14 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
                     // If this new path through u is better, PUSH the update
                     if (pred->rhs > new_cost + 1e-9) {
                         pred->rhs = new_cost;
-                        pred->setBestParent(u, edge_info.cached_trajectory);
+                        pred->setBestParent(u, *(edge_info.cached_trajectory));
                     }
 #if DEBUG_WITH_DIJKSTRA_
                     // 2. TIE-BREAKER: Equal cost, but lower Node Index
                     else if (std::abs(pred->rhs - new_cost) <= 1e-9) {
                         if (pred->getParent() && u->getIndex() < pred->getParent()->getIndex()) {
                             pred->rhs = new_cost; // strictly speaking, cost is the same
-                            pred->setBestParent(u, edge_info.cached_trajectory);
+                            pred->setBestParent(u, *(edge_info.cached_trajectory));
                         }
                     }
 #endif
@@ -1473,7 +1614,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
         last_replan_metrics_.obstacle_checks++;
 
         // Physics Check
-        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, edge_start_ttg, ob)) {
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
             
             // 1. Mark as Blocked (Forward Edge)
             if (edge.distance != std::numeric_limits<double>::infinity()) {
@@ -1583,12 +1724,12 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
             }
 #else
             const double ttg = node->getTimeToGoal();
-            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, ttg, ob)) {
+            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
                 bool conflicts_with_other = false;
                 for (const auto& other_ob : all_obstacles) {
                     if (other_ob.name == ob.name) continue; 
                     last_replan_metrics_.obstacle_checks++;
-                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, ttg, other_ob)) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, other_ob)) {
                         conflicts_with_other = true;
                         break; 
                     }

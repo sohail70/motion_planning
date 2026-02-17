@@ -85,7 +85,8 @@ struct EdgeInfo {
     // double approximate_distance; 
 
     // Caching for Kinodynamics --> The steer function in high D is heavy! caching them is a good way to not do any redundant calculation
-    Trajectory cached_trajectory;
+    // Trajectory cached_trajectory;
+    std::shared_ptr<Trajectory> cached_trajectory;
     bool       is_trajectory_computed = false;
 
 
