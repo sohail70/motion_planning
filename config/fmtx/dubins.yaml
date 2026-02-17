@@ -42,18 +42,18 @@ manager_params:
   sim_frequency_hz: 50
   vis_frequency_hz: 30
   follow_path: true
-  inflation: 0.75
+  inflation: 0.0
 
 gazebo_params:
   robot_model_name: "tugbot"
   world_name: "default"
-  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circlee.sdf"
+  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf"
   default_robot_x: 48.0  
   default_robot_y: 48.0
   use_range: false
   sensor_range: 20.0
   estimation: true
-  inflation: 0.75
+  inflation: 0.0
   fcl: false
   bullet: false
   persistent_static_obstacles: false

@@ -256,97 +256,150 @@ void KinodynamicANYFMTX::updateNeighborhoodRadius() {
     // std::cout<<neighborhood_radius_<<"\n";
 }
 
-// We need to separate decision making! i.,e the above updateNeighbors will give seg fault because you update backward map but we we ignore it because there was not forward map!!! but that pointer in the backward map still exists!!! DANGEROUS!
-bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node) {
-    std::vector<size_t> candidate_indices = kdtree_->radiusSearch(sample_val.head(kd_dim), neighborhood_radius_);
+// // We need to separate decision making! i.,e the above updateNeighbors will give seg fault because you update backward map but we we ignore it because there was not forward map!!! but that pointer in the backward map still exists!!! DANGEROUS!
+// bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node) {
+//     std::vector<size_t> candidate_indices = kdtree_->radiusSearch(sample_val.head(kd_dim), neighborhood_radius_ + 0.01);
     
-    // Temporary storage for valid connections
-    std::vector<std::pair<FMTNode*, Trajectory>> valid_outgoing;
-    std::vector<std::pair<FMTNode*, Trajectory>> valid_incoming;
+//     // Temporary storage for valid connections
+//     std::vector<std::pair<FMTNode*, Trajectory>> valid_outgoing;
+//     std::vector<std::pair<FMTNode*, Trajectory>> valid_incoming;
 
-    // --- PASS 1: VALIDATION ---
-    // We only compute trajectories here to see if the node is worth keeping.
-    // We DO NOT modify the neighbor maps yet.
+//     // --- PASS 1: OUTGOING VALIDATION (FORWARD) ---
+//     // We only compute forward trajectories first to see if the node is a dead-end.
+//     for (size_t idx : candidate_indices) {
+//         FMTNode* neighbor = tree_[idx].get();
+        
+//         Trajectory traj_outgoing = statespace_->steer(sample_val, neighbor->getStateValue());
+//         if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + 0.01) {
+//             valid_outgoing.push_back({neighbor, traj_outgoing});
+            
+//             // --- OPTIMIZATION FOR GEOMETRIC CASE ---
+//             // If geometric, we know symmetry guarantees backward validity. 
+//             // We cache it here so we don't need a Pass 2 at all.
+//             if (is_geometric_mode_) {
+//                 valid_incoming.push_back({neighbor, traj_outgoing});
+//             }
+//         }
+//     }
+
+//     // --- DECISION POINT ---
+//     // If we have NO valid outgoing connections, this node is an orphan/dead-end.
+//     // We return FALSE immediately, SAVING us from all the expensive incoming steer checks!
+//     if (valid_outgoing.empty()) {
+//         return false; 
+//     }
+
+//     // --- PASS 2: INCOMING VALIDATION (BACKWARD) ---
+//     // The node is viable. Now we compute the expensive incoming kinodynamic edges.
+//     if (!is_geometric_mode_) {
+//         for (size_t idx : candidate_indices) {
+//             FMTNode* neighbor = tree_[idx].get();
+//             Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
+//             if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + 0.01) {
+//                 valid_incoming.push_back({neighbor, traj_incoming});
+//             }
+//         }
+//     }
+
+//     // --- PASS 3: COMMIT ---
+//     // We know the node is good. Now we actually modify the maps.
+//     for (auto& [neighbor, traj] : valid_outgoing) {
+//         EdgeInfo edge_info;
+//         edge_info.distance = traj.cost;
+//         edge_info.is_trajectory_computed = true;
+//         edge_info.cached_trajectory = traj;
+//         edge_info.is_initial = true; // <--- INITIAL for v
+
+//         new_node->forwardNeighbors()[neighbor] = edge_info;
+
+//         // Update the neighbor's backward map.
+//         // For the neighbor (u), this edge (u <- v) is TEMPORARY.
+//         edge_info.is_initial = false; // <--- TEMPORARY for u
+//         neighbor->backwardNeighbors()[new_node] = edge_info;
+//     }
+
+//     for (auto& [neighbor, traj] : valid_incoming) {
+//         EdgeInfo edge_info;
+//         edge_info.distance = traj.cost;
+//         edge_info.is_trajectory_computed = true;
+//         edge_info.cached_trajectory = traj;
+//         edge_info.is_initial = true; // <--- INITIAL for v
+
+//         new_node->backwardNeighbors()[neighbor] = edge_info;
+
+//         // Update the neighbor's forward map.
+//         // For the neighbor (u), this edge (u -> v) is TEMPORARY.
+//         edge_info.is_initial = false; // <--- TEMPORARY for u
+//         neighbor->forwardNeighbors()[new_node] = edge_info;
+//     }
+    
+//     new_node->neighbors_cached_ = true;
+//     return true;
+// }
+
+bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node) {
+    std::vector<size_t> candidate_indices = kdtree_->radiusSearch(sample_val.head(kd_dim), neighborhood_radius_ + 0.01);
+    
+    bool is_valid_sample = false;
+
+    // --- PASS 1: OUTGOING VALIDATION & DIRECT COMMIT ---
     for (size_t idx : candidate_indices) {
         FMTNode* neighbor = tree_[idx].get();
-        
-        // 1. Check Forward (New -> Neighbor)
         Trajectory traj_outgoing = statespace_->steer(sample_val, neighbor->getStateValue());
+        
         if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + 0.01) {
-            valid_outgoing.push_back({neighbor, traj_outgoing});
-        }
-
-        // // 2. Check Backward (Neighbor -> New)
-        // // We check this too because if this exists, the neighbor needs to know about this node
-        // // even if the node can't reach the neighbor directly (though usually we want both).
-        // Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
-        // if (traj_incoming.is_valid) {
-        //     valid_incoming.push_back({neighbor, traj_incoming});
-        // }
-
-        // 2. Check Backward (Neighbor -> New)
-        if (is_geometric_mode_) {
-            // --- OPTIMIZATION FOR GEOMETRIC CASE ---
-            // In geometric mode, symmetry guarantees backward validity and cost equal forward.
-            // We reuse the outgoing trajectory to save a collision check and steer computation.
-            if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + 0.01) {
-                valid_incoming.push_back({neighbor, traj_outgoing});
-            }
-        } else {
-            // --- KINODYNAMIC CASE ---
-            // We check this too because if this exists, the neighbor needs to know about this node
-            // even if the node can't reach the neighbor directly (though usually we want both).
-            Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
-            if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + 0.01) {
-                valid_incoming.push_back({neighbor, traj_incoming});
+            is_valid_sample = true; 
+            
+            EdgeInfo edge_info;
+            edge_info.distance = traj_outgoing.cost;
+            edge_info.is_trajectory_computed = true;
+            edge_info.cached_trajectory = traj_outgoing;
+            
+            // Commit Forward 
+            edge_info.is_initial = true;
+            new_node->forwardNeighbors()[neighbor] = edge_info;
+            edge_info.is_initial = false;
+            neighbor->backwardNeighbors()[new_node] = edge_info;
+            
+            // Geometric Optimization
+            if (is_geometric_mode_) {
+                edge_info.is_initial = true;
+                new_node->backwardNeighbors()[neighbor] = edge_info;
+                edge_info.is_initial = false;
+                neighbor->forwardNeighbors()[new_node] = edge_info;
             }
         }
-
-
     }
 
-    // --- DECISION POINT ---
-    // If we have NO valid outgoing connections, this node is an orphan/dead-end.
-    // We return FALSE immediately. We have NOT modified the graph yet.
-    if (valid_outgoing.empty()) {
+    // Bail early, no expensive steer checks wasted
+    if (!is_valid_sample) {
         return false; 
     }
 
-    // --- PASS 2: COMMIT ---
-    // We know the node is good. Now we actually modify the maps.
-    for (auto& [neighbor, traj] : valid_outgoing) {
-        EdgeInfo edge_info;
-        edge_info.distance = traj.cost;
-        edge_info.is_trajectory_computed = true;
-        edge_info.cached_trajectory = traj;
-        edge_info.is_initial = true; // <--- INITIAL for v
-
-        new_node->forwardNeighbors()[neighbor] = edge_info;
-
-        // Update the neighbor's backward map.
-        // For the neighbor (u), this edge (u <- v) is TEMPORARY.
-        edge_info.is_initial = false; // <--- TEMPORARY for u
-        neighbor->backwardNeighbors()[new_node] = edge_info;
-    }
-
-    for (auto& [neighbor, traj] : valid_incoming) {
-        EdgeInfo edge_info;
-        edge_info.distance = traj.cost;
-        edge_info.is_trajectory_computed = true;
-        edge_info.cached_trajectory = traj;
-        edge_info.is_initial = true; // <--- INITIAL for v
-
-        new_node->backwardNeighbors()[neighbor] = edge_info;
-
-        // Update the neighbor's forward map.
-        // For the neighbor (u), this edge (u -> v) is TEMPORARY.
-        edge_info.is_initial = false; // <--- TEMPORARY for u
-        neighbor->forwardNeighbors()[new_node] = edge_info;
+    // --- PASS 2: INCOMING VALIDATION (Kinodynamic Only) ---
+    if (!is_geometric_mode_) {
+        for (size_t idx : candidate_indices) {
+            FMTNode* neighbor = tree_[idx].get();
+            Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
+            
+            if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + 0.01) {
+                EdgeInfo edge_info;
+                edge_info.distance = traj_incoming.cost;
+                edge_info.is_trajectory_computed = true;
+                edge_info.cached_trajectory = traj_incoming;
+                
+                edge_info.is_initial = true;
+                new_node->backwardNeighbors()[neighbor] = edge_info;
+                edge_info.is_initial = false;
+                neighbor->forwardNeighbors()[new_node] = edge_info;
+            }
+        }
     }
     
     new_node->neighbors_cached_ = true;
     return true;
 }
+
 
 
 Eigen::VectorXd KinodynamicANYFMTX::saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta) {
@@ -417,24 +470,25 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
     if (num_samples <= 0) return;
 
     std::vector<int> added_node_indices;
-    std::vector<Eigen::VectorXd> new_samples_viz;
+    // std::vector<Eigen::VectorXd> new_samples_viz;
 
     for (int i = 0; i < num_samples; ++i) {
         // 1. Generate Sample
         Eigen::VectorXd sample_val = statespace_->sampleUniform(lower_bounds_, upper_bounds_)->getValue();
 
 
-       // //////// INCASE YOU WANNA USE SATURATE TO GUIDE THE SAMPLES --> THIS IS NOT NECESSARY UNLESS YOU ONLY WANNA ADD ONE SAMPLE OR YOU WANNA COMPARE WITH RRTX!///////////
-        std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample_val.head(kd_dim), 1);
-        FMTNode* nearest_node = tree_[nearest_indices[0]].get();
-        Eigen::VectorXd nearest_state = nearest_node->getStateValue();
+    //    // //////// INCASE YOU WANNA USE SATURATE TO GUIDE THE SAMPLES --> THIS IS NOT NECESSARY UNLESS YOU ONLY WANNA ADD ONE SAMPLE OR YOU WANNA COMPARE WITH RRTX!///////////
+    //     std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample_val.head(kd_dim), 1);
+    //     FMTNode* nearest_node = tree_[nearest_indices[0]].get();
+    //     Eigen::VectorXd nearest_state = nearest_node->getStateValue();
         
-        // 4. Saturate (Steer)
-        sample_val = saturate(sample_val, nearest_state, delta);
-        // ///////////////////////////////////////////////////////
-        // if (!obs_checker_->isObstacleFree(sample_val)) {
-        //     continue;
-        // }
+    //     // 4. Saturate (Steer)
+    //     sample_val = saturate(sample_val, nearest_state, delta);
+    //     // ///////////////////////////////////////////////////////
+        // This is just for fmtx to be complete! in case we have static obstalces!
+        if (!obs_checker_->isObstacleFree(sample_val)) {
+            continue;
+        }
 
 
         // 2. Create Node Object (Temporarily)
@@ -462,7 +516,7 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
         kdtree_->addPoint(sample_val.head(kd_dim)); 
         
         added_node_indices.push_back(node_index);
-        new_samples_viz.push_back(sample_val);
+        // new_samples_viz.push_back(sample_val);
     }
 
     if (added_node_indices.empty()) return;
@@ -504,6 +558,7 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
         // new_node->threats = accumulated_threats;
 
     }
+    
     // // ======================================================
     // // NEW: VISUALIZE V_OPEN NODES
     // // ======================================================
@@ -1820,7 +1875,7 @@ void KinodynamicANYFMTX::near(int node_index) {
         }
     } else {
         if (neighborhood_radius_ > 0) {
-            candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim), neighborhood_radius_);
+            candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
         }
     }
 
@@ -1847,7 +1902,7 @@ void KinodynamicANYFMTX::near(int node_index) {
 
             // Test FORWARD connection
             Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
-            if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_)) {
+            if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_ + 0.01)) {
                 node->forwardNeighbors()[neighbor] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
                 neighbor->backwardNeighbors()[node] = {traj_forward.cost, traj_forward.cost, true, traj_forward, true};
                 max_length_ = std::max(max_length_, traj_forward.cost);
@@ -1855,7 +1910,7 @@ void KinodynamicANYFMTX::near(int node_index) {
 
             // Test BACKWARD connection
             Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-            if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_)) {
+            if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_ + 0.01)) {
                 node->backwardNeighbors()[neighbor] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
                 neighbor->forwardNeighbors()[node] = {traj_backward.cost, traj_backward.cost, true, traj_backward, true};
                 max_length_ = std::max(max_length_, traj_backward.cost);
@@ -6291,6 +6346,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         // We are trapped. No nodes in radius are safe.
         robot_node_ = nullptr;
         robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        bridge_cost_ = std::numeric_limits<double>::infinity();
         last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
         RCLCPP_WARN_THROTTLE(rclcpp::get_logger("FMTx"), *clock_, 1000, "LOST SAFE ANCHOR!");
     }

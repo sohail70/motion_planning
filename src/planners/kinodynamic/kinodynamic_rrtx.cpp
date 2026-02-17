@@ -3051,6 +3051,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         // We are trapped. No nodes in radius are safe.
         vbot_node_ = nullptr;
         robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        bridge_cost_ = std::numeric_limits<double>::infinity();
         last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
         RCLCPP_WARN(rclcpp::get_logger("RRTx_Anchor"), "Anchor Status: NULL (Robot is lost or searching...)");
     }

@@ -33,11 +33,11 @@ robot:
 
 # Planner Parameters
 planner_params:
-  num_of_samples: 1000
-  factor: 1.5
+  num_of_samples: 500
+  factor: 3.0
   use_kdtree: true
   kdtree_type: "NanoFlann"
-  partial_update: false
+  partial_update: true
   partial_plot: true
   static_obs_presence: true
   obs_cache: false
@@ -58,7 +58,7 @@ manager_params:
 gazebo_params:
   robot_model_name: "tugbot"
   world_name: "default"
-  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10_sloww.sdf"
+  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10_slow.sdf"
   default_robot_x: 48.0  
   default_robot_y: 48.0
   use_range: false
