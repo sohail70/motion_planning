@@ -1027,8 +1027,8 @@ Trajectory DubinsStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Vec
     out.is_valid = true;
     out.cost = best_maneuver.cost;
     out.geometric_distance = best_maneuver.cost;
-    out.maneuver_type = best_maneuver.type;
-    out.maneuver_pts = best_maneuver.pts;
+    // out.maneuver_type = best_maneuver.type;
+    // out.maneuver_pts = best_maneuver.pts;
 
     // out.analytical_segments.clear();
     // const auto& P = best_maneuver.pts;

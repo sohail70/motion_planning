@@ -53,20 +53,20 @@ struct Trajectory {
     //  This will store the polynomial coefficients for each axis.
     std::vector<Eigen::VectorXd> coeffs_per_axis;  // for min snap
     
-    // Helper fields to pass info from base to derived steer function --> Well I guess I dont need these also because they are used for dubins analytical data used in (commented out) getCollidingObstalce function!
-    std::string maneuver_type;
-    std::vector<Eigen::Vector2d> maneuver_pts;
-    std::vector<Eigen::Vector2d> maneuver_centers;
+    // // Helper fields to pass info from base to derived steer function --> Well I guess I dont need these also because they are used for dubins analytical data used in (commented out) getCollidingObstalce function!
+    // std::string maneuver_type;
+    // std::vector<Eigen::Vector2d> maneuver_pts;
+    // std::vector<Eigen::Vector2d> maneuver_centers;
 
-    // For Broad phase collision checking
-    Eigen::Vector3d envelope_center = Eigen::Vector3d::Zero();
-    double envelope_radius = 0.0;
-    double total_duration = 0.0;
+    // // For Broad phase collision checking
+    // Eigen::Vector3d envelope_center = Eigen::Vector3d::Zero();
+    // double envelope_radius = 0.0;
+    // double total_duration = 0.0;
 
 
-        // ADD THESE TWO FIELDS:
-    int from_node_index = -1; // To store 1287
-    int to_node_index = -1;   // To store 2203
+    //     // ADD THESE TWO FIELDS:
+    // int from_node_index = -1; // To store 1287
+    // int to_node_index = -1;   // To store 2203
 
 };
 

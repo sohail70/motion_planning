@@ -1321,6 +1321,8 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
 
 // // MIND that i didnt use 4 separate list and optimized it by using two sets with a boolean flag so removing the outgoing neighbor is enough for cullneighbor
 void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
+    // A brand new node ONLY has initial edges. Nothing to cull!
+    if (v->is_new) return;
     if (v->last_culled_radius_ == neighborhood_radius_) return;
 
     auto& outgoing = v->forwardNeighbors();

@@ -242,14 +242,14 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
         traj.cost = spatial_distance; // Cost is just distance
         traj.geometric_distance = spatial_distance;
         traj.time_duration = 0.0; // No time in geometric mode
-        traj.total_duration = 0.0;
+        // traj.total_duration = 0.0;
         
         traj.path_points.push_back(from);
         traj.path_points.push_back(to);
 
-        // Envelope for collision checking
-        traj.envelope_center.head<2>() = (from.head<2>() + to.head<2>()) / 2.0;
-        traj.envelope_radius = spatial_distance / 2.0;
+        // // Envelope for collision checking
+        // traj.envelope_center.head<2>() = (from.head<2>() + to.head<2>()) / 2.0;
+        // traj.envelope_radius = spatial_distance / 2.0;
 
         return traj;
     }
@@ -307,17 +307,17 @@ Trajectory RDTStateSpace::steer(const Eigen::VectorXd& from,
     
     // std::cout<<steer_call_<<"\n";
 
-    // =========================================================================
-    // BROAD PHASE ENVELOPE CALCULATION
-    // =========================================================================
-    // For a straight line, the center is the midpoint.
-    traj.envelope_center.head<2>() = (from.head<2>() + to.head<2>()) / 2.0;
+    // // =========================================================================
+    // // BROAD PHASE ENVELOPE CALCULATION
+    // // =========================================================================
+    // // For a straight line, the center is the midpoint.
+    // traj.envelope_center.head<2>() = (from.head<2>() + to.head<2>()) / 2.0;
     
-    // The radius is exactly half the spatial distance.
-    traj.envelope_radius = spatial_distance / 2.0;
+    // // The radius is exactly half the spatial distance.
+    // traj.envelope_radius = spatial_distance / 2.0;
     
-    traj.total_duration = time_duration;
-    // =========================================================================
+    // traj.total_duration = time_duration;
+    // // =========================================================================
 
 
     return traj;

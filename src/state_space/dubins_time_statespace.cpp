@@ -124,26 +124,26 @@ Trajectory DubinsTimeStateSpace::steer(const Eigen::VectorXd& from, const Eigen:
     //     std::cout << "time taken for the steer : " << duration.count() << " microseconds\n";
     // std::cout<<count<<"\n";
 
-    // =========================================================================
-    // BROAD PHASE ENVELOPE CALCULATION
-    // =========================================================================
-    Eigen::Vector3d center = Eigen::Vector3d::Zero();
-    // 1. Center of the bounding sphere (using only X, Y)
-    for (const auto& point : traj_geom.path_points) {
-        center.head<2>() += point.head<2>();
-    }
-    center /= static_cast<double>(traj_geom.path_points.size());
-    traj_geom.envelope_center = center;
+    // // =========================================================================
+    // // BROAD PHASE ENVELOPE CALCULATION
+    // // =========================================================================
+    // Eigen::Vector3d center = Eigen::Vector3d::Zero();
+    // // 1. Center of the bounding sphere (using only X, Y)
+    // for (const auto& point : traj_geom.path_points) {
+    //     center.head<2>() += point.head<2>();
+    // }
+    // center /= static_cast<double>(traj_geom.path_points.size());
+    // traj_geom.envelope_center = center;
 
-    // 2. Radius of the bounding sphere
-    double max_dist_sq = 0.0;
-    for (const auto& point : traj_geom.path_points) {
-        double dist_sq = (point.head<2>() - center.head<2>()).squaredNorm();
-        if (dist_sq > max_dist_sq) max_dist_sq = dist_sq;
-    }
-    traj_geom.envelope_radius = std::sqrt(max_dist_sq);
-    traj_geom.total_duration = time_elapsed;
-    // =========================================================================
+    // // 2. Radius of the bounding sphere
+    // double max_dist_sq = 0.0;
+    // for (const auto& point : traj_geom.path_points) {
+    //     double dist_sq = (point.head<2>() - center.head<2>()).squaredNorm();
+    //     if (dist_sq > max_dist_sq) max_dist_sq = dist_sq;
+    // }
+    // traj_geom.envelope_radius = std::sqrt(max_dist_sq);
+    // traj_geom.total_duration = time_elapsed;
+    // // =========================================================================
 
     return traj_geom;
 }
