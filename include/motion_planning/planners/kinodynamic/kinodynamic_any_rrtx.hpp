@@ -152,7 +152,8 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
 
     // Helper methods
     bool extend(Eigen::VectorXd v);
-    std::vector<std::pair<RRTxNode*, Trajectory>> findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidate_indices);
+    // std::vector<std::tuple<RRTxNode*, Trajectory, bool>> findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidate_indices);
+    std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::string>>> findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidate_indices);
 
     void rewireNeighbors(RRTxNode* v);
     void reduceInconsistency();

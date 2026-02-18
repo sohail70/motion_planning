@@ -5501,8 +5501,8 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
     }
 
 
-    // std::unordered_set<int> orphan_indices;
-    std::set<int> orphan_indices;
+    std::unordered_set<int> orphan_indices;
+    // std::set<int> orphan_indices;
 
     // 2. Tube Search: Find all nodes inside the new obstacle tube
     for (const auto& point_3d : ob.predicted_path) {
@@ -5576,8 +5576,8 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
     last_replan_metrics_.orphaned_nodes += orphan_indices.size();
 
     // 5. Invalidate Nodes & Queue Boundary Parents
-    // std::unordered_set<FMTNode*> boundary_nodes_to_requeue;
-    std::set<FMTNode*> boundary_nodes_to_requeue;
+    std::unordered_set<FMTNode*> boundary_nodes_to_requeue;
+    // std::set<FMTNode*> boundary_nodes_to_requeue;
     int counter = 0;
     for (int node_index : orphan_indices) {
         auto node = tree_[node_index].get();
@@ -5696,8 +5696,8 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
     }
 
 
-    // std::unordered_set<int> freed_indices;
-    std::set<int> freed_indices;
+    std::unordered_set<int> freed_indices;
+    // std::set<int> freed_indices;
 
     // 1. Tube Search: Find nodes that were near the OLD path
     for (const auto& point_3d : ob.predicted_path) {
@@ -5724,8 +5724,8 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
     // 2. Queue Neighbors of Freed Nodes
     // We don't change costs here. We just put valid neighbors into the queue
     // to trigger the planner to explore this newly opened space.
-    // std::unordered_set<FMTNode*> neighbors_to_requeue;
-    std::set<FMTNode*> neighbors_to_requeue;
+    std::unordered_set<FMTNode*> neighbors_to_requeue;
+    // std::set<FMTNode*> neighbors_to_requeue;
     int counter = 0;
     for (int node_index : freed_indices) {
         auto node = tree_.at(node_index).get();

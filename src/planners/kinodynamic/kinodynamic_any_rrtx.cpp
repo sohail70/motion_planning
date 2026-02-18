@@ -412,8 +412,9 @@ void KinodynamicANYRRTX::plan() {
                 to later be processed by reducinconsistency.
             */
             rewireNeighbors(new_node); 
+            verifyQueue(new_node);
+            // new_node->setCost(new_node->getLMC());
             reduceInconsistency();
-            new_node->setCost(new_node->getLMC());
         }
     }
 }
@@ -469,14 +470,156 @@ void KinodynamicANYRRTX::plan() {
 
 
 
+// ////////////////////////////////////////////////////////////////////////////////////////////////////
+// bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
+//     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
+//     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
+    
+//     // metrics_.total_extend_edges += neighbors.size(); // TRACKING
+
+
+//     auto trajs_from_v_to_u = findParent(new_node, neighbors);
+
+//     if (!new_node->getParent()) {
+//         sample_counter--;
+//         return false;
+//     }
+
+//     tree_.push_back(new_node);
+//     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
+//     kdtree_->buildTree(); 
+
+//     // Algorithm 2 lines 7-13 implementation
+//     const double t_now = clock_->now().seconds();
+//     const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
+//     for (auto const& [neighbor, v_to_u_traj, forward_safe] : trajs_from_v_to_u) {
+//         // 1. Handle Outgoing: new_node -> neighbor
+//         new_node->addNeighbor(neighbor, true, false, v_to_u_traj);
+//         if (!forward_safe) {
+//             new_node->outgoingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
+//             // block the incoming side on the neighbor!
+//             if (neighbor->incomingEdges().count(new_node.get())) {
+//                 neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+//             }
+//         }
+
+//         // 2. Handle Incoming: neighbor -> new_node
+//         Trajectory u_to_v_traj;
+//         bool reverse_safe = false;
+//         bool reverse_exists = false;
+
+//         if (is_geometric_mode_) {
+//             u_to_v_traj = v_to_u_traj;
+//             reverse_safe = forward_safe; 
+//             reverse_exists = true;
+//         } else {
+//             u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
+//             if (u_to_v_traj.is_valid && u_to_v_traj.cost <= neighborhood_radius_ + 0.01) {
+//                 reverse_exists = true;
+//                 reverse_safe = obs_checker_->isTrajectorySafe(u_to_v_traj, neighbor->getTimeToGoal());
+//             }
+//         }
+
+//         if (reverse_exists) {
+//             neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
+//             if (!reverse_safe) {
+//                 // Block Outgoing on neighbor
+//                 neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+//                 // Block Incoming on new_node
+//                 if (new_node->incomingEdges().count(neighbor)) {
+//                     new_node->incomingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
+//                 }
+//             }
+//         }
+//     }
+    
+//     return true;
+// }
+
+
+
+
+
+
+
+// std::vector<std::tuple<RRTxNode*, Trajectory, bool>> KinodynamicANYRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
+//     double min_lmc = INFINITY; // v is a new node so it has not LMC yet (you can also use v->getLMC() instead of INFINITY)
+//     RRTxNode* best_parent = nullptr;
+//     double best_dist = 0.0;
+//     Trajectory best_traj;
+
+//     // std::unordered_map<RRTxNode*, Trajectory> all_trajectories_from_v_to_u;
+
+//     std::vector<std::tuple<RRTxNode*, Trajectory, bool>> all_trajectories_from_v_to_u;
+//     all_trajectories_from_v_to_u.reserve(candidates.size());
+
+//     // const double t_now = clock_->now().seconds();
+//     // const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
+
+
+//     // candidates are "u"
+//     for (size_t idx : candidates) {
+//         auto& candidate = tree_[idx];
+//         if (candidate == v) continue;
+
+//         Trajectory traj = statespace_->steer(v->getStateValue(), candidate->getStateValue());
+
+//         // 1. Connectivity Check (Radius)
+//         // usage of cost vs geometric_distance depends on your "Ball" definition. 
+//         // adhering to your code: using .cost
+//         if (traj.is_valid && traj.cost <= neighborhood_radius_ + 0.01) { 
+            
+//             // 2. Safety Check (Performed ONCE)
+//             last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
+//             bool is_safe = obs_checker_->isTrajectorySafe(traj, v->getTimeToGoal());
+
+//             // 3. Store Result
+//             // We pass 'traj' with its ORIGINAL real cost, but we tell extend() if it was safe.
+//             all_trajectories_from_v_to_u.emplace_back(candidate.get(), traj, is_safe);
+
+//             // 4. Parent Selection (Strictly Safe Nodes Only)
+//             if (is_safe) {
+//                 const double candidate_lmc = candidate->getLMC() + traj.cost;
+//                 if (candidate_lmc < min_lmc && candidate_lmc < v->getLMC()) {
+//                     min_lmc = candidate_lmc;
+//                     best_parent = candidate.get();
+//                     best_traj = traj; 
+//                 }
+//             }
+//         }
+//     }
+
+//     if (best_parent) {
+//         v->setParent(best_parent, best_traj);
+
+//         // // TIME TO GOAL for that node is identical to the sampled time dimension of that node though i set it here because I think its more cpu friendly in case i need to use getTimeToGoal for a node
+//         // // v->setTimeToGoal(best_parent->getTimeToGoal() + best_traj.time_duration);
+//         // double absolute_t = v->getStateValue().tail<1>()[0];
+//         // v->setTimeToGoal(absolute_t);
+
+//         if (!is_geometric_mode_) {
+//             double absolute_t = v->getStateValue().tail<1>()[0];
+//             v->setTimeToGoal(absolute_t);
+//         } else {
+//             // Geometric: Time is irrelevant, set to 0 or leave default
+//             v->setTimeToGoal(0.0);
+//         }
+
+
+
+//         v->setLMC(min_lmc);
+//         // edge_length_[v->getIndex()] = best_dist;
+//     }
+
+//     return all_trajectories_from_v_to_u;
+// }
+// //////////////////////////////////////////////////////////////////////////////////
+
 
 bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
     
-    // metrics_.total_extend_edges += neighbors.size(); // TRACKING
-
-
     auto trajs_from_v_to_u = findParent(new_node, neighbors);
 
     if (!new_node->getParent()) {
@@ -488,164 +631,136 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
     kdtree_->buildTree(); 
 
-    // Algorithm 2 lines 7-13 implementation
-    const double t_now = clock_->now().seconds();
-    const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
-    for (auto const& [neighbor, v_to_u_traj] : trajs_from_v_to_u) {
-        // Persistent outgoing from new node (N⁰+)
-        // Establish the Edge (new_node -> neighbor) using the pre-computed trajectory.
-        // NO explicit collision check needed here. 
-        // If it was unsafe or invalid, findParent set cost to INF, so this check fails automatically.
-        if (v_to_u_traj.cost <= neighborhood_radius_ + 0.01) {
-            new_node->addNeighbor(neighbor, true, false, v_to_u_traj);
-        }
-        
-        // // double time_to_goal_at_u = neighbor->getTimeToGoal();
-        // // const double global_edge_start_time_at_u = t_arrival_predicted - time_to_goal_at_u;
-        // // Temporary outgoing from neighbors (Nr+)
-        // // Establish the Edge (neighbor -> new_node) by computing it now.
-        // /*
-        //     One thing that bothers me here is collision checking with the current obstalces would me some nodes to not find their neighbors 
-        //     and later when the obstalce moves then we do not update this.
-        //     I think RRTx relies on continuous sampling but for now i use a pre-plan obstalce free phase in my test to gather all the neighbors correctly
-        // */
-        // Trajectory u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
-        // if (u_to_v_traj.is_valid && u_to_v_traj.cost <= neighborhood_radius_ + 0.01) {
-        //     last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
-        //     if (obs_checker_->isTrajectorySafe(u_to_v_traj, neighbor->getTimeToGoal())) {
-        //         neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
-        //     }
-        // }
-        bool is_safe_reverse = false;
-        Trajectory u_to_v_traj;
+    auto all_obs = obs_checker_->getObstacles();
 
-        // --- OPTIMIZATION FOR GEOMETRIC CASE ---
-        if (is_geometric_mode_) {
-            // In geometric mode, steer(A, B) == steer(B, A).
-            u_to_v_traj = v_to_u_traj;
-            
-            // Only safe if the forward trajectory wasn't poisoned by obstacle check
-            if (u_to_v_traj.cost <= neighborhood_radius_ + 0.01) {
-                is_safe_reverse = true; 
+    for (auto const& [neighbor, v_to_u_traj, forward_safe, forward_blockers] : trajs_from_v_to_u) {
+        // 1. Handle Outgoing: new_node -> neighbor
+        new_node->addNeighbor(neighbor, true, false, v_to_u_traj);
+        if (!forward_safe) {
+            new_node->outgoingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
+#if USE_INVALIDATING_SET_STRATEGY
+                new_node->outgoingEdges().at(neighbor).invalidating_obstacles = forward_blockers;
+#endif
+
+            if (neighbor->incomingEdges().count(new_node.get())) {
+                neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+#if USE_INVALIDATING_SET_STRATEGY
+                    neighbor->incomingEdges().at(new_node.get()).invalidating_obstacles = forward_blockers;
+#endif
             }
-        } 
-        else {
-            // --- KINODYNAMIC CASE ---
-            // Must explicitly compute the reverse trajectory
+        }
+
+        // 2. Handle Incoming: neighbor -> new_node
+        Trajectory u_to_v_traj;
+        bool reverse_safe = false;
+        bool reverse_exists = false;
+        std::unordered_set<std::string> reverse_blockers;
+
+        if (is_geometric_mode_) {
+            u_to_v_traj = v_to_u_traj;
+            reverse_safe = forward_safe; 
+            reverse_exists = true;
+#if USE_INVALIDATING_SET_STRATEGY
+                reverse_blockers = forward_blockers;
+#endif
+        } else {
             u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
-            
             if (u_to_v_traj.is_valid && u_to_v_traj.cost <= neighborhood_radius_ + 0.01) {
-                // Tracking metrics just like you had it for the Anytime planner
-                last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
-                
-                if (obs_checker_->isTrajectorySafe(u_to_v_traj, neighbor->getTimeToGoal())) {
-                    is_safe_reverse = true;
+                reverse_exists = true;
+                reverse_safe = true;
+                for (const auto& ob : all_obs) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(u_to_v_traj, neighbor->getTimeToGoal(), ob)) {
+                        reverse_safe = false;
+#if USE_INVALIDATING_SET_STRATEGY
+                            reverse_blockers.insert(ob.name);
+#else
+                            break;
+#endif
+                    }
                 }
             }
         }
 
-        if (is_safe_reverse) {
+        if (reverse_exists) {
             neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
+            if (!reverse_safe) {
+                neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+#if USE_INVALIDATING_SET_STRATEGY
+                    neighbor->outgoingEdges().at(new_node.get()).invalidating_obstacles = reverse_blockers;
+#endif
+
+                if (new_node->incomingEdges().count(neighbor)) {
+                    new_node->incomingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
+#if USE_INVALIDATING_SET_STRATEGY
+                        new_node->incomingEdges().at(neighbor).invalidating_obstacles = reverse_blockers;
+#endif
+                }
+            }
         }
-
-
     }
     
     return true;
 }
 
-
-
-
-
-
-
-std::vector<std::pair<RRTxNode*, Trajectory>> KinodynamicANYRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
-    double min_lmc = INFINITY; // v is a new node so it has not LMC yet (you can also use v->getLMC() instead of INFINITY)
+std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::string>>> 
+KinodynamicANYRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
+    double min_lmc = INFINITY;
     RRTxNode* best_parent = nullptr;
-    double best_dist = 0.0;
     Trajectory best_traj;
 
-    // std::unordered_map<RRTxNode*, Trajectory> all_trajectories_from_v_to_u;
+    std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::string>>> trajs_from_v_to_u;
+    trajs_from_v_to_u.reserve(candidates.size());
 
-    std::vector<std::pair<RRTxNode*, Trajectory>> all_trajectories_from_v_to_u;
-    all_trajectories_from_v_to_u.reserve(candidates.size());
+    auto all_obs = obs_checker_->getObstacles();
 
-    // const double t_now = clock_->now().seconds();
-    // const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
-
-
-    // candidates are "u"
     for (size_t idx : candidates) {
         auto& candidate = tree_[idx];
         if (candidate == v) continue;
 
-        Trajectory traj_from_v_to_u = statespace_->steer(v->getStateValue(), candidate->getStateValue());
+        Trajectory traj = statespace_->steer(v->getStateValue(), candidate->getStateValue());
 
-        // all_trajectories_from_v_to_u.insert({candidate.get(), traj_from_v_to_u});
-
-        /*
-          The obstalce check we do here right now is the v->u  (new node to neighbors) and can also be used for the v->u trajcetories in extend function
-          obstalce check (maybe later use a map or something) but u->v should be done in extend.
-        */
-        // If it looks feasible, we MUST check collision here to know if it's a valid parent.
-        if (traj_from_v_to_u.is_valid && traj_from_v_to_u.cost <= neighborhood_radius_ + 0.01) {
+        if (traj.is_valid && traj.cost <= neighborhood_radius_ + 0.01) { 
             
-            last_replan_metrics_.obstacle_checks += obs_checker_->getObstacles().size();
-            // Perform the expensive check ONCE
-            if (!obs_checker_->isTrajectorySafe(traj_from_v_to_u, v->getTimeToGoal())) {
-                // COLLISION: Mark cost as INFINITY so extend() ignores it later
-                traj_from_v_to_u.cost = std::numeric_limits<double>::infinity();
+            std::unordered_set<std::string> blockers;
+            bool is_safe = true;
+
+            // --- Identify Blockers ---
+            for (const auto& ob : all_obs) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj, v->getTimeToGoal(), ob)) {
+                    is_safe = false;
+#if USE_INVALIDATING_SET_STRATEGY
+                        blockers.insert(ob.name);
+#else
+                        break; // If not using sets, one hit is enough to fail
+#endif
+                }
             }
-        } else {
-            // If invalid or too far, effectively infinite for our purposes
-             traj_from_v_to_u.cost = std::numeric_limits<double>::infinity();
-        }
 
-        // 3. Store result (carrying the INF cost if unsafe)
-        all_trajectories_from_v_to_u.push_back({candidate.get(), traj_from_v_to_u});
+            trajs_from_v_to_u.emplace_back(candidate.get(), traj, is_safe, blockers);
 
-        // 4. Parent Selection (Only picks if cost is finite)
-        if (traj_from_v_to_u.cost != std::numeric_limits<double>::infinity()) {
-            const double candidate_lmc = candidate->getLMC() + traj_from_v_to_u.cost;
-
-            if (candidate_lmc < min_lmc && candidate_lmc < v->getLMC()) {
-                min_lmc = candidate_lmc;
-                best_parent = candidate.get();
-                best_traj = traj_from_v_to_u; 
-                best_dist = traj_from_v_to_u.geometric_distance;
+            if (is_safe) {
+                const double candidate_lmc = candidate->getLMC() + traj.cost;
+                if (candidate_lmc < min_lmc && candidate_lmc < v->getLMC()) {
+                    min_lmc = candidate_lmc;
+                    best_parent = candidate.get();
+                    best_traj = traj; 
+                }
             }
         }
-
     }
 
     if (best_parent) {
         v->setParent(best_parent, best_traj);
-
-        // // TIME TO GOAL for that node is identical to the sampled time dimension of that node though i set it here because I think its more cpu friendly in case i need to use getTimeToGoal for a node
-        // // v->setTimeToGoal(best_parent->getTimeToGoal() + best_traj.time_duration);
-        // double absolute_t = v->getStateValue().tail<1>()[0];
-        // v->setTimeToGoal(absolute_t);
-
         if (!is_geometric_mode_) {
-            double absolute_t = v->getStateValue().tail<1>()[0];
-            v->setTimeToGoal(absolute_t);
+            v->setTimeToGoal(v->getStateValue().tail<1>()[0]);
         } else {
-            // Geometric: Time is irrelevant, set to 0 or leave default
             v->setTimeToGoal(0.0);
         }
-
-
-
         v->setLMC(min_lmc);
-        // edge_length_[v->getIndex()] = best_dist;
     }
 
-    return all_trajectories_from_v_to_u;
+    return trajs_from_v_to_u;
 }
-
-
-
 
 
 
@@ -1445,6 +1560,17 @@ void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
             edge.cached_trajectory->cost > (neighborhood_radius_ + 0.01) && 
             neighbor != v->getParent()) 
         {
+
+            // // SYMMETRIC CULL: Check the neighbor's incoming edges list 
+            // auto& incoming = neighbor->incomingEdges();
+            // if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
+            //     // IMPORTANT: Only remove if it is also a temporary edge on the neighbor's side.
+            //     // This prevents "Ghost Edges" from poisoning RRTX rewire cascades.
+            //     if (!incoming_it->second.is_initial) {
+            //         incoming.erase(incoming_it);
+            //     }
+            // }
+
             // Move it to the passive map (required for RRTX's obstacle repair)
             v->culled_outgoing_edges_[neighbor] = edge;
             
