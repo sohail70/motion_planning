@@ -8,7 +8,9 @@
 
 class RRTxNode {
 public:
-    using EdgeMap = boost::container::flat_map<RRTxNode*, EdgeInfo>;
+    // using EdgeMap = boost::container::flat_map<RRTxNode*, EdgeInfo>;
+    using EdgeMap = std::unordered_map<RRTxNode*, EdgeInfo>;
+    // using EdgeMap = absl::node_hash_map<RRTxNode*, EdgeInfo>;
 
     explicit RRTxNode(std::shared_ptr<State> state, int index = -1);
     

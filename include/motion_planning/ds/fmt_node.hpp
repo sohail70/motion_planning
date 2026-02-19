@@ -13,8 +13,9 @@ public:
         Reasons: 1) Lots of looping over neighbors in FMTX
                  2) The number of neighbors are limited because we pre-sample in FMTx so cost of insertion which is log(n) in flat map due to sorting is negligble
     */
-    using NeighborMap = boost::container::flat_map<FMTNode*, EdgeInfo>;
-    // using NeighborMap = std::unordered_map<FMTNode*, EdgeInfo>;
+    // using NeighborMap = boost::container::flat_map<FMTNode*, EdgeInfo>;
+    using NeighborMap = std::unordered_map<FMTNode*, EdgeInfo>;
+    // using NeighborMap = absl::node_hash_map<FMTNode*, EdgeInfo>;
     
     explicit FMTNode(std::shared_ptr<State> state, int index = -1);
     

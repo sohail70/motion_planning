@@ -412,8 +412,8 @@ void KinodynamicANYRRTX::plan() {
                 to later be processed by reducinconsistency.
             */
             rewireNeighbors(new_node); 
-            verifyQueue(new_node);
-            // new_node->setCost(new_node->getLMC());
+            // verifyQueue(new_node);
+            new_node->setCost(new_node->getLMC());
             reduceInconsistency();
         }
     }
@@ -616,83 +616,242 @@ void KinodynamicANYRRTX::plan() {
 // //////////////////////////////////////////////////////////////////////////////////
 
 
+// bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
+//     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
+//     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
+    
+//     auto trajs_from_v_to_u = findParent(new_node, neighbors);
+
+//     if (!new_node->getParent()) {
+//         sample_counter--;
+//         return false;
+//     }
+
+//     tree_.push_back(new_node);
+//     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
+//     kdtree_->buildTree(); 
+
+//     auto all_obs = obs_checker_->getObstacles();
+
+//     for (auto const& [neighbor, v_to_u_traj, forward_safe, forward_blockers] : trajs_from_v_to_u) {
+//         // 1. Handle Outgoing: new_node -> neighbor
+//         new_node->addNeighbor(neighbor, true, false, v_to_u_traj);
+//         if (!forward_safe) {
+//             new_node->outgoingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
+// #if USE_INVALIDATING_SET_STRATEGY
+//                 new_node->outgoingEdges().at(neighbor).invalidating_obstacles = forward_blockers;
+// #endif
+
+//             if (neighbor->incomingEdges().count(new_node.get())) {
+//                 neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+// #if USE_INVALIDATING_SET_STRATEGY
+//                     neighbor->incomingEdges().at(new_node.get()).invalidating_obstacles = forward_blockers;
+// #endif
+//             }
+//         }
+
+//         // 2. Handle Incoming: neighbor -> new_node
+//         Trajectory u_to_v_traj;
+//         bool reverse_safe = false;
+//         bool reverse_exists = false;
+//         std::unordered_set<std::string> reverse_blockers;
+
+//         if (is_geometric_mode_) {
+//             u_to_v_traj = v_to_u_traj;
+//             reverse_safe = forward_safe; 
+//             reverse_exists = true;
+// #if USE_INVALIDATING_SET_STRATEGY
+//                 reverse_blockers = forward_blockers;
+// #endif
+//         } else {
+//             u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
+//             if (u_to_v_traj.is_valid && u_to_v_traj.cost <= neighborhood_radius_ + 0.01) {
+//                 reverse_exists = true;
+//                 reverse_safe = true;
+//                 for (const auto& ob : all_obs) {
+//                     last_replan_metrics_.obstacle_checks++;
+//                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(u_to_v_traj, neighbor->getTimeToGoal(), ob)) {
+//                         reverse_safe = false;
+// #if USE_INVALIDATING_SET_STRATEGY
+//                             reverse_blockers.insert(ob.name);
+// #else
+//                             break;
+// #endif
+//                     }
+//                 }
+//             }
+//         }
+
+//         if (reverse_exists) {
+//             neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
+//             if (!reverse_safe) {
+//                 neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+// #if USE_INVALIDATING_SET_STRATEGY
+//                     neighbor->outgoingEdges().at(new_node.get()).invalidating_obstacles = reverse_blockers;
+// #endif
+
+//                 if (new_node->incomingEdges().count(neighbor)) {
+//                     new_node->incomingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
+// #if USE_INVALIDATING_SET_STRATEGY
+//                         new_node->incomingEdges().at(neighbor).invalidating_obstacles = reverse_blockers;
+// #endif
+//                 }
+//             }
+//         }
+//     }
+    
+//     return true;
+// }
+
+
 bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
     
-    auto trajs_from_v_to_u = findParent(new_node, neighbors);
-
-    if (!new_node->getParent()) {
-        sample_counter--;
-        return false;
-    }
-
-    tree_.push_back(new_node);
-    kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
-    kdtree_->buildTree(); 
+    double min_lmc = INFINITY;
+    RRTxNode* best_parent = nullptr;
+    Trajectory best_traj;
 
     auto all_obs = obs_checker_->getObstacles();
+    double v_time = is_geometric_mode_ ? 0.0 : new_node->getStateValue().tail<1>()[0];
 
-    for (auto const& [neighbor, v_to_u_traj, forward_safe, forward_blockers] : trajs_from_v_to_u) {
-        // 1. Handle Outgoing: new_node -> neighbor
-        new_node->addNeighbor(neighbor, true, false, v_to_u_traj);
-        if (!forward_safe) {
-            new_node->outgoingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
-#if USE_INVALIDATING_SET_STRATEGY
-                new_node->outgoingEdges().at(neighbor).invalidating_obstacles = forward_blockers;
-#endif
+    // Local struct to cache bi-directional edge results
+    struct EdgeEval {
+        RRTxNode* neighbor;
+        bool fwd_exists = false; Trajectory fwd_traj; bool fwd_safe = false; std::unordered_set<std::string> fwd_blockers;
+        bool rev_exists = false; Trajectory rev_traj; bool rev_safe = false; std::unordered_set<std::string> rev_blockers;
+    };
+    
+    // Pre-allocate to exactly match the neighbors list
+    std::vector<EdgeEval> evaluated_edges(neighbors.size());
 
-            if (neighbor->incomingEdges().count(new_node.get())) {
-                neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+    // =====================================================================
+    // PASS 1: Evaluate OUTGOING edges (v -> u) & Find Parent
+    // =====================================================================
+    for (size_t i = 0; i < neighbors.size(); ++i) {
+        auto& candidate = tree_[neighbors[i]];
+        if (candidate.get() == new_node.get()) continue;
+        
+        RRTxNode* u = candidate.get();
+        evaluated_edges[i].neighbor = u;
+
+        Trajectory fwd_traj = statespace_->steer(new_node->getStateValue(), u->getStateValue());
+        if (fwd_traj.is_valid && fwd_traj.cost <= neighborhood_radius_ + 0.01) {
+            evaluated_edges[i].fwd_exists = true;
+            evaluated_edges[i].fwd_traj = fwd_traj;
+            evaluated_edges[i].fwd_safe = true;
+            
+            for (const auto& ob : all_obs) {
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(fwd_traj, v_time, ob)) {
+                    evaluated_edges[i].fwd_safe = false;
 #if USE_INVALIDATING_SET_STRATEGY
-                    neighbor->incomingEdges().at(new_node.get()).invalidating_obstacles = forward_blockers;
+                    evaluated_edges[i].fwd_blockers.insert(ob.name);
+#else
+                    break;
 #endif
+                }
+            }
+
+            // PARENT SELECTION LOGIC
+            if (evaluated_edges[i].fwd_safe) {
+                const double candidate_lmc = u->getLMC() + fwd_traj.cost;
+                if (candidate_lmc < min_lmc && candidate_lmc < new_node->getLMC()) {
+                    min_lmc = candidate_lmc;
+                    best_parent = u;
+                    best_traj = fwd_traj; 
+                }
             }
         }
+    }
 
-        // 2. Handle Incoming: neighbor -> new_node
-        Trajectory u_to_v_traj;
-        bool reverse_safe = false;
-        bool reverse_exists = false;
-        std::unordered_set<std::string> reverse_blockers;
+    // =====================================================================
+    // EARLY BAILOUT: Save CPU cycles!
+    // =====================================================================
+    if (!best_parent) {
+        sample_counter--;
+        return false; // Discard sample. We bypassed all reverse steer/collision checks!
+    }
+
+    // =====================================================================
+    // PASS 2: Evaluate INCOMING edges (u -> v) ONLY because node survived
+    // =====================================================================
+    for (size_t i = 0; i < neighbors.size(); ++i) {
+        if (!evaluated_edges[i].neighbor) continue; // Skip if it was self
+        RRTxNode* u = evaluated_edges[i].neighbor;
 
         if (is_geometric_mode_) {
-            u_to_v_traj = v_to_u_traj;
-            reverse_safe = forward_safe; 
-            reverse_exists = true;
-#if USE_INVALIDATING_SET_STRATEGY
-                reverse_blockers = forward_blockers;
-#endif
+            // Geometric symmetry: Just copy the forward results to save time
+            evaluated_edges[i].rev_exists = evaluated_edges[i].fwd_exists;
+            evaluated_edges[i].rev_traj = evaluated_edges[i].fwd_traj;
+            evaluated_edges[i].rev_safe = evaluated_edges[i].fwd_safe;
+            evaluated_edges[i].rev_blockers = evaluated_edges[i].fwd_blockers;
         } else {
-            u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
-            if (u_to_v_traj.is_valid && u_to_v_traj.cost <= neighborhood_radius_ + 0.01) {
-                reverse_exists = true;
-                reverse_safe = true;
+            // Kinodynamic asymmetry: Independently evaluate reverse
+            Trajectory rev_traj = statespace_->steer(u->getStateValue(), new_node->getStateValue());
+            if (rev_traj.is_valid && rev_traj.cost <= neighborhood_radius_ + 0.01) {
+                evaluated_edges[i].rev_exists = true;
+                evaluated_edges[i].rev_traj = rev_traj;
+                evaluated_edges[i].rev_safe = true;
+                
                 for (const auto& ob : all_obs) {
-                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(u_to_v_traj, neighbor->getTimeToGoal(), ob)) {
-                        reverse_safe = false;
+                    last_replan_metrics_.obstacle_checks++;
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(rev_traj, u->getTimeToGoal(), ob)) {
+                        evaluated_edges[i].rev_safe = false;
 #if USE_INVALIDATING_SET_STRATEGY
-                            reverse_blockers.insert(ob.name);
+                        evaluated_edges[i].rev_blockers.insert(ob.name);
 #else
-                            break;
+                        break;
 #endif
                     }
                 }
             }
         }
+    }
 
-        if (reverse_exists) {
-            neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
-            if (!reverse_safe) {
-                neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+    // =====================================================================
+    // COMMIT GRAPH CHANGES
+    // =====================================================================
+    new_node->setParent(best_parent, best_traj);
+    new_node->setTimeToGoal(v_time);
+    new_node->setLMC(min_lmc);
+
+    tree_.push_back(new_node);
+    kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
+    kdtree_->buildTree(); 
+
+    for (auto& eval : evaluated_edges) {
+        if (!eval.neighbor) continue;
+
+        // Commit Outgoing: new_node -> neighbor
+        if (eval.fwd_exists) {
+            new_node->addNeighbor(eval.neighbor, true, false, eval.fwd_traj);
+            if (!eval.fwd_safe) {
+                new_node->outgoingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
 #if USE_INVALIDATING_SET_STRATEGY
-                    neighbor->outgoingEdges().at(new_node.get()).invalidating_obstacles = reverse_blockers;
+                new_node->outgoingEdges().at(eval.neighbor).invalidating_obstacles = eval.fwd_blockers;
 #endif
-
-                if (new_node->incomingEdges().count(neighbor)) {
-                    new_node->incomingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
+                if (eval.neighbor->incomingEdges().count(new_node.get())) {
+                    eval.neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
 #if USE_INVALIDATING_SET_STRATEGY
-                        new_node->incomingEdges().at(neighbor).invalidating_obstacles = reverse_blockers;
+                    eval.neighbor->incomingEdges().at(new_node.get()).invalidating_obstacles = eval.fwd_blockers;
+#endif
+                }
+            }
+        }
+
+        // Commit Incoming: neighbor -> new_node
+        if (eval.rev_exists) {
+            eval.neighbor->addNeighbor(new_node.get(), false, true, eval.rev_traj);
+            if (!eval.rev_safe) {
+                eval.neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+#if USE_INVALIDATING_SET_STRATEGY
+                eval.neighbor->outgoingEdges().at(new_node.get()).invalidating_obstacles = eval.rev_blockers;
+#endif
+                if (new_node->incomingEdges().count(eval.neighbor)) {
+                    new_node->incomingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+#if USE_INVALIDATING_SET_STRATEGY
+                    new_node->incomingEdges().at(eval.neighbor).invalidating_obstacles = eval.rev_blockers;
 #endif
                 }
             }
@@ -701,6 +860,7 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
     
     return true;
 }
+
 
 std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::string>>> 
 KinodynamicANYRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
@@ -726,6 +886,7 @@ KinodynamicANYRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<si
 
             // --- Identify Blockers ---
             for (const auto& ob : all_obs) {
+                last_replan_metrics_.obstacle_checks++;
                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj, v->getTimeToGoal(), ob)) {
                     is_safe = false;
 #if USE_INVALIDATING_SET_STRATEGY
@@ -1536,10 +1697,8 @@ void KinodynamicANYRRTX::updateLMC(RRTxNode* v) {
 //     // // -----------------------------
 // }
 
-
 void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
-    // 1. PERFORMANCE TRIGGER: Only loop if radius has shrunk significantly (> 5%)
-    // The "> 0" check ensures we don't return on the very first call.
+    // 1. PERFORMANCE TRIGGER
     if (v->last_culled_radius_ > 0 && 
         (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) {
         return; 
@@ -1551,39 +1710,39 @@ void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
     while (it != outgoing.end()) {
         auto neighbor = it->first;
         auto& edge = it->second;
+        double edge_cost = edge.cached_trajectory->cost;
 
-        // CULL LOGIC:
-        // - Edge is not 'initial' (preserve birth-right connectivity)
-        // - Edge is too long (outside the current ball + small buffer)
-        // - Neighbor is not the current parent
-        if (!edge.is_initial && 
-            edge.cached_trajectory->cost > (neighborhood_radius_ + 0.01) && 
-            neighbor != v->getParent()) 
-        {
+        // --- CONSOLIDATED RRTX CULL PROTECTION ---
+        // A node ONLY evaluates culling if the edge is longer than the current radius
+        // AND the neighbor is not the current parent in the shortest-path tree. [cite: 1066]
+        if (edge_cost > (neighborhood_radius_ + 0.01) && neighbor != v->getParent()) {
 
-            // // SYMMETRIC CULL: Check the neighbor's incoming edges list 
-            // auto& incoming = neighbor->incomingEdges();
-            // if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
-            //     // IMPORTANT: Only remove if it is also a temporary edge on the neighbor's side.
-            //     // This prevents "Ghost Edges" from poisoning RRTX rewire cascades.
-            //     if (!incoming_it->second.is_initial) {
-            //         incoming.erase(incoming_it);
-            //     }
-            // }
+            // 1. SYMMETRIC CULL (Neighbor's Side)
+            // Remove 'v' from the neighbor's incoming list if it wasn't an 'initial' birth-neighbor. [cite: 766]
+            auto& incoming = neighbor->incomingEdges();
+            if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
+                if (!incoming_it->second.is_initial) {
+                    incoming.erase(incoming_it);
+                }
+            }
 
-            // Move it to the passive map (required for RRTX's obstacle repair)
-            v->culled_outgoing_edges_[neighbor] = edge;
-            
-            // Remove from active map and get iterator to next
-            it = outgoing.erase(it);
-        } else {
-            ++it;
+            // 2. SOURCE CULL (v's Side)
+            // Move the neighbor to the passive map if it wasn't an 'initial' birth-neighbor. [cite: 1084]
+            if (!edge.is_initial) {
+                v->culled_outgoing_edges_[neighbor] = edge;
+                it = outgoing.erase(it);
+                // outgoing.erase(it++); /for absl
+                continue; // Node is culled; move to next iterator
+            }
         }
+
+        // Move to next neighbor if no cull occurred
+        ++it;
     }
 
-    // 3. SET THE CHECKPOINT
     v->last_culled_radius_ = neighborhood_radius_;
 }
+
 
 
 // void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
@@ -1854,9 +2013,63 @@ void KinodynamicANYRRTX::visualizeTree() {
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
-    std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
+    // std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
     visualization_->visualizeEdges(edges, "map");
 }
+
+// void KinodynamicANYRRTX::visualizeTree() {
+//     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+//     if (!tree_.empty()) {
+//         edges.reserve(tree_.size());
+//     }
+    
+//     std::vector<Eigen::VectorXd> tree_nodes;
+//     tree_nodes.reserve(tree_.size());
+
+//     // --- Variables for statistics ---
+//     long long total_out = 0;
+//     long long total_in = 0;
+//     size_t max_out_neighbors = 0;
+//     int connected_nodes_count = 0;
+    
+//     for (const auto& node_ptr : tree_) {
+//         RRTxNode* child_node = node_ptr.get();
+//         RRTxNode* parent_node = child_node->getParent();
+
+//         tree_nodes.push_back(node_ptr->getStateValue().head(2)); 
+
+//         // Track connected nodes just for informational printout
+//         if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
+//             connected_nodes_count++;
+//         }
+
+//         // --- MATH CHANGE: Count edges for ALL nodes in memory ---
+//         size_t current_out = child_node->outgoingEdges().size();
+//         total_out += current_out;
+//         total_in += child_node->incomingEdges().size();
+        
+//         if (current_out > max_out_neighbors) {
+//             max_out_neighbors = current_out;
+//         }
+
+//         if (parent_node) {
+//             edges.emplace_back(parent_node->getStateValue().head(2), child_node->getStateValue().head(2));
+//         }
+//     }
+
+//     // --- ONLINE LOGGING (Averaging over the entire tree) ---
+//     double avg_out = tree_.empty() ? 0.0 : static_cast<double>(total_out) / tree_.size();
+//     double avg_in = tree_.empty() ? 0.0 : static_cast<double>(total_in) / tree_.size();
+    
+//     std::cout << "\033[1;33m[RRTX STATS] Nodes: " << tree_nodes.size() 
+//               << " | Connected: " << connected_nodes_count
+//               << " | Radius: " << std::fixed << std::setprecision(3) << neighborhood_radius_
+//               << " | Avg Deg (Out): " << std::setprecision(2) << avg_out
+//               << " | Avg Deg (In): " << avg_in 
+//               << " | Max Deg: " << max_out_neighbors << "\033[0m\n";
+    
+//     visualization_->visualizeEdges(edges, "map");
+// }
 
 
 void KinodynamicANYRRTX::visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints) {

@@ -117,16 +117,27 @@ class KinodynamicANYFMTX : public Planner {
             // Adds a batch of samples to the existing tree and updates structures
             void addBatchOfSamples(int num_samples);
 
-            double getAvgNodeDegree() const override {
+
+
+            double getAvgOutDegree() const {
                 if (tree_.empty()) return 0.0;
-                
-                long long total_edges = 0;
+                long long total_out = 0;
                 for (const auto& node_ptr : tree_) {
-                    total_edges += node_ptr->forwardNeighbors().size();
+                    total_out += node_ptr->forwardNeighbors().size(); 
                 }
-                
-                return static_cast<double>(total_edges) / tree_.size();
+                return static_cast<double>(total_out) / tree_.size();
             }
+
+            double getAvgInDegree() const {
+                if (tree_.empty()) return 0.0;
+                long long total_in = 0;
+                for (const auto& node_ptr : tree_) {
+                    total_in += node_ptr->backwardNeighbors().size(); 
+                }
+                return static_cast<double>(total_in) / tree_.size();
+            }
+
+
 
             double getNeighborhoodRadius(){return neighborhood_radius_;}
 

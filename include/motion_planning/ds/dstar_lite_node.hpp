@@ -8,7 +8,9 @@
 
 class DStarLiteNode {
 public:
-    using NeighborMap = boost::container::flat_map<DStarLiteNode*, EdgeInfo>;
+    // using NeighborMap = boost::container::flat_map<DStarLiteNode*, EdgeInfo>;
+    using NeighborMap = std::unordered_map<DStarLiteNode*, EdgeInfo>;
+    // using NeighborMap = absl::node_hash_map<DStarLiteNode*, EdgeInfo>;
 
     explicit DStarLiteNode(std::shared_ptr<State> state, int index = -1)
         : state_(state), index_(index),

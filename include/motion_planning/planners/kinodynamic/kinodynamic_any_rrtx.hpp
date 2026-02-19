@@ -52,18 +52,25 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     void dumpTreeToCSV(const std::string& filename) const;
 
 
-
-    double getAvgNodeDegree() const {
+    double getAvgOutDegree() const {
         if (tree_.empty()) return 0.0;
-        
-        long long total_edges = 0;
+        long long total_out = 0;
         for (const auto& node_ptr : tree_) {
-            total_edges += node_ptr->outgoingEdges().size(); 
+            total_out += node_ptr->outgoingEdges().size(); 
         }
-        
-        return static_cast<double>(total_edges) / tree_.size();
+        return static_cast<double>(total_out) / tree_.size();
     }
-    
+
+    double getAvgInDegree() const {
+        if (tree_.empty()) return 0.0;
+        long long total_in = 0;
+        for (const auto& node_ptr : tree_) {
+            total_in += node_ptr->incomingEdges().size(); 
+        }
+        return static_cast<double>(total_in) / tree_.size();
+    }
+
+
     double getNeighborhoodRadius(){return neighborhood_radius_;}
     const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
     void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }

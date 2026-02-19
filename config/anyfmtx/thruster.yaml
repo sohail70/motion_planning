@@ -7,7 +7,7 @@ experiment:
 
 # Simulation Settings
 simulation:
-  time_budget: 35.0
+  time_budget: 25.0
   duration_limit: 20
   slice_time: 0.02
   seed: 42
@@ -15,7 +15,7 @@ simulation:
 # Robot & State Space Definition
 robot:
   # Start: x, y, vx, vy, time_budget
-  start_state: [48.0, 48.0, 0.0, 0.0, 35.0]
+  start_state: [48.0, 48.0, 0.0, 0.0, 25.0]
   # Goal: x, y, vx, vy, time_to_go
   goal_state:  [-48.0, -48.0, 0.0, 0.0, 0.0]
   
@@ -23,7 +23,7 @@ robot:
   spatial_dim: 2
   # Bounds: x, y, vx, vy, time
   bounds_min: [-50.0, -50.0, -15.0, -15.0, 0.0]
-  bounds_max: [ 50.0,  50.0,  15.0,  15.0, 35.0]
+  bounds_max: [ 50.0,  50.0,  15.0,  15.0, 25.0]
   
   # Dynamics
   min_velocity: 0.0
@@ -33,7 +33,7 @@ robot:
 # Planner Parameters
 planner_params:
   num_of_samples: 1
-  factor: 1.3
+  factor: 2.0
   delta: 40.0
   epsilon: 0.1
   use_kdtree: true
@@ -54,7 +54,7 @@ manager_params:
   sim_frequency_hz: 50
   vis_frequency_hz: 30
   follow_path: true
-  inflation: 0.0
+  inflation: 0.75
 
 gazebo_params:
   robot_model_name: "tugbot"
@@ -65,7 +65,7 @@ gazebo_params:
   use_range: false
   sensor_range: 20.0
   estimation: true
-  inflation: 0.0
+  inflation: 0.75
   fcl: false
   bullet: false
   persistent_static_obstacles: false

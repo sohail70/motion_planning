@@ -1238,12 +1238,14 @@ void InformedANYFMTA::updateNeighbors(int node_index) {
         const double dist = (node->getStateValue() - neighbor->getStateValue()).norm();
 
         // Add neighbor to current node's list if not already present
-        if(!node->neighbors().contains(neighbor)) {
+        // if(!node->neighbors().contains(neighbor)) {
+        if(!node->neighbors().count(neighbor)) {
             node->neighbors().emplace(neighbor, EdgeInfo{dist, dist});
         }
 
         // Add reverse connection to neighbor's list if not present
-        if(!neighbor->neighbors().contains(node)) {
+        // if(!neighbor->neighbors().contains(node)) {
+        if(!neighbor->neighbors().count(node)) {
             neighbor->neighbors().emplace(node, EdgeInfo{dist, dist});
         }
     }

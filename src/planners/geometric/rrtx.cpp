@@ -650,6 +650,7 @@ void RRTX::cullNeighbors(RRTxNode* v) {
                 }
             }
             it = outgoing.erase(it);
+            // outgoing.erase(it++); // for absl
         } else {
             ++it;
         }

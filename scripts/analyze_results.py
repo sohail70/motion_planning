@@ -3,105 +3,112 @@ import glob
 import os
 import re
 import numpy as np
-from scipy import stats
 
 # --- CONFIGURATION ---
-BUILD_DIR = "../build/"
-
+BUILD_DIR = "../build/" 
 FILENAME_PATTERN = re.compile(r"sim_([A-Za-z0-9]+)_([A-Za-z0-9_]+)_(\d{8}_\d{6})_metrics\.csv")
 
-def parse_files(directory):
-    data_registry = {}
-    if not os.path.exists(directory):
-        print(f"Error: Build directory '{directory}' does not exist.")
-        return {}
-
+def load_data(directory):
+    if not os.path.exists(directory): return {}
     files = glob.glob(os.path.join(directory, "sim_*_metrics.csv"))
-    print(f"Found {len(files)} metric files.")
+    scenarios = {}
 
     for filepath in files:
         filename = os.path.basename(filepath)
         match = FILENAME_PATTERN.match(filename)
-        
         if match:
-            planner_name = match.group(1)
-            scenario_name = match.group(2)
-            timestamp = match.group(3)
-            
-            if planner_name.startswith("Kinodynamic"):
-                planner_name = planner_name.replace("Kinodynamic", "")
-
+            planner_raw = match.group(1)
+            scenario = match.group(2)
+            planner_clean = planner_raw.replace("Kinodynamic", "").replace("PRMStar", "")
             try:
                 df = pd.read_csv(filepath)
                 if df.empty: continue
                 df.replace([np.inf, -np.inf], np.nan, inplace=True)
-                
-                # Check for necessary columns
-                required = ['avg_degree', 'tree_size', 'radius']
-                missing = [col for col in required if col not in df.columns]
-                if missing:
-                    print(f"[WARN] File {filename} missing columns: {missing}. Skipping.")
-                    continue
+                if scenario not in scenarios: scenarios[scenario] = []
+                scenarios[scenario].append({"planner": planner_clean, "data": df})
+            except Exception: pass
+    return scenarios
 
-                if scenario_name not in data_registry:
-                    data_registry[scenario_name] = []
-                
-                data_registry[scenario_name].append({
-                    "planner": planner_name,
-                    "data": df
-                })
-            except Exception as e:
-                print(f"Error reading {filename}: {e}")
-    return data_registry
+def analyze_group(group_name, results, scenario_name):
+    if not results: return
 
-def print_diagnostic_report(scenario, results_list):
-    print(f"\n" + "="*95)
-    print(f"DIAGNOSTIC REPORT: {scenario}")
-    print("="*95)
-    print(f"{'Planner':<15} | {'Nodes':<6} | {'Start Rad':<10} | {'End Rad':<10} | {'Avg Deg':<8} | {'Slope':<8} | {'Proof'}")
-    print("-" * 95)
+    print(f"\n{'='*140}")
+    print(f" {group_name} ANALYSIS: {scenario_name}")
+    print(f"{'='*140}")
 
-    for entry in results_list:
-        df = entry['data'].sort_values('tree_size')
-        planner = entry['planner']
-        
-        # Data points
-        nodes = df['tree_size'].iloc[-1]
-        start_rad = df['radius'].iloc[0]
-        end_rad = df['radius'].iloc[-1]
-        avg_deg = df['avg_degree'].iloc[-1]
-        
-        # Complexity Slope (Degree vs Tree Size)
-        # We ignore initialization noise
-        valid_df = df[df['tree_size'] > 20]
-        if valid_df.empty:
-            proof = "N/A (Too few nodes)"
-            slope = 0.0
-        else:
-            slope, _, _, _, _ = stats.linregress(valid_df['tree_size'], valid_df['avg_degree'])
+    has_split = 'update_ms' in results[0]['data'].columns
+
+    if has_split:
+        # --- HEADER ---
+        header = (f"{'Planner':<10} | {'Type':<8} | {'Count':<6} | "
+                  f"{'Avg Lat':<8} | {'Max Lat':<8} | {'Plan(ms)':<8} | {'Upd(ms)':<8} | "
+                  f"{'Obs Chk':<8} | {'Rewires':<8} | {'Tree Sz':<8} | {'Deg(Out)':<8} | {'Deg(In)':<8} | {'Path Cost':<9}")
+        print(header)
+        print("-" * 140)
+
+        for res in results:
+            df = res['data']
+            planner = res['planner']
             
-            # Proof logic
-            # If degree increases linearly with N, it's O(N^2)
-            if slope > 0.01:
-                proof = f"!! O(N^2) - RADIUS NOT SHRINKING FAST !!"
-            elif slope > 0.002:
-                proof = "Degrading toward O(N^2)"
-            else:
-                proof = "O(N log N) - Correct Behavior"
+            # --- 1. DYNAMIC EVENT FRAMES (Repair Phase) ---
+            df_event = df[df['update_ms'] > 0.001]
+            if not df_event.empty:
+                avg_lat  = df_event['total_latency_ms'].mean()
+                max_lat  = df_event['total_latency_ms'].max()
+                avg_plan = df_event['plan_ms'].mean()
+                avg_upd  = df_event['update_ms'].mean()
+                
+                # New Metrics
+                avg_obs  = df_event['obstacle_checks'].mean() if 'obstacle_checks' in df.columns else 0
+                avg_rew  = df_event['rewire_neighbor_searches'].mean() if 'rewire_neighbor_searches' in df.columns else 0
+                avg_sz   = df_event['tree_size'].max() if 'tree_size' in df.columns else 0
+                avg_deg_out = df_event['avg_deg_out'].max() if 'avg_deg_out' in df.columns else 0
+                avg_deg_in  = df_event['avg_deg_in'].max() if 'avg_deg_in' in df.columns else 0
 
-        print(f"{planner:<15} | {int(nodes):<6} | {start_rad:<10.2f} | {end_rad:<10.2f} | {avg_deg:<8.2f} | {slope:<8.5f} | {proof}")
-    
-    print("-" * 95 + "\n")
+                avg_cost = df_event['path_cost'].mean() if 'path_cost' in df.columns else 0
+                
+                print(f"{planner:<10} | {'REPAIR':<8} | {len(df_event):<6} | "
+                      f"\033[91m{avg_lat:<8.2f}\033[0m | {max_lat:<8.1f} | "
+                      f"{avg_plan:<8.2f} | {avg_upd:<8.2f} | "
+                      f"{avg_obs:<8.1f} | {avg_rew:<8.1f} | {avg_sz:<8.0f} | {avg_deg_out:<8.2f} | {avg_deg_in:<8.2f} | {avg_cost:<9.2f}")
+
+            # --- 2. STEADY STATE FRAMES (Exploration Phase) ---
+# --- 2. STEADY STATE FRAMES (Exploration Phase) ---
+            df_steady = df[df['update_ms'] <= 0.001]
+            if not df_steady.empty:
+                avg_lat = df_steady['total_latency_ms'].mean()
+                max_lat = df_steady['total_latency_ms'].max()
+                
+                # NEW: Calculate steady state Plan and Update times
+                avg_plan = df_steady['plan_ms'].mean()
+                avg_upd  = df_steady['update_ms'].mean() # This will naturally be ~0.00
+                
+                # New Metrics
+                avg_obs  = df_steady['obstacle_checks'].mean() if 'obstacle_checks' in df.columns else 0
+                avg_rew  = df_steady['rewire_neighbor_searches'].mean() if 'rewire_neighbor_searches' in df.columns else 0
+                avg_sz   = df_steady['tree_size'].max() if 'tree_size' in df.columns else 0
+                avg_deg_out = df_event['avg_deg_out'].max() if 'avg_deg_out' in df.columns else 0
+                avg_deg_in  = df_event['avg_deg_in'].max() if 'avg_deg_in' in df.columns else 0
+                
+                # USING .max() FOR INITIAL PATH COST AS DISCUSSED
+                init_cost = df_steady['path_cost'].max() if 'path_cost' in df.columns else 0
+                
+                # PRINT: Replaced the '--' with actual averages
+                print(f"{planner:<10} | {'STEADY':<8} | {len(df_steady):<6} | "
+                      f"\033[92m{avg_lat:<8.2f}\033[0m | {max_lat:<8.1f} | "
+                      f"{avg_plan:<8.2f} | {avg_upd:<8.2f} | "
+                      f"{avg_obs:<8.1f} | {avg_rew:<8.1f} | {avg_sz:<8.0f} | {avg_deg_out:<8.2f} | {avg_deg_in:<8.2f} | {avg_cost:<9.2f}")
+            
+            print("-" * 140)
+            
+    else:
+        print("Old data format detected. Please re-run simulation with new C++ code.")
 
 def main():
-    data_map = parse_files(BUILD_DIR)
-    if not data_map:
-        print("No valid CSV files found!")
-        return
-
-    for scenario, results in data_map.items():
+    scenarios = load_data(BUILD_DIR)
+    for scenario_name, results in scenarios.items():
         results.sort(key=lambda x: x['planner'])
-        print_diagnostic_report(scenario, results)
+        analyze_group("DETAILED", results, scenario_name)
 
 if __name__ == "__main__":
     main()

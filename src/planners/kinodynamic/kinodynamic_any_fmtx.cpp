@@ -1425,47 +1425,110 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
 //     v->last_culled_radius_ = neighborhood_radius_;
 // }
 
+
+
+
 void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
     if (v->is_new) return;
 
-    // 1. PERFORMANCE TRIGGER: Only loop if radius shrunk by > 5%
-    // This saves massive amounts of CPU by skipping the loop entirely
-    // most of the time.
+    // 1. PERFORMANCE TRIGGER: Skip loop if radius hasn't shrunk significantly
     if (v->last_culled_radius_ > 0 && 
-        (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) return;
+        (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) {
+        return;
+    }
 
     auto& outgoing = v->forwardNeighbors();
     auto it = outgoing.begin();
 
-    // IN-PLACE ERASE
     while (it != outgoing.end()) {
-        // Structured bindings (auto& [neighbor, edge]) are available in C++17
-        auto& neighbor = it->first;
+        auto neighbor = it->first;
         auto& edge = it->second;
+        double edge_cost = edge.cached_trajectory->cost;
 
-        if (!edge.is_initial && 
-            edge.cached_trajectory->cost > (neighborhood_radius_ + 0.01) &&
-            neighbor != v->getParent()) 
-        {
-            // The symmetric cull is unnecessary because incoming is never temporary edge!
-            // // SYMMETRIC CULL: Remove the back-link from the neighbor's incoming list.
-            // auto& incoming = neighbor->backwardNeighbors();
-            // if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
-            //     // Only prune if it's a temporary edge on their side too.
-            //     if (!incoming_it->second.is_initial) {
-            //         incoming.erase(incoming_it);
-            //     }
-            // }
-            // Remove from current node's outgoing map
-            it = outgoing.erase(it);
-        } else {
-            ++it;
+        // --- CONSOLIDATED CULL PROTECTION ---
+        // An edge is only considered for culling if it is longer than the current radius
+        // AND the node is not the current parent in the shortest-path tree[cite: 1066].
+        if (edge_cost > (neighborhood_radius_ + 0.01) && neighbor != v->getParent()) {
+
+            // 1. SYMMETRIC CULL (Neighbor's Side)
+            // Remove 'v' from the neighbor's backward list if it wasn't an 'initial' birth-neighbor.
+            // This mirrors Algorithm 3 in the paper[cite: 1068].
+            auto& incoming = neighbor->backwardNeighbors();
+            if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
+                if (!incoming_it->second.is_initial) {
+                    incoming.erase(incoming_it);
+                }
+            }
+
+            // 2. SOURCE CULL (v's Side)
+            // Remove the neighbor from the active forward set if it wasn't an 'initial' birth-neighbor.
+            // Preservation of N_0 neighbors is sacred for optimality[cite: 1084].
+            if (!edge.is_initial) {
+                it = outgoing.erase(it);
+                // outgoing.erase(it++); //for absl
+                continue; // Move to next neighbor
+            }
         }
+
+        ++it;
     }
 
     v->last_culled_radius_ = neighborhood_radius_;
 }
 
+// void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
+//     if (v->is_new) return;
+
+//     // 1. PERFORMANCE TRIGGER
+//     if (v->last_culled_radius_ > 0 && 
+//         (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) {
+//         return;
+//     }
+
+//     auto& outgoing = v->forwardNeighbors();
+    
+//     // Create a temporary container for elements we want to KEEP
+//     // This is much faster for flat_map than multiple erases.
+//     FMTNode::NeighborMap keepers;
+//     keepers.reserve(outgoing.size()); 
+
+//     std::vector<FMTNode*> culled_neighbors;
+
+//     for (auto& pair : outgoing) {
+//         FMTNode* neighbor = pair.first;
+//         EdgeInfo& edge = pair.second;
+//         double edge_cost = edge.cached_trajectory->cost;
+
+//         // logic: Should we cull this?
+//         bool is_too_long = edge_cost > (neighborhood_radius_ + 0.01);
+//         bool is_not_parent = (neighbor != v->getParent());
+//         bool is_not_initial = !edge.is_initial;
+
+//         if (is_too_long && is_not_parent && is_not_initial) {
+//             // This neighbor is being culled. Record it for the symmetric side.
+//             culled_neighbors.push_back(neighbor);
+//         } else {
+//             // Keep this edge! Move it to the keepers list.
+//             // Using insert with hint (end) is O(1) because the source is already sorted.
+//             keepers.insert(keepers.end(), std::move(pair));
+//         }
+//     }
+
+//     // 2. SYMMETRIC CLEANUP (The Side Effect Zone)
+//     // We do this BEFORE swapping the local map to be safe.
+//     for (FMTNode* neighbor : culled_neighbors) {
+//         auto& incoming = neighbor->backwardNeighbors();
+//         // This is still an O(N) operation on the neighbor side,
+//         // but it's necessary for graph consistency.
+//         incoming.erase(v); 
+//     }
+
+//     // 3. LOCAL SWAP
+//     // The old map is destroyed, and the 'keepers' map becomes the new forwardNeighbors.
+//     outgoing = std::move(keepers);
+
+//     v->last_culled_radius_ = neighborhood_radius_;
+// }
 
 
 void KinodynamicANYFMTX::plan() {
@@ -1562,9 +1625,19 @@ void KinodynamicANYFMTX::plan() {
         // // Find neighbors for z if they haven't been found yet.
         // if (!neighbor_precache)
         //     near(z->getIndex());
+
         // --- STAGE 1: IDENTIFY POTENTIALLY SUBOPTIMAL NEIGHBORS ---
         // Iterate through all neighbors 'x' of the expanding node 'z'.
-        for (auto& [x, edge_info_from_z] : z->backwardNeighbors()) { //backward means incoming . forward is outgoing
+        // for (auto& [x, edge_info_from_z] : z->backwardNeighbors()) { //backward means incoming . forward is outgoing
+        auto& backward_neighbors = z->backwardNeighbors();
+        for (auto it = backward_neighbors.begin(); it != backward_neighbors.end(); ) {
+            auto x = it->first;
+            // 3. Make a COPY of the edge info (remove the '&'). 
+            // If the map entry gets erased, a reference would become a dangling pointer!
+            const auto& edge_info_from_z = it->second; 
+            // 4. SAFELY advance the iterator BEFORE any potential deletion occurs
+            ++it;
+
             // m_l1_edges++; // Stage 1 edge check
 
             // // ======================================================
@@ -1654,6 +1727,8 @@ void KinodynamicANYFMTX::plan() {
                 // Since x might be unvisited (never popped), its neighbors 
                 // might contain stale temporary edges from an older, larger radius.
                 // We must clean them now to ensure we pick a valid parent.
+                // Safe to call now! If this deletes 'x' from z's map, 
+                // our iterator 'it' has already safely moved past it. --> so for this reason we couldnt use the range based for loop! because cullNeihgbor(x) could've deleted the incoming node from x to z from the z's perpective, the one that we are already using in this region of code!
                 cullNeighbors(x);
 
                 // 2. THE BOUNCER: Did 'z' survive the cull?
@@ -5339,9 +5414,59 @@ void KinodynamicANYFMTX::visualizeTree() {
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
-    std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
+    // std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
     visualization_->visualizeEdges(edges, "map");
 }
+
+
+
+
+// void KinodynamicANYFMTX::visualizeTree() {
+//     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+//     if (!tree_.empty()) {
+//         edges.reserve(tree_.size());
+//     }
+    
+//     std::vector<Eigen::VectorXd> tree_nodes;
+//     tree_nodes.reserve(tree_.size());
+
+//     // --- Variables for statistics ---
+//     long long total_out = 0;
+//     long long total_in = 0;
+//     int connected_nodes_count = 0;
+    
+//     for (const auto& node_ptr : tree_) {
+//         FMTNode* child_node = node_ptr.get();
+//         FMTNode* parent_node = child_node->getParent();
+
+//         tree_nodes.push_back(node_ptr->getStateValue().head(2)); 
+
+//         // Track connected nodes just for informational printout
+//         if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
+//             connected_nodes_count++;
+//         }
+
+//         // --- MATH CHANGE: Count edges for ALL nodes in memory ---
+//         total_out += child_node->forwardNeighbors().size();
+//         total_in += child_node->backwardNeighbors().size();
+
+//         if (parent_node) {
+//             edges.emplace_back(parent_node->getStateValue().head(2), child_node->getStateValue().head(2));
+//         }
+//     }
+
+//     // --- ONLINE LOGGING (Averaging over the entire tree) ---
+//     double avg_out = tree_.empty() ? 0.0 : static_cast<double>(total_out) / tree_.size();
+//     double avg_in = tree_.empty() ? 0.0 : static_cast<double>(total_in) / tree_.size();
+
+//     std::cout << "\033[1;36m[FMTX STATS] Nodes: " << tree_nodes.size() 
+//               << " | Connected: " << connected_nodes_count
+//               << " | Radius: " << std::fixed << std::setprecision(3) << neighborhood_radius_ 
+//               << " | Avg Deg (Out): " << std::setprecision(2) << avg_out 
+//               << " | Avg Deg (In): " << avg_in << "\033[0m\n";
+        
+//     visualization_->visualizeEdges(edges, "map");
+// }
 
 void KinodynamicANYFMTX::visualizeTreeReal() {
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;

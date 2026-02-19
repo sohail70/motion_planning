@@ -412,8 +412,8 @@ void KinodynamicRRTX::plan() {
             
             // Update node costs and neighbors
             rewireNeighbors(new_node);
-            reduceInconsistency();
             new_node->setCost(new_node->getLMC()); // RRTx julia implementation puts the new node in the queue instead so that reduce function would set it but that causes redundant rewiring and update lmc again!
+            reduceInconsistency();
         }
         // std::this_thread::sleep_for(std::chrono::milliseconds(150));
         // visualizeTree();
@@ -1538,8 +1538,8 @@ void KinodynamicRRTX::updateLMC(RRTxNode* v) {
 */
 
 void KinodynamicRRTX::cullNeighbors(RRTxNode* v) {
-    // Optimization: If we have capped samples, the radius stops shrinking.
-    // Therefore, no edges will ever become longer than the radius. Skip checking!
+    // 1. OPTIMIZATION: If samples are capped and reached, the radius is constant.
+    // No existing edges can grow longer than the current radius.
     if (cap_samples_ == true && sample_counter >= num_of_samples_ - 1) {
         return; 
     }
@@ -1547,53 +1547,43 @@ void KinodynamicRRTX::cullNeighbors(RRTxNode* v) {
     auto& outgoing = v->outgoingEdges();
     auto it = outgoing.begin();
     
-    // bool culled_anything = false; 
     while (it != outgoing.end()) {
-        auto [neighbor, edge] = *it;
-        
-        // If the edge is temporary, too long, and not our parent
-        if (!edge.is_initial && 
-            edge.cached_trajectory->cost > neighborhood_radius_ + 0.01 && 
-            neighbor != v->getParent()) 
-        { 
-            // // --- DEBUG LOGGING ---
-            // std::cout << "[CULL] Node [" << v->getIndex() << "] culled edge to Node [" << neighbor->getIndex() << "]"
-            //           << " | Cost: " << edge.cached_trajectory.cost 
-            //           << " > Rad: " << neighborhood_radius_ << "\n";
-            // culled_anything = true;
-            // // ---------------------
-            // We KNOW the neighbor considers this 'is_initial == true' because of how RRTX works.
+        RRTxNode* neighbor = it->first;
+        auto& edge = it->second;
+        double edge_cost = edge.cached_trajectory->cost;
 
+        // --- THE RADIUS THRESHOLD ---
+        // Only evaluate culling if the edge is too long AND not the parent.
+        // This follows Algorithm 3: if r < d_pi(v,u) and parent(v) != u.
+        if (edge_cost > (neighborhood_radius_ + 0.01) && neighbor != v->getParent()) {
 
-            // // The symmetric cull is unnecessary because incoming is never temporary edge!
-            // // SYMMETRIC CULL: We must check the neighbor's incoming list
-            // auto& incoming = neighbor->incomingEdges();
-            // if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
-            //     // If it's a ghost link (not initial), kill it! 
-            //     if (!incoming_it->second.is_initial) {
-            //         incoming.erase(incoming_it);
-            //     }
-            // }
+            // A. SYMMETRIC CULL: Evaluate removing 'v' from the neighbor's incoming list.
+            // As per Julia code: JlistRemove(neighborNode.rrtNeighborsIn, ...)[cite: 436].
+            auto& incoming = neighbor->incomingEdges();
+            if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
+                // Rule: Preserving birth-right connectivity (InitialNeighborList)[cite: 765, 1084].
+                if (!incoming_it->second.is_initial) {
+                    incoming.erase(incoming_it);
+                }
+            }
 
-            // Therefore, we ALWAYS just move it to the passive map. No need to check!
-            v->culled_outgoing_edges_[neighbor] = edge;
-            
-            // Remove it from the active planning map
-            it = outgoing.erase(it);
-        } else {
-            ++it;
+            // B. SOURCE CULL: Evaluate removing the neighbor from v's active set.
+            // We only remove from the active map if it is a 'running' edge[cite: 983].
+            if (!edge.is_initial) {
+                // Move it to the passive map (required for RRTX's obstacle repair)
+                v->culled_outgoing_edges_[neighbor] = edge;
+                
+                // Remove from active map and advance iterator
+                it = outgoing.erase(it);
+                // outgoing.erase(it++); //for absl
+                continue; 
+            }
         }
+
+        // If the edge was not culled, move to next
+        ++it;
     }
-    // // --- DEBUG LOGGING SUMMARY ---
-    // if (culled_anything) {
-    //     std::cout << "       -> Node [" << v->getIndex() << "] now has " 
-    //               << v->outgoingEdges().size() << " Active, "
-    //               << v->culled_outgoing_edges_.size() << " Culled.\n";
-    // }
-    // // -----------------------------
 }
-
-
 
 void KinodynamicRRTX::verifyQueue(RRTxNode* node) {
     const double min_key = std::min(node->getLMC(), node->getCost());

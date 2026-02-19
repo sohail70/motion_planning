@@ -170,7 +170,8 @@ void InformedANYFMT::plan() {
                     // Remove the blocked neighbor from x's neighbor list
                     x->neighbors().erase(best_neighbor_node);
                     // Also remove x from the neighbor's neighbor list to maintain symmetry
-                    if (best_neighbor_node->neighbors().contains(x)) {
+                    // if (best_neighbor_node->neighbors().contains(x)) {
+                    if (best_neighbor_node->neighbors().count(x)) {
                         best_neighbor_node->neighbors().erase(x);
                     }
                 }
@@ -352,12 +353,14 @@ void InformedANYFMT::updateNeighbors(int node_index) {
         const double dist = (node->getStateValue() - neighbor->getStateValue()).norm();
 
         // Add neighbor to current node's list if not already present
-        if(!node->neighbors().contains(neighbor)) {
+        // if(!node->neighbors().contains(neighbor)) {
+        if(!node->neighbors().count(neighbor)) {
             node->neighbors().emplace(neighbor, EdgeInfo{dist, dist});
         }
 
         // Add reverse connection to neighbor's list if not present
-        if(!neighbor->neighbors().contains(node)) {
+        // if(!neighbor->neighbors().contains(node)) {
+        if(!neighbor->neighbors().count(node)) {
             neighbor->neighbors().emplace(node, EdgeInfo{dist, dist});
         }
     }
