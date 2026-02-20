@@ -4826,7 +4826,63 @@ std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
         predicted_pos = predicted_pos + (current_v * dt_step);
     }
     
+    ob.min_x = std::numeric_limits<double>::max();
+    ob.max_x = std::numeric_limits<double>::lowest();
+    ob.min_y = std::numeric_limits<double>::max();
+    ob.max_y = std::numeric_limits<double>::lowest();
+
+    for (const auto& p : path) {
+        if (p.x() < ob.min_x) ob.min_x = p.x();
+        if (p.x() > ob.max_x) ob.max_x = p.x();
+        if (p.y() < ob.min_y) ob.min_y = p.y();
+        if (p.y() > ob.max_y) ob.max_y = p.y();
+    }
+
+
     return path;
+}
+
+bool GazeboObstacleChecker::isNodeInObstacleTube(const Eigen::VectorXd& node_state, 
+                                                const Obstacle& ob, 
+                                                double max_edge_length) const {
+    if (ob.predicted_path.empty()) return false;
+
+    // 1. Calculate the Search Radius (The "Inflation" of the AABB)
+    double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
+                   std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+    
+    double search_radius;
+    if (is_geometric_mode_) {
+        search_radius = obs_r + ob.inflation + max_edge_length;
+    } else {
+        double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+        search_radius = obs_r + ob.inflation + max_edge_length + gap_coverage_inflation;
+    }
+
+    double nx = node_state[0];
+    double ny = node_state[1];
+
+    // ========================================================================
+    // THE AABB SHORT-CIRCUIT (The "Simple" but massive gain)
+    // ========================================================================
+    // If the node is outside the bounding box (inflated by search_radius), 
+    // it is physically impossible for it to be inside the tube. 
+    if (nx < (ob.min_x - search_radius) || nx > (ob.max_x + search_radius) ||
+        ny < (ob.min_y - search_radius) || ny > (ob.max_y + search_radius)) {
+        return false; // Skip the heavy O(P) loop entirely!
+    }
+
+    // 2. Precise Loop (Only runs if the node is "near" the tube)
+    double search_radius_sq = search_radius * search_radius;
+    for (const auto& path_point : ob.predicted_path) {
+        double dx = nx - path_point.x();
+        double dy = ny - path_point.y();
+        if ((dx*dx + dy*dy) <= search_radius_sq) { 
+            return true; 
+        }
+    }
+
+    return false;
 }
 
 

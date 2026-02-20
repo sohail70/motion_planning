@@ -170,6 +170,16 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
         for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
             auto node = std::make_shared<FMTNode>(statespace_->sampleUniform(lower_bounds_ , upper_bounds_),tree_.size());
             node->in_unvisited_ = true;
+            if (!is_geometric_mode_) {
+                // Kinodynamic: Set time from state vector
+                if (node->getStateValue().size() > 2) {
+                    double absolute_t = node->getStateValue().tail<1>()[0];
+                    node->setTimeToGoal(absolute_t);
+                }
+            } else {
+                // Geometric: Time is irrelevant, set to 0 or leave default
+                node->setTimeToGoal(0.0);
+            }
             tree_.push_back(node);
         }
         setGoal(problem_->getGoal());
@@ -1236,16 +1246,7 @@ void KinodynamicFMTX::plan() {
                         // double absolute_t = x->getStateValue().tail<1>()[0];
                         // x->setTimeToGoal(absolute_t);
 
-                        if (!is_geometric_mode_) {
-                            // Kinodynamic: Set time from state vector
-                            if (x->getStateValue().size() > 2) {
-                                double absolute_t = x->getStateValue().tail<1>()[0];
-                                x->setTimeToGoal(absolute_t);
-                            }
-                        } else {
-                            // Geometric: Time is irrelevant, set to 0 or leave default
-                            x->setTimeToGoal(0.0);
-                        }
+
                         ////////////////////////////
 
 
@@ -5612,7 +5613,7 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
             };
 
             check_boundary(node->forwardNeighbors());
-            check_boundary(node->backwardNeighbors());
+            // check_boundary(node->backwardNeighbors());
         // }
         // else{
             // counter++;
@@ -5754,7 +5755,7 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
         };
 
         check_neighbors(node->forwardNeighbors());
-        check_neighbors(node->backwardNeighbors());
+        // check_neighbors(node->backwardNeighbors());
     }
     // std::cout<< "REMOVE OBS NO NEED COUNTER: "<<counter<<"\n";
 

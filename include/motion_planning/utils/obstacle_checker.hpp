@@ -69,6 +69,14 @@ struct Obstacle {
     // The "Timer": Ground truth time (T) when the next turn occurs
     double nextDirectionChangeTime = -1.0;
 
+    // --- NEW: AABB for the Spacetime Tube ---
+    // These define the rectangular bounds of the entire predicted_path
+    // Mark these as mutable so generatePrediction can update them
+    mutable double min_x = std::numeric_limits<double>::max();
+    mutable double max_x = std::numeric_limits<double>::lowest();
+    mutable double min_y = std::numeric_limits<double>::max();
+    mutable double max_y = std::numeric_limits<double>::lowest();
+
 
     // Default constructor
     Obstacle() : type(CIRCLE), position(Eigen::Vector2d::Zero()), previous_position(Eigen::Vector2d::Zero()), inflation(0.0) {}
@@ -169,6 +177,10 @@ public:
     virtual std::vector<Eigen::Vector3d> generatePrediction(const Obstacle& ob, double current_time) const {
         // Default behavior: return empty path (no prediction)
         return {}; 
+    }
+    
+    virtual bool isNodeInObstacleTube(const Eigen::VectorXd& node_state, const Obstacle& ob, double max_edge_length) const {
+        return 0;
     }
 
 };

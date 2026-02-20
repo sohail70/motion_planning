@@ -797,6 +797,15 @@ std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::stri
     double best_dist = 0.0;
     Trajectory best_traj;
 
+    if (!is_geometric_mode_) {
+        // Extract the sampled time coordinate from the state vector
+        double absolute_t = v->getStateValue().tail<1>()[0];
+        v->setTimeToGoal(absolute_t);
+    } else {
+        // Geometric: Time is irrelevant
+        v->setTimeToGoal(0.0);
+    }
+
     // std::unordered_map<RRTxNode*, Trajectory> all_trajectories_from_v_to_u;
     std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::string>>> all_trajectories_from_v_to_u;
     all_trajectories_from_v_to_u.reserve(candidates.size());
@@ -855,22 +864,6 @@ std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::stri
 
     if (best_parent) {
         v->setParent(best_parent, best_traj);
-
-        // // TIME TO GOAL for that node is identical to the sampled time dimension of that node though i set it here because I think its more cpu friendly in case i need to use getTimeToGoal for a node
-        // // v->setTimeToGoal(best_parent->getTimeToGoal() + best_traj.time_duration);
-        // double absolute_t = v->getStateValue().tail<1>()[0];
-        // v->setTimeToGoal(absolute_t);
-
-        if (!is_geometric_mode_) {
-            double absolute_t = v->getStateValue().tail<1>()[0];
-            v->setTimeToGoal(absolute_t);
-        } else {
-            // Geometric: Time is irrelevant, set to 0 or leave default
-            v->setTimeToGoal(0.0);
-        }
-
-
-
         v->setLMC(min_lmc);
         // edge_length_[v->getIndex()] = best_dist;
     }

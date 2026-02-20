@@ -712,8 +712,19 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
     RRTxNode* best_parent = nullptr;
     Trajectory best_traj;
 
+    
     auto all_obs = obs_checker_->getObstacles();
-    double v_time = is_geometric_mode_ ? 0.0 : new_node->getStateValue().tail<1>()[0];
+
+    if (!is_geometric_mode_) {
+        // Extract the sampled time coordinate from the state vector
+        double absolute_t = new_node->getStateValue().tail<1>()[0];
+        new_node->setTimeToGoal(absolute_t);
+    } else {
+        // Geometric: Time is irrelevant
+        new_node->setTimeToGoal(0.0);
+    }
+    
+    double v_time = new_node->getTimeToGoal();
 
     // Local struct to cache bi-directional edge results
     struct EdgeEval {
@@ -868,6 +879,15 @@ KinodynamicANYRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<si
     RRTxNode* best_parent = nullptr;
     Trajectory best_traj;
 
+    if (!is_geometric_mode_) {
+        // Extract the sampled time coordinate from the state vector
+        double absolute_t = v->getStateValue().tail<1>()[0];
+        v->setTimeToGoal(absolute_t);
+    } else {
+        // Geometric: Time is irrelevant
+        v->setTimeToGoal(0.0);
+    }
+
     std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::string>>> trajs_from_v_to_u;
     trajs_from_v_to_u.reserve(candidates.size());
 
@@ -912,11 +932,6 @@ KinodynamicANYRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<si
 
     if (best_parent) {
         v->setParent(best_parent, best_traj);
-        if (!is_geometric_mode_) {
-            v->setTimeToGoal(v->getStateValue().tail<1>()[0]);
-        } else {
-            v->setTimeToGoal(0.0);
-        }
         v->setLMC(min_lmc);
     }
 
@@ -2013,7 +2028,7 @@ void KinodynamicANYRRTX::visualizeTree() {
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
-    // std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
+    std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
     visualization_->visualizeEdges(edges, "map");
 }
 

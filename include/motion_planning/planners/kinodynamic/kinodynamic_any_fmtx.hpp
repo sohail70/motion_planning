@@ -115,7 +115,8 @@ class KinodynamicANYFMTX : public Planner {
             int getTreeSize() { return tree_.size();}
 
             // Adds a batch of samples to the existing tree and updates structures
-            void addBatchOfSamples(int num_samples);
+            void addBatchOfSamplesLazy(int num_samples);
+            void addBatchOfSamplesEager(int num_samples);
 
 
 

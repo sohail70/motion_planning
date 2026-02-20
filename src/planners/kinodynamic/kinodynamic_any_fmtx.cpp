@@ -537,8 +537,8 @@ Eigen::VectorXd KinodynamicANYFMTX::saturate(const Eigen::VectorXd& newPoint, co
     return saturatedPoint;
 }
 
-
-void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
+// Lazy insertion, later in plan we do lazy propagation
+void KinodynamicANYFMTX::addBatchOfSamplesLazy(int num_samples) {
     if (num_samples <= 0) return;
 
     std::vector<int> added_node_indices;
@@ -588,6 +588,30 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
         int node_index = tree_.size();
         tree_.push_back(node);
         
+        if (!is_geometric_mode_ && node->getStateValue().size() > 2) {
+            double absolute_t = node->getStateValue().tail<1>()[0];
+            node->setTimeToGoal(absolute_t);
+        } else {
+            node->setTimeToGoal(0.0);
+        }
+
+        // ====================================================================
+        // NEW: BROAD-PHASE THREAT DISCOVERY
+        // ====================================================================
+        // We use the spatial "Swept Volume" check to identify threats.
+        // This ensures symmetry with addNewObstacle/removeObstacle.
+        for (const auto& [name, ob] : previous_obstacles_) {
+            // neighborhood_radius_ acts as the current max_edge_length
+            if (obs_checker_->isNodeInObstacleTube(node->getStateValue(), ob, delta)) {
+                node->threats.insert(name);
+            }
+        }
+        // Since we've pre-populated threats, the plan() function will handle 
+        // the actual collision checks lazily. We can clear the "is_new" flag.
+        // node->is_new = false;  // NO! we shouldnt set this here because cullNeighbor also uses itasa filter!
+        // ====================================================================
+
+
 
         // Add to KD-Tree --> BUT WE ONLY PUT THE ONES WE SPECIFIED IN THE PARAMETER
         kdtree_->addPoint(sample_val.head(kd_dim)); 
@@ -636,6 +660,316 @@ void KinodynamicANYFMTX::addBatchOfSamples(int num_samples) {
 
     }
     
+    // // ======================================================
+    // // NEW: VISUALIZE V_OPEN NODES
+    // // ======================================================
+    // if (visualization_) {
+    //     // 1. Visualize the newly added samples (e.g., Green)
+    //     visualization_->visualizeNodes(new_samples_viz);
+
+    //     // 2. Extract and Visualize nodes currently in V_Open (e.g., Blue)
+    //     std::vector<Eigen::VectorXd> v_open_nodes;
+    //     v_open_nodes.reserve(v_open_heap_.getHeap().size());
+        
+    //     // Access the underlying heap data. 
+    //     // Note: This depends on your BinaryHeap implementation. 
+    //     // If it has a .getHeap() or .data() method returning a vector of pairs/elements:
+    //     const auto& heap_data = v_open_heap_.getHeap(); 
+        
+    //     for (const auto& element : heap_data) {
+    //         // element is likely {cost, node*} or similar
+    //         FMTNode* node = element.second; 
+    //         if (node) {
+    //             v_open_nodes.push_back(node->getStateValue().head(2));
+    //         }
+    //     }
+        
+    //     // Visualize V_Open in Blue (0.0, 0.0, 1.0)
+    //     if (!v_open_nodes.empty()) {
+    //         visualization_->visualizeNodes(v_open_nodes, "map", 
+    //                                 std::vector<float>{0.0f, 0.0f, 1.0f}, // Blue
+    //                                 "v_open_nodes");
+    //     }
+    // }
+    // // ======================================================
+
+
+    // if (visualization_) {
+    //     visualization_->visualizeNodes(new_samples_viz);
+    // }
+    
+    // std::cout << "Added " << added_node_indices.size() << " feasible samples." << std::endl;
+}
+
+
+// Eager new sample insertion, later in plan we do lazy propagation
+// In anytime fmtx eager approach we still dont care about all the collision checking connections from new node to neighbors or neighbors to new node
+// except maybe the new sampled node to its forward neighbors! so we only collision check to find the parent here! but in anytime rrtx we have to check all of the
+// edges and make them to have edge.distance of INF because that how rrtx works! but here because of lazy collision checking we dont have to do this!
+// Even this collision checking was not necessary if i could've found a way to make the addBatchOfSamplesLazy to not become O(n log^2 (n))
+// But here the O(n log(n)) will be preserved because we only do one heap push if the new node finds the best parent!
+void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
+    if (num_samples <= 0) return;
+
+    std::vector<int> added_node_indices;
+    // std::vector<Eigen::VectorXd> new_samples_viz;
+
+    for (int i = 0; i < num_samples; ++i) {
+        // 1. Generate Sample
+        // Eigen::VectorXd sample_val = statespace_->sampleUniform(lower_bounds_, upper_bounds_)->getValue();
+        Eigen::VectorXd sample_val = Eigen::VectorXd::Random(dimension_);
+        
+        // Scale from [-1, 1] to [lower_bounds, upper_bounds]
+        sample_val = lower_bounds_.array() + 
+                    (upper_bounds_ - lower_bounds_).array() * ((sample_val.array() + 1.0) / 2.0);
+
+
+    //    // //////// INCASE YOU WANNA USE SATURATE TO GUIDE THE SAMPLES --> THIS IS NOT NECESSARY UNLESS YOU ONLY WANNA ADD ONE SAMPLE OR YOU WANNA COMPARE WITH RRTX!///////////
+    //     std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample_val.head(kd_dim), 1);
+    //     FMTNode* nearest_node = tree_[nearest_indices[0]].get();
+    //     Eigen::VectorXd nearest_state = nearest_node->getStateValue();
+        
+    //     // 4. Saturate (Steer)
+    //     sample_val = saturate(sample_val, nearest_state, delta);
+    //     // ///////////////////////////////////////////////////////
+        // This is just for fmtx to be complete! in case we have static obstalces!
+        if (!obs_checker_->isObstacleFree(sample_val)) {
+            continue;
+        }
+
+
+        // 2. Create Node Object (Temporarily)
+        // We create the node to get the pointer, but we don't push it to tree_ yet.
+        auto node = std::make_shared<FMTNode>(statespace_->addState(sample_val), tree_.size());
+        node->is_new = true; 
+        
+        // 3. CHECK FEASIBILITY & CONNECT
+        // We pass the sample_val and the node pointer.
+        // updateNeighbors will perform the steering and populate the neighbor maps.
+        // It returns TRUE if at least one valid steer was found.
+        if (!updateNeighbors(sample_val, node.get())) {
+            // DISCARD: The node is kinematically unreachable.
+            // It is NOT added to tree_, and the shared_ptr will go out of scope and be destroyed.
+            continue; 
+        }
+
+        // 4. COMMIT TO TREE
+        // If we reach here, the node is good.
+        int node_index = tree_.size();
+        tree_.push_back(node);
+        
+        if (!is_geometric_mode_ && node->getStateValue().size() > 2) {
+            double absolute_t = node->getStateValue().tail<1>()[0];
+            node->setTimeToGoal(absolute_t);
+        } else {
+            node->setTimeToGoal(0.0);
+        }
+        // Add to KD-Tree --> BUT WE ONLY PUT THE ONES WE SPECIFIED IN THE PARAMETER
+        kdtree_->addPoint(sample_val.head(kd_dim)); 
+        
+        added_node_indices.push_back(node_index);
+        // new_samples_viz.push_back(sample_val);
+    }
+
+    if (added_node_indices.empty()) return;
+
+    // 5. BUILD KD-TREE --> BUILDT TREE function is empty in case you use DynamicWeightedNanoFlann
+    if (use_kdtree) {
+        kdtree_->buildTree();
+    }
+
+    // 6. UPDATE NEIGHBORHOOD RADIUS
+    updateNeighborhoodRadius();
+
+    /*
+        For newly sampled node can we use the union of the threats of the neighbors? it might work but i need to think if the removeObstalce later will remove 
+        those obstalces from the new node or not. I can think of a configuration where those obstalces might linger in the threat set of this new node so for now I will
+        check the collision with all the obstalces in the plan function for the new added node with is_new flag! then later in the nex turn around events the threat set for this
+        new node would be updated naturally in the addNewObstalce function and we are good! 
+        even using KNN to use the nearest node's threat seems like its not exact because the nearest node might be in the obstalces tube but new node might be safe outside the tube!
+        I will think of an optimized solution later!
+    
+    */
+    // // ========================================================================
+    // // 7. SEED V_OPEN (EAGER INSERTION + LAZY PROPAGATION WITH THREATS)
+    // // ========================================================================
+    // for (int idx : added_node_indices) {
+    //     FMTNode* new_node = tree_[idx].get();
+
+    //     // Collect and sort potential parents by theoretical cost-to-come
+    //     std::vector<std::pair<double, FMTNode*>> candidate_parents;
+    //     for (auto& [neighbor, edge_info] : new_node->forwardNeighbors()) {
+    //         if (neighbor->getCost() == INFINITY) {
+    //             continue; 
+    //         }
+            
+    //         // Assume updateNeighbors already lazily or eagerly put the distance
+    //         double potential_cost = neighbor->getCost() + edge_info.distance; 
+    //         candidate_parents.push_back({potential_cost, neighbor});
+    //     }
+
+    //     std::sort(candidate_parents.begin(), candidate_parents.end());
+
+    //     bool connected = false;
+
+    //     // Eagerly check the sorted candidates
+    //     for (const auto& candidate : candidate_parents) {
+    //         FMTNode* potential_parent = candidate.second;
+    //         auto& edge_info = new_node->forwardNeighbors().at(potential_parent);
+
+    //         // Fetch the trajectory (Assuming updateNeighbors populated it, 
+    //         // or compute it lazily here if your architecture prefers)
+    //         if (!edge_info.is_trajectory_computed) {
+    //             // If you need to steer on-the-fly, do it here. 
+    //             // Otherwise, proceed with the cached one.
+    //         }
+    //         const Trajectory& traj_xy = *(edge_info.cached_trajectory);
+    //         if (!traj_xy.is_valid) continue;
+
+    //         // Time calculation matching your plan() function
+    //         double node_time_to_goal = 0.0;
+    //         if (!is_geometric_mode_) {
+    //             if (new_node->getStateValue().size() > 2) {
+    //                 node_time_to_goal = new_node->getTimeToGoal();
+    //             }
+    //         }
+
+    //         // ======================================================
+    //         // FAST EAGER COLLISION CHECKING (No Threat Bookkeeping)
+    //         // ======================================================
+    //         bool collision_free = true;
+            
+    //         for (const auto& ob : obs_checker_->getObstacles()) {
+    //             // Uncomment if you want this to count towards your metrics
+    //             // last_replan_metrics_.obstacle_checks++; 
+    //             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj_xy, node_time_to_goal, ob)) {
+    //                 collision_free = false;
+    //                 break; // Short-circuit: The edge is blocked, stop checking this candidate.
+    //             }
+    //         }
+
+    //         if (collision_free) {
+    //             // SUCCESS! The node connects cleanly.
+    //             new_node->is_new = false; // It is officially integrated
+    //             new_node->threats.clear(); // Ensure it has a clean slate
+
+    //             // Overwrite states
+    //             new_node->setCost(candidate.first);
+    //             new_node->setParent(potential_parent, traj_xy);
+    //             new_node->setFinalDerivatives(traj_xy.final_velocity, traj_xy.final_acceleration);
+
+
+
+    //             connected = true;
+    //             break; // We found the absolute best collision-free parent. Stop checking candidates.
+    //         } else {
+    //             // This edge collided. Set distance to INF so the lazy plan() 
+    //             // loop doesn't trip on this specific edge later.
+    //             edge_info.distance = INFINITY;
+    //         }
+    //     }
+
+    //     // ======================================================
+    //     // THE SINGLE HEAP INSERTION
+    //     // ======================================================
+    //     if (connected) {
+    //         // Push the *new node* to V_OPEN.
+    //         // When plan() pops it, it will act as 'z', triggering Stage 1
+    //         // to lazily look at its backward neighbors 'x'.
+    //         v_open_heap_.add(new_node, new_node->getCost());
+    //     } 
+    //     // NOTE: If !connected, it naturally bypasses the heap addition.
+    //     // It remains is_new = true and cost = INFINITY in the tree, 
+    //     // ready to be captured by future lazy expansions in plan().
+    // }
+    
+
+    // ========================================================================
+    // 7. SEED V_OPEN (EAGER INSERTION + LAZY PROPAGATION WITH THREATS)
+    // ========================================================================
+    for (int idx : added_node_indices) {
+        FMTNode* new_node = tree_[idx].get();
+
+        // [OPTIMIZATION 1]: Preallocate memory to avoid dynamic resizing
+        std::vector<std::pair<double, FMTNode*>> candidate_parents;
+        candidate_parents.reserve(new_node->forwardNeighbors().size());
+
+        for (auto& [neighbor, edge_info] : new_node->forwardNeighbors()) {
+            if (neighbor->getCost() == INFINITY) {
+                continue; 
+            }
+            double potential_cost = neighbor->getCost() + edge_info.distance; 
+            candidate_parents.emplace_back(potential_cost, neighbor); // emplace_back is slightly faster than push_back
+        }
+
+        if (candidate_parents.empty()) continue;
+
+        // [OPTIMIZATION 2]: Build a Min-Heap in strictly O(K) time instead of O(K log K)
+        // We use std::greater to make the lowest cost bubble to the top
+        std::make_heap(candidate_parents.begin(), candidate_parents.end(), std::greater<std::pair<double, FMTNode*>>());
+
+        // [OPTIMIZATION 3]: Hoist loop invariants. 
+        // new_node->getTimeToGoal() is constant for all candidate parents!
+        double node_time_to_goal = 0.0;
+        if (!is_geometric_mode_ && new_node->getStateValue().size() > 2) {
+            node_time_to_goal = new_node->getTimeToGoal();
+        }
+
+        bool connected = false;
+
+        // Eagerly check candidates by popping from the Min-Heap
+        while (!candidate_parents.empty()) {
+            // Pop the lowest cost element from the heap in O(log K) time
+            std::pop_heap(candidate_parents.begin(), candidate_parents.end(), std::greater<std::pair<double, FMTNode*>>());
+            auto candidate = candidate_parents.back();
+            candidate_parents.pop_back();
+
+            FMTNode* potential_parent = candidate.second;
+            auto& edge_info = new_node->forwardNeighbors().at(potential_parent);
+
+            // if (!edge_info.is_trajectory_computed) {
+            //     // lazy steering logic 
+            // }
+            const Trajectory& traj_xy = *(edge_info.cached_trajectory);
+            if (!traj_xy.is_valid) continue;
+
+            // ======================================================
+            // FAST EAGER COLLISION CHECKING 
+            // ======================================================
+            bool collision_free = true;
+            for (const auto& ob : obs_checker_->getObstacles()) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj_xy, node_time_to_goal, ob)) {
+                    collision_free = false;
+                    break; // Short-circuit
+                }
+            }
+
+            if (collision_free) {
+                // SUCCESS!
+                new_node->is_new = false; 
+                new_node->threats.clear(); 
+
+                new_node->setCost(candidate.first);
+                new_node->setParent(potential_parent, traj_xy);
+                new_node->setFinalDerivatives(traj_xy.final_velocity, traj_xy.final_acceleration);
+
+                connected = true;
+                break; // Stop checking candidates.
+            }
+            // If NOT collision free, do nothing! Just let the while loop 
+            // pop the next candidate from the heap. The edge remains intact 
+            // for future dynamic repairs.
+        }
+
+        // ======================================================
+        // THE SINGLE HEAP INSERTION
+        // ======================================================
+        if (connected) {
+            v_open_heap_.add(new_node, new_node->getCost());
+        } 
+    }
+
+
     // // ======================================================
     // // NEW: VISUALIZE V_OPEN NODES
     // // ======================================================
@@ -1554,7 +1888,8 @@ void KinodynamicANYFMTX::plan() {
     // // -----------------------
 
 
-    addBatchOfSamples(num_of_samples_); // Add a small batch (e.g., 10) instead of 1
+    // addBatchOfSamplesLazy(num_of_samples_); // Add a small batch (e.g., 10) instead of 1
+    addBatchOfSamplesEager(num_of_samples_); // Add a small batch (e.g., 10) instead of 1
     while (true) {
         // // 1. ANYTIME LOGIC: Refill heap if empty or low
         // // if ( tree_.size() < num_of_samples_) {
@@ -1822,29 +2157,37 @@ void KinodynamicANYFMTX::plan() {
                     // HYBRID COLLISION CHECKING
                     // ======================================================
                     
-                    if (x->is_new) {  // ---> I used the union threats in the addBatchSamples function last for loop but i need to make sure if removeObstalce will remove it logically or not! (given all the neighbors of the new node are having the up to date threat set since i use the union some obstalce  might linger!)
-                    // if (false) {
+                    // if (x->is_new) {  // ---> I used the union threats in the addBatchSamples function last for loop but i need to make sure if removeObstalce will remove it logically or not! (given all the neighbors of the new node are having the up to date threat set since i use the union some obstalce  might linger!)
+                    // // if (false) {
 
-                        bool initially_blocked = false;
+                    //     bool initially_blocked = false;
                         
-                        // We check all obstacles once to populate the threat set
-                        for (const auto& ob : obs_checker_->getObstacles()) {
-                            last_replan_metrics_.obstacle_checks++;
-                            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, node_time_to_goal, ob)) {
-                                x->threats.insert(ob.name);
-                                initially_blocked = true;
-                            }
-                        }
+                    //     // We check all obstacles once to populate the threat set
+                    //     for (const auto& ob : obs_checker_->getObstacles()) {
+                    //         // Important:  Implement This! --> Although maybe updating the threat for the lazy approach for the new node is not necessary and setRobotState would help in the end but i need my graph to have completely Correct information for integrity!
+                    //         // // 1. Broad Phase: Is the node itself inside the obstacle's tube?
+                    //         // // (This matches your addNewObstacle logic)
+                    //         // if (obs_checker_->isNodeInObstacleTube(x->getStateValue(), ob)) {
+                    //         //     x->threats.insert(ob.name);
+                    //         // }
 
-                        // IMMEDIATE TRANSITION
-                        x->is_new = false; // It is no longer "New"; we now know exactly what threatens it.
+                    //         last_replan_metrics_.obstacle_checks++;
+                    //         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, node_time_to_goal, ob)) {
+                    //             x->threats.insert(ob.name); //THIS IS WRONG!! BECAUSE ITS SPECIFIC TO THE EDGE NOT THE NODE IT SELF!
+                    //             initially_blocked = true;
+                    //         }
+                    //     }
 
-                        if (initially_blocked) {
-                            continue; // Skip connection for now; it's logically blocked.
-                        }
+                    //     // IMMEDIATE TRANSITION
+                    //     x->is_new = false; // It is no longer "New"; we now know exactly what threatens it.
+
+                    //     if (initially_blocked) {
+                    //         continue; // Skip connection for now; it's logically blocked.
+                    //     }
                         
-                    // } else if (!x->threats.empty() || ! best_parent_for_x->threats.empty()){
-                    } else if (!x->threats.empty()){
+                    // // } else if (!x->threats.empty() || ! best_parent_for_x->threats.empty()){
+                    // } else if (!x->threats.empty()){
+                    if (!x->threats.empty()){
                         // CASE 2: OLD SAMPLE WITH THREATS
                         // This node is known to be affected by specific obstacles.
                         // Check only those.
@@ -1970,8 +2313,11 @@ void KinodynamicANYFMTX::plan() {
                         x->setCost(min_cost_for_x);
                         x->setParent(best_parent_for_x, best_traj_for_x);
 
+                        // We can now safely allow culling in future iterations.
+                        x->is_new = false; 
 
-                        /////////////////
+
+                        ///////////////// IMPORTANT --> THIS SETTING IS TOO LATE --> I NEED TO DO THIS IN addBatchOfSamples!!!///////////
                         // // x->setTimeToGoal(min_time_for_x);
                         // double absolute_t = x->getStateValue().tail<1>()[0];
                         // x->setTimeToGoal(absolute_t);
@@ -5414,7 +5760,7 @@ void KinodynamicANYFMTX::visualizeTree() {
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
-    // std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
+    std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
     visualization_->visualizeEdges(edges, "map");
 }
 
@@ -6127,6 +6473,7 @@ void KinodynamicANYFMTX::updateObstacleSamples(const ObstacleVector& turned_obst
 //     }
 // }
 
+// Important: Can we utilize the AABB approach here instead of doing a kdtree query everytime??
 void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
     if (ob.predicted_path.empty()) return;
 
@@ -6306,7 +6653,7 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
             };
 
             check_boundary(node->forwardNeighbors());
-            check_boundary(node->backwardNeighbors());
+            // check_boundary(node->backwardNeighbors());
         // }
         // else{
             // counter++;
@@ -6417,7 +6764,7 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
         };
 
         check_neighbors(node->forwardNeighbors());
-        check_neighbors(node->backwardNeighbors());
+        // check_neighbors(node->backwardNeighbors()); // Not needed
     }
     // std::cout<< "REMOVE OBS NO NEED COUNTER: "<<counter<<"\n";
 

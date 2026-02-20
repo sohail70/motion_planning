@@ -362,7 +362,8 @@ public:
     std::vector<Eigen::Vector3d> generatePrediction(const Obstacle& ob, double current_time) const override;
     void initializeDynamicObstacles(double currentRobotTime);
     void updateObstaclesMathematically(double current_robot_time);
-      
+    
+    bool isNodeInObstacleTube(const Eigen::VectorXd& node_state, const Obstacle& ob, double max_edge_length) const;
 
     Eigen::Vector2d getObstacleAnalyticalPosition(const Obstacle& ob, double t_robot) const;
     
