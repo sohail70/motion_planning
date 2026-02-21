@@ -251,8 +251,8 @@ bool GazeboObstacleChecker::isObstacleFreeAgainstSingleObstacle(const Eigen::Vec
 bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
     // std::lock_guard<std::mutex> lock(snapshot_mutex_);
     Eigen::Vector2d point2d = point.head<2>();
-
-    for (const auto& obstacle : obstacle_snapshot_) {
+    // IMPORTANT : I CHANGED THE FOLLOWING FROM obstacle_snapshot_ to obstacle_positions_
+    for (const auto& obstacle : obstacle_positions_) {
         const double inflated = obstacle.inflation;
         const Eigen::Vector2d& center = obstacle.position;
         
@@ -4780,6 +4780,14 @@ std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
         // The collision checker (isTrajectorySafeAgainstSingleObstacle) will ignore this Z value 
         // and treat the obstacle as a static circle at (X, Y).
         path.emplace_back(ob.position.x(), ob.position.y(), 0.0);
+
+        // THE FIX: Initialize the AABB bounds for a stationary point
+        ob.min_x = ob.position.x();
+        ob.max_x = ob.position.x();
+        ob.min_y = ob.position.y();
+        ob.max_y = ob.position.y();
+
+
         return path;
     }
 
@@ -4862,15 +4870,15 @@ bool GazeboObstacleChecker::isNodeInObstacleTube(const Eigen::VectorXd& node_sta
     double nx = node_state[0];
     double ny = node_state[1];
 
-    // ========================================================================
-    // THE AABB SHORT-CIRCUIT (The "Simple" but massive gain)
-    // ========================================================================
-    // If the node is outside the bounding box (inflated by search_radius), 
-    // it is physically impossible for it to be inside the tube. 
-    if (nx < (ob.min_x - search_radius) || nx > (ob.max_x + search_radius) ||
-        ny < (ob.min_y - search_radius) || ny > (ob.max_y + search_radius)) {
-        return false; // Skip the heavy O(P) loop entirely!
-    }
+    // // ========================================================================
+    // // THE AABB SHORT-CIRCUIT (The "Simple" but massive gain)
+    // // ========================================================================
+    // // If the node is outside the bounding box (inflated by search_radius), 
+    // // it is physically impossible for it to be inside the tube. 
+    // if (nx < (ob.min_x - search_radius) || nx > (ob.max_x + search_radius) ||
+    //     ny < (ob.min_y - search_radius) || ny > (ob.max_y + search_radius)) {
+    //     return false; // Skip the heavy O(P) loop entirely!
+    // }
 
     // 2. Precise Loop (Only runs if the node is "near" the tube)
     double search_radius_sq = search_radius * search_radius;
