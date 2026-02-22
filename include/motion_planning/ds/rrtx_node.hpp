@@ -76,6 +76,8 @@ public:
     EdgeMap culled_outgoing_edges_; // Ghost edges (Sender forgot, but Receiver remembered) --> u forgot but v remembers (u is old and v is new)
     double last_culled_radius_ = -1.0;
 
+    std::unordered_set<std::string> threats_;
+
 private:
     std::shared_ptr<State> state_;
     

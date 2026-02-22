@@ -142,6 +142,7 @@ class KinodynamicANYFMTX : public Planner {
 
             double getNeighborhoodRadius(){return neighborhood_radius_;}
 
+            bool runForensics();
  private:
             // // Helper to update neighbors for a specific node (handles symmetry)
             // void updateNeighbors(int node_index);

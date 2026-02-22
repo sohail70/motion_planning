@@ -133,6 +133,7 @@ class KinodynamicFMTX : public Planner {
 
             bool isRobotSafe();
             int getTreeSize() { return tree_.size();}
+            bool runForensics();
  private:
             std::shared_ptr<State> start_;
             std::shared_ptr<State> goal_;

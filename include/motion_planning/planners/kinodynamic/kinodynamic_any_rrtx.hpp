@@ -79,6 +79,7 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     bool isRobotSafe();
     int getTreeSize() { return tree_.size();}
 
+    bool runForensics();
 
     struct ScalingMetrics {
         long long total_samples = 0;
@@ -159,9 +160,6 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
 
     // Helper methods
     bool extend(Eigen::VectorXd v);
-    // std::vector<std::tuple<RRTxNode*, Trajectory, bool>> findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidate_indices);
-    std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::string>>> findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidate_indices);
-
     void rewireNeighbors(RRTxNode* v);
     void reduceInconsistency();
     void cullNeighbors(RRTxNode* v);

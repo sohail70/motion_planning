@@ -748,7 +748,7 @@ int main(int argc, char** argv) {
             }
         }
     }
-
+    std::cout<<"FINAL TREE SIZE: "<<planner->getTreeSize()<<"\n";
     CALLGRIND_STOP_INSTRUMENTATION;
 
     // // --- 10. Save Metrics ---

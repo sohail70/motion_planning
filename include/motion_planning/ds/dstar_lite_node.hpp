@@ -84,6 +84,9 @@ public:
     Trajectory best_parent_trajectory_;
     // std::vector<DStarLiteNode*> children_;
 
+
+    std::unordered_set<std::string> threats_;
+
 private:
     std::shared_ptr<State> state_;
     int index_;

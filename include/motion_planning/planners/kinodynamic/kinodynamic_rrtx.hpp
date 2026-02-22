@@ -82,7 +82,7 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
 
     bool isRobotSafe();
     int getTreeSize() { return tree_.size();}
-
+    bool runForensics();
  private:
     // Core data structures
     std::vector<std::shared_ptr<RRTxNode>> tree_;

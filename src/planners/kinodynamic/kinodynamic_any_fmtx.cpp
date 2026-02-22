@@ -1,5 +1,12 @@
 // Copyright 2025 Soheil E.nia
 
+#define DEBUG 0
+
+// Set to 1 to use your novel context-aware Threat Set.
+// Set to 0 to use the Default/Blind exhaustive checking.
+#define USE_THREAT_SET_STRATEGY 0
+
+
 #include "motion_planning/planners/kinodynamic/kinodynamic_any_fmtx.hpp"
 
 KinodynamicANYFMTX::KinodynamicANYFMTX(std::shared_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(statespace), problem_(problem_def), obs_checker_(obs_checker) {
@@ -537,6 +544,70 @@ Eigen::VectorXd KinodynamicANYFMTX::saturate(const Eigen::VectorXd& newPoint, co
     return saturatedPoint;
 }
 
+bool KinodynamicANYFMTX::runForensics() {
+    std::cout << "\n[FMTx FORENSICS] --- STARTING GOAL-ROOTED TREE VERIFICATION ---" << std::endl;
+    int illegal_connections = 0;
+    int checked_nodes = 0;
+
+    // Iterate through all nodes
+    for (size_t i = 0; i < tree_.size(); ++i) { 
+        FMTNode* node = tree_[i].get();
+
+        // Check nodes that are actively part of the tree (have a parent and finite cost)
+        if (node->getParent() != nullptr && node->getCost() != std::numeric_limits<double>::infinity()) {
+            checked_nodes++;
+            bool edge_collides = false;
+            std::string guilty_obstacle = "";
+            FMTNode* parent = node->getParent();
+            
+            // 1. DIRECTION: Steer from Child (node) to Parent (closer to goal)
+            Trajectory edge_traj = statespace_->steer(node->getStateValue(), parent->getStateValue());
+            
+            // 2. TIME: Use the Child's time as the start of the trajectory
+            double time_ref = node->getTimeToGoal(); 
+
+            // 3. VERIFY: Absolute Ground Truth check
+            for (const auto& [name, ob] : previous_obstacles_) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_traj, time_ref, ob)) {
+                    edge_collides = true;
+                    guilty_obstacle = name;
+                    break;
+                }
+            }
+
+            // 4. REPORT: Detailed error logs
+            if (edge_collides) {
+                illegal_connections++;
+                std::cout << "\033[1;31m[VIOLATION]\033[0m Node " << node->getIndex() 
+                          << " -> Parent " << parent->getIndex()
+                          << " | Cost: " << node->getCost()
+                          << " | \033[1;35mFATAL: Edge hits [" << guilty_obstacle << "]\033[0m\n";
+                
+                // Threat Set Diagnostics
+                bool in_node_threats = node->threats.count(guilty_obstacle);
+                if (!in_node_threats) {
+                    std::cout << "   -> \033[1;33m[!] ANALYSIS:\033[0m Strategy missed it! "
+                              << "Obstacle [" << guilty_obstacle << "] was not in the child node's threat set.\n"
+                              << "      Check if KD-Tree radius search covers delta + inflation correctly.\n";
+                } else {
+                    std::cout << "   -> \033[1;31m[!] ANALYSIS:\033[0m Logic failure! "
+                              << "Threat was detected, but the edge was still allowed to connect during plan().\n";
+                }
+            }
+        }
+    }
+    
+    if (illegal_connections > 0) {
+        std::cout << "[FMTx FORENSICS] --- \033[1;31mFAILED\033[0m: Found " << illegal_connections 
+                  << " violations ---\n\n";
+        return false;
+    } else {
+        std::cout << "[FMTx FORENSICS] --- \033[1;32mPASSED\033[0m: Checked " << checked_nodes 
+                  << " connections. Tree is 100% Collision-Free ---\n\n";
+        return true;
+    }
+}
+
 // Lazy insertion, later in plan we do lazy propagation
 void KinodynamicANYFMTX::addBatchOfSamplesLazy(int num_samples) {
     if (num_samples <= 0) return;
@@ -595,6 +666,9 @@ void KinodynamicANYFMTX::addBatchOfSamplesLazy(int num_samples) {
             node->setTimeToGoal(0.0);
         }
 
+
+
+#if USE_THREAT_SET_STRATEGY
         // ====================================================================
         // NEW: BROAD-PHASE THREAT DISCOVERY
         // ====================================================================
@@ -610,7 +684,7 @@ void KinodynamicANYFMTX::addBatchOfSamplesLazy(int num_samples) {
         // the actual collision checks lazily. We can clear the "is_new" flag.
         // node->is_new = false;  // NO! we shouldnt set this here because cullNeighbor also uses itasa filter!
         // ====================================================================
-
+#endif
 
 
         // Add to KD-Tree --> BUT WE ONLY PUT THE ONES WE SPECIFIED IN THE PARAMETER
@@ -743,6 +817,8 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         auto node = std::make_shared<FMTNode>(statespace_->addState(sample_val), tree_.size());
         node->is_new = true; 
         
+    
+#if USE_THREAT_SET_STRATEGY
         // ====================================================================
         // THE TRUE FIX: INITIALIZE THREATS FOR NEW NODES
         // Use previous_obstacles_ because it contains the fully populated predicted_path!
@@ -776,6 +852,8 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
             or it will falsky gets connected to 532 without any valid collision check in parent!!
         
         */
+
+
         // ====================================================================
         for (const auto& [name, ob] : previous_obstacles_) {
             if (obs_checker_->isNodeInObstacleTube(node->getStateValue(), ob, delta)) {
@@ -783,6 +861,7 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
             }
         }
         // ====================================================================
+#endif
 
 
         // 3. CHECK FEASIBILITY & CONNECT
@@ -881,33 +960,32 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
     //         // ======================================================
     //         bool collision_free = true;
             
-    //         for (const auto& ob : obs_checker_->getObstacles()) {
-    //             // Uncomment if you want this to count towards your metrics
-    //             // last_replan_metrics_.obstacle_checks++; 
-    //             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj_xy, node_time_to_goal, ob)) {
-    //                 collision_free = false;
-    //                 break; // Short-circuit: The edge is blocked, stop checking this candidate.
+    // #if USE_THREAT_SET_STRATEGY
+    //             // ======================================================
+    //             // FAST EAGER COLLISION CHECKING (Optimized via Threats)
+    //             // ======================================================
+    //             for (const std::string& obs_name : new_node->threats) {
+    //                 if (previous_obstacles_.count(obs_name)) {
+    //                     const Obstacle& ob = previous_obstacles_[obs_name];
+    //                     last_replan_metrics_.obstacle_checks++;
+    //                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj_xy, node_time_to_goal, ob)) {
+    //                         collision_free = false;
+    //                         break; 
+    //                     }
+    //                 }
     //             }
-    //         }
-
-            // // ======================================================
-            // // FAST EAGER COLLISION CHECKING (Optimized via Threats!)
-            // // ======================================================
-            // bool collision_free = true;
-            
-            // // INSTEAD of looping through all obstacles in the world...
-            // // for (const auto& ob : obs_checker_->getObstacles()) {
-
-            // // We ONLY check the obstacles that are physically near the new node!
-            // for (const std::string& obs_name : new_node->threats) {
-            //     if (previous_obstacles_.count(obs_name)) {
-            //         const Obstacle& ob = previous_obstacles_[obs_name];
-            //         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj_xy, node_time_to_goal, ob)) {
-            //             collision_free = false;
-            //             break; // Short-circuit
-            //         }
-            //     }
-            // }
+    // #else
+    //             // ======================================================
+    //             // BLIND EAGER COLLISION CHECKING (Default approach)
+    //             // ======================================================
+    //             for (const auto& ob : obs_checker_->getObstacles()) {
+    //                 last_replan_metrics_.obstacle_checks++;
+    //                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj_xy, node_time_to_goal, ob)) {
+    //                     collision_free = false;
+    //                     break; 
+    //                 }
+    //             }
+    // #endif
 
 
     //         if (collision_free) {
@@ -994,36 +1072,34 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
             // }
             const Trajectory& traj_xy = *(edge_info.cached_trajectory);
             if (!traj_xy.is_valid) continue;
-
-            // // ======================================================
-            // // FAST EAGER COLLISION CHECKING 
-            // // ======================================================
-            // bool collision_free = true;
-            // for (const auto& ob : obs_checker_->getObstacles()) {
-            //     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj_xy, node_time_to_goal, ob)) {
-            //         collision_free = false;
-            //         break; // Short-circuit
-            //     }
-            // }
-
-            // ======================================================
-            // FAST EAGER COLLISION CHECKING (Optimized via Threats!)
-            // ======================================================
             bool collision_free = true;
             
-            // INSTEAD of looping through all obstacles in the world...
-            // for (const auto& ob : obs_checker_->getObstacles()) {
-
-            // We ONLY check the obstacles that are physically near the new node!
+#if USE_THREAT_SET_STRATEGY
+            // ======================================================
+            // FAST EAGER COLLISION CHECKING (Optimized via Threats)
+            // ======================================================
             for (const std::string& obs_name : new_node->threats) {
                 if (previous_obstacles_.count(obs_name)) {
                     const Obstacle& ob = previous_obstacles_[obs_name];
+                    last_replan_metrics_.obstacle_checks++;
                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj_xy, node_time_to_goal, ob)) {
                         collision_free = false;
-                        break; // Short-circuit
+                        break; 
                     }
                 }
             }
+#else
+            // ======================================================
+            // BLIND EAGER COLLISION CHECKING (Default approach)
+            // ======================================================
+            for (const auto& ob : obs_checker_->getObstacles()) {
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj_xy, node_time_to_goal, ob)) {
+                    collision_free = false;
+                    break; 
+                }
+            }
+#endif
 
 
             if (collision_free) {
@@ -2231,57 +2307,12 @@ void KinodynamicANYFMTX::plan() {
                 // if (best_parent_for_x != nullptr && min_cost_for_x < (x->getCost()-epsilon)) { // The second && is the second line of defense if the cullNeighbor(x) deletes z and we are here for somereason! because the if condtion right after cullNiehgbor(x) would caught the lie and we never reach here but still its good to be safe!
                 if (best_parent_for_x != nullptr && min_cost_for_x < (x->getCost())) { // The second && is the second line of defense if the cullNeighbor(x) deletes z and we are here for somereason! because the if condtion right after cullNiehgbor(x) would caught the lie and we never reach here but still its good to be safe!
                     bool obstacle_free = true;
-                    // obstacle_free = obs_checker_->isTrajectorySafe( best_traj_for_x, x->getTimeToGoal());
-                    // last_replan_metrics_.obstacle_checks = last_replan_metrics_.obstacle_checks + 20;
 
-                    // NEW: CONTEXT-AWARE COLLISION CHECKING
+#if USE_THREAT_SET_STRATEGY
                     // ======================================================
-                    // HYBRID COLLISION CHECKING
+                    // HYBRID COLLISION CHECKING (Context-Aware)
                     // ======================================================
-                    
-                    // if (x->is_new) {  // ---> I used the union threats in the addBatchSamples function last for loop but i need to make sure if removeObstalce will remove it logically or not! (given all the neighbors of the new node are having the up to date threat set since i use the union some obstalce  might linger!)
-                    // // if (false) {
-
-                    //     bool initially_blocked = false;
-                        
-                    //     // We check all obstacles once to populate the threat set
-                    //     for (const auto& ob : obs_checker_->getObstacles()) {
-                    //         // Important:  Implement This! --> Although maybe updating the threat for the lazy approach for the new node is not necessary and setRobotState would help in the end but i need my graph to have completely Correct information for integrity!
-                    //         // // 1. Broad Phase: Is the node itself inside the obstacle's tube?
-                    //         // // (This matches your addNewObstacle logic)
-                    //         // if (obs_checker_->isNodeInObstacleTube(x->getStateValue(), ob)) {
-                    //         //     x->threats.insert(ob.name);
-                    //         // }
-
-                    //         last_replan_metrics_.obstacle_checks++;
-                    //         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, node_time_to_goal, ob)) {
-                    //             x->threats.insert(ob.name); //THIS IS WRONG!! BECAUSE ITS SPECIFIC TO THE EDGE NOT THE NODE IT SELF!
-                    //             initially_blocked = true;
-                    //         }
-                    //     }
-
-                    //     // IMMEDIATE TRANSITION
-                    //     x->is_new = false; // It is no longer "New"; we now know exactly what threatens it.
-
-                    //     if (initially_blocked) {
-                    //         continue; // Skip connection for now; it's logically blocked.
-                    //     }
-                        
-                    // // } else if (!x->threats.empty() || ! best_parent_for_x->threats.empty()){
-                    // } else if (!x->threats.empty()){
                     if (!x->threats.empty()){
-                        // CASE 2: OLD SAMPLE WITH THREATS
-                        // This node is known to be affected by specific obstacles.
-                        // Check only those.
-                        // // ======================================================
-                        // // Check union of threats from both nodes --> child threat is sufficient!
-                        // // ======================================================
-                        // std::unordered_set<std::string> all_threats = x->threats;
-                        // all_threats.insert(best_parent_for_x->threats.begin(), 
-                        //                 best_parent_for_x->threats.end());
-
-
-
                         for (const std::string& obs_name : x->threats) {
                             if (previous_obstacles_.count(obs_name)) {
                                 const Obstacle& ob = previous_obstacles_[obs_name];
@@ -2292,117 +2323,23 @@ void KinodynamicANYFMTX::plan() {
                                 }
                             }
                         }
-
-                        /*
-                            WE CANT NOT CLEAR THREATS HERE!!! imagine we repaired the graph becuase moving box 10 turn around! then we repair the graph and clear the threat
-                            later moving cylinder 1 triggered the update but at this moment when we call the plan function it repairs the graph IGNORING the moving box 10 that is still coming toward these edges!!!!
-                        
-                        */
-
                     } else {
-                        // CASE 3: OLD CLEAN SAMPLE
                         // Safe by default.
                         obstacle_free = true;
                     }
+#else
                     // ======================================================
-
-            //     // SHOULD I DO UNION OF THREATS????
-            //    // --- STAGE 3: UPDATE (if a better parent was found) ---
-            //     if (best_parent_for_x != nullptr) {
-            //         bool obstacle_free = true;
-
-            //         if (x->is_new) {
-            //             // CASE 1: NEW SAMPLE
-            //             // Full check against all obstacles
-            //             obstacle_free = obs_checker_->isTrajectorySafe(best_traj_for_x, x->getTimeToGoal());
-            //             x->is_new = false;
-                        
-            //         } else {
-            //             // CASE 2 & 3: OLD SAMPLES (Delayed Checking)
-                        
-            //             // ======================================================
-            //             // FIX: UNION OF THREATS
-            //             // ======================================================
-            //             // We need to check the trajectory against ANY obstacle that threatens 
-            //             // EITHER the parent (y) or the child (x).
-                        
-            //             // 1. Collect unique threats from both nodes
-            //             std::set<std::string> combined_threats;
-            //             combined_threats.insert(x->threats.begin(), x->threats.end());
-            //             combined_threats.insert(best_parent_for_x->threats.begin(), best_parent_for_x->threats.end());
-
-            //             // 2. Check the single trajectory against all combined threats
-            //             if (!combined_threats.empty()) {
-            //                 for (const std::string& obs_name : combined_threats) {
-            //                     if (previous_obstacles_.count(obs_name)) {
-            //                         const Obstacle& ob = previous_obstacles_[obs_name];
-                                    
-            //                         // Check the trajectory (Parent -> Child) against this obstacle
-            //                         // Note: We use x->getTimeToGoal() as the time reference for the edge
-            //                         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, x->getTimeToGoal(), ob)) {
-            //                             obstacle_free = false;
-            //                             break; // Stop checking if we find a collision
-            //                         }
-            //                     }
-            //                 }
-            //             }
-            //             // ======================================================
-            //         }
-
-
-                    // ====================================================================
-                    // DEBUG: THE HARD FAILSAFE (Time-Corrected Forensics)
-                    // ====================================================================
-                    if (obstacle_free) {
-                        bool edge_in_obs = false;
-                        std::string guilty_ob_edge = "";
-                        const Obstacle* guilty_ob_ptr = nullptr;
-
-                        // 1. USE THE AUTHORITATIVE MAP
-                        // We use previous_obstacles_ because it contains the 4D predicted_paths.
-                        // getObstacles() only has 2D current positions!
-                        for (const auto& [name, ob] : previous_obstacles_) {
-                            // 2. CHECK EDGE TRAJECTORY (The only true check in Kinodynamic mode)
-                            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, node_time_to_goal, ob)) {
-                                edge_in_obs = true;
-                                guilty_ob_edge = name;
-                                guilty_ob_ptr = &ob;
-                                break;
-                            }
-                        }
-
-                        if (edge_in_obs) {
-                            // If we hit here, the threat set logic REALLY failed.
-                            std::cout << "\033[1;31m[DEBUG] REAL THREAT SET BYPASS DETECTED!!\033[0m\n";
-                            
-                            std::cout << "   -> \033[1;36mCHILD Node: " << x->getIndex() << "\033[0m\n";
-                            std::cout << "      State: [" << x->getStateValue().transpose() << "]\n";
-                            std::cout << "      Time to Goal: " << node_time_to_goal << "\n";
-                            std::cout << "      Threats: { ";
-                            if (x->threats.empty()) std::cout << "EMPTY ";
-                            else for (const auto& t : x->threats) std::cout << t << " ";
-                            std::cout << "}\n";
-
-                            std::cout << "   -> \033[1;36mPARENT Node: " << best_parent_for_x->getIndex() << "\033[0m\n";
-                            std::cout << "      State: [" << best_parent_for_x->getStateValue().transpose() << "]\n";
-                            std::cout << "      Threats: { ";
-                            if (best_parent_for_x->threats.empty()) std::cout << "EMPTY ";
-                            else for (const auto& t : best_parent_for_x->threats) std::cout << t << " ";
-                            std::cout << "}\n";
-
-                            if (guilty_ob_ptr) {
-                                std::cout << "   -> \033[1;35mOBSTACLE: [" << guilty_ob_edge << "]\033[0m\n";
-                                std::cout << "      FATAL: Edge slices through the 4D prediction of this obstacle!\n";
-                            }
-
-                            std::cout << "\n";
+                    // BLIND COLLISION CHECKING (Default approach)
+                    // ======================================================
+                    for (const auto& ob : obs_checker_->getObstacles()) {
+                        last_replan_metrics_.obstacle_checks++;
+                        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, node_time_to_goal, ob)) {
+                            obstacle_free = false;
+                            break;
                         }
                     }
-                    // ====================================================================
-
-
-
-
+#endif
+      
                     
  
                     if (obstacle_free) {
@@ -2607,6 +2544,11 @@ void KinodynamicANYFMTX::plan() {
 //     }
 //     std::cout << "[FORENSICS] --- COMPLETE: Found " << illegal_connections << " illegal connections ---\n" << std::endl;
 //     // ========================================================================
+
+
+    #if DEBUG 
+        runForensics();
+    #endif
 
 
 }
@@ -5961,7 +5903,7 @@ void KinodynamicANYFMTX::visualizeTree() {
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
     
-    std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
+    // std::cout<<"Tree Nodes: "<<tree_nodes.size()<<"\n";
     visualization_->visualizeEdges(edges, "map");
 }
 
@@ -6754,13 +6696,14 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
     std::vector<int> filtered_orphan_indices;
     for (int idx : orphan_indices) {
         FMTNode* node = tree_[idx].get();
+#if USE_THREAT_SET_STRATEGY
         // ======================================================
         // NEW: ADD THREAT --> EVEN THOUGHT THIS NODE MAYNOT BE ORPHANED BUT ITS CLEARLY IN THREAT OF THIS OBSTALCES!
         // ======================================================
         // Mark this node as being under threat from this specific obstacle
         node->threats.insert(ob.name);
         // ======================================================
-
+#endif
         // Skip root or nodes with no parent (shouldn't happen in tree except root, but good to be safe)
         if (node->getParent() == nullptr) continue; 
 
@@ -6940,14 +6883,14 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
     int counter = 0;
     for (int node_index : freed_indices) {
         auto node = tree_.at(node_index).get();
-
+#if USE_THREAT_SET_STRATEGY
         // ======================================================
         // NEW: REMOVE THREAT & RE-QUEUE
         // ======================================================
         // Remove the obstacle from the threat set
         node->threats.erase(ob.name);
         // ======================================================
-
+#endif
 
         if (node->getCost()!= INFINITY) {
             counter ++; 

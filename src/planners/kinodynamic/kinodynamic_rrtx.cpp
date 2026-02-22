@@ -6,7 +6,18 @@
 // 1 = Use Set Optimization (Eager Add, Fast Remove). Requires 'invalidating_obstacles' in Edge.
 // 0 = Use Standard RRTx (Lazy Add, Check-All Remove). Matches Julia reference.
 // -----------------------------------------------------------------------------------------
-#define USE_INVALIDATING_SET_STRATEGY 1 
+/*
+    The Threat Set (Node-level)
+    The Invalidating Set (Edge-level)
+    The Threat Set is the bridge that allows a lazy algorithm to behave with the same spatial intelligence as an eager one
+
+*/
+#define USE_INVALIDATING_SET_STRATEGY 1
+#define USE_THREAT_SET_STRATEGY 0
+// If both are 0, it falls back to the Default/Brute-Force Strategy
+
+
+#define DEBUG 0
 
 
 KinodynamicRRTX::KinodynamicRRTX(std::shared_ptr<StateSpace> statespace, 
@@ -492,385 +503,432 @@ void KinodynamicRRTX::plan() {
 
 }
 
-
-// bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
-//     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
-//     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
-    
-//     auto trajs_from_v_to_u = findParent(new_node, neighbors);
-
-//     if (!new_node->getParent()) {
-//         sample_counter--;
-//         return false;
-//     }
-
-//     tree_.push_back(new_node);
-//     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
-//     kdtree_->buildTree(); 
-
-//     // Algorithm 2 lines 7-13 implementation
-//     const double t_now = clock_->now().seconds();
-//     const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
-//     for (auto const& [neighbor, v_to_u_traj] : trajs_from_v_to_u) {
-//         // Persistent outgoing from new node (N⁰+)
-//         // Establish the Edge (new_node -> neighbor) using the pre-computed trajectory.
-//         if (v_to_u_traj.is_valid) {
-//             new_node->addNeighbor(neighbor, true, false, v_to_u_traj);
-//         }
-        
-//         // double time_to_goal_at_u = neighbor->getTimeToGoal();
-//         // const double global_edge_start_time_at_u = t_arrival_predicted - time_to_goal_at_u;
-//         // Temporary outgoing from neighbors (Nr+)
-//         // Establish the Edge (neighbor -> new_node) by computing it now.
-//         /*
-//             One thing that bothers me here is collision checking with the current obstalces would me some nodes to not find their neighbors 
-//             and later when the obstalce moves then we do not update this.
-//             I think RRTx relies on continuous sampling but for now i use a pre-plan obstalce free phase in my test to gather all the neighbors correctly
-//         */
-//         Trajectory u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
-//         if (u_to_v_traj.is_valid && obs_checker_->isTrajectorySafe(u_to_v_traj, neighbor->getTimeToGoal() )) {
-//             neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
-//         }
-//     }
-    
-//     return true;
-// }
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
-//     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
-//     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
-    
-//     auto trajs_info = findParent(new_node, neighbors);
-//     if (!new_node->getParent()) {
-//         sample_counter--;
-//         return false;
-//     }
-    
-//     tree_.push_back(new_node);
-//     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
-//     kdtree_->buildTree(); 
-    
-//     for (auto const& [neighbor, v_to_u_traj, forward_safe] : trajs_info) {
-        
-//         // OUTGOING EDGE (new_node -> neighbor)
-//         // Always add the edge with the REAL cost (sets distance_original)
-//         new_node->addNeighbor(neighbor, true, false, v_to_u_traj);
-
-//         if (!forward_safe) {
-//             // Block Outgoing view
-//             new_node->outgoingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
-//             // Block the Incoming view on the neighbor
-//             if (neighbor->incomingEdges().count(new_node.get())) {
-//                 neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
-//             }
-//         }
-        
-//         // INCOMING EDGE (neighbor -> new_node)
-//         Trajectory u_to_v_traj;
-//         bool reverse_exists = false;
-//         bool reverse_safe = false;
-
-//         if (is_geometric_mode_) {
-//             u_to_v_traj = v_to_u_traj;
-//             reverse_exists = true;
-//             reverse_safe = forward_safe; // Symmetry in Geometry
-//         } else {
-//             u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
-//             if (u_to_v_traj.is_valid && u_to_v_traj.cost <= neighborhood_radius_ + 0.01) {
-//                 reverse_exists = true;
-//                 reverse_safe = obs_checker_->isTrajectorySafe(u_to_v_traj, neighbor->getTimeToGoal());
-//             }
-//         }
-
-//         if (reverse_exists) {
-//             // Add with REAL cost
-//             neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
-
-//             if (!reverse_safe) {
-//                 // Block Outgoing on neighbor
-//                 neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
-//                 // Sync: Block Incoming on new_node
-//                 if (new_node->incomingEdges().count(neighbor)) {
-//                     new_node->incomingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
-//                 }
-//             }
-//         }
-//     }
-    
-//     return true;
-// }
-
-
-
-// std::vector<std::tuple<RRTxNode*, Trajectory, bool>> KinodynamicRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
-//     double min_lmc = INFINITY; // v is a new node so it has not LMC yet (you can also use v->getLMC() instead of INFINITY)
-//     RRTxNode* best_parent = nullptr;
-//     double best_dist = 0.0;
-//     Trajectory best_traj;
-
-//     // std::unordered_map<RRTxNode*, Trajectory> all_trajectories_from_v_to_u;
-//     std::vector<std::tuple<RRTxNode*, Trajectory, bool>> all_trajectories_from_v_to_u;
-//     all_trajectories_from_v_to_u.reserve(candidates.size());
-    
-//     // const double t_now = clock_->now().seconds();
-//     // const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
-
-
-//     // candidates are "u"
-//     for (size_t idx : candidates) {
-//         auto& candidate = tree_[idx];
-//         if (candidate == v) continue;
-
-//         Trajectory traj_from_v_to_u = statespace_->steer(v->getStateValue(), candidate->getStateValue());
-//         // The reason we send return all the trajectories (even invalid or costly than the rn ones) is to check their reverse path also in extend function
-//         // all_trajectories_from_v_to_u.insert({candidate.get(), traj_from_v_to_u});
-
-
-//         /*
-//           The obstalce check we do here right now is the v->u  (new node to neighbors) and can also be used for the v->u trajcetories in extend function
-//           obstalce check (maybe later use a map or something) but u->v should be done in extend.
-//         */
-//         if (traj_from_v_to_u.is_valid && traj_from_v_to_u.cost <= neighborhood_radius_ + 0.01) {
-            
-//             // Check safety ONCE
-//             bool is_safe = obs_checker_->isTrajectorySafe(traj_from_v_to_u, v->getTimeToGoal());
-
-//             // Store result: Neighbor, Trajectory (with REAL cost), Safety Flag
-//             all_trajectories_from_v_to_u.emplace_back(candidate.get(), traj_from_v_to_u, is_safe);
-
-//             // Parent Selection: Only safe trajectories can be parents
-//             if (is_safe) {
-//                 const double candidate_lmc = candidate->getLMC() + traj_from_v_to_u.cost;
-//                 if (candidate_lmc < min_lmc && candidate_lmc < v->getLMC()) {
-//                     min_lmc = candidate_lmc;
-//                     best_parent = candidate.get();
-//                     best_traj = traj_from_v_to_u; 
-//                 }
-//             }
-//         }
-//     }
-
-//     if (best_parent) {
-//         v->setParent(best_parent, best_traj);
-
-//         // // TIME TO GOAL for that node is identical to the sampled time dimension of that node though i set it here because I think its more cpu friendly in case i need to use getTimeToGoal for a node
-//         // // v->setTimeToGoal(best_parent->getTimeToGoal() + best_traj.time_duration);
-//         // double absolute_t = v->getStateValue().tail<1>()[0];
-//         // v->setTimeToGoal(absolute_t);
-
-//         if (!is_geometric_mode_) {
-//             double absolute_t = v->getStateValue().tail<1>()[0];
-//             v->setTimeToGoal(absolute_t);
-//         } else {
-//             // Geometric: Time is irrelevant, set to 0 or leave default
-//             v->setTimeToGoal(0.0);
-//         }
-
-
-
-//         v->setLMC(min_lmc);
-//         // edge_length_[v->getIndex()] = best_dist;
-//     }
-
-//     return all_trajectories_from_v_to_u;
-// }
-//////////////////////////////////////////////////////////////////////////////////////////
+// ==============================================================================================
+// STRATEGY 1: INVALIDATING SET (Edge-Level Caching + Local Broad-Phase)
+// ==============================================================================================
+#if USE_INVALIDATING_SET_STRATEGY
 
 bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
-    auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
+    auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), tree_.size());
     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
     
-    // Returns: std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::string>>>
-    auto trajs_info = findParent(new_node, neighbors);
+    double min_lmc = INFINITY;
+    RRTxNode* best_parent = nullptr;
+    Trajectory best_traj;
 
-    if (!new_node->getParent()) {
-        sample_counter--;
-        return false;
+    // 1. LOCAL THREAT SET FOR EXTEND
+    // Broad-phase optimization to avoid checking the whole world
+    std::vector<const Obstacle*> local_threats;
+    for (const auto& [name, ob] : previous_obstacles_) {
+        if (obs_checker_->isNodeInObstacleTube(new_node->getStateValue(), ob, neighborhood_radius_ + 0.01)) {
+            local_threats.push_back(&ob);
+        }
     }
+
+    if (!is_geometric_mode_) {
+        double absolute_t = new_node->getStateValue().tail<1>()[0];
+        new_node->setTimeToGoal(absolute_t);
+    } else {
+        new_node->setTimeToGoal(0.0);
+    }
+    double v_time = new_node->getTimeToGoal();
+
+    struct EdgeEval {
+        RRTxNode* neighbor;
+        bool fwd_exists = false; Trajectory fwd_traj; bool fwd_safe = false; std::unordered_set<std::string> fwd_blockers;
+        bool rev_exists = false; Trajectory rev_traj; bool rev_safe = false; std::unordered_set<std::string> rev_blockers;
+    };
+    
+    std::vector<EdgeEval> evaluated_edges(neighbors.size());
+
+    // PASS 1: Evaluate OUTGOING edges (v -> u) & Find Parent
+    for (size_t i = 0; i < neighbors.size(); ++i) {
+        auto& candidate = tree_[neighbors[i]];
+        if (candidate.get() == new_node.get()) continue;
+        
+        RRTxNode* u = candidate.get();
+        evaluated_edges[i].neighbor = u;
+
+        Trajectory fwd_traj = statespace_->steer(new_node->getStateValue(), u->getStateValue());
+        if (fwd_traj.is_valid && fwd_traj.cost <= neighborhood_radius_ + 0.01) {
+            evaluated_edges[i].fwd_exists = true;
+            evaluated_edges[i].fwd_traj = fwd_traj;
+            evaluated_edges[i].fwd_safe = true;
+            
+            // Check against local threats
+            for (const Obstacle* ob_ptr : local_threats) {
+                const Obstacle& ob = *ob_ptr;
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(fwd_traj, v_time, ob)) {
+                    evaluated_edges[i].fwd_safe = false;
+                    // NO BREAK HERE! We must collect ALL invalidating obstacles
+                    evaluated_edges[i].fwd_blockers.insert(ob.name);
+                }
+            }
+
+            if (evaluated_edges[i].fwd_safe) {
+                const double candidate_lmc = u->getLMC() + fwd_traj.cost;
+                if (candidate_lmc < min_lmc && candidate_lmc < new_node->getLMC()) {
+                    min_lmc = candidate_lmc;
+                    best_parent = u;
+                    best_traj = fwd_traj; 
+                }
+            }
+        }
+    }
+
+    // EARLY BAILOUT
+    if (!best_parent) {
+        sample_counter--;
+        return false; 
+    }
+
+    // PASS 2: Evaluate INCOMING edges (u -> v)
+    for (size_t i = 0; i < neighbors.size(); ++i) {
+        if (!evaluated_edges[i].neighbor) continue; 
+        RRTxNode* u = evaluated_edges[i].neighbor;
+
+        if (is_geometric_mode_) {
+            evaluated_edges[i].rev_exists = evaluated_edges[i].fwd_exists;
+            evaluated_edges[i].rev_traj = evaluated_edges[i].fwd_traj;
+            evaluated_edges[i].rev_safe = evaluated_edges[i].fwd_safe;
+            evaluated_edges[i].rev_blockers = evaluated_edges[i].fwd_blockers;
+        } else {
+            Trajectory rev_traj = statespace_->steer(u->getStateValue(), new_node->getStateValue());
+            if (rev_traj.is_valid && rev_traj.cost <= neighborhood_radius_ + 0.01) {
+                evaluated_edges[i].rev_exists = true;
+                evaluated_edges[i].rev_traj = rev_traj;
+                evaluated_edges[i].rev_safe = true;
+                
+                for (const Obstacle* ob_ptr : local_threats) {
+                    const Obstacle& ob = *ob_ptr;
+                    last_replan_metrics_.obstacle_checks++;
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(rev_traj, u->getTimeToGoal(), ob)) {
+                        evaluated_edges[i].rev_safe = false;
+                        // NO BREAK HERE! Must collect ALL blockers
+                        evaluated_edges[i].rev_blockers.insert(ob.name);
+                    }
+                }
+            }
+        }
+    }
+
+    // COMMIT GRAPH CHANGES
+    new_node->setParent(best_parent, best_traj);
+    new_node->setTimeToGoal(v_time);
+    new_node->setLMC(min_lmc);
 
     tree_.push_back(new_node);
     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
     kdtree_->buildTree(); 
 
-    // Helper to get current world obstacles
-    auto all_obs = obs_checker_->getObstacles();
+    for (auto& eval : evaluated_edges) {
+        if (!eval.neighbor) continue;
 
-    for (auto const& [neighbor, v_to_u_traj, forward_safe, forward_blockers] : trajs_info) {
-        
-        // =========================================================
-        // 1. OUTGOING EDGE (new_node -> neighbor)
-        // =========================================================
-        // addNeighbor sets distance_original to v_to_u_traj.cost automatically
-        new_node->addNeighbor(neighbor, true, false, v_to_u_traj);
-
-        if (!forward_safe) {
-            // Block the outgoing side
-            EdgeInfo& out_edge = new_node->outgoingEdges().at(neighbor);
-            out_edge.distance = std::numeric_limits<double>::infinity();
-            
-#if USE_INVALIDATING_SET_STRATEGY
-            out_edge.invalidating_obstacles = forward_blockers;
-#endif
-
-            // SYNC: Block the incoming side on the neighbor node
-            if (neighbor->incomingEdges().count(new_node.get())) {
-                EdgeInfo& inc_edge = neighbor->incomingEdges().at(new_node.get());
-                inc_edge.distance = std::numeric_limits<double>::infinity();
-#if USE_INVALIDATING_SET_STRATEGY
-                inc_edge.invalidating_obstacles = forward_blockers;
-#endif
+        if (eval.fwd_exists) {
+            new_node->addNeighbor(eval.neighbor, true, false, eval.fwd_traj);
+            if (!eval.fwd_safe) {
+                new_node->outgoingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+                new_node->outgoingEdges().at(eval.neighbor).invalidating_obstacles = eval.fwd_blockers;
+                if (eval.neighbor->incomingEdges().count(new_node.get())) {
+                    eval.neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+                    eval.neighbor->incomingEdges().at(new_node.get()).invalidating_obstacles = eval.fwd_blockers;
+                }
             }
         }
 
-        // =========================================================
-        // 2. INCOMING EDGE (neighbor -> new_node)
-        // =========================================================
-        Trajectory u_to_v_traj;
-        bool reverse_exists = false;
-        bool reverse_safe = false;
-        std::unordered_set<std::string> reverse_blockers;
+        if (eval.rev_exists) {
+            eval.neighbor->addNeighbor(new_node.get(), false, true, eval.rev_traj);
+            if (!eval.rev_safe) {
+                eval.neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+                eval.neighbor->outgoingEdges().at(new_node.get()).invalidating_obstacles = eval.rev_blockers;
+                if (new_node->incomingEdges().count(eval.neighbor)) {
+                    new_node->incomingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+                    new_node->incomingEdges().at(eval.neighbor).invalidating_obstacles = eval.rev_blockers;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+// ==============================================================================================
+// STRATEGY 2: THREAT SET (Node-Level Filtering)
+// ==============================================================================================
+#elif USE_THREAT_SET_STRATEGY
+
+bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
+    auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), tree_.size());
+    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
+    
+    double min_lmc = INFINITY;
+    RRTxNode* best_parent = nullptr;
+    Trajectory best_traj;
+
+    if (!is_geometric_mode_) {
+        double absolute_t = new_node->getStateValue().tail<1>()[0];
+        new_node->setTimeToGoal(absolute_t);
+    } else {
+        new_node->setTimeToGoal(0.0);
+    }
+    double v_time = new_node->getTimeToGoal();
+
+    // INITIALIZE NODE-BASED THREAT SET
+    for (const auto& [name, ob] : previous_obstacles_) {
+        if (obs_checker_->isNodeInObstacleTube(new_node->getStateValue(), ob, delta)) {
+            new_node->threats_.insert(name);
+        }
+    }
+
+    struct EdgeEval {
+        RRTxNode* neighbor;
+        bool fwd_exists = false; Trajectory fwd_traj; bool fwd_safe = false; 
+        bool rev_exists = false; Trajectory rev_traj; bool rev_safe = false; 
+    };
+    
+    std::vector<EdgeEval> evaluated_edges(neighbors.size());
+
+    // PASS 1: Evaluate OUTGOING edges (v -> u) & Find Parent
+    for (size_t i = 0; i < neighbors.size(); ++i) {
+        auto& candidate = tree_[neighbors[i]];
+        if (candidate.get() == new_node.get()) continue;
+        
+        RRTxNode* u = candidate.get();
+        evaluated_edges[i].neighbor = u;
+
+        Trajectory fwd_traj = statespace_->steer(new_node->getStateValue(), u->getStateValue());
+        if (fwd_traj.is_valid && fwd_traj.cost <= neighborhood_radius_ + 0.01) {
+            evaluated_edges[i].fwd_exists = true;
+            evaluated_edges[i].fwd_traj = fwd_traj;
+            evaluated_edges[i].fwd_safe = true;
+            
+            for (const std::string& threat_name : new_node->threats_) {
+                const Obstacle& ob = previous_obstacles_.at(threat_name);
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(fwd_traj, v_time, ob)) {
+                    evaluated_edges[i].fwd_safe = false;
+                    break; // Just need one threat to block it
+                }
+            }
+
+            if (evaluated_edges[i].fwd_safe) {
+                const double candidate_lmc = u->getLMC() + fwd_traj.cost;
+                if (candidate_lmc < min_lmc && candidate_lmc < new_node->getLMC()) {
+                    min_lmc = candidate_lmc;
+                    best_parent = u;
+                    best_traj = fwd_traj; 
+                }
+            }
+        }
+    }
+
+    if (!best_parent) {
+        sample_counter--;
+        return false; 
+    }
+
+    // PASS 2: Evaluate INCOMING edges (u -> v)
+    for (size_t i = 0; i < neighbors.size(); ++i) {
+        if (!evaluated_edges[i].neighbor) continue; 
+        RRTxNode* u = evaluated_edges[i].neighbor;
 
         if (is_geometric_mode_) {
-            // Symmetric geometry
-            u_to_v_traj = v_to_u_traj;
-            reverse_exists = true;
-            reverse_safe = forward_safe;
-#if USE_INVALIDATING_SET_STRATEGY
-            reverse_blockers = forward_blockers;
-#endif
-        } 
-        else {
-            // Kinodynamic: Must explicitly steer and check
-            u_to_v_traj = statespace_->steer(neighbor->getStateValue(), new_node->getStateValue());
-            if (u_to_v_traj.is_valid && u_to_v_traj.cost <= neighborhood_radius_ + 0.01) {
-                reverse_exists = true;
-                reverse_safe = true;
+            evaluated_edges[i].rev_exists = evaluated_edges[i].fwd_exists;
+            evaluated_edges[i].rev_traj = evaluated_edges[i].fwd_traj;
+            evaluated_edges[i].rev_safe = evaluated_edges[i].fwd_safe;
+        } else {
+            Trajectory rev_traj = statespace_->steer(u->getStateValue(), new_node->getStateValue());
+            if (rev_traj.is_valid && rev_traj.cost <= neighborhood_radius_ + 0.01) {
+                evaluated_edges[i].rev_exists = true;
+                evaluated_edges[i].rev_traj = rev_traj;
+                evaluated_edges[i].rev_safe = true;
                 
-                // Identify all specific blockers for the reverse path
-                for (const auto& ob : all_obs) {
-                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(u_to_v_traj, neighbor->getTimeToGoal(), ob)) {
-                        reverse_safe = false;
-#if USE_INVALIDATING_SET_STRATEGY
-                        reverse_blockers.insert(ob.name);
-#else
-                        break; 
-#endif
+                // Use Source Node's perfectly maintained threat set!
+                for (const std::string& threat_name : u->threats_) {
+                    const Obstacle& ob = previous_obstacles_.at(threat_name);
+                    last_replan_metrics_.obstacle_checks++;
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(rev_traj, u->getTimeToGoal(), ob)) {
+                        evaluated_edges[i].rev_safe = false;
+                        break;
                     }
                 }
             }
         }
+    }
 
-        if (reverse_exists) {
-            neighbor->addNeighbor(new_node.get(), false, true, u_to_v_traj);
-            
-            if (!reverse_safe) {
-                // Block Outgoing view of the neighbor
-                EdgeInfo& out_edge_rev = neighbor->outgoingEdges().at(new_node.get());
-                out_edge_rev.distance = std::numeric_limits<double>::infinity();
-#if USE_INVALIDATING_SET_STRATEGY
-                out_edge_rev.invalidating_obstacles = reverse_blockers;
-#endif
+    // COMMIT GRAPH CHANGES
+    new_node->setParent(best_parent, best_traj);
+    new_node->setTimeToGoal(v_time);
+    new_node->setLMC(min_lmc);
 
-                // SYNC: Block Incoming view of the new_node
-                if (new_node->incomingEdges().count(neighbor)) {
-                    EdgeInfo& inc_edge_rev = new_node->incomingEdges().at(neighbor);
-                    inc_edge_rev.distance = std::numeric_limits<double>::infinity();
-#if USE_INVALIDATING_SET_STRATEGY
-                    inc_edge_rev.invalidating_obstacles = reverse_blockers;
-#endif
+    tree_.push_back(new_node);
+    kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
+    kdtree_->buildTree(); 
+
+    for (auto& eval : evaluated_edges) {
+        if (!eval.neighbor) continue;
+
+        if (eval.fwd_exists) {
+            new_node->addNeighbor(eval.neighbor, true, false, eval.fwd_traj);
+            if (!eval.fwd_safe) {
+                new_node->outgoingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+                if (eval.neighbor->incomingEdges().count(new_node.get())) {
+                    eval.neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+                }
+            }
+        }
+
+        if (eval.rev_exists) {
+            eval.neighbor->addNeighbor(new_node.get(), false, true, eval.rev_traj);
+            if (!eval.rev_safe) {
+                eval.neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+                if (new_node->incomingEdges().count(eval.neighbor)) {
+                    new_node->incomingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
                 }
             }
         }
     }
-    
+
     return true;
 }
 
+// ==============================================================================================
+// STRATEGY 3: DEFAULT (Brute-Force Fallback)
+// ==============================================================================================
+#else
 
-
-
-
-std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::string>>> KinodynamicRRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
-    double min_lmc = INFINITY; // v is a new node so it has not LMC yet (you can also use v->getLMC() instead of INFINITY)
+bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
+    auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), tree_.size());
+    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
+    
+    double min_lmc = INFINITY;
     RRTxNode* best_parent = nullptr;
-    double best_dist = 0.0;
     Trajectory best_traj;
 
     if (!is_geometric_mode_) {
-        // Extract the sampled time coordinate from the state vector
-        double absolute_t = v->getStateValue().tail<1>()[0];
-        v->setTimeToGoal(absolute_t);
+        double absolute_t = new_node->getStateValue().tail<1>()[0];
+        new_node->setTimeToGoal(absolute_t);
     } else {
-        // Geometric: Time is irrelevant
-        v->setTimeToGoal(0.0);
+        new_node->setTimeToGoal(0.0);
     }
+    double v_time = new_node->getTimeToGoal();
 
-    // std::unordered_map<RRTxNode*, Trajectory> all_trajectories_from_v_to_u;
-    std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::string>>> all_trajectories_from_v_to_u;
-    all_trajectories_from_v_to_u.reserve(candidates.size());
+    // Fetch globally tracked obstacles for brute-force checking
+    ObstacleVector all_obstacles = obs_checker_->getObstacles();
+
+    struct EdgeEval {
+        RRTxNode* neighbor;
+        bool fwd_exists = false; Trajectory fwd_traj; bool fwd_safe = false; 
+        bool rev_exists = false; Trajectory rev_traj; bool rev_safe = false; 
+    };
     
-    // const double t_now = clock_->now().seconds();
-    // const double t_arrival_predicted = t_now + robot_current_time_to_goal_;
+    std::vector<EdgeEval> evaluated_edges(neighbors.size());
 
+    // PASS 1: Evaluate OUTGOING edges (v -> u) & Find Parent
+    for (size_t i = 0; i < neighbors.size(); ++i) {
+        auto& candidate = tree_[neighbors[i]];
+        if (candidate.get() == new_node.get()) continue;
+        
+        RRTxNode* u = candidate.get();
+        evaluated_edges[i].neighbor = u;
 
-    // candidates are "u"
-    for (size_t idx : candidates) {
-        auto& candidate = tree_[idx];
-        if (candidate == v) continue;
-
-        Trajectory traj_from_v_to_u = statespace_->steer(v->getStateValue(), candidate->getStateValue());
-        // The reason we send return all the trajectories (even invalid or costly than the rn ones) is to check their reverse path also in extend function
-        // all_trajectories_from_v_to_u.insert({candidate.get(), traj_from_v_to_u});
-
-
-        /*
-          The obstalce check we do here right now is the v->u  (new node to neighbors) and can also be used for the v->u trajcetories in extend function
-          obstalce check (maybe later use a map or something) but u->v should be done in extend.
-        */
-        if (traj_from_v_to_u.is_valid && traj_from_v_to_u.cost <= neighborhood_radius_ + 0.01) {
+        Trajectory fwd_traj = statespace_->steer(new_node->getStateValue(), u->getStateValue());
+        if (fwd_traj.is_valid && fwd_traj.cost <= neighborhood_radius_ + 0.01) {
+            evaluated_edges[i].fwd_exists = true;
+            evaluated_edges[i].fwd_traj = fwd_traj;
+            evaluated_edges[i].fwd_safe = true;
             
-            // Check safety ONCE
-            std::unordered_set<std::string> blockers;
-            bool is_safe = true; 
-            
-            // --- STRATEGY: Find all blockers ---
-            auto all_obs = obs_checker_->getObstacles();
-            for (const auto& ob : all_obs) {
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj_from_v_to_u, v->getTimeToGoal(), ob)) {
-                    is_safe = false;
-#if USE_INVALIDATING_SET_STRATEGY
-                        blockers.insert(ob.name);
-#else
-                        break; // If not using sets, one hit is enough to fail
-#endif
+            // Brute force against all known obstacles
+            for (const auto& ob : all_obstacles) {
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(fwd_traj, v_time, ob)) {
+                    evaluated_edges[i].fwd_safe = false;
+                    break; 
                 }
             }
-            
-            // Store result: Neighbor, Trajectory (with REAL cost), Safety Flag
-            all_trajectories_from_v_to_u.emplace_back(candidate.get(), traj_from_v_to_u, is_safe,blockers);
 
-            // Parent Selection: Only safe trajectories can be parents
-            if (is_safe) {
-                const double candidate_lmc = candidate->getLMC() + traj_from_v_to_u.cost;
-                if (candidate_lmc < min_lmc && candidate_lmc < v->getLMC()) {
+            if (evaluated_edges[i].fwd_safe) {
+                const double candidate_lmc = u->getLMC() + fwd_traj.cost;
+                if (candidate_lmc < min_lmc && candidate_lmc < new_node->getLMC()) {
                     min_lmc = candidate_lmc;
-                    best_parent = candidate.get();
-                    best_traj = traj_from_v_to_u; 
+                    best_parent = u;
+                    best_traj = fwd_traj; 
                 }
             }
         }
     }
 
-    if (best_parent) {
-        v->setParent(best_parent, best_traj);
-        v->setLMC(min_lmc);
-        // edge_length_[v->getIndex()] = best_dist;
+    if (!best_parent) {
+        sample_counter--;
+        return false; 
     }
 
-    return all_trajectories_from_v_to_u;
+    // PASS 2: Evaluate INCOMING edges (u -> v)
+    for (size_t i = 0; i < neighbors.size(); ++i) {
+        if (!evaluated_edges[i].neighbor) continue; 
+        RRTxNode* u = evaluated_edges[i].neighbor;
+
+        if (is_geometric_mode_) {
+            evaluated_edges[i].rev_exists = evaluated_edges[i].fwd_exists;
+            evaluated_edges[i].rev_traj = evaluated_edges[i].fwd_traj;
+            evaluated_edges[i].rev_safe = evaluated_edges[i].fwd_safe;
+        } else {
+            Trajectory rev_traj = statespace_->steer(u->getStateValue(), new_node->getStateValue());
+            if (rev_traj.is_valid && rev_traj.cost <= neighborhood_radius_ + 0.01) {
+                evaluated_edges[i].rev_exists = true;
+                evaluated_edges[i].rev_traj = rev_traj;
+                evaluated_edges[i].rev_safe = true;
+                
+                // Brute force reverse edge
+                for (const auto& ob : all_obstacles) {
+                    last_replan_metrics_.obstacle_checks++;
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(rev_traj, u->getTimeToGoal(), ob)) {
+                        evaluated_edges[i].rev_safe = false;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // COMMIT GRAPH CHANGES
+    new_node->setParent(best_parent, best_traj);
+    new_node->setTimeToGoal(v_time);
+    new_node->setLMC(min_lmc);
+
+    tree_.push_back(new_node);
+    kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
+    kdtree_->buildTree(); 
+
+    for (auto& eval : evaluated_edges) {
+        if (!eval.neighbor) continue;
+
+        if (eval.fwd_exists) {
+            new_node->addNeighbor(eval.neighbor, true, false, eval.fwd_traj);
+            if (!eval.fwd_safe) {
+                new_node->outgoingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+                if (eval.neighbor->incomingEdges().count(new_node.get())) {
+                    eval.neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+                }
+            }
+        }
+
+        if (eval.rev_exists) {
+            eval.neighbor->addNeighbor(new_node.get(), false, true, eval.rev_traj);
+            if (!eval.rev_safe) {
+                eval.neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+                if (new_node->incomingEdges().count(eval.neighbor)) {
+                    new_node->incomingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+                }
+            }
+        }
+    }
+
+    return true;
 }
 
+#endif
 
 
 
@@ -3395,231 +3453,81 @@ bool KinodynamicRRTX::arePathsSimilar(const std::vector<Eigen::VectorXd>& path_a
 }
 
 
+bool KinodynamicRRTX::isRobotSafe() {
+    // If vbot_node_ is null, we have no anchor.
+    // If cost is INFINITY, the anchor is invalid (trapped).
+    return (vbot_node_ != nullptr) && (vbot_node_->getCost() != INFINITY);
+}
 
+
+
+bool KinodynamicRRTX::runForensics() {
+    std::cout << "\n[RRTx FORENSICS] --- STARTING POST-PLAN GRAPH VERIFICATION ---" << std::endl;
+    int illegal_connections = 0;
+    int checked_nodes = 0;
+
+    // Start at 1 to skip the root/goal node which has no parent
+    for (size_t i = 0; i < tree_.size(); ++i) { 
+        RRTxNode* node = tree_[i].get();
+
+        // Only check nodes that have an active parent connection
+        if (node->getParent() != nullptr && node->getCost() != std::numeric_limits<double>::infinity()) {
+            checked_nodes++;
+            bool edge_collides = false;
+            std::string guilty_obstacle = "";
+            RRTxNode* parent = node->getParent();
+            
+            // Re-steer from Child back to Parent (matching RRTX shortest-path direction)
+            Trajectory edge_traj = statespace_->steer(node->getStateValue(), parent->getStateValue());
+            double time_ref = node->getTimeToGoal(); 
+
+            // Verify against Absolute Ground Truth (previous_obstacles_ map)
+            for (const auto& [name, ob] : previous_obstacles_) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_traj, time_ref, ob)) {
+                    edge_collides = true;
+                    guilty_obstacle = name;
+                    break;
+                }
+            }
+
+            if (edge_collides) {
+                illegal_connections++;
+                std::cout << "\033[1;31m[VIOLATION]\033[0m Node " << node->getIndex() 
+                          << " -> Parent " << parent->getIndex()
+                          << " | Cost: " << node->getCost()
+                          << " | \033[1;35mFATAL: Edge hits [" << guilty_obstacle << "]\033[0m\n";
+                
+                // Root Cause Analysis: Is the graph aware of the break?
+                if (node->outgoingEdges().count(parent)) {
+                    double stored_dist = node->outgoingEdges().at(parent).distance;
+                    std::cout << "   -> Stored Graph Distance (node->parent): " << stored_dist;
+                    
+                    if (stored_dist == std::numeric_limits<double>::infinity()) {
+                        std::cout << " \033[1;31m(GRAPH KNEW IT WAS BLOCKED, BUT CONNECTED ANYWAY!)\033[0m\n";
+                        std::cout << "      [!] Bug in RRTX Logic: Orphan/Inconsistency propagation failed.\n";
+                    } else {
+                        std::cout << " \033[1;33m(GRAPH THOUGHT IT WAS SAFE! Strategy missed it!)\033[0m\n";
+                        std::cout << "      [!] Bug in Strategy Logic: Search radius or local filtering failed.\n";
+                    }
+                } else {
+                    std::cout << "   -> \033[1;31mEdge doesn't even exist in child's outgoing map!\033[0m\n";
+                }
+            }
+        }
+    }
+    
+    if (illegal_connections > 0) {
+        std::cout << "[RRTx FORENSICS] --- \033[1;31mFAILED\033[0m: Found " << illegal_connections 
+                  << " violations out of " << checked_nodes << " connections ---\n\n";
+        return false;
+    } else {
+        std::cout << "[RRTx FORENSICS] --- \033[1;32mPASSED\033[0m: Checked " << checked_nodes 
+                  << " connections. Tree is 100% Collision-Free ---\n\n";
+        return true;
+    }
+}
 
 //////////////////////////////////////EVENT BASED!!!////////////////////////////////////////
-
-
-// void KinodynamicRRTX::removeObstacle(const Obstacle& ob, std::vector<Eigen::VectorXd>& debug_nodes) {
-//     if (ob.predicted_path.empty()) return;
-
-//     // 1. Calculate Radius
-//     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
-//                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-//     double search_radius;
-//     if (is_geometric_mode_) {
-//         search_radius = obs_r + ob.inflation + delta;
-//     } else {
-//         double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-//         search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
-//     }
-
-//     // 2. Gather Unique Nodes
-//     std::unordered_set<int> unique_node_indices;
-//     for (const auto& point_3d : ob.predicted_path) {
-//         Eigen::VectorXd query(kd_dim);
-//         if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
-//         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
-//         else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
-        
-//         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
-//         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
-//     }
-
-//     // 3. Get Full Obstacle List for the "Check Others" phase
-//     ObstacleVector all_obstacles = obs_checker_->getObstacles();
-
-//     // 4. Process Nodes
-//     for (int idx : unique_node_indices) {
-//         RRTxNode* node = tree_[idx].get();
-//         bool neighborsWereBlocked = false;
-        
-//         for (auto& [neighbor, edge] : node->outgoingEdges()) {
-//             // Only check currently blocked edges
-//             if (edge.distance == std::numeric_limits<double>::infinity()) {
-//                 const double ttg = node->getTimeToGoal();
-                
-//                 // --- JULIA LOGIC START ---
-                
-//                 // Step A: Was it blocked by THIS obstacle? (The one we are removing)
-//                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, ttg, ob)) {
-                    
-//                     // Step B: Is it blocked by ANY OTHER obstacle?
-//                     bool conflicts_with_other = false;
-//                     for (const auto& other_ob : all_obstacles) {
-//                         if (other_ob.name == ob.name) continue; // SKIP SELF
-
-//                         last_replan_metrics_.obstacle_checks++;
-//                         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, ttg, other_ob)) {
-//                             conflicts_with_other = true;
-//                             break; // Found a blocker, no need to check further
-//                         }
-//                     }
-
-//                     // Step C: If no other conflicts, Restore!
-//                     if (!conflicts_with_other) {
-//                         // Restore Forward
-//                         edge.distance = edge.distance_original;
-                        
-//                         // Restore Backward (Symmetry)
-//                         if (neighbor->incomingEdges().count(node)) {
-//                             neighbor->incomingEdges().at(node).distance = edge.distance_original;
-//                         }
-                        
-//                         neighborsWereBlocked = true;
-//                     }
-//                 }
-//                 // --- JULIA LOGIC END ---
-//             }
-//         }
-        
-//         // 5. Update LMC and Queue
-//         if (neighborsWereBlocked) {
-//             updateLMC(node);
-//             if (node->getCost() != node->getLMC()) {
-//                 verifyQueue(node);
-//             }
-//             debug_nodes.push_back(node->getStateValue());
-//         }
-//     }
-// }
-
-
-// void KinodynamicRRTX::addNewObstacle(const Obstacle& ob, std::vector<Eigen::VectorXd>& debug_nodes) {
-//     if (ob.predicted_path.empty()) return;
-
-
-
-//     // Calculate Search Radius (Pythagorean logic from your snippet)
-//     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
-//                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-    
-//     // // We want the search circle around Center 1 to reach the midpoint (R,R). because the dt calculation in generateprediction creates gaps in between obstalces!
-//     // // 4. THE FIX: Gap Coverage Inflation
-//     // // If samples are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
-//     // // If you used the adaptive DT from the previous step, your samples are spaced by 2*R_eff.
-//     // double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-//     // // Note: We add (sqrt(2)-1)*R because the base radius is already R. 
-//     // // Total = R + 0.414R = 1.414R.
-
-//     // double search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
-
-
-//     double search_radius;
-    
-//     // --- GEOMETRIC VS KINODYNAMIC RADIUS ---
-//     if (is_geometric_mode_) {
-//         // In geometric mode, we just need to cover the obstacle size + robot size + delta
-//         search_radius = obs_r + ob.inflation + delta;
-//     } else {
-//         // Kinodynamic mode: Add gap coverage for the "tube" samples
-//         double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-//         search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
-//     }
-
-
-
-//     // --- 2. PASS 1: Gather Unique Nodes ---
-//     // We use a set to ensure each node is processed only once per obstacle update,
-//     // even if it falls within the search radius of multiple points in the predicted path.
-//     std::unordered_set<int> unique_node_indices;
-    
-//     for (const auto& point_3d : ob.predicted_path) {
-//         Eigen::VectorXd query(kd_dim);
-//         if (kd_dim == 3) {
-//             query << point_3d.x(), point_3d.y(), point_3d.z();  // z is time
-//         } else if (kd_dim == 2) {
-//             query << point_3d.x(), point_3d.y();
-//         } else if (kd_dim == 4) {
-//             query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
-//         }
-        
-//         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
-//         for (size_t idx : indices) {
-//             unique_node_indices.insert(static_cast<int>(idx));
-//         }
-//     }
-//     // --- 3. PASS 2: Process Nodes (Collision & Invalidation) ---
-//     for (int idx : unique_node_indices) {
-//         RRTxNode* node = tree_[idx].get();
-        
-//         // [DEBUG] Add to visualization list
-//         debug_nodes.push_back(node->getStateValue());
-        
-//         // Check outgoing edges
-//         for (auto& [neighbor, edge] : node->outgoingEdges()) {
-//             if (edge.distance == INFINITY) continue; 
-
-//             const double edge_start_ttg = node->getTimeToGoal();
-
-//             last_replan_metrics_.obstacle_checks++;
-
-//             // Explicit Check against the specific obstacle being added
-//             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, edge_start_ttg, ob)) {
-//                 // Invalidate Edge
-//                 edge.distance = INFINITY;
-                
-//                 // Symmetric restoration (invalidate the reverse edge in neighbor)
-//                 if (neighbor->incomingEdges().count(node)) {
-//                     neighbor->incomingEdges().at(node).distance = INFINITY;
-//                 }
-                
-//                 // Handle Orphaning
-//                 if (neighbor->getParent() == node) verifyOrphan(neighbor);
-//                 if (node->getParent() == neighbor) verifyOrphan(node);
-//             }
-//         }
-//     }
-
-
-
-
-
-//     // std::unordered_set<int> processed_indices;
-
-//     // for (const auto& point_3d : ob.predicted_path) {
-//     //     Eigen::VectorXd query(kd_dim);
-//     //     if (kd_dim == 3) {
-//     //         query << point_3d.x(), point_3d.y(), point_3d.z();  // z is time
-//     //     } else if (kd_dim == 2) {
-//     //         query << point_3d.x(), point_3d.y();
-//     //     } else if (kd_dim == 4) {
-//     //         query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
-//     //     }
-//     //     std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
-
-//     //     for (size_t idx : indices) {
-//     //         if (processed_indices.count(idx)) continue;
-//     //         processed_indices.insert(idx);
-
-//     //         RRTxNode* node = tree_[idx].get();
-            
-//     //         // [DEBUG] Add to visualization list
-//     //         debug_nodes.push_back(node->getStateValue());
-
-//     //         // Check outgoing edges
-//     //         for (auto& [neighbor, edge] : node->outgoingEdges()) {
-//     //             if (edge.distance == INFINITY) continue; 
-
-
-//     //             const double edge_start_ttg = node->getTimeToGoal();
-//     //             // Explicit Check
-//     //             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, edge_start_ttg, ob)) {
-//     //                 // RCLCPP_INFO(rclcpp::get_logger("RewireDebug"), 
-//     //                 //         "Killing Node %d: Edge starts at T=%.2f, hits Obs at X=%.2f, Y=%.2f", 
-//     //                 //         neighbor->getIndex(), edge_start_ttg, ob.position.x(), ob.position.y());
-
-//     //                 edge.distance = INFINITY;
-//     //                 if (neighbor->incomingEdges().count(node)) neighbor->incomingEdges().at(node).distance = INFINITY;
-                    
-//     //                 // Handle Orphaning
-//     //                 if (neighbor->getParent() == node) verifyOrphan(neighbor);
-//     //                 if (node->getParent() == neighbor) verifyOrphan(node);
-//     //             }
-//     //         }
-//     //     }
-//     // }
-// }
 void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& turned_obstacles) {
     if (mode != 2) return;
     if (turned_obstacles.empty()) return;
@@ -3686,12 +3594,26 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& turned_obstacl
     propagateDescendants();
     if (vbot_node_) verifyQueue(vbot_node_);
     reduceInconsistency();
+
+
+
+
+    #if DEBUG
+        runForensics();
+    #endif
+
+
 }
+
+
+// ==============================================================================================
+// STRATEGY 1: INVALIDATING SET (Edge-Level Caching)
+// ==============================================================================================
+#if USE_INVALIDATING_SET_STRATEGY
 
 void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
     if (ob.predicted_path.empty()) return;
 
-    // 1. Calculate Radius
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     double search_radius;
@@ -3702,7 +3624,6 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
         search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
     }
 
-    // 2. Gather Unique Nodes
     std::unordered_set<int> unique_node_indices;
     for (const auto& point_3d : ob.predicted_path) {
         Eigen::VectorXd query(kd_dim);
@@ -3715,55 +3636,35 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
     }
 
-    // --- HELPER LAMBDA: Defined OUTSIDE the loop ---
     auto checkAndBlockEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge) {
-#if !USE_INVALIDATING_SET_STRATEGY
-        if (edge.distance == std::numeric_limits<double>::infinity()) return; 
-#endif
         const double edge_start_ttg = node->getTimeToGoal();
         last_replan_metrics_.obstacle_checks++;
 
-        // Physics Check
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
-            // 1. Mark as Blocked
             edge.distance = std::numeric_limits<double>::infinity();
-            
-            // 2. Symmetric Update (Forward Neighbor)
-#if USE_INVALIDATING_SET_STRATEGY
             edge.invalidating_obstacles.insert(ob.name);
-#endif
-            // 3. Symmetric Update (Backward Neighbor)
+            
             if (neighbor->incomingEdges().count(node)) {
                 auto& inc_edge = neighbor->incomingEdges().at(node);
                 inc_edge.distance = std::numeric_limits<double>::infinity();
-#if USE_INVALIDATING_SET_STRATEGY
                 inc_edge.invalidating_obstacles.insert(ob.name);
-#endif
             }
             
-            // 4. Handle Orphaning
             if (neighbor->getParent() == node) verifyOrphan(neighbor);
             if (node->getParent() == neighbor) verifyOrphan(node);
         }
     };
-    // ------------------------------------------------
 
-    // 3. Process Nodes (Look how clean this is now!)
     for (int idx : unique_node_indices) {
         RRTxNode* node = tree_[idx].get();
-        
-        for (auto& [neighbor, edge] : node->outgoingEdges()) {
-            checkAndBlockEdge(node, neighbor, edge);
-        }
-        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) {
-            checkAndBlockEdge(node, neighbor, edge);
-        }
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
     }
 }
+
 void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
     if (ob.predicted_path.empty()) return;
 
-    // 1. Calculate Radius
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     double search_radius;
@@ -3774,7 +3675,6 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
         search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
     }
 
-    // 2. Gather Unique Nodes
     std::unordered_set<int> unique_node_indices;
     for (const auto& point_3d : ob.predicted_path) {
         Eigen::VectorXd query(kd_dim);
@@ -3787,23 +3687,243 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
     }
 
-#if !USE_INVALIDATING_SET_STRATEGY
-    ObstacleVector all_obstacles = obs_checker_->getObstacles();
-#endif
-
-    // --- HELPER LAMBDA: Defined OUTSIDE the loop ---
     auto checkAndRestoreEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge, bool& neighborsWereBlocked) {
         if (edge.distance == std::numeric_limits<double>::infinity()) {
-            bool should_restore = false;
-
-#if USE_INVALIDATING_SET_STRATEGY
             if (edge.invalidating_obstacles.erase(ob.name) > 0) {
                 if (edge.invalidating_obstacles.empty()) {
-                    should_restore = true;
+                    edge.distance = edge.distance_original;
+                    if (neighbor->incomingEdges().count(node)) {
+                        auto& inc_edge = neighbor->incomingEdges().at(node);
+                        inc_edge.distance = edge.distance_original;
+                        inc_edge.invalidating_obstacles.erase(ob.name);
+                    }
+                    neighborsWereBlocked = true;
                 }
             }
-#else
+        }
+    };
+
+    for (int idx : unique_node_indices) {
+        RRTxNode* node = tree_[idx].get();
+        bool neighborsWereBlocked = false;
+        
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        
+        if (neighborsWereBlocked) {
+            updateLMC(node);
+            if (node->getCost() != node->getLMC()) verifyQueue(node);
+        }
+    }
+}
+
+// ==============================================================================================
+// STRATEGY 2: THREAT SET (Node-Level Filtering)
+// ==============================================================================================
+#elif USE_THREAT_SET_STRATEGY
+
+void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
+    if (ob.predicted_path.empty()) return;
+
+    double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
+                   std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+    double search_radius;
+    if (is_geometric_mode_) {
+        search_radius = obs_r + ob.inflation + delta;
+    } else {
+        double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+        search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+    }
+
+    std::unordered_set<int> unique_node_indices;
+    for (const auto& point_3d : ob.predicted_path) {
+        Eigen::VectorXd query(kd_dim);
+        if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
+        else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
+        else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        else if (kd_dim == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
+        
+        std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
+        for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
+    }
+
+    auto checkAndBlockEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge) {
+        if (edge.distance == std::numeric_limits<double>::infinity()) return; 
+
+        const double edge_start_ttg = node->getTimeToGoal();
+        last_replan_metrics_.obstacle_checks++;
+
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+            edge.distance = std::numeric_limits<double>::infinity();
+            
+            if (neighbor->incomingEdges().count(node)) {
+                neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
+            }
+            
+            if (neighbor->getParent() == node) verifyOrphan(neighbor);
+            if (node->getParent() == neighbor) verifyOrphan(node);
+        }
+    };
+
+    for (int idx : unique_node_indices) {
+        RRTxNode* node = tree_[idx].get();
+        node->threats_.insert(ob.name);
+        
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
+    }
+}
+
+void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
+    if (ob.predicted_path.empty()) return;
+
+    double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
+                   std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+    double search_radius;
+    if (is_geometric_mode_) {
+        search_radius = obs_r + ob.inflation + delta;
+    } else {
+        double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+        search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+    }
+
+    std::unordered_set<int> unique_node_indices;
+    for (const auto& point_3d : ob.predicted_path) {
+        Eigen::VectorXd query(kd_dim);
+        if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
+        else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
+        else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        else if (kd_dim == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
+        
+        std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
+        for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
+    }
+
+    auto checkAndRestoreEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge, bool& neighborsWereBlocked) {
+        if (edge.distance == std::numeric_limits<double>::infinity()) {
             const double ttg = node->getTimeToGoal();
+            bool is_safe = true;
+            for (const std::string& threat_name : node->threats_) {
+                last_replan_metrics_.obstacle_checks++;
+                const Obstacle& threat_ob = previous_obstacles_.at(threat_name); 
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, threat_ob)) {
+                    is_safe = false;
+                    break;
+                }
+            }
+
+            if (is_safe) {
+                edge.distance = edge.distance_original;
+                if (neighbor->incomingEdges().count(node)) {
+                    neighbor->incomingEdges().at(node).distance = edge.distance_original;
+                }
+                neighborsWereBlocked = true;
+            }
+        }
+    };
+
+    for (int idx : unique_node_indices) {
+        RRTxNode* node = tree_[idx].get();
+        node->threats_.erase(ob.name);
+        bool neighborsWereBlocked = false;
+        
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        
+        if (neighborsWereBlocked) {
+            updateLMC(node);
+            if (node->getCost() != node->getLMC()) verifyQueue(node);
+        }
+    }
+}
+
+// ==============================================================================================
+// STRATEGY 3: DEFAULT (Brute-Force Fallback)
+// ==============================================================================================
+#else
+
+void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
+    if (ob.predicted_path.empty()) return;
+
+    double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
+                   std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+    double search_radius;
+    if (is_geometric_mode_) {
+        search_radius = obs_r + ob.inflation + delta;
+    } else {
+        double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+        search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+    }
+
+    std::unordered_set<int> unique_node_indices;
+    for (const auto& point_3d : ob.predicted_path) {
+        Eigen::VectorXd query(kd_dim);
+        if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
+        else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
+        else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        else if (kd_dim == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
+        
+        std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
+        for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
+    }
+
+    auto checkAndBlockEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge) {
+        if (edge.distance == std::numeric_limits<double>::infinity()) return; 
+
+        const double edge_start_ttg = node->getTimeToGoal();
+        last_replan_metrics_.obstacle_checks++;
+
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+            edge.distance = std::numeric_limits<double>::infinity();
+            
+            if (neighbor->incomingEdges().count(node)) {
+                neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
+            }
+            
+            if (neighbor->getParent() == node) verifyOrphan(neighbor);
+            if (node->getParent() == neighbor) verifyOrphan(node);
+        }
+    };
+
+    for (int idx : unique_node_indices) {
+        RRTxNode* node = tree_[idx].get();
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
+    }
+}
+
+void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
+    if (ob.predicted_path.empty()) return;
+
+    double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
+                   std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+    double search_radius;
+    if (is_geometric_mode_) {
+        search_radius = obs_r + ob.inflation + delta;
+    } else {
+        double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+        search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
+    }
+
+    std::unordered_set<int> unique_node_indices;
+    for (const auto& point_3d : ob.predicted_path) {
+        Eigen::VectorXd query(kd_dim);
+        if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
+        else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
+        else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+        else if (kd_dim == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
+        
+        std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
+        for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
+    }
+
+    ObstacleVector all_obstacles = obs_checker_->getObstacles();
+
+    auto checkAndRestoreEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge, bool& neighborsWereBlocked) {
+        if (edge.distance == std::numeric_limits<double>::infinity()) {
+            const double ttg = node->getTimeToGoal();
+            bool should_restore = false;
+            
             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
                 bool conflicts_with_other = false;
                 for (const auto& other_ob : all_obstacles) {
@@ -3818,247 +3938,30 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
                     should_restore = true;
                 }
             }
-#endif
 
             if (should_restore) {
-                // Restore Forward
                 edge.distance = edge.distance_original;
-                
-                // Restore Backward (Symmetry)
                 if (neighbor->incomingEdges().count(node)) {
-                    auto& inc_edge = neighbor->incomingEdges().at(node);
-                    inc_edge.distance = edge.distance_original;
-#if USE_INVALIDATING_SET_STRATEGY
-                    inc_edge.invalidating_obstacles.erase(ob.name);
-#endif
+                    neighbor->incomingEdges().at(node).distance = edge.distance_original;
                 }
                 neighborsWereBlocked = true;
             }
         }
     };
-    // ------------------------------------------------
 
-    // 3. Process Nodes
     for (int idx : unique_node_indices) {
         RRTxNode* node = tree_[idx].get();
         bool neighborsWereBlocked = false;
         
-        for (auto& [neighbor, edge] : node->outgoingEdges()) {
-            checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
-        }
-        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) {
-            checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
-        }
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
         
-        // 5. Update LMC
         if (neighborsWereBlocked) {
             updateLMC(node);
-            if (node->getCost() != node->getLMC()) {
-                verifyQueue(node);
-            }
+            if (node->getCost() != node->getLMC()) verifyQueue(node);
         }
     }
 }
 
+#endif
 
-// // // The following is not standard RRTX but it might make it a little bit faster but i need to benchamrk more and see if there is any problem with it!
-// // // // USING SET OPTIMZIATION STRATEGY! it removes the edge inifnity filter in the add new obstalce and checks collision in addnewobstalce more but reduces removeosbtalce collicion check. also needs more ram for set of invalidating obstalces
-
-// void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
-//     if (ob.predicted_path.empty()) return;
-
-//     // 1. Calculate Radius
-//     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
-//                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-//     double search_radius;
-//     if (is_geometric_mode_) {
-//         search_radius = obs_r + ob.inflation + delta;
-//     } else {
-//         double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-//         search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
-//     }
-
-//     // 2. Gather Unique Nodes
-//     std::unordered_set<int> unique_node_indices;
-//     for (const auto& point_3d : ob.predicted_path) {
-//         Eigen::VectorXd query(kd_dim);
-//         if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
-//         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
-//         else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
-        
-//         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
-//         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
-//     }
-
-//     // 3. Process Nodes
-//     for (int idx : unique_node_indices) {
-//         RRTxNode* node = tree_[idx].get();
-        
-//         for (auto& [neighbor, edge] : node->outgoingEdges()) {
-            
-// #if !USE_INVALIDATING_SET_STRATEGY
-//             // --- STANDARD STRATEGY (Julia) ---
-//             // Optimization: If edge is already broken, we assume it's handled.
-//             // We don't care "who" broke it, because removeObstacle will check everyone anyway.
-//             if (edge.distance == std::numeric_limits<double>::infinity()) continue; 
-// #endif
-
-//             // --- SET STRATEGY (Optimization) ---
-//             // We REMOVED the "continue if INF" check.
-//             // We MUST check collision even if blocked to populate the set correctly.
-
-//             const double edge_start_ttg = node->getTimeToGoal();
-//             last_replan_metrics_.obstacle_checks++;
-
-//             // Physics Check
-//             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, edge_start_ttg, ob)) {
-                
-//                 // 1. Mark as Blocked
-//                 edge.distance = std::numeric_limits<double>::infinity();
-                
-//                 // 2. Symmetric Update (Forward Neighbor)
-// #if USE_INVALIDATING_SET_STRATEGY
-//                 edge.invalidating_obstacles.insert(ob.name);
-// #endif
-
-//                 // 3. Symmetric Update (Backward Neighbor)
-//                 if (neighbor->incomingEdges().count(node)) {
-//                     auto& inc_edge = neighbor->incomingEdges().at(node);
-//                     inc_edge.distance = std::numeric_limits<double>::infinity();
-// #if USE_INVALIDATING_SET_STRATEGY
-//                     inc_edge.invalidating_obstacles.insert(ob.name);
-// #endif
-//                 }
-                
-//                 // 4. Handle Orphaning
-//                 if (neighbor->getParent() == node) verifyOrphan(neighbor);
-//                 if (node->getParent() == neighbor) verifyOrphan(node);
-//             }
-//         }
-//     }
-// }
-
-// void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
-//     if (ob.predicted_path.empty()) return;
-
-//     // 1. Calculate Radius (Same as above)
-//     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
-//                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-//     double search_radius;
-//     if (is_geometric_mode_) {
-//         search_radius = obs_r + ob.inflation + delta;
-//     } else {
-//         double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
-//         search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
-//     }
-
-//     // 2. Gather Unique Nodes
-//     std::unordered_set<int> unique_node_indices;
-//     for (const auto& point_3d : ob.predicted_path) {
-//         Eigen::VectorXd query(kd_dim);
-//         if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
-//         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
-//         else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
-        
-//         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
-//         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
-//     }
-
-// #if !USE_INVALIDATING_SET_STRATEGY
-//     // Needed for Standard Strategy only
-//     ObstacleVector all_obstacles = obs_checker_->getObstacles();
-// #endif
-
-//     // 3. Process Nodes
-//     for (int idx : unique_node_indices) {
-//         RRTxNode* node = tree_[idx].get();
-//         bool neighborsWereBlocked = false;
-        
-//         for (auto& [neighbor, edge] : node->outgoingEdges()) {
-            
-//             // Only check currently blocked edges
-//             if (edge.distance == std::numeric_limits<double>::infinity()) {
-                
-//                 bool should_restore = false;
-
-// // -----------------------------------------------------------
-// // STRATEGY A: SET OPTIMIZATION (Fast, O(1) Check)
-// // -----------------------------------------------------------
-// #if USE_INVALIDATING_SET_STRATEGY
-                
-//                 // 1. Was it blocked by THIS obstacle?
-//                 if (edge.invalidating_obstacles.erase(ob.name) > 0) {
-                    
-//                     // 2. Is the set now empty? (No other blockers)
-//                     if (edge.invalidating_obstacles.empty()) {
-//                         should_restore = true;
-//                     }
-//                 }
-
-// // -----------------------------------------------------------
-// // STRATEGY B: STANDARD PHYSICS (Robust, O(N) Check)
-// // -----------------------------------------------------------
-// #else
-//                 const double ttg = node->getTimeToGoal();
-                
-//                 // 1. Was it blocked by THIS obstacle (the one being removed)?
-//                 // (Julia Logic Step A)
-//                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, ttg, ob)) {
-                    
-//                     // 2. Is it blocked by ANY OTHER obstacle?
-//                     // (Julia Logic Step B)
-//                     bool conflicts_with_other = false;
-//                     for (const auto& other_ob : all_obstacles) {
-//                         if (other_ob.name == ob.name) continue; // SKIP SELF
-
-//                         last_replan_metrics_.obstacle_checks++;
-//                         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge.cached_trajectory, ttg, other_ob)) {
-//                             conflicts_with_other = true;
-//                             break; 
-//                         }
-//                     }
-
-//                     // 3. If safe against others, mark for restore
-//                     if (!conflicts_with_other) {
-//                         should_restore = true;
-//                     }
-//                 }
-// #endif
-// // -----------------------------------------------------------
-
-//                 // 4. Common Restoration Logic
-//                 if (should_restore) {
-//                     // Restore Forward
-//                     edge.distance = edge.distance_original;
-                    
-//                     // Restore Backward (Symmetry)
-//                     if (neighbor->incomingEdges().count(node)) {
-//                         auto& inc_edge = neighbor->incomingEdges().at(node);
-//                         inc_edge.distance = edge.distance_original;
-                        
-// #if USE_INVALIDATING_SET_STRATEGY
-//                         // Keep the backward edge set in sync
-//                         inc_edge.invalidating_obstacles.erase(ob.name);
-// #endif
-//                     }
-                    
-//                     neighborsWereBlocked = true;
-//                 }
-//             }
-//         }
-        
-//         // 5. Update LMC
-//         if (neighborsWereBlocked) {
-//             updateLMC(node);
-//             if (node->getCost() != node->getLMC()) {
-//                 verifyQueue(node);
-//             }
-//         }
-//     }
-// }
-
-bool KinodynamicRRTX::isRobotSafe() {
-    // If vbot_node_ is null, we have no anchor.
-    // If cost is INFINITY, the anchor is invalid (trapped).
-    return (vbot_node_ != nullptr) && (vbot_node_->getCost() != INFINITY);
-}
