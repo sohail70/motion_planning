@@ -82,14 +82,6 @@ target_link_libraries(visualization PUBLIC gz-utils2::gz-utils2)
 ament_target_dependencies(visualization PUBLIC rclcpp visualization_msgs nav2_msgs rclcpp_action) 
 
 
-add_library(kf     
-  src/utils/kalman_filter.cpp
-  src/utils/kalman_filter_factory.cpp
-)
-target_include_directories(kf PUBLIC include)
-target_link_libraries(kf PUBLIC Eigen3::Eigen)
-
-
 # Gazebo Obstacle Checker Library
 add_library(gz_obs src/utils/gazebo_obstacle_checker.cpp)
 target_precompile_headers(gz_obs PRIVATE include/motion_planning/pch.hpp)
@@ -98,7 +90,6 @@ target_link_libraries(gz_obs PUBLIC
   gz-msgs10
   ${Protobuf_LIBRARIES}
   ${ZeroMQ_LIBRARIES}
-  kf
   ${FCL_LIBRARIES}
   ${BULLET_LIBRARIES}
 )

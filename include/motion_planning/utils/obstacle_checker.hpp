@@ -156,11 +156,6 @@ public:
     virtual bool isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& start, const Eigen::VectorXd& end, const Obstacle& obs) const = 0;
     virtual bool isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& point, const Obstacle& obs) const = 0;
 
-    
-    virtual std::optional<Obstacle> getCollidingObstacle( const Trajectory& trajectory, double start_node_cost) const = 0;
-    virtual std::optional<Obstacle> getCollidingObstacleFCL( const Trajectory& trajectory, double start_node_cost) const = 0;
-    virtual std::optional<Obstacle> getCollidingObstacleBullet( const Trajectory& trajectory, double start_node_cost) const = 0;
-
     virtual bool isTrajectorySafe( const Trajectory& trajectory, double start_node_time) const = 0;
     
     virtual bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, double global_start_time, const Obstacle& obstacle) const = 0;
@@ -168,11 +163,7 @@ public:
     // virtual void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) = 0;
     virtual ObstacleVector getObstacles() const = 0;
     virtual int getObstaclesSize() const = 0;
-    virtual bool checkFootprintCollision(const Eigen::Vector2d& position,
-                                       double yaw,
-                                       const std::vector<Eigen::Vector2d>& footprint) const = 0;
                                        
-    virtual double distanceToNearestObstacle(const Eigen::Vector2d& position) const = 0;
 
     virtual std::vector<Eigen::Vector3d> generatePrediction(const Obstacle& ob, double current_time) const {
         // Default behavior: return empty path (no prediction)

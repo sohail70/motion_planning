@@ -5,6 +5,7 @@
  */
 #pragma once
 
+struct Obstacle;
 // Struct to hold the full, fine-grained trajectory for execution
 // This will contain time, position, velocity, and acceleration profiles.
 struct ExecutionTrajectory {
@@ -99,7 +100,8 @@ struct EdgeInfo {
      * - If this set is EMPTY, the edge is considered VALID.
      * - If this set is NOT EMPTY, the edge is INVALID and must be ignored by the planner.
      */
-    std::unordered_set<std::string> invalidating_obstacles;
+    // std::unordered_set<std::string> invalidating_obstacles;
+    std::vector<const Obstacle*> invalidating_obstacles;
 
 
 };

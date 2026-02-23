@@ -234,7 +234,7 @@ int main(int argc, char** argv) {
     
     auto kinodynamic_planner = std::dynamic_pointer_cast<Planner>(planner); 
     // kinodynamic_planner = std::dynamic_pointer_cast<KinodynamicFMTX>(planner); 
-    if (kinodynamic_planner) kinodynamic_planner->setClock(sim_clock);
+    // if (kinodynamic_planner) kinodynamic_planner->setClock(sim_clock);
 
     // --- 8. Initial Plan ---
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");

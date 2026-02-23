@@ -7,6 +7,11 @@
 #include "motion_planning/utils/visualization.hpp"
 #include "motion_planning/ds/priority_queue.hpp"
 
+#define RRTX_INFO(msg)  std::cout << "\033[0;32m[INFO] " << msg << "\033[0m\n"
+#define RRTX_WARN(msg)  std::cout << "\033[1;33m[WARN] " << msg << "\033[0m\n"
+#define RRTX_ERROR(msg) std::cerr << "\033[1;31m[ERROR] " << msg << "\033[0m\n"
+#define RRTX_FATAL(msg) std::cerr << "\033[1;37;41m[FATAL] " << msg << "\033[0m\n"
+
 class KinodynamicRRTX : public Planner {
  public:
     KinodynamicRRTX(std::shared_ptr<StateSpace> statespace, 
@@ -15,39 +20,19 @@ class KinodynamicRRTX : public Planner {
     
     void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
     void plan() override;
-    std::vector<int> getPathIndex() const;
     std::vector<Eigen::VectorXd> getPathPositions() const;
 
     void setStart(const Eigen::VectorXd& start) override;
     void setGoal(const Eigen::VectorXd& goal) override;
     void clearPlannerState() ;
 
-    // Obstacle management
     void updateObstacleSamples(const ObstacleVector& obstacles);
-    void updateRobotPosition(const Eigen::VectorXd& new_position);
 
-    // Visualization
     void visualizeTree();
 
     void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
 
-    void visualizeSmoothedPath(const std::vector<Eigen::VectorXd>& shortest_path_);
-
-    // Path smoothing
-    std::vector<Eigen::VectorXd> getSmoothedPathPositions(int num_intermediates, 
-                                                        int smoothing_window) const;
-
-std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles, double max_length);
-
-    bool isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& edge) const;
-
-    void setClock(rclcpp::Clock::SharedPtr clock);
-
     void setRobotState(const Eigen::VectorXd& robot_state);
-
-    bool isPathStillValid(const std::vector<Eigen::VectorXd>& path, const Eigen::VectorXd& current_robot_state) const;
-
-    bool arePathsSimilar(const std::vector<Eigen::VectorXd>& path_a, const std::vector<Eigen::VectorXd>& path_b, double tolerance) const;
 
     void dumpTreeToCSV(const std::string& filename) const;
 
@@ -84,26 +69,15 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     int getTreeSize() { return tree_.size();}
     bool runForensics();
  private:
-    // Core data structures
     std::vector<std::shared_ptr<RRTxNode>> tree_;
     std::shared_ptr<KDTree> kdtree_;
     PriorityQueue<RRTxNode, RRTxComparator> inconsistency_queue_;
-    
-    // State management
     std::shared_ptr<StateSpace> statespace_;
     std::shared_ptr<ProblemDefinition> problem_;
     std::shared_ptr<ObstacleChecker> obs_checker_;
     std::shared_ptr<Visualization> visualization_;
-
-    // Node tracking
-    // RRTxNode* vbot_node_ = nullptr;  // Added missing declaration
     RRTxNode*  vbot_node_;
-    std::unordered_set<int> Vc_T_; // Store indices instead of pointers
-
-    std::unordered_set<int> samples_in_obstacles_;
-
-
-    // Algorithm parameters
+    std::unordered_set<int> Vc_T_;
     double neighborhood_radius_;
     double epsilon_ = 1e-6;
     double gamma_;
@@ -115,84 +89,30 @@ std::unordered_set<int> findSamplesNearObstacles(const ObstacleVector& obstacles
     int robot_state_index_ = -1;
     size_t sample_counter = 0;
     bool cap_samples_ = true;
-    bool update_obstacle = false;
     bool partial_update;
-    bool ignore_sample;
-
-    Eigen::VectorXd robot_position_;
-    std::unordered_map<int, double> edge_length_;
-    int max_length_edge_ind;
-    double max_length;
     int vbot_index_;
     int vgoal_index_;
     std::unordered_set<int> v_indices_;
     Eigen::VectorXd lower_bounds_;
     Eigen::VectorXd upper_bounds_;
     bool use_kdtree;
-
-
     int kd_dim ; 
-
-
-    bool static_obs_presence;
-    ObstacleVector seen_statics_;
-
-
-    rclcpp::Clock::SharedPtr clock_;
     Eigen::VectorXd robot_continuous_state_;
     double robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
-
-
-    FMTNode* robot_anchor_node_ = nullptr;
-    Trajectory robot_bridge_trajectory_;
-
-
-
-    int findNodeIndex(RRTxNode* node) const;
-
-    // Helper methods
     bool extend(Eigen::VectorXd v);
-    // std::vector<std::tuple<RRTxNode*, Trajectory, bool>> findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidate_indices);
-    std::vector<std::tuple<RRTxNode*, Trajectory, bool, std::unordered_set<std::string>>> findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidate_indices);
-
     void rewireNeighbors(RRTxNode* v);
     void reduceInconsistency();
     void cullNeighbors(RRTxNode* v);
-    void makeParentOf(RRTxNode* child, RRTxNode* new_parent, double edge_dist);
     void updateLMC(RRTxNode* v);
     void verifyQueue(RRTxNode* node);  // Fixed signature
     void propagateDescendants();
     void verifyOrphan(RRTxNode* node);
     double shrinkingBallRadius() const;
-    void addNewObstacle(const std::vector<int>& added_indices);
-    void removeObstacle(const std::vector<int>& removed_indices);
-
     void addNewObstacle(const Obstacle& ob);
     void removeObstacle(const Obstacle& ob);
-
-    void addNewObstacle(const Obstacle& ob, std::vector<Eigen::VectorXd>& debug_nodes);
-    void removeObstacle(const Obstacle& ob, std::vector<Eigen::VectorXd>& debug_nodes);
-
     Eigen::VectorXd saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta);
-
-    // Path smoothing implementations
-    std::vector<Eigen::VectorXd> smoothPath(const std::vector<Eigen::VectorXd>& path, 
-                                          int window_size) const;
-    std::vector<Eigen::VectorXd> interpolatePath(const std::vector<Eigen::VectorXd>& path,
-                                               int num_intermediates) const;
-
-    
-    int obs_check = 0;
-    int mode;
-
     ReplanMetrics last_replan_metrics_; 
-
-
     std::unordered_map<std::string, Obstacle> previous_obstacles_;
-
-
-    mutable std::unordered_map<int, std::vector<Obstacle>> node_to_threats_map_;
-
     double bridge_cost_;
     bool is_geometric_mode_;
 };

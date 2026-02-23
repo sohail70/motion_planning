@@ -5,6 +5,7 @@
 #include "motion_planning/state_space/state.hpp"
 #include "motion_planning/pch.hpp"
 #include "motion_planning/ds/edge_info.hpp"
+#include "motion_planning/utils/obstacle_checker.hpp"
 
 class FMTNode {
 public:
@@ -114,10 +115,13 @@ public:
     int bad_count = 0;
 
 
-    // "Threats": The set of obstacles that are currently moving in the vicinity of this node.
-    // If this set is NOT empty, this node is "Dirty" and must be repaired.
-    std::unordered_set<std::string> threats;
-    // std::set<std::string> threats;
+    // // "Threats": The set of obstacles that are currently moving in the vicinity of this node.
+    // // If this set is NOT empty, this node is "Dirty" and must be repaired.
+    // std::unordered_set<std::string> threats;
+    // // std::set<std::string> threats;
+
+    // "Threats": A highly cache-efficient flat array of pointers directly to the obstacles.
+    std::vector<const Obstacle*> threats;
 
     double last_culled_radius_ = -1.0; // Initialize to invalid radius
 

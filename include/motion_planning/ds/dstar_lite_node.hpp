@@ -5,6 +5,7 @@
 #include "motion_planning/ds/edge_info.hpp"
 #include <Eigen/Dense>
 #include <limits>
+#include "motion_planning/utils/obstacle_checker.hpp"
 
 class DStarLiteNode {
 public:
@@ -85,7 +86,8 @@ public:
     // std::vector<DStarLiteNode*> children_;
 
 
-    std::unordered_set<std::string> threats_;
+    // std::unordered_set<std::string> threats_;
+    std::vector<const Obstacle*> threats_;
 
 private:
     std::shared_ptr<State> state_;
