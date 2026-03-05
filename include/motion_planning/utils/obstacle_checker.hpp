@@ -161,7 +161,7 @@ public:
     virtual bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, double global_start_time, const Obstacle& obstacle) const = 0;
 
     // virtual void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) = 0;
-    virtual ObstacleVector getObstacles() const = 0;
+    virtual const ObstacleVector& getObstacles() const = 0;
     virtual int getObstaclesSize() const = 0;
                                        
 

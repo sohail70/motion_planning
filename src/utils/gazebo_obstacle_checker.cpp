@@ -361,7 +361,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
 ) const {
     // 1. Get the current world snapshot
     // (This list already contains the updated positions/velocities)
-    ObstacleVector all_obs = getObstacles(); 
+    const ObstacleVector& all_obs = getObstacles(); 
 
     // 2. Loop through EVERY obstacle and check its Tube
     for (const auto& ob : all_obs) {
@@ -536,26 +536,29 @@ bool GazeboObstacleChecker::pointIntersectsCircle(const Eigen::Vector2d& point,
 
 
 
-ObstacleVector GazeboObstacleChecker::getObstacles() const {
-    // std::lock_guard<std::mutex> lock(data_mutex_);
-    ObstacleVector filtered_obstacles;
+const ObstacleVector& GazeboObstacleChecker::getObstacles() const {
+    // // std::lock_guard<std::mutex> lock(data_mutex_);
+    // ObstacleVector filtered_obstacles;
     
-    for (const auto& obstacle : obstacle_positions_) {
-        if (use_range) {
-            // Calculate distance from robot to obstacle
-            double distance = (robot_position_ - obstacle.position).norm();
+    // for (const auto& obstacle : obstacle_positions_) {
+    //     if (use_range) {
+    //         // Calculate distance from robot to obstacle
+    //         double distance = (robot_position_ - obstacle.position).norm();
             
-            // Only include obstacles within sensor range
-            if (distance <= sensor_range) {
-                filtered_obstacles.push_back(obstacle);
-            }
-        } else {
-            // Include all obstacles if range checking is disabled
-            filtered_obstacles.push_back(obstacle);
-        }
-    }
+    //         // Only include obstacles within sensor range
+    //         if (distance <= sensor_range) {
+    //             filtered_obstacles.push_back(obstacle);
+    //         }
+    //     } else {
+    //         // Include all obstacles if range checking is disabled
+    //         filtered_obstacles.push_back(obstacle);
+    //     }
+    // }
     
-    return filtered_obstacles;
+    // return filtered_obstacles;
+
+
+    return obstacle_positions_;
 }
 
 int GazeboObstacleChecker::getObstaclesSize() const {

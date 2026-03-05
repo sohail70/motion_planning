@@ -60,7 +60,7 @@ public:
     double calculateYawFromQuaternion(const Eigen::VectorXd& quaternion);
 
 
-    ObstacleVector getObstacles() const override;
+    const ObstacleVector& getObstacles() const override;
     int getObstaclesSize() const override;
 
 

@@ -23,7 +23,7 @@ robot:
   min_turning_radius: 2.0 # Used here
 
 planner_params:
-  num_of_samples: 500
+  num_of_samples: 1000
   factor: 3.0
   use_kdtree: true
   kdtree_type: "NanoFlann"

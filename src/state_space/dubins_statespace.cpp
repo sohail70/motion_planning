@@ -910,7 +910,13 @@ static inline void sample_arc_optimized(
 Trajectory DubinsStateSpace::steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const {
     const double r = min_turning_radius_;
     if (r <= 1e-6) {
-        return Trajectory{false, 0, 0, {}};
+        // return Trajectory{false, 0, 0, {}};
+        Trajectory traj;
+        traj.is_valid = false;
+        traj.cost = 0.0;
+        traj.geometric_distance = 0.0;
+        // path_points is empty by default
+        return traj;
     }
 
     const double th0 = normalizeAngle(from[2]);
@@ -1020,7 +1026,14 @@ Trajectory DubinsStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Vec
     }
 
     if (std::isinf(best_maneuver.cost)) {
-        return Trajectory{false, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
+        // return Trajectory{false, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), {}};
+
+        Trajectory traj;
+        traj.is_valid = false;
+        traj.cost = std::numeric_limits<double>::infinity();
+        traj.geometric_distance = std::numeric_limits<double>::infinity();
+        // path_points is empty by default
+        return traj;
     }
 
     Trajectory out;

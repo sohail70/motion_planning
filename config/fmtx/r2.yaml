@@ -58,6 +58,8 @@ gazebo_params:
   world_name: "default"
   sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf"
   inflation: 0.0
+  default_robot_x: 48.0  
+  default_robot_y: 48.0
   use_range: false
   sensor_range: 20.0
   estimation: true

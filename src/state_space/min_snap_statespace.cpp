@@ -55,9 +55,19 @@ double normalizeAngle(double angle);
 Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const {
     const double T = from.tail<1>()[0] - to.tail<1>()[0];
 
-    if (T <= 1e-6) return Trajectory{false};
+    if (T <= 1e-6) {
+        Trajectory traj;
+        traj.is_valid = false;
+        // traj.cost is already infinity by default
+        return traj;
+    }
     double spatial_dist = (from.head<3>() - to.head<3>()).norm();
-    if (spatial_dist / T > v_max_) return Trajectory{false};
+    if (spatial_dist / T > v_max_) {
+        Trajectory traj;
+        traj.is_valid = false;
+        // traj.cost is already infinity by default
+        return traj;
+    }
 
     auto basis = [&](int deriv, double tau) {
         Eigen::RowVectorXd r = Eigen::RowVectorXd::Zero(num_coeffs_);
@@ -116,10 +126,20 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
         int nWSR = 100;
         Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> H_r = H;
         Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A_r = A;
-        if (qp.init(H_r.data(), g.data(), A_r.data(), nullptr, nullptr, lbA.data(), ubA.data(), nWSR) != qpOASES::SUCCESSFUL_RETURN) return Trajectory{false};
+        if (qp.init(H_r.data(), g.data(), A_r.data(), nullptr, nullptr, lbA.data(), ubA.data(), nWSR) != qpOASES::SUCCESSFUL_RETURN) {
+            Trajectory traj;
+            traj.is_valid = false;
+            // traj.cost is already infinity by default
+            return traj;
+        }
         
         Eigen::VectorXd p_optimal(num_coeffs_);
-        if (qp.getPrimalSolution(p_optimal.data()) != qpOASES::SUCCESSFUL_RETURN) return Trajectory{false};
+        if (qp.getPrimalSolution(p_optimal.data()) != qpOASES::SUCCESSFUL_RETURN) {
+            Trajectory traj;
+            traj.is_valid = false;
+            // traj.cost is already infinity by default
+            return traj;
+        }
         
         final_velocities(axis) = (basis(1, 0.0) * p_optimal)(0) / T;      // Velocity at 'from' (child)
         final_accelerations(axis) = (basis(2, 0.0) * p_optimal)(0) / (T*T); // Acceleration at 'from' (child)
@@ -172,9 +192,19 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
 
     const double T = from.tail<1>()[0] - to.tail<1>()[0];
 
-    if (T <= 1e-6) return Trajectory{false};
+    if (T <= 1e-6) {
+        Trajectory traj;
+        traj.is_valid = false;
+        // traj.cost is already infinity by default
+        return traj;
+    }
     double spatial_dist = (from.head<3>() - to.head<3>()).norm();
-    if (spatial_dist / T > v_max_) return Trajectory{false};
+    if (spatial_dist / T > v_max_) {
+        Trajectory traj;
+        traj.is_valid = false;
+        // traj.cost is already infinity by default
+        return traj;
+    }
 
     auto basis = [&](int deriv, double tau) -> Eigen::RowVectorXd {
         Eigen::RowVectorXd r = Eigen::RowVectorXd::Zero(num_coeffs_);
@@ -250,7 +280,12 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
                 }
             }
         }
-        if (!solved) return Trajectory{false};
+        if (!solved) {
+            Trajectory traj;
+            traj.is_valid = false;
+            // traj.cost is already infinity by default
+            return traj;
+        }
         coeffs_per_axis.push_back(best_solution);
     }
 
@@ -314,9 +349,19 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
 
     const double T = from.tail<1>()[0] - to.tail<1>()[0];
 
-    if (T <= 1e-6) return Trajectory{false};
+    if (T <= 1e-6) {
+        Trajectory traj;
+        traj.is_valid = false;
+        // traj.cost is already infinity by default
+        return traj;
+    }
     double spatial_dist = (from.head<3>() - to.head<3>()).norm();
-    if (spatial_dist / T > v_max_) return Trajectory{false};
+    if (spatial_dist / T > v_max_) {
+        Trajectory traj;
+        traj.is_valid = false;
+        // traj.cost is already infinity by default
+        return traj;
+    }
 
     auto basis = [&](int deriv, double tau) -> Eigen::RowVectorXd {
         Eigen::RowVectorXd r = Eigen::RowVectorXd::Zero(num_coeffs_);
@@ -401,7 +446,12 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
         if (!solved_axis) { overall_success = false; break; }
         optimal_coeffs.push_back(p_optimal_axis);
     }
-    if (!overall_success) return Trajectory{false};
+    if (!overall_success) {
+        Trajectory traj;
+        traj.is_valid = false;
+        // traj.cost is already infinity by default
+        return traj;
+    }
 
     Trajectory result_traj;
     result_traj.is_valid = true;

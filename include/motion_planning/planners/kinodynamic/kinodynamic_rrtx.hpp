@@ -68,6 +68,30 @@ class KinodynamicRRTX : public Planner {
     bool isRobotSafe();
     int getTreeSize() { return tree_.size();}
     bool runForensics();
+
+    struct EdgeEval {
+        RRTxNode* neighbor;
+        bool fwd_exists = false; Trajectory fwd_traj; bool fwd_safe = false; 
+        std::vector<const Obstacle*> fwd_blockers; 
+        bool rev_exists = false; Trajectory rev_traj; bool rev_safe = false; 
+        std::vector<const Obstacle*> rev_blockers; 
+    };
+
+    // struct EdgeEval {
+    //     RRTxNode* neighbor = nullptr;
+
+    //     bool fwd_exists = false;
+    //     std::shared_ptr<Trajectory> fwd_traj;   // was: Trajectory fwd_traj;
+    //     bool fwd_safe = false;
+    //     std::vector<const Obstacle*> fwd_blockers;
+
+    //     bool rev_exists = false;
+    //     std::shared_ptr<Trajectory> rev_traj;   // was: Trajectory rev_traj;
+    //     bool rev_safe = false;
+    //     std::vector<const Obstacle*> rev_blockers;
+    // };
+
+    std::vector<EdgeEval> evaluated_edges;
  private:
     std::vector<std::shared_ptr<RRTxNode>> tree_;
     std::shared_ptr<KDTree> kdtree_;

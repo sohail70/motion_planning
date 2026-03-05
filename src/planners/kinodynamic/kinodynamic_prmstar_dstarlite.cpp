@@ -1,7 +1,7 @@
 #include "motion_planning/planners/kinodynamic/kinodynamic_prmstar_dstarlite.hpp"
 
 #define DEBUG_WITH_DIJKSTRA_ 0
-#define USE_INVALIDATING_SET_STRATEGY 1
+#define USE_INVALIDATING_SET_STRATEGY 0
 #define USE_THREAT_SET_STRATEGY 0
 #define USE_GRID_SAMPLING 0
 #define USE_PROPAGATE_DESCENDANTS 0  // This is not standard D* Lite but i put it for test purposes
@@ -2784,7 +2784,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
     }
 
-    ObstacleVector all_obstacles = obs_checker_->getObstacles();
+    const ObstacleVector& all_obstacles = obs_checker_->getObstacles();
 
     auto checkAndRestoreEdge = [&](DStarLiteNode* node, DStarLiteNode* neighbor, EdgeInfo& edge, bool& u_needs_update) {
         if (edge.distance == std::numeric_limits<double>::infinity()) {
