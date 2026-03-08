@@ -77,26 +77,25 @@ class KinodynamicANYRRTX : public Planner {
 
 
 
+    // struct EdgeEval {
+    //     RRTxNode* neighbor;
+    //     bool fwd_exists = false; Trajectory fwd_traj; bool fwd_safe = false; 
+    //     std::vector<const Obstacle*> fwd_blockers; 
+    //     bool rev_exists = false; Trajectory rev_traj; bool rev_safe = false; 
+    //     std::vector<const Obstacle*> rev_blockers; 
+    // };
     struct EdgeEval {
         RRTxNode* neighbor;
-        bool fwd_exists = false; Trajectory fwd_traj; bool fwd_safe = false; 
+        bool fwd_exists = false; 
+        std::shared_ptr<Trajectory> fwd_traj; // Changed to shared_ptr
+        bool fwd_safe = false; 
         std::vector<const Obstacle*> fwd_blockers; 
-        bool rev_exists = false; Trajectory rev_traj; bool rev_safe = false; 
+        
+        bool rev_exists = false; 
+        std::shared_ptr<Trajectory> rev_traj; // Changed to shared_ptr
+        bool rev_safe = false; 
         std::vector<const Obstacle*> rev_blockers; 
     };
-    // struct EdgeEval {
-    //     RRTxNode* neighbor = nullptr;
-
-    //     bool fwd_exists = false;
-    //     std::shared_ptr<Trajectory> fwd_traj;   // was: Trajectory fwd_traj;
-    //     bool fwd_safe = false;
-    //     std::vector<const Obstacle*> fwd_blockers;
-
-    //     bool rev_exists = false;
-    //     std::shared_ptr<Trajectory> rev_traj;   // was: Trajectory rev_traj;
-    //     bool rev_safe = false;
-    //     std::vector<const Obstacle*> rev_blockers;
-    // };
     std::vector<EdgeEval> evaluated_edges;
 
  private:
@@ -118,14 +117,9 @@ class KinodynamicANYRRTX : public Planner {
     double factor;
     int num_of_samples_;
     int dimension_;
-    int root_state_index_ = -1;
-    int robot_state_index_ = -1;
     size_t sample_counter = 0;
     bool cap_samples_ = true;
     bool partial_update;
-    int vbot_index_;
-    int vgoal_index_;
-    std::unordered_set<int> v_indices_;
     Eigen::VectorXd lower_bounds_;
     Eigen::VectorXd upper_bounds_;
     bool use_kdtree;

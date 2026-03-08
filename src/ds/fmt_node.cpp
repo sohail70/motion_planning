@@ -62,7 +62,7 @@ void FMTNode::setParent(FMTNode* parent, double edge_cost) {
 }
 
 
-void FMTNode::setParent(FMTNode* parent, const Trajectory& trajectory_to_parent) {
+void FMTNode::setParent(FMTNode* parent, std::shared_ptr<Trajectory> trajectory_to_parent) {
     // Early exit if parent is the same
     if (parent == parent_) { 
         return;
@@ -78,14 +78,14 @@ void FMTNode::setParent(FMTNode* parent, const Trajectory& trajectory_to_parent)
     // Add this node to the new parent's children list
     if(parent_ ){ //&& !hasChild(this, parent_->children_)) {
         parent_->children_.push_back(this);
-        parent_trajectory_ = trajectory_to_parent;
+        parent_trajectory_ = std::move(trajectory_to_parent);
 
     }
 }
 
 
 
-const Trajectory& FMTNode::getParentTrajectory() const {
+std::shared_ptr<Trajectory> FMTNode::getParentTrajectory() const {
     return parent_trajectory_;
 }
 

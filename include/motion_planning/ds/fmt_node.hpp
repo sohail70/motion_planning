@@ -39,7 +39,7 @@ public:
     */
     void setParent(FMTNode* parent, double edge_cost);
     
-    void setParent(FMTNode* parent, const Trajectory& trajectory_to_parent);
+    void setParent(FMTNode* parent, std::shared_ptr<Trajectory> trajectory_to_parent);
 
     // I used raw pointers for speed and I use this in clear function inside setup() to be sure!
     void disconnectFromGraph();
@@ -83,7 +83,7 @@ public:
 
     bool isNeighborsCached() const { return neighbors_cached_; }
 
-    const Trajectory& getParentTrajectory() const;
+    std::shared_ptr<Trajectory> getParentTrajectory() const;
 
 
     void setFinalDerivatives(const Eigen::VectorXd& vel, const Eigen::VectorXd& accel);
@@ -134,7 +134,8 @@ private:
     NeighborMap forward_neighbors_;  // Nodes reachable FROM this node
     NeighborMap backward_neighbors_; // Nodes that can reach this node
 
-    Trajectory parent_trajectory_; 
+    // Trajectory parent_trajectory_; 
+    std::shared_ptr<Trajectory> parent_trajectory_;
 
 
     double cost_; // This is optimization cost

@@ -35,11 +35,11 @@ public:
     DStarLiteNode* getParent() const { return best_parent_; }
 
     // Helper to get the trajectory to the parent (matches FMT* API)
-    const Trajectory& getParentTrajectory() const {
+    std::shared_ptr<Trajectory> getParentTrajectory() const {
         return best_parent_trajectory_;
     }
 
-    void setBestParent(DStarLiteNode* p, const Trajectory& traj) {
+    void setBestParent(DStarLiteNode* p, std::shared_ptr<Trajectory> traj) {
         // if (best_parent_ == p) return;
         
         // // Remove from old parent's children list
@@ -49,7 +49,7 @@ public:
         // }
         
         best_parent_ = p;
-        best_parent_trajectory_ = traj;
+        best_parent_trajectory_ = std::move(traj);
         
         // // Add to new parent's children list
         // if (best_parent_) {
@@ -82,7 +82,8 @@ public:
 
     // Members for caching the optimal parent (updated in updateVertex)
     DStarLiteNode* best_parent_; 
-    Trajectory best_parent_trajectory_;
+    // Trajectory best_parent_trajectory_;
+    std::shared_ptr<Trajectory> best_parent_trajectory_;
     // std::vector<DStarLiteNode*> children_;
 
 

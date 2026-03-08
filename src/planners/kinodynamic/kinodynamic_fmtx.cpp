@@ -155,7 +155,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     }
     else{
         setStart(problem_->getStart());
-        for (int i = 0 ; i < num_of_samples_; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
+        for (int i = 0 ; i < num_of_samples_ - 2; i++) {  // BUT THIS DOESNT CREATE A TREE NODE FOR START AND GOAL !!!
             auto node = std::make_shared<FMTNode>(statespace_->sampleUniform(lower_bounds_ , upper_bounds_),tree_.size());
             node->in_unvisited_ = true;
             if (!is_geometric_mode_) {
@@ -422,7 +422,8 @@ void KinodynamicFMTX::plan() {
                 // that are currently in the open set.
                 double min_cost_for_x = std::numeric_limits<double>::infinity();
                 FMTNode* best_parent_for_x = nullptr;
-                Trajectory best_traj_for_x;
+                // Trajectory best_traj_for_x;
+                std::shared_ptr<Trajectory> best_traj_for_x;
 
                                 
                 for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
@@ -445,10 +446,10 @@ void KinodynamicFMTX::plan() {
                         //     }
                         // }
                         
-                        const Trajectory& traj_xy = *(edge_info_xy.cached_trajectory);
+                        auto traj_xy = edge_info_xy.cached_trajectory;
                         
-                        if (traj_xy.is_valid) {
-                            double cost_via_y = y->getCost() + traj_xy.cost;
+                        if (traj_xy->is_valid) {
+                            double cost_via_y = y->getCost() + traj_xy->cost;
                             if (cost_via_y < min_cost_for_x) {
                                 min_cost_for_x = cost_via_y;
                                 best_parent_for_x = y;
@@ -492,7 +493,7 @@ void KinodynamicFMTX::plan() {
                             last_replan_metrics_.obstacle_checks++;
                             
                             // Dereference the pointer directly. Zero lookups.
-                            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, node_time_to_goal, *ob_ptr)) {
+                            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*best_traj_for_x, node_time_to_goal, *ob_ptr)) {
                                 obstacle_free = false;
                                 break; 
                             }
@@ -507,7 +508,7 @@ void KinodynamicFMTX::plan() {
                     // ======================================================
                     for (const auto& [obs_name, ob] : previous_obstacles_) {
                         last_replan_metrics_.obstacle_checks++;
-                        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(best_traj_for_x, node_time_to_goal, ob)) {
+                        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*best_traj_for_x, node_time_to_goal, ob)) {
                             obstacle_free = false;
                             break;
                         }
@@ -532,7 +533,7 @@ void KinodynamicFMTX::plan() {
 
 
 
-                        x->setFinalDerivatives(best_traj_for_x.final_velocity, best_traj_for_x.final_acceleration);
+                        x->setFinalDerivatives(best_traj_for_x->final_velocity, best_traj_for_x->final_acceleration);
 
 
                         // double h_value = use_heuristic ? heuristic(x->getIndex()) : 0.0;
@@ -735,14 +736,14 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
     while (parent) {
         // Use the pre-computed trajectories cached in the graph during the `plan()` phase.
         // const auto& cached_traj = child->forwardNeighbors().at(parent).cached_trajectory;
-        const Trajectory& cached_traj = child->getParentTrajectory();
+        auto cached_traj = child->getParentTrajectory();
 
         
-        if (cached_traj.is_valid && cached_traj.path_points.size() > 1) {
+        if (cached_traj->is_valid && cached_traj->path_points.size() > 1) {
             // Append all points from the segment except the first one to avoid duplicates.
             final_executable_path.insert(final_executable_path.end(),
-                                         cached_traj.path_points.begin() + 1,
-                                         cached_traj.path_points.end());
+                                         cached_traj->path_points.begin() + 1,
+                                         cached_traj->path_points.end());
         } else {
             // If a valid cached trajectory doesn't exist, the path is broken.
             FMTX_WARN("[FMTX_Path_Assembly] Path reconstruction failed. Invalid cached trajectory between nodes " 
@@ -865,12 +866,12 @@ void KinodynamicFMTX::visualizeTreeReal() {
 
         if (parent_node) {
 
-            const Trajectory& traj = child_node->getParentTrajectory();
+            auto traj = child_node->getParentTrajectory();
 
-            if (traj.is_valid && traj.path_points.size() > 1) {
+            if (traj->is_valid && traj->path_points.size() > 1) {
                 
-                for (size_t i = 0; i < traj.path_points.size() - 1; ++i) {
-                    edges.emplace_back(traj.path_points[i].head(3), traj.path_points[i+1].head(3));
+                for (size_t i = 0; i < traj->path_points.size() - 1; ++i) {
+                    edges.emplace_back(traj->path_points[i].head(3), traj->path_points[i+1].head(3));
                 }
             } else {
                 edges.emplace_back(parent_node->getStateValue().head(3), child_node->getStateValue().head(3));
@@ -996,11 +997,20 @@ bool KinodynamicFMTX::runForensics() {
             Trajectory edge_traj = statespace_->steer(node->getStateValue(), parent->getStateValue());
             double time_ref = node->getTimeToGoal(); 
 
-            // Verify against Ground Truth
-            for (const auto& [name, ob] : previous_obstacles_) {
+            // // Verify against Ground Truth
+            // for (const auto& [name, ob] : previous_obstacles_) {
+            //     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_traj, time_ref, ob)) {
+            //         edge_collides = true;
+            //         guilty_obstacle = name;
+            //         break;
+            //     }
+            // }
+            const ObstacleVector& current_obstacles = obs_checker_->getObstacles();
+            // Iterate directly over the obstacle objects
+            for (const auto& ob : current_obstacles) {
                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_traj, time_ref, ob)) {
                     edge_collides = true;
-                    guilty_obstacle = name;
+                    guilty_obstacle = ob.name; // Access name via ob.name
                     break;
                 }
             }
@@ -1186,7 +1196,7 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
         // This checks the edge connecting the node to its parent
         last_replan_metrics_.obstacle_checks++;        
 
-        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(node->getParentTrajectory(), node->getTimeToGoal(), ob)) {
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(node->getParentTrajectory()), node->getTimeToGoal(), ob)) {
             filtered_orphan_indices.push_back(idx);
         }
     }
@@ -1239,7 +1249,8 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
             }
             
             // Sever Parent Connection
-            node->setParent(nullptr, Trajectory{});
+            // node->setParent(nullptr, Trajectory{});
+            node->setParent(nullptr, std::shared_ptr<Trajectory>{});
 
             // 5. Find Boundary (Valid Parents)
             // We look at neighbors. If a neighbor is NOT an orphan, it's a valid candidate parent.
@@ -1423,7 +1434,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     // Extract actual planner-time from the state (last element)
     double robot_sim_time = robot_continuous_state_(robot_continuous_state_.size() - 1);
 
-    // --- 1. QUERY POINT CONSTRUCTION ---
+    // --- QUERY POINT CONSTRUCTION ---
     Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim);
     if (robot_continuous_state_.size() >= 2) {
         query_point(0) = robot_continuous_state_(0);
@@ -1439,7 +1450,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         query_point = robot_continuous_state_; 
     }
 
-    // --- 2. HYSTERESIS LOGIC ---
+    // --- HYSTERESIS LOGIC ---
     const double hysteresis_factor = 0.98;
     double cost_of_current_path = std::numeric_limits<double>::infinity();
 
@@ -1475,7 +1486,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
             if (!bridge.is_valid) continue;
 
             last_replan_metrics_.obstacle_checks += obs_checker_->getObstaclesSize();
-            // CRITICAL: Check if this candidate connection is safe
+            // Check if this candidate connection is safe
             if (!obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) continue;
 
             double cost = bridge.cost + candidate->getCost();
@@ -1490,7 +1501,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         current_search_radius *= radius_multiplier;
     }
 
-    // --- 3. ASSIGNMENT ---
+    // --- ASSIGNMENT ---
     if (best_candidate_node && best_candidate_cost < cost_of_current_path * hysteresis_factor) {
         robot_node_ = best_candidate_node;
         robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
@@ -1510,9 +1521,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     }
 
 
-    // =========================================================================================
-    // 4. [NEW] INTERNAL DEBUG VISUALIZATION
-    // =========================================================================================
+    // INTERNAL DEBUG VISUALIZATION
     if (visualization_) {
         // std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> debug_edges;
 

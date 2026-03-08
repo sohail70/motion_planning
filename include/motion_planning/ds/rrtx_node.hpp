@@ -51,12 +51,12 @@ public:
     void addNeighbor(RRTxNode* neighbor, bool is_outgoing_initial, bool is_incoming_initial, double dist);
 
     // overloaded addNeighbor function to add a single, one-way edge with its trajectory --> For kinodynamic case where we provide trajectory
-    void addNeighbor(RRTxNode* target_node, bool is_outgoing_initial, bool is_incoming_initial ,const Trajectory& trajectory);
+    void addNeighbor(RRTxNode* target_node, bool is_outgoing_initial, bool is_incoming_initial ,std::shared_ptr<Trajectory> trajectory);
 
 
 
     void setParent(RRTxNode* parent, double edge_dist);
-    void setParent(RRTxNode* parent, const Trajectory& trajectory_to_parent);
+    void setParent(RRTxNode* parent, std::shared_ptr<Trajectory> trajectory_to_parent);
 
     void disconnectFromGraph();
 
@@ -68,7 +68,7 @@ public:
     RRTxNode* getParent() const;
     double getTimeToGoal() const noexcept;
     void setTimeToGoal(double time) noexcept;
-    const Trajectory& getParentTrajectory() const;
+    std::shared_ptr<Trajectory> getParentTrajectory() const;
 
     bool in_queue_;
     size_t heap_index_;  // Tracks position in the priority queue
@@ -90,7 +90,9 @@ private:
     EdgeMap incoming_edges_;
     EdgeMap outgoing_edges_;
     RRTxNode* parent_ = nullptr;
-    Trajectory parent_trajectory_; 
+    // Trajectory parent_trajectory_; 
+    std::shared_ptr<Trajectory> parent_trajectory_;
+    
     double lmc_;
     double cost_;
     int index_;

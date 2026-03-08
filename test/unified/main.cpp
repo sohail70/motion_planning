@@ -570,7 +570,7 @@ int main(int argc, char** argv) {
                 current_plan_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
                 
                 // Optional: Log only if significant to avoid spam
-                // RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), "plan took: %.2f ms", current_plan_ms);
+                RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), "plan took: %.2f ms", current_plan_ms);
             }
 
             // 3. LOG SEPARATED METRICS
@@ -636,6 +636,7 @@ int main(int argc, char** argv) {
 
             auto new_executable_path = kinodynamic_planner->getPathPositions();
             kinodynamic_planner->visualizeTree();
+            // kinodynamic_planner->visualizeTreeReal();
 
             auto loop_end_time = std::chrono::steady_clock::now();
             auto elapsed = std::chrono::duration<double>(loop_end_time - loop_start_time);
@@ -668,9 +669,14 @@ int main(int argc, char** argv) {
             double T_robot = current_sim_state(current_sim_state.size()-1);
             double sim_time = cfg.time_budget - T_robot;
             
-            gazebo_checker->processLatestPoseInfo(sim_time);
+            // gazebo_checker->processLatestPoseInfo(sim_time);
             ObstacleVector turned_obs = gazebo_checker->checkAndRepairObstacles(T_robot);
             
+            // sync live snapshot with new tubes
+            if (!turned_obs.empty()) {
+                gazebo_checker->processLatestPoseInfo(sim_time);  // rebuild vector with updated map (new predicted_path)
+            }
+
             // 1. MEASURE UPDATE TIME
             if (!turned_obs.empty()) {
                 auto t1 = std::chrono::steady_clock::now();
@@ -690,7 +696,8 @@ int main(int argc, char** argv) {
                 current_plan_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
                 
                 // Logging plan time can be spammy, maybe only log if > 10ms
-                // RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), "plan took: %.2f ms", current_plan_ms);
+                if (!turned_obs.empty())
+                    RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), "plan took: %.2f ms", current_plan_ms);
             }
 
             // 3. LOG SEPARATED METRICS
@@ -726,6 +733,7 @@ int main(int argc, char** argv) {
                 kinodynamic_planner->visualizePath(new_path);
             }
             kinodynamic_planner->visualizeTree();
+            // kinodynamic_planner->visualizeTreeReal();
 
             auto now = std::chrono::steady_clock::now();
             double dt_wall = std::chrono::duration<double>(now - slice_start_time).count();

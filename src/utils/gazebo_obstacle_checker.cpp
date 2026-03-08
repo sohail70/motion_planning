@@ -838,15 +838,15 @@ bool GazeboObstacleChecker::isNodeInObstacleTube(const Eigen::VectorXd& node_sta
     double nx = node_state[0];
     double ny = node_state[1];
 
-    // // ========================================================================
-    // // THE AABB SHORT-CIRCUIT (The "Simple" but massive gain)
-    // // ========================================================================
-    // // If the node is outside the bounding box (inflated by search_radius), 
-    // // it is physically impossible for it to be inside the tube. 
-    // if (nx < (ob.min_x - search_radius) || nx > (ob.max_x + search_radius) ||
-    //     ny < (ob.min_y - search_radius) || ny > (ob.max_y + search_radius)) {
-    //     return false; // Skip the heavy O(P) loop entirely!
-    // }
+    // ========================================================================
+    // THE AABB SHORT-CIRCUIT (The "Simple" but massive gain)
+    // ========================================================================
+    // If the node is outside the bounding box (inflated by search_radius), 
+    // it is physically impossible for it to be inside the tube. 
+    if (nx < (ob.min_x - search_radius) || nx > (ob.max_x + search_radius) ||
+        ny < (ob.min_y - search_radius) || ny > (ob.max_y + search_radius)) {
+        return false; // Skip the heavy O(P) loop entirely!
+    }
 
     // 2. Precise Loop (Only runs if the node is "near" the tube)
     double search_radius_sq = search_radius * search_radius;

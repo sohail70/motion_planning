@@ -254,7 +254,7 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
         start_node->setTimeToGoal(0);
         nodes_.push_back(std::move(start_node));
 
-        for (int i = 0; i < num_samples_; ++i) {
+        for (int i = 0; i < num_samples_ - 2; ++i) {
             auto state_ptr = statespace_->sampleUniform(lower_bounds_, upper_bounds_);
             auto node = std::make_unique<DStarLiteNode>(state_ptr, nodes_.size());
             if (!is_geometric_mode_) {
@@ -891,7 +891,8 @@ void KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
     
     double min_rhs = std::numeric_limits<double>::infinity();
     DStarLiteNode* best_parent = nullptr;
-    Trajectory best_traj;
+    // Trajectory best_traj;
+    std::shared_ptr<Trajectory> best_traj;
 
     for (auto& [succ, edge_info] : s->forward_neighbors_) {
         // Trust the edge distance (handled by obstacle invalidation logic)
@@ -902,7 +903,7 @@ void KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
         if (cost < min_rhs - 1e-9) {
             min_rhs = cost;
             best_parent = succ;
-            best_traj = *(edge_info.cached_trajectory);
+            best_traj = edge_info.cached_trajectory;
         }
 #if DEBUG_WITH_DIJKSTRA_
         // 2. TIE-BREAKER: Equal cost, but lower Node Index
@@ -910,7 +911,7 @@ void KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
             if (best_parent && succ->getIndex() < best_parent->getIndex()) {
                 // Keep min_rhs the same, but switch to the preferred parent
                 best_parent = succ;
-                best_traj = *(edge_info.cached_trajectory);
+                best_traj = edge_info.cached_trajectory;
             }
         }
 #endif
@@ -1025,14 +1026,14 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
                     // If this new path through u is better, PUSH the update
                     if (pred->rhs > new_cost + 1e-9) {
                         pred->rhs = new_cost;
-                        pred->setBestParent(u, *(edge_info.cached_trajectory));
+                        pred->setBestParent(u, edge_info.cached_trajectory);
                     }
 #if DEBUG_WITH_DIJKSTRA_
                     // 2. TIE-BREAKER: Equal cost, but lower Node Index
                     else if (std::abs(pred->rhs - new_cost) <= 1e-9) {
                         if (pred->getParent() && u->getIndex() < pred->getParent()->getIndex()) {
                             pred->rhs = new_cost; // strictly speaking, cost is the same
-                            pred->setBestParent(u, *(edge_info.cached_trajectory));
+                            pred->setBestParent(u, edge_info.cached_trajectory);
                         }
                     }
 #endif
@@ -1836,7 +1837,7 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
         robot_time_to_go = robot_continuous_state_(robot_continuous_state_.size() - 1);
     }
 
-    // --- 1. QUERY POINT CONSTRUCTION ---
+    // --- QUERY POINT CONSTRUCTION ---
     Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim_);
     if (robot_continuous_state_.size() >= 2) {
         query_point(0) = robot_continuous_state_(0);
@@ -1851,7 +1852,7 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
         query_point = robot_continuous_state_; 
     }
 
-    // --- 2. HYSTERESIS LOGIC ---
+    // --- HYSTERESIS LOGIC ---
     const double hysteresis_factor = 0.98;
     double cost_of_current_anchor = std::numeric_limits<double>::infinity();
     
@@ -1867,7 +1868,7 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
     Trajectory best_candidate_bridge;
     double best_candidate_cost = std::numeric_limits<double>::infinity();
     
-    // --- 3. RADIUS EXPANSION LOGIC ---
+    // --- RADIUS EXPANSION LOGIC ---
     double current_search_radius = connection_radius_;
     const int max_attempts = 5;
     const double radius_multiplier = 2.0;
@@ -1882,7 +1883,7 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
         for (size_t idx : candidate_indices) {
             DStarLiteNode* candidate = nodes_[idx].get();
 
-            // CRITICAL: Candidate must be reachable from Goal (Finite G)
+            // Candidate must be reachable from Goal (Finite G)
             if (candidate->g == std::numeric_limits<double>::infinity()) {
                 continue;
             }
@@ -1908,7 +1909,7 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
         current_search_radius *= radius_multiplier;
     }
 
-    // --- 4. ASSIGNMENT ---
+    // --- ASSIGNMENT ---
     if (best_candidate_node && best_candidate_cost < cost_of_current_anchor * hysteresis_factor) {
         // Update km (Key Modifier) for D* Lite if the start node changed
         if (start_node_ && start_node_ != best_candidate_node) {
@@ -1925,9 +1926,7 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
         last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
     }
 
-    // =========================================================================================
-    // 5. INTERNAL DEBUG VISUALIZATION
-    // =========================================================================================
+    // INTERNAL DEBUG VISUALIZATION
     if (visualization_) {
         std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> debug_edges;
         if (start_node_) {
@@ -1951,9 +1950,7 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
         }
     }
 
-    // =========================================================================================
-    // 6. ANCHOR LOGGING (Manual Throttle)
-    // =========================================================================================
+    // ANCHOR LOGGING (Manual Throttle)
     static auto last_log_time = std::chrono::steady_clock::now();
     auto now = std::chrono::steady_clock::now();
     
@@ -2320,9 +2317,9 @@ std::vector<Eigen::VectorXd> KinodynamicPRMStarDStarLite::getPathPositions() con
             break;
         }
 
-        const Trajectory& traj = current_node->best_parent_trajectory_;
-        if (traj.is_valid && traj.path_points.size() > 1) {
-            path.insert(path.end(), traj.path_points.begin() + 1, traj.path_points.end());
+        auto traj = current_node->best_parent_trajectory_;
+        if (traj->is_valid && traj->path_points.size() > 1) {
+            path.insert(path.end(), traj->path_points.begin() + 1, traj->path_points.end());
         } else {
             path.push_back(next_node->getStateValue());
         }

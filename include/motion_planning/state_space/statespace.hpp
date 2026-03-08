@@ -70,14 +70,14 @@ class StateSpace {
 
 
  protected:
-    std::vector<std::shared_ptr<State>> state_objects_;
-    std::mutex state_mutex_;
+    // std::vector<std::shared_ptr<State>> state_objects_;
+    // std::mutex state_mutex_;
 
 
     std::shared_ptr<State> addState(std::shared_ptr<State> state) {
         // std::lock_guard<std::mutex> lock(state_mutex_);
 
-        state_objects_.push_back(state);  // Keep alive
+        // state_objects_.push_back(state);  // Keep alive
 
         if (num_states_ >= states_.rows()) {
             int new_capacity = static_cast<int>(states_.rows() * 1.5);

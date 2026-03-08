@@ -65,15 +65,15 @@ void RRTxNode::addNeighbor(RRTxNode* neighbor, bool is_outgoing_initial, bool is
 
 
 // This function adds a single directed edge from 'this' object node to the 'target_node'.
-void RRTxNode::addNeighbor(RRTxNode* target_node, bool is_outgoing_initial, bool is_incoming_initial, const Trajectory& trajectory) {
+void RRTxNode::addNeighbor(RRTxNode* target_node, bool is_outgoing_initial, bool is_incoming_initial, std::shared_ptr<Trajectory> trajectory) {
 
     // Create the EdgeInfo for the OUTGOING edge (this -> target_node)
     EdgeInfo outgoing_edge_info;
-    outgoing_edge_info.distance = trajectory.cost; // Sorry for the bad name of distance! it shouldve been cost! or another better approach would be to add original_cost to the trajectory struct and handle this there!
-    outgoing_edge_info.distance_original = trajectory.cost;
+    outgoing_edge_info.distance = trajectory->cost; // Sorry for the bad name of distance! it shouldve been cost! or another better approach would be to add original_cost to the trajectory struct and handle this there!
+    outgoing_edge_info.distance_original = trajectory->cost;
     outgoing_edge_info.is_initial = is_outgoing_initial; // Use the first boolean
-    // outgoing_edge_info.cached_trajectory = trajectory;
-    outgoing_edge_info.cached_trajectory = std::make_shared<Trajectory>(trajectory);
+    outgoing_edge_info.cached_trajectory = trajectory;
+    // outgoing_edge_info.cached_trajectory = std::make_shared<Trajectory>(trajectory);
     outgoing_edge_info.is_trajectory_computed = true;
 
     // Add the edge to the current node's outgoing list.
@@ -109,7 +109,7 @@ void RRTxNode::setParent(RRTxNode* parent, double edge_dist) {
 }
 
 
-void RRTxNode::setParent(RRTxNode* parent, const Trajectory& trajectory_to_parent) {
+void RRTxNode::setParent(RRTxNode* parent, std::shared_ptr<Trajectory> trajectory_to_parent) {
     if (parent_ != parent) {
         // Your existing logic to remove from old parent's children list
         if (parent_) {
@@ -126,10 +126,10 @@ void RRTxNode::setParent(RRTxNode* parent, const Trajectory& trajectory_to_paren
     
     // Store the trajectory that leads to the new parent
     if (parent) {
-        parent_trajectory_ = trajectory_to_parent;
+        parent_trajectory_ = std::move(trajectory_to_parent);
     }
 }
-const Trajectory& RRTxNode::getParentTrajectory() const {
+std::shared_ptr<Trajectory> RRTxNode::getParentTrajectory() const {
     return parent_trajectory_;
 }
 
