@@ -669,13 +669,10 @@ int main(int argc, char** argv) {
             double T_robot = current_sim_state(current_sim_state.size()-1);
             double sim_time = cfg.time_budget - T_robot;
             
-            // gazebo_checker->processLatestPoseInfo(sim_time);
             ObstacleVector turned_obs = gazebo_checker->checkAndRepairObstacles(T_robot);
             
-            // sync live snapshot with new tubes
-            if (!turned_obs.empty()) {
-                gazebo_checker->processLatestPoseInfo(sim_time);  // rebuild vector with updated map (new predicted_path)
-            }
+            // sync live snapshot with new tubes for removeObstacle (check with other current obstacles) & obs vis and step sim 
+            gazebo_checker->processLatestPoseInfo(sim_time); 
 
             // 1. MEASURE UPDATE TIME
             if (!turned_obs.empty()) {

@@ -542,9 +542,9 @@ public:
         }
 
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
-        double current_planner_time = this->getCurrentSimTime(); 
-        double current_sim_time = initial_budget_time_ - current_planner_time;
-        gazebo_checker->processLatestPoseInfo(current_sim_time); 
+        // double current_planner_time = this->getCurrentSimTime(); 
+        // double current_sim_time = initial_budget_time_ - current_planner_time;
+        // gazebo_checker->processLatestPoseInfo(current_sim_time); 
         // 5. Collision Check
         if (gazebo_checker) {
             Eigen::Vector2d current_pos = current_interpolated_state_.head<2>();
@@ -790,9 +790,9 @@ std::shared_ptr<RVizVisualization> visualizer_;
         std::vector<Eigen::Vector2d> threat_vel_pos, threat_vel_val;
 
         if (gazebo_checker) {
-            double current_planner_time = this->getCurrentSimTime(); 
-            double current_sim_time = initial_budget_time_ - current_planner_time;
-            gazebo_checker->processLatestPoseInfo(current_sim_time); 
+            // double current_planner_time = this->getCurrentSimTime(); 
+            // double current_sim_time = initial_budget_time_ - current_planner_time;
+            // gazebo_checker->processLatestPoseInfo(current_sim_time); 
             const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); 
             
             for (const auto& obstacle : all_obstacles) {
