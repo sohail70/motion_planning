@@ -345,6 +345,11 @@ void clear() {
         return heap_[0].first;
     }
 
+    DStarLiteNode* top() const {
+        if (heap_.empty()) return nullptr;
+        return heap_[0].second;
+    }
+
     DStarLiteNode* pop() {
         if (heap_.empty()) return nullptr;
         DStarLiteNode* node = heap_[0].second;

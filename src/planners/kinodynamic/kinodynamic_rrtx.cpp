@@ -61,6 +61,9 @@ std::vector<Eigen::VectorXd> KinodynamicRRTX::getPathPositions() const {
         RRTX_ERROR("[RRTX_Path_Assembly] Failed to steer from robot's continuous state to the anchor node.");
         return {};
     }
+    // else {
+    //     RRTX_INFO("[DSTARLITE_Path_Assembly] Robot has found a valid anchor node in the tree.");
+    // }
 
     // Start the final path with this bridge trajectory.
     std::vector<Eigen::VectorXd> final_executable_path = bridge_traj.path_points;

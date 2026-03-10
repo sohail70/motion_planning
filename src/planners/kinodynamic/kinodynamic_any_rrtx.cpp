@@ -982,10 +982,15 @@ double KinodynamicANYRRTX::shrinkingBallRadius() const {
     return std::min(rad, delta);
 }
 
-
+/*
+    Why not start the min_lmc variable from INF? 
+    This function is not for clearing LMC and recalculate it because RRTx speicifically has orphan handling 
+    As opposed to D star which doesnt explicitly hadnles orphans. This function only updates to better LMC
+    this difference between recomputeRHS in D starlite and updateLMC in RRTx
+*/
 void KinodynamicANYRRTX::updateLMC(RRTxNode* v) {
     cullNeighbors(v);
-    double min_lmc = v->getLMC();
+    double min_lmc = v->getLMC(); 
     RRTxNode* best_parent = nullptr;
     double best_edge_distance = INFINITY;
     std::shared_ptr<Trajectory> best_traj; 

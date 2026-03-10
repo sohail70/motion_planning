@@ -6,6 +6,12 @@
 #include "motion_planning/ds/priority_queue.hpp" // Your custom PQ
 #include "motion_planning/pch.hpp"
 
+
+#define DSTARLITE_INFO(msg)  std::cout << "\033[0;32m[INFO] " << msg << "\033[0m\n"
+#define DSTARLITE_WARN(msg)  std::cout << "\033[1;33m[WARN] " << msg << "\033[0m\n"
+#define DSTARLITE_ERROR(msg) std::cerr << "\033[1;31m[ERROR] " << msg << "\033[0m\n"
+#define DSTARLITE_FATAL(msg) std::cerr << "\033[1;37;41m[FATAL] " << msg << "\033[0m\n"
+
 // Use the standard DStarLiteComparator which expects std::pair<double, Node*>
 // This matches your existing priority_queue.hpp definition
 using DStarLitePQ = PriorityQueue<DStarLiteNode, DStarLiteComparator>;

@@ -488,7 +488,16 @@ public:
     }
 
     // --- PUBLIC API ---
+    /*
+        1. Repair/update graph for planning (happens in the main function)
+        2. Advance simulation / robot interpolation
+        3. Update obstacle positions to current sim time
+        4. Crash test at robot’s current position
 
+        so basically since we already have repaird the graph at a time we reach this function we should be safe to move forward in time
+        and no collision should happen!
+        This is assuming a valid anchor node is found in the update that just happened
+    */
     void stepSimulation(double dt) {
         std::lock_guard<std::mutex> lock(path_mutex_);
         
@@ -542,9 +551,9 @@ public:
         }
 
         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
-        // double current_planner_time = this->getCurrentSimTime(); 
-        // double current_sim_time = initial_budget_time_ - current_planner_time;
-        // gazebo_checker->processLatestPoseInfo(current_sim_time); 
+        double current_planner_time = this->getCurrentSimTime(); 
+        double current_sim_time = initial_budget_time_ - current_planner_time;
+        gazebo_checker->processLatestPoseInfo(current_sim_time); 
         // 5. Collision Check
         if (gazebo_checker) {
             Eigen::Vector2d current_pos = current_interpolated_state_.head<2>();
@@ -790,9 +799,9 @@ std::shared_ptr<RVizVisualization> visualizer_;
         std::vector<Eigen::Vector2d> threat_vel_pos, threat_vel_val;
 
         if (gazebo_checker) {
-            // double current_planner_time = this->getCurrentSimTime(); 
-            // double current_sim_time = initial_budget_time_ - current_planner_time;
-            // gazebo_checker->processLatestPoseInfo(current_sim_time); 
+            double current_planner_time = this->getCurrentSimTime(); 
+            double current_sim_time = initial_budget_time_ - current_planner_time;
+            gazebo_checker->processLatestPoseInfo(current_sim_time); 
             const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); 
             
             for (const auto& obstacle : all_obstacles) {

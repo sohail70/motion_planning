@@ -671,7 +671,7 @@ int main(int argc, char** argv) {
             
             ObstacleVector turned_obs = gazebo_checker->checkAndRepairObstacles(T_robot);
             
-            // sync live snapshot with new tubes for removeObstacle (check with other current obstacles) & obs vis and step sim 
+            // sync live snapshot right after checkAndRepairObstacles with new tubes for addNewObstacle & removeObstacle (check with other CURRENT obstacles/tubes) & obs vis & step sim 
             gazebo_checker->processLatestPoseInfo(sim_time); 
 
             // 1. MEASURE UPDATE TIME

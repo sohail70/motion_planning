@@ -1,7 +1,7 @@
 // Copyright 2025 Soheil E.nia
 
 // TODO: Later implement KNN. with knn you wouldnt need cullNeighbor! use if (use_knn) return in cullNeighbor
-#define DEBUG 0
+#define DEBUG 1
 
 // Set to 1 to use my context-aware Threat Set.
 // Set to 0 to use the Default/Blind exhaustive checking.
@@ -783,7 +783,7 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
     
     */
     // ========================================================================
-    // 7. SEED V_OPEN (EAGER INSERTION + LAZY PROPAGATION WITH THREATS)
+    // 7. SEED V_OPEN (EAGER INSERTION + LAZY PROPAGATION WITH THREATS) --> Mention this in the paper: Mind that there is no immediate rewiring like rrtx here! the propagation is lazy! but in rrtx there is an immediate rewiring because the neighbors need to know if they are getting better through the new sample and then go into the queue for triggering the propagation (when needed!) but here the new node goes into the queue and triggers the new propagation when needed so we dont have to check the neighbors right away! its ineherent to the main fmt expand function
     // ========================================================================
     for (int idx : added_node_indices) {
         FMTNode* new_node = tree_[idx].get();

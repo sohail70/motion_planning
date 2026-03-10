@@ -889,10 +889,10 @@ void KinodynamicPRMStarDStarLite::updateVertex(DStarLiteNode* u) {
 void KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
     if (s == goal_node_) return; // Goal is always 0
     
-    double min_rhs = std::numeric_limits<double>::infinity();
+    double min_rhs = std::numeric_limits<double>::infinity(); // There is no orphan handling like RRTx here so we start with INF and recompute from scratch
     DStarLiteNode* best_parent = nullptr;
     // Trajectory best_traj;
-    std::shared_ptr<Trajectory> best_traj;
+    std::shared_ptr<Trajectory> best_traj = nullptr;
 
     for (auto& [succ, edge_info] : s->forward_neighbors_) {
         // Trust the edge distance (handled by obstacle invalidation logic)
@@ -1004,21 +1004,21 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
 #endif      
     
         // Lines 11"-13"
+        DStarLiteNode* u = open_queue_.top();
         DStarLiteKey k_old = open_queue_.topKey();
-        DStarLiteNode* u = open_queue_.pop(); // Pop automatically does U.Remove(u)
         if (!u) break;
 
         DStarLiteKey k_new = calculateKey(u);
 
         // Line 14"
         if (k_old < k_new) {
-            // Lazy update
-            open_queue_.add(u, k_new);
+            // update
+            open_queue_.update(u, k_new);
         } 
         // Line 16": Overconsistent (Found a shortcut!)
         else if (u->g > u->rhs) {
             u->g = u->rhs;
-            
+            open_queue_.remove(u);
             // PUSH LOGIC (Lines 19"-21"): O(1) per predecessor!
             for (auto& [pred, edge_info] : u->backward_neighbors_) {
                 if (pred != goal_node_) {
@@ -1049,20 +1049,15 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
             
             // Lines 25"-28": Process Predecessors
             for (auto& [pred, edge_info] : u->backward_neighbors_) {
-                // BRILLIANT FILTER: Only rescan if the predecessor actually relied on u!
-                // if (pred->rhs != std::numeric_limits<double>::infinity() && 
-                //     std::abs(pred->rhs - (edge_info.distance + g_old)) < 1e-9) {
-                    
-                //     recomputeRHS(pred); // O(K) scan ONLY for affected nodes
-                // }
-               if (pred->getParent() == u) {
-                    recomputeRHS(pred); 
+                // Was u the reason rhs(s) had its value? If yes, then rhs(s) must be recomputed
+               if (pred->getParent() == u) { // parent(s) = u  EQUIVALENT TO  rhs(s) = c(s,u) + g(u)
+                    recomputeRHS(pred); // I check the S not equal s_goal inside this functions
                 } 
                 updateVertex(pred);
             }
             
-            // Process u itself (part of Pred(u) U {u})
-            if (u != goal_node_ && std::abs(u->rhs - g_old) < 1e-9) {
+            // Process u itself (part of Pred(u) U {u}) no need for the rhs condtion here because Did u depend on itself for its rhs? that can no happen!
+            if (u != goal_node_) {
                 recomputeRHS(u);
             }
             updateVertex(u);
@@ -2283,8 +2278,15 @@ std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> dslite_tree_edges;
 
 std::vector<Eigen::VectorXd> KinodynamicPRMStarDStarLite::getPathPositions() const{
     std::vector<Eigen::VectorXd> path;
-    if (!start_node_ || !goal_node_) return path;
+    // if (!start_node_ || !goal_node_) return path;
 
+    if (!start_node_ || start_node_->g == INFINITY) {
+        DSTARLITE_ERROR("[DSTARLITE_Path_Assembly] Robot has no valid anchor node in the tree. Cannot build path.");
+        return {}; // Return empty path
+    }
+    // else {
+    //     DSTARLITE_INFO("[DSTARLITE_Path_Assembly] Robot has found a valid anchor node in the tree.");
+    // }
     // std::cout << "\n--- [Extract Path] ---" << std::endl;
     // std::cout << "Anchor Node: " << start_node_->getIndex() << std::endl;
 
@@ -2696,6 +2698,153 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
 // ==============================================================================================
 // STRATEGY 3: DEFAULT (Brute-Force Fallback)
 // ==============================================================================================
+// #else
+
+// void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
+//     if (ob.predicted_path.empty()) return;
+
+//     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+//     double search_radius = is_geometric_mode_ ? (obs_r + ob.inflation + connection_radius_) : (obs_r + ob.inflation + connection_radius_ + obs_r * (std::sqrt(2.0) - 1.0));
+
+//     std::unordered_set<int> unique_node_indices;
+//     for (const auto& point_3d : ob.predicted_path) {
+//         Eigen::VectorXd query(kd_dim_);
+//         if (kd_dim_ == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
+//         else if (kd_dim_ == 2) query << point_3d.x(), point_3d.y();
+//         else if (kd_dim_ == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+//         else if (kd_dim_ == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
+        
+//         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
+//         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
+//     }
+
+//     auto checkAndBlockEdge = [&](DStarLiteNode* node, DStarLiteNode* neighbor, EdgeInfo& edge, bool& u_needs_update) {
+//         if (edge.distance == std::numeric_limits<double>::infinity()) return; 
+
+//         const double edge_start_ttg = node->getTimeToGoal();
+//         last_replan_metrics_.obstacle_checks++;
+
+//         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+//             edge.distance = std::numeric_limits<double>::infinity();
+//             u_needs_update = true;
+
+//             if (neighbor->backward_neighbors_.count(node)) {
+//                 neighbor->backward_neighbors_.at(node).distance = std::numeric_limits<double>::infinity();
+//             }
+
+//             if (is_geometric_mode_ && neighbor->forward_neighbors_.count(node)) {
+//                 auto& rev_edge = neighbor->forward_neighbors_.at(node);
+//                 bool rev_changed = false;
+//                 if (rev_edge.distance != std::numeric_limits<double>::infinity()) {
+//                     rev_edge.distance = std::numeric_limits<double>::infinity();
+//                     rev_changed = true;
+//                 }
+//                 if (node->backward_neighbors_.count(neighbor)) {
+//                     node->backward_neighbors_.at(neighbor).distance = std::numeric_limits<double>::infinity();
+//                 }
+//                 if (rev_changed) {
+//                     recomputeRHS(neighbor); 
+//                     updateVertex(neighbor);
+//                 }
+//             }
+//         }
+//     };
+
+//     for (int idx : unique_node_indices) {
+//         DStarLiteNode* u = nodes_[idx].get();
+//         bool u_needs_update = false;
+        
+//         for (auto& [neighbor, edge] : u->forward_neighbors_) {
+//             checkAndBlockEdge(u, neighbor, edge, u_needs_update);
+//         }
+        
+//         if (u_needs_update) {
+//             recomputeRHS(u); 
+//             updateVertex(u);
+//         }
+//     }
+// }
+
+// void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
+//     if (ob.predicted_path.empty()) return;
+
+//     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+//     double search_radius = is_geometric_mode_ ? (obs_r + ob.inflation + connection_radius_) : (obs_r + ob.inflation + connection_radius_ + obs_r * (std::sqrt(2.0) - 1.0));
+
+//     std::unordered_set<int> unique_node_indices;
+//     for (const auto& point_3d : ob.predicted_path) {
+//         Eigen::VectorXd query(kd_dim_);
+//         if (kd_dim_ == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
+//         else if (kd_dim_ == 2) query << point_3d.x(), point_3d.y();
+//         else if (kd_dim_ == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+//         else if (kd_dim_ == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
+        
+//         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
+//         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
+//     }
+
+//     const ObstacleVector& all_obstacles = obs_checker_->getObstacles();
+
+//     auto checkAndRestoreEdge = [&](DStarLiteNode* node, DStarLiteNode* neighbor, EdgeInfo& edge, bool& u_needs_update) {
+//         if (edge.distance == std::numeric_limits<double>::infinity()) {
+//             const double ttg = node->getTimeToGoal();
+//             bool should_restore = false;
+            
+//             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
+//                 bool conflicts_with_other = false;
+//                 for (const auto& other_ob : all_obstacles) {
+//                     if (other_ob.name == ob.name) continue; 
+//                     last_replan_metrics_.obstacle_checks++;
+//                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, other_ob)) {
+//                         conflicts_with_other = true;
+//                         break; 
+//                     }
+//                 }
+//                 if (!conflicts_with_other) {
+//                     should_restore = true;
+//                 }
+//             }
+
+//             if (should_restore) {
+//                 edge.distance = edge.distance_original;
+//                 u_needs_update = true;
+                
+//                 if (neighbor->backward_neighbors_.count(node)) {
+//                     neighbor->backward_neighbors_.at(node).distance = edge.distance_original;
+//                 }
+
+//                 if (is_geometric_mode_ && neighbor->forward_neighbors_.count(node)) {
+//                     auto& rev_edge = neighbor->forward_neighbors_.at(node);
+//                     rev_edge.distance = rev_edge.distance_original;
+//                     if (node->backward_neighbors_.count(neighbor)) {
+//                         node->backward_neighbors_.at(neighbor).distance = rev_edge.distance_original;
+//                     }
+//                     recomputeRHS(neighbor);
+//                     updateVertex(neighbor);
+//                 }
+//             }
+//         }
+//     };
+
+//     for (int idx : unique_node_indices) {
+//         DStarLiteNode* u = nodes_[idx].get();
+//         bool u_needs_update = false;
+        
+//         for (auto& [neighbor, edge] : u->forward_neighbors_) {
+//             checkAndRestoreEdge(u, neighbor, edge, u_needs_update);
+//         }
+        
+//         if (u_needs_update) {
+//             recomputeRHS(u);
+//             updateVertex(u);
+//         }
+//     }
+// }
+
+// #endif
+
+
+
 #else
 
 void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
@@ -2716,33 +2865,58 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
     }
 
-    auto checkAndBlockEdge = [&](DStarLiteNode* node, DStarLiteNode* neighbor, EdgeInfo& edge, bool& u_needs_update) {
-        if (edge.distance == std::numeric_limits<double>::infinity()) return; 
+    auto checkAndBlockEdge = [&](DStarLiteNode* u, DStarLiteNode* v, EdgeInfo& edge, bool& u_needs_update) {
+        if (edge.distance == INFINITY) return; // already blocked
 
-        const double edge_start_ttg = node->getTimeToGoal();
+        const double edge_start_ttg = u->getTimeToGoal();
         last_replan_metrics_.obstacle_checks++;
 
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
-            edge.distance = std::numeric_limits<double>::infinity();
+            // OLD and NEW
+            double c_old = edge.distance;
+            double c_new = INFINITY;
+
+            // set forward cost to INF
+            edge.distance = c_new;
             u_needs_update = true;
 
-            if (neighbor->backward_neighbors_.count(node)) {
-                neighbor->backward_neighbors_.at(node).distance = std::numeric_limits<double>::infinity();
+            // mirror to backward if stored
+            if (v->backward_neighbors_.count(u)) {
+                v->backward_neighbors_.at(u).distance = c_new;
             }
 
-            if (is_geometric_mode_ && neighbor->forward_neighbors_.count(node)) {
-                auto& rev_edge = neighbor->forward_neighbors_.at(node);
-                bool rev_changed = false;
-                if (rev_edge.distance != std::numeric_limits<double>::infinity()) {
-                    rev_edge.distance = std::numeric_limits<double>::infinity();
-                    rev_changed = true;
+            // ---- optimized D* Lite logic for increased cost ----
+            // If u was using this edge as its best (rhs contribution), recompute from scratch.
+            if (u->getParent() == v) {
+                if (u != goal_node_) {
+                    recomputeRHS(u);
                 }
-                if (node->backward_neighbors_.count(neighbor)) {
-                    node->backward_neighbors_.at(neighbor).distance = std::numeric_limits<double>::infinity();
-                }
-                if (rev_changed) {
-                    recomputeRHS(neighbor); 
-                    updateVertex(neighbor);
+            }
+            // ----------------------------------------------------
+
+            // handle geometric reverse edge if present (mirror)
+            if (is_geometric_mode_ && v->forward_neighbors_.count(u)) {
+                auto& rev_edge = v->forward_neighbors_.at(u);
+                double rev_old = rev_edge.distance;
+                if (rev_old != INFINITY) {
+                    rev_edge.distance = INFINITY;
+                    if (u->backward_neighbors_.count(v)) {
+                        u->backward_neighbors_.at(v).distance = INFINITY;
+                    }
+                    // // If reverse edge existed and was the best for v, we must recompute v too
+                    // if (v != goal_node_ && std::isfinite(rev_old) && u->g != INFINITY) {
+                    //     double rev_old_contrib = rev_old + u->g;
+                    //     if (std::abs(v->rhs - rev_old_contrib) <= 1e-9) {
+                    //         recomputeRHS(v);
+                    //     }
+                    // }
+                    if (v->getParent() == u && v != goal_node_) {
+                        recomputeRHS(v);
+                    }
+
+                    
+                    // push neighbor v into queue if needed
+                    updateVertex(v);
                 }
             }
         }
@@ -2757,7 +2931,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
         }
         
         if (u_needs_update) {
-            recomputeRHS(u); 
+            // recomputeRHS(u); 
             updateVertex(u);
         }
     }
@@ -2783,43 +2957,69 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
 
     const ObstacleVector& all_obstacles = obs_checker_->getObstacles();
 
-    auto checkAndRestoreEdge = [&](DStarLiteNode* node, DStarLiteNode* neighbor, EdgeInfo& edge, bool& u_needs_update) {
-        if (edge.distance == std::numeric_limits<double>::infinity()) {
-            const double ttg = node->getTimeToGoal();
-            bool should_restore = false;
-            
-            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
-                bool conflicts_with_other = false;
-                for (const auto& other_ob : all_obstacles) {
-                    if (other_ob.name == ob.name) continue; 
-                    last_replan_metrics_.obstacle_checks++;
-                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, other_ob)) {
-                        conflicts_with_other = true;
-                        break; 
-                    }
-                }
-                if (!conflicts_with_other) {
-                    should_restore = true;
+    auto checkAndRestoreEdge = [&](DStarLiteNode* u, DStarLiteNode* v, EdgeInfo& edge, bool& u_needs_update) {
+        if (edge.distance != INFINITY) return; // already available
+
+        const double ttg = u->getTimeToGoal();
+        bool should_restore = false;
+
+        // Check if obstacle blocked it and whether other obstacles still block it
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
+            bool conflicts_with_other = false;
+            for (const auto& other_ob : all_obstacles) {
+                if (other_ob.name == ob.name) continue;
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, other_ob)) {
+                    conflicts_with_other = true;
+                    break;
                 }
             }
+            if (!conflicts_with_other) should_restore = true;
+        }
 
-            if (should_restore) {
-                edge.distance = edge.distance_original;
-                u_needs_update = true;
-                
-                if (neighbor->backward_neighbors_.count(node)) {
-                    neighbor->backward_neighbors_.at(node).distance = edge.distance_original;
+        if (should_restore) {
+            double c_old = edge.distance;                 // INF
+            double c_new = edge.distance_original;        // restored finite cost
+
+            // restore forward edge
+            edge.distance = c_new;
+            u_needs_update = true;
+
+            // restore backward mirror if present
+            if (v->backward_neighbors_.count(u)) {
+                v->backward_neighbors_.at(u).distance = c_new;
+            }
+
+            // ---- optimized D* Lite logic for decreased cost ----
+            // Only tighten rhs(u) if this gives a smaller rhs (and successor has finite g)
+            if (v->g != INFINITY && c_new != INFINITY) {
+                double candidate = c_new + v->g;
+                if (candidate + 1e-9 < u->rhs) {
+                    u->rhs = candidate;
+                    u->setBestParent(v, edge.cached_trajectory);
+                }
+            }
+            // ----------------------------------------------------
+
+            // handle geometric reverse edge restoration
+            if (is_geometric_mode_ && v->forward_neighbors_.count(u)) {
+                auto& rev_edge = v->forward_neighbors_.at(u);
+                double rev_old = rev_edge.distance;
+                double rev_new = rev_edge.distance_original;
+                rev_edge.distance = rev_new;
+                if (u->backward_neighbors_.count(v)) {
+                    u->backward_neighbors_.at(v).distance = rev_new;
                 }
 
-                if (is_geometric_mode_ && neighbor->forward_neighbors_.count(node)) {
-                    auto& rev_edge = neighbor->forward_neighbors_.at(node);
-                    rev_edge.distance = rev_edge.distance_original;
-                    if (node->backward_neighbors_.count(neighbor)) {
-                        node->backward_neighbors_.at(neighbor).distance = rev_edge.distance_original;
+                // tighten v's rhs if applicable
+                if (u->g != INFINITY && rev_new != INFINITY) {
+                    double candidate_rev = rev_new + u->g;
+                    if (candidate_rev + 1e-9 < v->rhs) {
+                        v->rhs = candidate_rev;
+                        v->setBestParent(u, rev_edge.cached_trajectory);
                     }
-                    recomputeRHS(neighbor);
-                    updateVertex(neighbor);
                 }
+                updateVertex(v);
             }
         }
     };
@@ -2833,7 +3033,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
         }
         
         if (u_needs_update) {
-            recomputeRHS(u);
+            // recomputeRHS(u);
             updateVertex(u);
         }
     }

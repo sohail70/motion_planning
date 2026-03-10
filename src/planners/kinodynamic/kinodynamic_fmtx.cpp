@@ -1,6 +1,6 @@
 // Copyright 2025 Soheil E.nia
 // TODO : fix the KNN usage because with knn there is not neighborhood radisu constraints (check near function)
-#define DEBUG 0
+#define DEBUG 1
 
 // Set to 1 to use your novel context-aware Threat Set.
 // Set to 0 to use the Default/Blind exhaustive checking.
