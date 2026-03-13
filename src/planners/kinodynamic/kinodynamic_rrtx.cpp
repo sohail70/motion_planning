@@ -997,8 +997,6 @@ void KinodynamicRRTX::cullNeighbors(RRTxNode* v) {
 
             // SOURCE CULL: Evaluate removing the neighbor from v's active set.
             if (!edge.is_initial) {
-                // Move it to the passive map (required for RRTX's obstacle repair)
-                v->culled_outgoing_edges_[neighbor] = edge;
                 // Remove from active map and advance iterator
                 it = outgoing.erase(it);
                 // outgoing.erase(it++); //for absl
@@ -1664,8 +1662,7 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
 
     for (int idx : unique_node_indices) {
         RRTxNode* node = tree_[idx].get();
-        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndBlockEdge(node, neighbor, edge);
-        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
     }
 }
 
@@ -1741,8 +1738,7 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
         RRTxNode* node = tree_[idx].get();
         bool neighborsWereBlocked = false;
         
-        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
-        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
         
         if (neighborsWereBlocked) {
             updateLMC(node);
@@ -1817,8 +1813,7 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
             node->threats_.push_back(&ob);
         }
         
-        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndBlockEdge(node, neighbor, edge);
-        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
     }
 }
 
@@ -1895,8 +1890,7 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
 
         bool neighborsWereBlocked = false;
         
-        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
-        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
         
         if (neighborsWereBlocked) {
             updateLMC(node);
@@ -1968,8 +1962,7 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
 
     for (int idx : unique_node_indices) {
         RRTxNode* node = tree_[idx].get();
-        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndBlockEdge(node, neighbor, edge);
-        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
     }
 }
 
@@ -2050,8 +2043,8 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
         RRTxNode* node = tree_[idx].get();
         bool neighborsWereBlocked = false;
         
-        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
-        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        // for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
         
         if (neighborsWereBlocked) {
             updateLMC(node);

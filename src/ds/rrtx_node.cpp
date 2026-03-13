@@ -78,6 +78,7 @@ void RRTxNode::addNeighbor(RRTxNode* target_node, bool is_outgoing_initial, bool
 
     // Add the edge to the current node's outgoing list.
     this->outgoing_edges_[target_node] = outgoing_edge_info;
+    this->unculled_outgoing_edges_[target_node] = outgoing_edge_info;
 
     // Create the EdgeInfo for the corresponding INCOMING edge on the target.
     //    We can copy the data since the trajectory and cost are the same for this one-way link.
