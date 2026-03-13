@@ -35,7 +35,7 @@ public:
     void visualizeTree();
 
     
-    void recomputeRHS(DStarLiteNode* s);
+    bool recomputeRHS(DStarLiteNode* s);
 
     const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
     void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
@@ -44,6 +44,24 @@ public:
 
     void printNodeDetails(const std::string& prefix, DStarLiteNode* node);
     int getTreeSize() { return nodes_.size();}
+
+    double getAvgOutDegree() const {
+        if (nodes_.empty()) return 0.0;
+        long long total_out = 0;
+        for (const auto& node_ptr : nodes_) {
+            total_out += node_ptr->forward_neighbors_.size(); 
+        }
+        return static_cast<double>(total_out) / nodes_.size();
+    }
+
+    double getAvgInDegree() const {
+        if (nodes_.empty()) return 0.0;
+        long long total_in = 0;
+        for (const auto& node_ptr : nodes_) {
+            total_in += node_ptr->backward_neighbors_.size(); 
+        }
+        return static_cast<double>(total_in) / nodes_.size();
+    }
 
     double getNeighborhoodRadius(){return connection_radius_;}
 private:

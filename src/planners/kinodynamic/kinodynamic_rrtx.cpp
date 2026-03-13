@@ -17,7 +17,7 @@
 // If both are 0, it falls back to the Default/Brute-Force Strategy
 
 
-#define DEBUG 1
+#define DEBUG 0
 
 
 KinodynamicRRTX::KinodynamicRRTX(std::shared_ptr<StateSpace> statespace, 
@@ -415,6 +415,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     tree_.push_back(new_node);
     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
     kdtree_->buildTree(); // Build tree is an empty function in DynamicKdtree
+    last_replan_metrics_.nodes_updated++;
 
     for (auto& eval : evaluated_edges) {
         if (!eval.neighbor) continue;
@@ -552,6 +553,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     tree_.push_back(new_node);
     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
     kdtree_->buildTree(); 
+    last_replan_metrics_.nodes_updated++;
 
     for (auto& eval : evaluated_edges) {
         if (!eval.neighbor) continue;
@@ -819,6 +821,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     tree_.push_back(new_node);
     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
     kdtree_->buildTree();
+    last_replan_metrics_.nodes_updated++;
 
     for (auto& eval : evaluated_edges) {
         if (!eval.neighbor) continue;
@@ -860,13 +863,13 @@ void KinodynamicRRTX::rewireNeighbors(RRTxNode* v) {
     const double inconsistency = v->getCost() - v->getLMC();
     if (inconsistency <= epsilon_) return;
     cullNeighbors(v);
-    last_replan_metrics_.rewire_neighbor_searches += v->incomingEdges().size();
     for (auto& [u, edge] : v->incomingEdges()) {
         if (u == v->getParent() ) continue;
         const double candidate_lmc = v->getLMC() + edge.distance;
         if (u->getLMC() > candidate_lmc) {
             u->setLMC(candidate_lmc);
             u->setParent(v, edge.cached_trajectory);
+            last_replan_metrics_.nodes_updated++;
             if (u->getCost() - candidate_lmc > epsilon_) {
                 verifyQueue(u);
             }
@@ -892,6 +895,7 @@ void KinodynamicRRTX::reduceInconsistency() {
             }
         }
         inconsistency_queue_.pop();
+        last_replan_metrics_.queue_operations++;
         RRTxNode* node = top_element.second;
         // Standard RRTx logic: if Cost > LMC, we need to update
         if (node->getCost() > node->getLMC() + epsilon_) {
@@ -899,7 +903,10 @@ void KinodynamicRRTX::reduceInconsistency() {
             rewireNeighbors(node);
         }
         // Synchronize Cost and LMC 
-        node->setCost(node->getLMC());
+        if (node->getCost() != node->getLMC()) {
+            node->setCost(node->getLMC());
+            last_replan_metrics_.nodes_updated++;
+        }
     }
     // Debugging
     // std::cout << "Queue size after reduce: " << inconsistency_queue_.getHeap().size() << "\n";
@@ -917,7 +924,6 @@ void KinodynamicRRTX::updateLMC(RRTxNode* v) {
     RRTxNode* best_parent = nullptr;
     double best_edge_distance = INFINITY;
     std::shared_ptr<Trajectory> best_traj; 
-    last_replan_metrics_.rewire_neighbor_searches += v->outgoingEdges().size();
     // Iterate over outgoing edges (v → u)
     for (auto& [u, edge] : v->outgoingEdges()) {
         if (Vc_T_.count(u->getIndex()) || edge.distance == INFINITY) continue;
@@ -932,6 +938,7 @@ void KinodynamicRRTX::updateLMC(RRTxNode* v) {
     if (best_parent) {
         v->setParent(best_parent, best_traj);
         v->setLMC(min_lmc);
+        last_replan_metrics_.nodes_updated++;
     } 
 }
 
@@ -1011,8 +1018,10 @@ void KinodynamicRRTX::verifyQueue(RRTxNode* node) {
     if (node->in_queue_) {
         // Update both the priority and maintains g_value through node pointer
         inconsistency_queue_.update(node, min_key);
+        last_replan_metrics_.queue_operations++;
     } else {
         inconsistency_queue_.add(node, min_key);
+        last_replan_metrics_.queue_operations++;
         // node->in_queue_ = true;
     }
 }
@@ -1021,6 +1030,7 @@ void KinodynamicRRTX::verifyQueue(RRTxNode* node) {
 void KinodynamicRRTX::verifyOrphan(RRTxNode* node) {
     if(node->in_queue_==true){
         inconsistency_queue_.remove(node);
+        last_replan_metrics_.queue_operations++;
         // node->in_queue_=false;
     }
     Vc_T_.insert(node->getIndex());
@@ -1080,8 +1090,12 @@ void KinodynamicRRTX::propagateDescendants() {
         for (const auto& [neighbor, edge] : node->outgoingEdges()) {
             int neighbor_idx = neighbor->getIndex();
             if (Vc_T_.count(neighbor_idx)) continue;
-            neighbor->setCost(INFINITY);
-            verifyQueue(neighbor);
+            // neighbor->setCost(INFINITY);
+            // verifyQueue(neighbor);
+            if (neighbor->getCost() != std::numeric_limits<double>::infinity()) {
+                neighbor->setCost(std::numeric_limits<double>::infinity());
+                verifyQueue(neighbor);
+            }
         }
 
         // Process parent (p⁺_T(v) \ Vc_T)
@@ -1093,8 +1107,12 @@ void KinodynamicRRTX::propagateDescendants() {
             // Validate the edge if it exists
             if (it != parent_edges.end() ) {
                 int parent_idx = parent->getIndex();
-                if (!Vc_T_.count(parent_idx)) {
-                    parent->setCost(INFINITY);
+                // if (!Vc_T_.count(parent_idx)) {
+                //     parent->setCost(INFINITY);
+                //     verifyQueue(parent);
+                // }
+                if (!Vc_T_.count(parent_idx) && parent->getCost() != std::numeric_limits<double>::infinity()) {
+                    parent->setCost(std::numeric_limits<double>::infinity());
                     verifyQueue(parent);
                 }
             }
@@ -1106,6 +1124,7 @@ void KinodynamicRRTX::propagateDescendants() {
         auto node = tree_[idx].get();
         node->setCost(INFINITY);
         node->setLMC(INFINITY);
+        last_replan_metrics_.nodes_updated++;
         /*
             An orphaned node doesn't move in time; it just has no path to the goal. 
             By keeping its time_to_goal at the original sampled value, the collision checker can still accurately check if it is blocked or clear
@@ -1295,12 +1314,26 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
 
         // Use robot_time_to_go so collision check is synced with the world
-        if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) {
-            last_replan_metrics_.obstacle_checks += obs_checker_->getObstaclesSize();
+        if (bridge.is_valid) {
 
-            cost_of_current_path = bridge.cost + vbot_node_->getCost();
-            robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
-            // return;
+            bool safe = true;
+            const auto& obstacles = obs_checker_->getObstacles();
+
+            for (const auto& ob : obstacles) {
+                last_replan_metrics_.obstacle_checks++;
+
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(
+                        bridge, robot_time_to_go, ob)) {
+                    safe = false;
+                    break;
+                }
+            }
+
+            if (safe) {
+                cost_of_current_path = bridge.cost + vbot_node_->getCost();
+                robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
+                // return;
+            }
         }
     }
     RRTxNode* best_candidate_node = nullptr;
@@ -1320,9 +1353,18 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
             
             if (!bridge.is_valid) continue;
 
-            last_replan_metrics_.obstacle_checks += obs_checker_->getObstaclesSize();
-            // Check if this candidate connection is safe
-            if (!obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) continue;
+            bool safe = true;
+            const auto& obstacles = obs_checker_->getObstacles();
+            for (const auto& ob : obstacles) {
+                last_replan_metrics_.obstacle_checks++;
+
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, robot_time_to_go, ob)) {
+                    safe = false;
+                    break;  // stop checking remaining obstacles for this bridge
+                }
+            }
+
+            if (!safe) continue;
 
 
 
@@ -1546,6 +1588,14 @@ void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& turned_obstacl
         runForensics();
     #endif
 
+    std::string cycle_report;
+    if (hasCycleInParentGraph(cycle_report)) {
+        RCLCPP_ERROR(rclcpp::get_logger("RRTX_DEBUG"), "CYCLE DETECTED IN PARENT GRAPH!\n%s", cycle_report.c_str());
+        // Optionally: throw, pause simulation, visualize, etc.
+    } else {
+        RCLCPP_INFO(rclcpp::get_logger("RRTX_DEBUG"), "%s", cycle_report.c_str());
+    }
+
 
 }
 
@@ -1596,6 +1646,19 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
             
             if (neighbor->getParent() == node) verifyOrphan(neighbor);
             if (node->getParent() == neighbor) verifyOrphan(node);
+            if (is_geometric_mode_ && neighbor->outgoingEdges().count(node)) {
+                auto& rev_edge = neighbor->outgoingEdges().at(node);
+                if (rev_edge.distance != std::numeric_limits<double>::infinity()) {
+                    rev_edge.distance = std::numeric_limits<double>::infinity();
+
+                    if (node->incomingEdges().count(neighbor)) {
+                        node->incomingEdges().at(neighbor).distance =
+                            std::numeric_limits<double>::infinity();
+                    }
+                    if (node->getParent() == neighbor) verifyOrphan(node);
+                    if (neighbor->getParent() == node) verifyOrphan(neighbor);
+                }
+            }
         }
     };
 
@@ -1655,6 +1718,19 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
                         }
                     }
                     neighborsWereBlocked = true;
+                    if (is_geometric_mode_ && neighbor->outgoingEdges().count(node)) {
+                        auto& rev_edge = neighbor->outgoingEdges().at(node);
+
+                        if (rev_edge.distance == std::numeric_limits<double>::infinity()) {
+
+                            rev_edge.distance = rev_edge.distance_original;
+
+                            if (node->incomingEdges().count(neighbor)) {
+                                node->incomingEdges().at(neighbor).distance =
+                                    rev_edge.distance_original;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1718,6 +1794,20 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
             
             if (neighbor->getParent() == node) verifyOrphan(neighbor);
             if (node->getParent() == neighbor) verifyOrphan(node);
+
+            if (is_geometric_mode_ && neighbor->outgoingEdges().count(node)) {
+                auto& rev_edge = neighbor->outgoingEdges().at(node);
+                if (rev_edge.distance != std::numeric_limits<double>::infinity()) {
+                    rev_edge.distance = std::numeric_limits<double>::infinity();
+
+                    if (node->incomingEdges().count(neighbor)) {
+                        node->incomingEdges().at(neighbor).distance =
+                            std::numeric_limits<double>::infinity();
+                    }
+                    if (node->getParent() == neighbor) verifyOrphan(node);
+                    if (neighbor->getParent() == node) verifyOrphan(neighbor);
+                }
+            }
         }
     };
 
@@ -1776,6 +1866,19 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
                     neighbor->incomingEdges().at(node).distance = edge.distance_original;
                 }
                 neighborsWereBlocked = true;
+                if (is_geometric_mode_ && neighbor->outgoingEdges().count(node)) {
+                    auto& rev_edge = neighbor->outgoingEdges().at(node);
+
+                    if (rev_edge.distance == std::numeric_limits<double>::infinity()) {
+
+                        rev_edge.distance = rev_edge.distance_original;
+
+                        if (node->incomingEdges().count(neighbor)) {
+                            node->incomingEdges().at(neighbor).distance =
+                                rev_edge.distance_original;
+                        }
+                    }
+                }
             }
         }
     };
@@ -1845,6 +1948,21 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
             
             if (neighbor->getParent() == node) verifyOrphan(neighbor);
             if (node->getParent() == neighbor) verifyOrphan(node);
+
+
+            if (is_geometric_mode_ && neighbor->outgoingEdges().count(node)) {
+                auto& rev_edge = neighbor->outgoingEdges().at(node);
+                if (rev_edge.distance != std::numeric_limits<double>::infinity()) {
+                    rev_edge.distance = std::numeric_limits<double>::infinity();
+
+                    if (node->incomingEdges().count(neighbor)) {
+                        node->incomingEdges().at(neighbor).distance =
+                            std::numeric_limits<double>::infinity();
+                    }
+                    if (node->getParent() == neighbor) verifyOrphan(node);
+                    if (neighbor->getParent() == node) verifyOrphan(neighbor);
+                }
+            }
         }
     };
 
@@ -1886,7 +2004,7 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
         if (edge.distance == std::numeric_limits<double>::infinity()) {
             const double ttg = node->getTimeToGoal();
             bool should_restore = false;
-            
+            last_replan_metrics_.obstacle_checks++;
             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
                 bool conflicts_with_other = false;
                 for (const auto& other_ob : all_obstacles) {
@@ -1908,6 +2026,22 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
                     neighbor->incomingEdges().at(node).distance = edge.distance_original;
                 }
                 neighborsWereBlocked = true;
+
+                if (is_geometric_mode_ && neighbor->outgoingEdges().count(node)) {
+                    auto& rev_edge = neighbor->outgoingEdges().at(node);
+
+                    if (rev_edge.distance == std::numeric_limits<double>::infinity()) {
+
+                        rev_edge.distance = rev_edge.distance_original;
+
+                        if (node->incomingEdges().count(neighbor)) {
+                            node->incomingEdges().at(neighbor).distance =
+                                rev_edge.distance_original;
+                        }
+                    }
+                }
+
+                
             }
         }
     };
@@ -1924,6 +2058,81 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
             if (node->getCost() != node->getLMC()) verifyQueue(node);
         }
     }
+
 }
 
 #endif
+
+
+
+
+bool KinodynamicRRTX::hasCycleInParentGraph(std::string& report) {
+    std::unordered_set<int> visited;
+    std::unordered_set<int> rec_stack;  // recursion stack for cycle detection
+
+    report.clear();
+    std::ostringstream oss;
+    bool found_cycle = false;
+    int cycle_count = 0;
+
+    auto dfs = [&](auto&& self, RRTxNode* node, std::vector<int>& path) -> bool {
+        if (!node) return false;
+
+        int idx = node->getIndex();
+
+        // Already in recursion stack → cycle found
+        if (rec_stack.count(idx)) {
+            found_cycle = true;
+            cycle_count++;
+            oss << "CYCLE DETECTED (length " << path.size() << "):\n";
+            oss << "  Path: ";
+            for (int p : path) {
+                oss << p << " -> ";
+            }
+            oss << idx << " (back to " << idx << ")\n";
+
+            // Also show the actual parent chain that closes the cycle
+            oss << "  Closing edge: " << node->getParent()->getIndex() << " -> " << idx << "\n\n";
+            return true;
+        }
+
+        if (visited.count(idx)) return false;
+
+        visited.insert(idx);
+        rec_stack.insert(idx);
+        path.push_back(idx);
+
+        bool cycle_found = false;
+        if (RRTxNode* parent = node->getParent()) {
+            if (self(self, parent, path)) {
+                cycle_found = true;
+            }
+        }
+
+        path.pop_back();
+        rec_stack.erase(idx);
+
+        return cycle_found;
+    };
+
+    // Check every node in the tree
+    for (const auto& node_ptr : tree_) {
+        RRTxNode* node = node_ptr.get();
+        if (!node) continue;
+
+        if (!visited.count(node->getIndex())) {
+            std::vector<int> path;
+            dfs(dfs, node, path);
+        }
+    }
+
+    if (!found_cycle) {
+        report = "No cycles detected in parent-pointer graph. Checked " + 
+                 std::to_string(visited.size()) + " nodes.";
+        return false;
+    }
+
+    report = "Found " + std::to_string(cycle_count) + " cycle(s):\n" + oss.str() +
+             "\nTotal nodes checked: " + std::to_string(visited.size());
+    return true;
+}

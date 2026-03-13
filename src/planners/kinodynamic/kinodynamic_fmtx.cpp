@@ -1,6 +1,6 @@
 // Copyright 2025 Soheil E.nia
 // TODO : fix the KNN usage because with knn there is not neighborhood radisu constraints (check near function)
-#define DEBUG 1
+#define DEBUG 0
 
 // Set to 1 to use your novel context-aware Threat Set.
 // Set to 0 to use the Default/Blind exhaustive checking.
@@ -147,6 +147,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
         root_node_ptr->setCost(0);
         root_node_ptr->setTimeToGoal(0);
         v_open_heap_.add(root_node_ptr, 0.0);
+        last_replan_metrics_.queue_operations++;
 
         // Configure the goal node (the robot's starting position)
         robot_node_ptr->setTimeToGoal(goal_state_val(goal_state_val.size() - 1));
@@ -413,7 +414,6 @@ void KinodynamicFMTX::plan() {
 
                 // } 
 
-                last_replan_metrics_.rewire_neighbor_searches += x->forwardNeighbors().size();
 
                 // total_neighbor_iterations += x->forwardNeighbors().size();
 
@@ -519,6 +519,8 @@ void KinodynamicFMTX::plan() {
                     
  
                     if (obstacle_free) {
+                        last_replan_metrics_.nodes_updated++;
+
                         // costUpdated[x] = true;   // mark “done once”
                         x->setCost(min_cost_for_x);
                         x->setParent(best_parent_for_x, best_traj_for_x);
@@ -543,14 +545,17 @@ void KinodynamicFMTX::plan() {
 
                         if (x->in_queue_) {
                             v_open_heap_.update(x, priorityCost);
+                            last_replan_metrics_.queue_operations++;
                         } else {
                             v_open_heap_.add(x, priorityCost); // add() also sets in_queue_ = true
+                            last_replan_metrics_.queue_operations++;
                         }
                     }
                 }
             } // End of STAGE 2/3 trigger
         } // End of STAGE 1 loop
         v_open_heap_.pop();
+        last_replan_metrics_.queue_operations++;
         // visualizeTree();
         // std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
@@ -772,6 +777,7 @@ void KinodynamicFMTX::setStart(const Eigen::VectorXd& start) {
     node->setFinalDerivatives(Eigen::VectorXd::Zero(num_axes), Eigen::VectorXd::Zero(num_axes));
 
     v_open_heap_.add(node.get(),0);
+    last_replan_metrics_.queue_operations++;
     // node->in_queue_ = true;
 
     tree_.push_back(node);
@@ -1240,11 +1246,13 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
             // Remove from Open Set (it's invalid now)
             if (node->in_queue_ && node->getIndex() != root_state_index_) {
                 v_open_heap_.remove(node);
+                last_replan_metrics_.queue_operations++;
             }
 
             // Invalidate Cost (but keep Root valid)
             if (node->getIndex() != root_state_index_) {
                 node->setCost(INFINITY); 
+                last_replan_metrics_.nodes_updated++;
                 // NOTE: We do NOT set time_to_goal to INF, preserving heuristic.
             }
             
@@ -1278,6 +1286,7 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
         if (!valid_node->in_queue_ && valid_node->getCost() != INFINITY) {
             double h_value = use_heuristic ? heuristic(valid_node->getIndex()) : 0.0;
             v_open_heap_.add(valid_node, valid_node->getCost() + h_value);
+            last_replan_metrics_.queue_operations++;
         }
     }
 
@@ -1425,6 +1434,7 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
     for (FMTNode* neighbor : neighbors_to_requeue) {
         double h_value = use_heuristic ? heuristic(neighbor->getIndex()) : 0.0;
         v_open_heap_.add(neighbor, neighbor->getCost() + h_value);
+        last_replan_metrics_.queue_operations++;
     }
 }
 
@@ -1457,11 +1467,21 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     if (robot_node_ && robot_node_->getCost() != INFINITY) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         // Use robot_sim_time so collision check is synced with the world
-        if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) {
-            last_replan_metrics_.obstacle_checks += obs_checker_->getObstaclesSize();
-            cost_of_current_path = bridge.cost + robot_node_->getCost();
-            robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
-            // return;
+        if (bridge.is_valid) {
+            bool safe = true;
+            const auto& obstacles = obs_checker_->getObstacles();
+            for (const auto& ob : obstacles) {
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, robot_sim_time, ob)) {
+                    safe = false;
+                    break;
+                }
+            }
+            if (safe) {
+                cost_of_current_path = bridge.cost + robot_node_->getCost();
+                robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
+                // return;
+            }
         }
     }
 
@@ -1485,9 +1505,16 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
             if (!bridge.is_valid) continue;
 
-            last_replan_metrics_.obstacle_checks += obs_checker_->getObstaclesSize();
-            // Check if this candidate connection is safe
-            if (!obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) continue;
+            bool safe = true;
+            const auto& obstacles = obs_checker_->getObstacles();
+            for (const auto& ob : obstacles) {
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, robot_sim_time, ob)) {
+                    safe = false;
+                    break;
+                }
+            }
+            if (!safe) continue;
 
             double cost = bridge.cost + candidate->getCost();
             if (cost < best_candidate_cost) {

@@ -105,7 +105,6 @@ void populateParams(Params& p, const std::map<std::string, std::string>& map) {
 
 struct LogEntry {
     double elapsed_s = 0.0;
-    // double duration_ms = 0.0;
     
     double total_latency_ms = 0.0; // The sum (Control Loop Delay)
     double update_ms = 0.0;        // Time spent in updateObstacleSamples
@@ -113,13 +112,15 @@ struct LogEntry {
 
     double time_to_goal = 0.0;
     double path_cost = 0.0;
-    int obstacle_checks = 0;
-    long long rewire_neighbor_searches = 0;
-    int orphaned_nodes = 0;
-    int collision_count = 0;
-    int tree_size = 0;
-    double avg_deg_out = 0.0;
-    double avg_deg_in = 0.0;
+    
+    int obstacle_checks     = 0;
+    int nodes_updated       = 0;          // ← NEW
+    long long queue_operations = 0;       // ← NEW
+    int orphaned_nodes      = 0;
+    int collision_count     = 0;
+    int tree_size           = 0;
+    double avg_deg_out      = 0.0;
+    double avg_deg_in       = 0.0;
     double neighborhood_radius = 0.0;
 };
 
@@ -523,7 +524,7 @@ int main(int argc, char** argv) {
         // --- GEOMETRIC MODE (R2) ---
         RCLCPP_INFO(vis_node->get_logger(), "Starting Geometric Planning Loop (R2)...");
         
-        const double loop_rate_hz = 20.0; 
+        const double loop_rate_hz = 10.0; 
         const auto loop_duration = std::chrono::duration<double>(1.0 / loop_rate_hz);
         double sim_time = 0.0; 
         
@@ -587,9 +588,10 @@ int main(int argc, char** argv) {
 
                 entry.time_to_goal = 0.0; 
                 entry.obstacle_checks = metrics.obstacle_checks;
+                entry.nodes_updated = metrics.nodes_updated;
+                entry.queue_operations = metrics.queue_operations;
                 entry.orphaned_nodes = metrics.orphaned_nodes;
                 entry.path_cost = metrics.path_cost;
-                entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
                 entry.tree_size = kinodynamic_planner->getTreeSize();
                 entry.avg_deg_out = kinodynamic_planner->getAvgOutDegree();
                 entry.avg_deg_in = kinodynamic_planner->getAvgInDegree();
@@ -710,10 +712,11 @@ int main(int argc, char** argv) {
                 entry.total_latency_ms = current_update_ms + current_plan_ms;
 
                 entry.obstacle_checks = metrics.obstacle_checks;
+                entry.nodes_updated = metrics.nodes_updated;
+                entry.queue_operations = metrics.queue_operations;
                 entry.orphaned_nodes = metrics.orphaned_nodes;
                 entry.path_cost = metrics.path_cost;
                 entry.time_to_goal = T_robot;
-                entry.rewire_neighbor_searches = metrics.rewire_neighbor_searches;
                 entry.tree_size = kinodynamic_planner->getTreeSize();
                 entry.avg_deg_out = kinodynamic_planner->getAvgOutDegree();
                 entry.avg_deg_in = kinodynamic_planner->getAvgInDegree();
@@ -810,7 +813,9 @@ int main(int argc, char** argv) {
     }
     
     // UPDATED HEADER
-    out << "elapsed_s,total_latency_ms,update_ms,plan_ms,time_to_goal,path_cost,obstacle_checks,rewire_neighbor_searches,orphaned_nodes,collision_count,tree_size,avg_deg_out,avg_deg_in,radius\n";
+    out << "elapsed_s,total_latency_ms,update_ms,plan_ms,time_to_goal,path_cost,"
+       "obstacle_checks,nodes_updated,queue_operations,orphaned_nodes,"
+       "collision_count,tree_size,avg_deg_out,avg_deg_in,radius\n";
 
     for (const auto& entry : log_data) {
         out << entry.elapsed_s << "," 
@@ -819,8 +824,9 @@ int main(int argc, char** argv) {
             << entry.plan_ms << ","
             << entry.time_to_goal << ","
             << entry.path_cost << "," 
-            << entry.obstacle_checks << "," 
-            << entry.rewire_neighbor_searches << ","
+            << entry.obstacle_checks << ","
+            << entry.nodes_updated << ","
+            << entry.queue_operations << ","
             << entry.orphaned_nodes << "," 
             << entry.collision_count << ","
             << entry.tree_size << ","

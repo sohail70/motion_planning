@@ -84,7 +84,7 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
     // We will generate the grid first, then pick corners.
 
 
-    bool use_rrtx_saved_samples_ = false;
+    bool use_rrtx_saved_samples_ = true;
     // 3. Build Graph (Sample + Identify Start/Goal)
     if (use_rrtx_saved_samples_) {
         std::cout << "Using RRTX saved samples." << std::endl;
@@ -308,7 +308,7 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
         gamma_ = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu_ / zetaD_, 1.0 / d);
         connection_radius_ = factor_ * gamma_ * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
     }
-
+    std::cout<< "Neighborhood radius: "<< connection_radius_<<"\n";
     // 6. Neighbor Pre-caching
     if (neighbor_precache_) {
         std::cout << "Forcing neighbor caching for all " << nodes_.size() << " nodes..." << std::endl;
@@ -634,7 +634,7 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
             Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
             std::shared_ptr<Trajectory> shared_traj_forward;
             
-            if (traj_forward.is_valid) {
+            if (traj_forward.is_valid && traj_forward.cost <= connection_radius_ + 0.01) {
                 shared_traj_forward = std::make_shared<Trajectory>(std::move(traj_forward));
                 
                 EdgeInfo info_forward;
@@ -661,7 +661,7 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
                 }
             } else {
                 Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-                if (traj_backward.is_valid) {
+                if (traj_backward.is_valid && traj_backward.cost <= connection_radius_ + 0.01) {
                     auto shared_traj_backward = std::make_shared<Trajectory>(std::move(traj_backward));
                     
                     EdgeInfo info_backward;
@@ -734,6 +734,7 @@ void KinodynamicPRMStarDStarLite::initialize(DStarLiteNode* start, DStarLiteNode
     goal->rhs = 0.0;
     
     open_queue_.add(goal, calculateKey(goal));
+    last_replan_metrics_.queue_operations++;
 }
 
 // void KinodynamicPRMStarDStarLite::updateVertex(DStarLiteNode* u) {
@@ -870,32 +871,77 @@ void KinodynamicPRMStarDStarLite::initialize(DStarLiteNode* start, DStarLiteNode
 
 void KinodynamicPRMStarDStarLite::updateVertex(DStarLiteNode* u) {
     bool is_consistent = (u->g == u->rhs);
-    
+
+
     if (!is_consistent && u->in_queue_) {
         // Line 07": Update priority
         open_queue_.update(u, calculateKey(u));
+        last_replan_metrics_.queue_operations++;
     } 
     else if (!is_consistent && !u->in_queue_) {
         // Line 08": Insert into queue
         open_queue_.add(u, calculateKey(u));
+        last_replan_metrics_.queue_operations++;
     } 
     else if (is_consistent && u->in_queue_) {
         // Line 09": Remove from queue
         open_queue_.remove(u);
+        last_replan_metrics_.queue_operations++;
     }
 }
 
-// Equivalent to Line 27": rhs(s) = min_{s' in Succ(s)} (c(s, s') + g(s'))
-void KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
-    if (s == goal_node_) return; // Goal is always 0
+// // Equivalent to Line 27": rhs(s) = min_{s' in Succ(s)} (c(s, s') + g(s'))
+// void KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
+//     if (s == goal_node_) return; // Goal is always 0
     
-    double min_rhs = std::numeric_limits<double>::infinity(); // There is no orphan handling like RRTx here so we start with INF and recompute from scratch
+//     double min_rhs = std::numeric_limits<double>::infinity(); // There is no orphan handling like RRTx here so we start with INF and recompute from scratch
+//     DStarLiteNode* best_parent = nullptr;
+//     // Trajectory best_traj;
+//     std::shared_ptr<Trajectory> best_traj = nullptr;
+
+//     for (auto& [succ, edge_info] : s->forward_neighbors_) {
+//         // Trust the edge distance (handled by obstacle invalidation logic)
+//         if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
+//         if (succ->g == std::numeric_limits<double>::infinity()) continue;
+
+//         double cost = edge_info.distance + succ->g;
+//         if (cost < min_rhs - 1e-9) {
+//             min_rhs = cost;
+//             best_parent = succ;
+//             best_traj = edge_info.cached_trajectory;
+//         }
+// #if DEBUG_WITH_DIJKSTRA_
+//         // 2. TIE-BREAKER: Equal cost, but lower Node Index
+//         else if (std::abs(cost - min_rhs) <= 1e-9) {
+//             if (best_parent && succ->getIndex() < best_parent->getIndex()) {
+//                 // Keep min_rhs the same, but switch to the preferred parent
+//                 best_parent = succ;
+//                 best_traj = edge_info.cached_trajectory;
+//             }
+//         }
+// #endif
+//     }
+
+//     double old_rhs = s->rhs;
+
+//     s->rhs = min_rhs;
+//     s->setBestParent(best_parent, best_traj);
+//     last_replan_metrics_.nodes_updated++;
+
+//     // **ORPHAN COUNTER**: count only when node goes from having a finite rhs to INF
+//     if (std::isfinite(old_rhs) && !std::isfinite(min_rhs)) {
+//         last_replan_metrics_.orphaned_nodes++;
+//     }
+// }
+// returns true if rhs (or best parent) actually changed
+bool KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
+    if (s == goal_node_) return false;
+
+    double min_rhs = std::numeric_limits<double>::infinity();
     DStarLiteNode* best_parent = nullptr;
-    // Trajectory best_traj;
     std::shared_ptr<Trajectory> best_traj = nullptr;
 
     for (auto& [succ, edge_info] : s->forward_neighbors_) {
-        // Trust the edge distance (handled by obstacle invalidation logic)
         if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
         if (succ->g == std::numeric_limits<double>::infinity()) continue;
 
@@ -906,10 +952,8 @@ void KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
             best_traj = edge_info.cached_trajectory;
         }
 #if DEBUG_WITH_DIJKSTRA_
-        // 2. TIE-BREAKER: Equal cost, but lower Node Index
         else if (std::abs(cost - min_rhs) <= 1e-9) {
             if (best_parent && succ->getIndex() < best_parent->getIndex()) {
-                // Keep min_rhs the same, but switch to the preferred parent
                 best_parent = succ;
                 best_traj = edge_info.cached_trajectory;
             }
@@ -917,8 +961,19 @@ void KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
 #endif
     }
 
-    s->rhs = min_rhs;
-    s->setBestParent(best_parent, best_traj);
+    double old_rhs = s->rhs;
+    // Only change rhs and parent if it actually changed
+    if (std::isfinite(old_rhs) != std::isfinite(min_rhs) || std::abs(old_rhs - min_rhs) > 1e-9) {
+        s->rhs = min_rhs;
+        s->setBestParent(best_parent, best_traj);
+        last_replan_metrics_.nodes_updated++;
+        if (std::isfinite(old_rhs) && !std::isfinite(min_rhs)) {
+            last_replan_metrics_.orphaned_nodes++;
+        }
+        return true;
+    }
+    // nothing changed
+    return false;
 }
 
 void KinodynamicPRMStarDStarLite::printNodeDetails(const std::string& prefix, DStarLiteNode* node) {
@@ -1014,12 +1069,15 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
         if (k_old < k_new) {
             // update
             open_queue_.update(u, k_new);
+            last_replan_metrics_.queue_operations++;
         } 
         // Line 16": Overconsistent (Found a shortcut!)
         else if (u->g > u->rhs) {
             u->g = u->rhs;
             open_queue_.remove(u);
+            last_replan_metrics_.queue_operations++;
             // PUSH LOGIC (Lines 19"-21"): O(1) per predecessor!
+            
             for (auto& [pred, edge_info] : u->backward_neighbors_) {
                 if (pred != goal_node_) {
                     double new_cost = edge_info.distance + u->g;
@@ -1027,6 +1085,7 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
                     if (pred->rhs > new_cost + 1e-9) {
                         pred->rhs = new_cost;
                         pred->setBestParent(u, edge_info.cached_trajectory);
+                        updateVertex(pred); // only call when rhs changed
                     }
 #if DEBUG_WITH_DIJKSTRA_
                     // 2. TIE-BREAKER: Equal cost, but lower Node Index
@@ -1034,12 +1093,13 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
                         if (pred->getParent() && u->getIndex() < pred->getParent()->getIndex()) {
                             pred->rhs = new_cost; // strictly speaking, cost is the same
                             pred->setBestParent(u, edge_info.cached_trajectory);
+                            updateVertex(pred); // parent changed => update
                         }
                     }
 #endif
 
                 }
-                updateVertex(pred);
+                // updateVertex(pred);
             }
         } 
         // Line 22": Underconsistent (Path was blocked!)
@@ -1049,18 +1109,26 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
             
             // Lines 25"-28": Process Predecessors
             for (auto& [pred, edge_info] : u->backward_neighbors_) {
-                // Was u the reason rhs(s) had its value? If yes, then rhs(s) must be recomputed
-               if (pred->getParent() == u) { // parent(s) = u  EQUIVALENT TO  rhs(s) = c(s,u) + g(u)
-                    recomputeRHS(pred); // I check the S not equal s_goal inside this functions
-                } 
-                updateVertex(pred);
+            //     // Was u the reason rhs(s) had its value? If yes, then rhs(s) must be recomputed
+            //    if (pred->getParent() == u) { // parent(s) = u  EQUIVALENT TO  rhs(s) = c(s,u) + g(u)
+            //         recomputeRHS(pred); // I check the S not equal s_goal inside this functions
+            //     } 
+            //     updateVertex(pred);
+                bool changed = false;
+                if (pred->getParent() == u) {
+                    changed = recomputeRHS(pred);  // returns true if rhs/parent changed
+                }
+                if (changed) updateVertex(pred);
             }
             
-            // Process u itself (part of Pred(u) U {u}) no need for the rhs condtion here because Did u depend on itself for its rhs? that can no happen!
+            // // Process u itself (part of Pred(u) U {u}) no need for the rhs condtion here because Did u depend on itself for its rhs? that can no happen!
+            // if (u != goal_node_) {
+            //     recomputeRHS(u);
+            // }
+            // updateVertex(u);
             if (u != goal_node_) {
-                recomputeRHS(u);
+                if (recomputeRHS(u)) updateVertex(u);
             }
-            updateVertex(u);
         }
     }
 }
@@ -1853,9 +1921,21 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
     
     if (start_node_ && start_node_->g != std::numeric_limits<double>::infinity()) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, start_node_->getStateValue());
-        if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) {
-            last_replan_metrics_.obstacle_checks += obs_checker_->getObstaclesSize();
-            cost_of_current_anchor = bridge.cost + start_node_->g;
+        if (bridge.is_valid) {
+            bool safe = true;
+            const auto& obstacles = obs_checker_->getObstacles();
+            for (const auto& ob : obstacles) {
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, robot_time_to_go, ob)) {
+                    safe = false;
+                    break;
+                }
+            }
+
+            if (safe) {
+                cost_of_current_anchor = bridge.cost + start_node_->g;
+                // return;
+            }
         }
     }
 
@@ -1887,8 +1967,18 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
             if (!bridge.is_valid) continue;
 
-            last_replan_metrics_.obstacle_checks += obs_checker_->getObstaclesSize();
-            if (!obs_checker_->isTrajectorySafe(bridge, robot_time_to_go)) continue;
+
+            bool safe = true;
+            const auto& obstacles = obs_checker_->getObstacles();
+            for (const auto& ob : obstacles) {
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, robot_time_to_go, ob)) {
+                    safe = false;
+                    break; // early exit on collision
+                }
+            }
+
+            if (!safe) continue;
 
             double total_cost = bridge.cost + candidate->g;
 
@@ -2390,9 +2480,21 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
 
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
             
-            if (edge.distance != std::numeric_limits<double>::infinity()) {
-                edge.distance = std::numeric_limits<double>::infinity();
+            // if (edge.distance != std::numeric_limits<double>::infinity()) {
+            //     edge.distance = std::numeric_limits<double>::infinity();
+            //     u_needs_update = true;
+            // }
+            double c_old = edge.distance;
+            double c_new = INFINITY;
+
+            if (c_old != INFINITY) {
+                edge.distance = c_new;
                 u_needs_update = true;
+
+                // D* Lite cost increase rule
+                if (node->getParent() == neighbor && node != goal_node_) {
+                    recomputeRHS(node);
+                }
             }
             
             // Pointer insertion without duplicates (Forward Edge)
@@ -2409,14 +2511,14 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
             //     }
             // }
 
-        if (neighbor->backward_neighbors_.count(node)) {
-            auto& inc_edge = neighbor->backward_neighbors_.at(node);
-            inc_edge.distance = std::numeric_limits<double>::infinity();
-            // Correct Pointer Insertion
-            if (std::find(inc_edge.invalidating_obstacles.begin(), inc_edge.invalidating_obstacles.end(), &ob) == inc_edge.invalidating_obstacles.end()) {
-                inc_edge.invalidating_obstacles.push_back(&ob);
+            if (neighbor->backward_neighbors_.count(node)) {
+                auto& inc_edge = neighbor->backward_neighbors_.at(node);
+                inc_edge.distance = std::numeric_limits<double>::infinity();
+                // Correct Pointer Insertion
+                if (std::find(inc_edge.invalidating_obstacles.begin(), inc_edge.invalidating_obstacles.end(), &ob) == inc_edge.invalidating_obstacles.end()) {
+                    inc_edge.invalidating_obstacles.push_back(&ob);
+                }
             }
-        }
 
             // Geometric Mode Optimization (Break reverse path immediately)
             if (is_geometric_mode_ && neighbor->forward_neighbors_.count(node)) {
@@ -2436,8 +2538,9 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
                     }
                 }
                 if (rev_changed) {
-                    recomputeRHS(neighbor); 
-                    updateVertex(neighbor);
+                    if (neighbor->getParent() == node && neighbor != goal_node_) {
+                        recomputeRHS(neighbor);
+                    }
                 }
             }
         }
@@ -2452,7 +2555,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
         }
         
         if (u_needs_update) {
-            recomputeRHS(u); 
+            // recomputeRHS(u); 
             updateVertex(u);
         }
     }
@@ -2486,9 +2589,24 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
                 edge.invalidating_obstacles.pop_back();
 
                 if (edge.invalidating_obstacles.empty()) {
-                    edge.distance = edge.distance_original;
+                    // edge.distance = edge.distance_original;
+                    // u_needs_update = true;
+
+                    double c_new = edge.distance_original;
+
+                    edge.distance = c_new;
                     u_needs_update = true;
 
+                    // D* Lite cost decrease rule
+                    if (neighbor->g != INFINITY && c_new != INFINITY) {
+                        double candidate = c_new + neighbor->g;
+                        if (candidate + 1e-9 < node->rhs) {
+                            node->rhs = candidate;
+                            node->setBestParent(neighbor, edge.cached_trajectory);
+                        }
+                    }
+
+                    
                     if (neighbor->backward_neighbors_.count(node)) {
                         auto& inc_edge = neighbor->backward_neighbors_.at(node);
                         inc_edge.distance = edge.distance_original;
@@ -2517,8 +2635,16 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
                                         rev_inc_edge.invalidating_obstacles.pop_back();
                                     }
                                 }
-                                recomputeRHS(neighbor);
-                                updateVertex(neighbor);
+                                // recomputeRHS(neighbor);
+                                // updateVertex(neighbor);
+                                if (node->g != INFINITY) {
+                                    double candidate_rev = rev_edge.distance_original + node->g;
+                                    if (candidate_rev + 1e-9 < neighbor->rhs) {
+                                        neighbor->rhs = candidate_rev;
+                                        neighbor->setBestParent(node, rev_edge.cached_trajectory);
+                                    }
+                                }
+                                
                             }
                         }
                     }
@@ -2536,7 +2662,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
         }
         
         if (u_needs_update) {
-            recomputeRHS(u);
+            // recomputeRHS(u);
             updateVertex(u);
         }
     }
@@ -2573,9 +2699,22 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
 
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
             
-            edge.distance = std::numeric_limits<double>::infinity();
-            u_needs_update = true;
+            // edge.distance = std::numeric_limits<double>::infinity();
+            // u_needs_update = true;
 
+            double c_old = edge.distance;
+            double c_new = INFINITY;
+
+            if (c_old != INFINITY) {
+                edge.distance = c_new;
+                u_needs_update = true;
+
+                // D* Lite cost increase rule
+                if (node->getParent() == neighbor && node != goal_node_) {
+                    recomputeRHS(node);
+                }
+            }
+            
             if (neighbor->backward_neighbors_.count(node)) {
                 neighbor->backward_neighbors_.at(node).distance = std::numeric_limits<double>::infinity();
             }
@@ -2590,9 +2729,14 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
                 if (node->backward_neighbors_.count(neighbor)) {
                     node->backward_neighbors_.at(neighbor).distance = std::numeric_limits<double>::infinity();
                 }
+                // if (rev_changed) {
+                //     recomputeRHS(neighbor); 
+                //     updateVertex(neighbor);
+                // }
                 if (rev_changed) {
-                    recomputeRHS(neighbor); 
-                    updateVertex(neighbor);
+                    if (neighbor->getParent() == node && neighbor != goal_node_) {
+                        recomputeRHS(neighbor);
+                    }
                 }
             }
         }
@@ -2613,7 +2757,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
         }
         
         if (u_needs_update) {
-            recomputeRHS(u); 
+            // recomputeRHS(u); 
             updateVertex(u);
         }
     }
@@ -2652,8 +2796,21 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
             }
 
             if (is_safe) {
-                edge.distance = edge.distance_original;
+                // edge.distance = edge.distance_original;
+                // u_needs_update = true;
+                double c_new = edge.distance_original;
+
+                edge.distance = c_new;
                 u_needs_update = true;
+
+                // D* Lite cost decrease rule
+                if (neighbor->g != INFINITY && c_new != INFINITY) {
+                    double candidate = c_new + neighbor->g;
+                    if (candidate + 1e-9 < node->rhs) {
+                        node->rhs = candidate;
+                        node->setBestParent(neighbor, edge.cached_trajectory);
+                    }
+                }
                 
                 if (neighbor->backward_neighbors_.count(node)) {
                     neighbor->backward_neighbors_.at(node).distance = edge.distance_original;
@@ -2665,8 +2822,15 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
                     if (node->backward_neighbors_.count(neighbor)) {
                         node->backward_neighbors_.at(neighbor).distance = rev_edge.distance_original;
                     }
-                    recomputeRHS(neighbor);
-                    updateVertex(neighbor);
+                    // recomputeRHS(neighbor);
+                    // updateVertex(neighbor);
+                    if (node->g != INFINITY) {
+                        double candidate_rev = rev_edge.distance_original + node->g;
+                        if (candidate_rev + 1e-9 < neighbor->rhs) {
+                            neighbor->rhs = candidate_rev;
+                            neighbor->setBestParent(node, rev_edge.cached_trajectory);
+                        }
+                    }
                 }
             }
         }
@@ -2689,7 +2853,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
         }
         
         if (u_needs_update) {
-            recomputeRHS(u);
+            // recomputeRHS(u);
             updateVertex(u);
         }
     }
@@ -2880,6 +3044,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
             edge.distance = c_new;
             u_needs_update = true;
 
+
             // mirror to backward if stored
             if (v->backward_neighbors_.count(u)) {
                 v->backward_neighbors_.at(u).distance = c_new;
@@ -2916,11 +3081,13 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
 
                     
                     // push neighbor v into queue if needed
-                    updateVertex(v);
+                    // updateVertex(v);
                 }
             }
         }
     };
+    
+
 
     for (int idx : unique_node_indices) {
         DStarLiteNode* u = nodes_[idx].get();
@@ -2940,6 +3107,8 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
 void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
     if (ob.predicted_path.empty()) return;
 
+static long long total_other_checks_dlite = 0;
+long long checks_before = total_other_checks_dlite;
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     double search_radius = is_geometric_mode_ ? (obs_r + ob.inflation + connection_radius_) : (obs_r + ob.inflation + connection_radius_ + obs_r * (std::sqrt(2.0) - 1.0));
 
@@ -2962,13 +3131,15 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
 
         const double ttg = u->getTimeToGoal();
         bool should_restore = false;
-
+        last_replan_metrics_.obstacle_checks++;
+        total_other_checks_dlite++;
         // Check if obstacle blocked it and whether other obstacles still block it
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
             bool conflicts_with_other = false;
             for (const auto& other_ob : all_obstacles) {
                 if (other_ob.name == ob.name) continue;
                 last_replan_metrics_.obstacle_checks++;
+                total_other_checks_dlite++;
                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, other_ob)) {
                     conflicts_with_other = true;
                     break;
@@ -2978,13 +3149,13 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
         }
 
         if (should_restore) {
-            double c_old = edge.distance;                 // INF
             double c_new = edge.distance_original;        // restored finite cost
 
             // restore forward edge
             edge.distance = c_new;
             u_needs_update = true;
 
+            last_replan_metrics_.nodes_updated++;           // cost improved from INF → finite
             // restore backward mirror if present
             if (v->backward_neighbors_.count(u)) {
                 v->backward_neighbors_.at(u).distance = c_new;
@@ -3019,7 +3190,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
                         v->setBestParent(u, rev_edge.cached_trajectory);
                     }
                 }
-                updateVertex(v);
+                // updateVertex(v);
             }
         }
     };
@@ -3037,6 +3208,10 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
             updateVertex(u);
         }
     }
+    long long checks_this_call = total_other_checks_dlite - checks_before;
+    RCLCPP_ERROR(rclcpp::get_logger("DEBUG_RESTORE_DLITE"),
+        "removeObstacle '%s' | other-obstacle checks this call: %lld | cumulative: %lld",
+        ob.name.c_str(), checks_this_call, total_other_checks_dlite);
 }
 
 #endif

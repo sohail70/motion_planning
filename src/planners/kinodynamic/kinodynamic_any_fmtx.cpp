@@ -592,6 +592,7 @@ void KinodynamicANYFMTX::addBatchOfSamplesLazy(int num_samples) {
                 continue;
             }
             v_open_heap_.add(neighbor, neighbor->getCost());
+            last_replan_metrics_.queue_operations++;
         }
         // // Assign the union of threats to the new node
         // new_node->threats = accumulated_threats;
@@ -872,6 +873,7 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         // ======================================================
         if (connected) {
             v_open_heap_.add(new_node, new_node->getCost());
+            last_replan_metrics_.queue_operations++;
         } 
     }
 
@@ -1211,7 +1213,6 @@ void KinodynamicANYFMTX::plan() {
 
                 // } 
 
-                last_replan_metrics_.rewire_neighbor_searches += x->forwardNeighbors().size();
 
 
                 // Since x might be unvisited (never popped), its neighbors 
@@ -1368,6 +1369,7 @@ void KinodynamicANYFMTX::plan() {
                     
  
                     if (obstacle_free) {
+
                         // // --- DEBUG COUNTERS ---
                         // static long long stage3_entered = 0;
                         // static long long queue_updates = 0;
@@ -1404,7 +1406,7 @@ void KinodynamicANYFMTX::plan() {
                         double old_cost = x->getCost();
                         x->setCost(min_cost_for_x);
                         x->setParent(best_parent_for_x, best_traj_for_x);
-
+                        last_replan_metrics_.nodes_updated++;
                         // We can now safely allow culling in future iterations.
                         x->is_new = false; 
 
@@ -1444,10 +1446,12 @@ void KinodynamicANYFMTX::plan() {
                         if (x->in_queue_) {
                             // If it is already scheduled to be processed, give it the best cost
                             v_open_heap_.update(x, priorityCost);
+                            last_replan_metrics_.queue_operations++;
                         } else if (old_cost == INFINITY || (old_cost - min_cost_for_x > epsilon)) {
                             // If it is NOT in the queue, ONLY wake it up if the improvement is > epsilon 
                             // (or if it is a brand new node that must expand the wavefront)
                             v_open_heap_.add(x, priorityCost); 
+                            last_replan_metrics_.queue_operations++;
                         }
                         // /////////////////////////////
 
@@ -1483,6 +1487,7 @@ void KinodynamicANYFMTX::plan() {
             } // End of STAGE 2/3 trigger
         } // End of STAGE 1 loop
         v_open_heap_.pop();
+        last_replan_metrics_.queue_operations++;
         // m_pops++; // Expansion count
         // visualizeTree();
         // std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -1594,6 +1599,7 @@ void KinodynamicANYFMTX::setStart(const Eigen::VectorXd& start) {
     node->setFinalDerivatives(Eigen::VectorXd::Zero(num_axes), Eigen::VectorXd::Zero(num_axes));
 
     v_open_heap_.add(node.get(),0);
+    last_replan_metrics_.queue_operations++;
     // node->in_queue_ = true;
 
     tree_.push_back(node);
@@ -2016,11 +2022,13 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
             // Remove from Open Set (it's invalid now)
             if (node->in_queue_ && node->getIndex() != root_state_index_) {
                 v_open_heap_.remove(node);
+                last_replan_metrics_.queue_operations++;
             }
 
             // Invalidate Cost (but keep Root valid)
             if (node->getIndex() != root_state_index_) {
                 node->setCost(INFINITY); 
+                last_replan_metrics_.nodes_updated++;
                 // NOTE: We do NOT set time_to_goal to INF, preserving heuristic.
             }
             
@@ -2054,6 +2062,7 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
         if (!valid_node->in_queue_ && valid_node->getCost() != INFINITY) {
             double h_value = use_heuristic ? heuristic(valid_node->getIndex()) : 0.0;
             v_open_heap_.add(valid_node, valid_node->getCost() + h_value);
+            last_replan_metrics_.queue_operations++;
         }
     }
 }
@@ -2171,6 +2180,7 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
     for (FMTNode* neighbor : neighbors_to_requeue) {
         double h_value = use_heuristic ? heuristic(neighbor->getIndex()) : 0.0;
         v_open_heap_.add(neighbor, neighbor->getCost() + h_value);
+        last_replan_metrics_.queue_operations++;
     }
 }
 
@@ -2204,11 +2214,21 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     if (robot_node_ && robot_node_->getCost() != INFINITY) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         // Use robot_sim_time so collision check is synced with the world
-        if (bridge.is_valid && obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) {
-            last_replan_metrics_.obstacle_checks += obs_checker_->getObstaclesSize();
-            cost_of_current_path = bridge.cost + robot_node_->getCost();
-            robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
-            // return;
+        if (bridge.is_valid) {
+            bool safe = true;
+            const auto& obstacles = obs_checker_->getObstacles();
+            for (const auto& ob : obstacles) {
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, robot_sim_time, ob)) {
+                    safe = false;
+                    break;
+                }
+            }
+            if (safe) {
+                cost_of_current_path = bridge.cost + robot_node_->getCost();
+                robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
+                // return;
+            }
         }
     }
 
@@ -2233,10 +2253,16 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
             if (!bridge.is_valid) continue;
             
 
-            last_replan_metrics_.obstacle_checks += obs_checker_->getObstaclesSize();
-
-            // Check if this candidate connection is safe
-            if (!obs_checker_->isTrajectorySafe(bridge, robot_sim_time)) continue;
+            bool safe = true;
+            const auto& obstacles = obs_checker_->getObstacles();
+            for (const auto& ob : obstacles) {
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, robot_sim_time, ob)) {
+                    safe = false;
+                    break;
+                }
+            }
+            if (!safe) continue;
 
 
 

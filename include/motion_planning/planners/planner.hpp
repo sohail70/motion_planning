@@ -68,15 +68,12 @@ struct TupleComparator {
 
 
 struct ReplanMetrics {
-    long long rewire_neighbor_searches = 0;
-    int obstacle_checks = 0;
-    int orphaned_nodes = 0;
-    double path_cost = 0.0;
+    int       obstacle_checks     = 0;   // collision queries — dominant cost
+    int       nodes_updated       = 0;   // nodes whose cost/LMC/rhs actually changed
+    long long queue_operations    = 0;   // push/pop/update/remove on open/inconsistency queue
+    int       orphaned_nodes      = 0;   // nodes that lost valid path to goal
+    double    path_cost           = 0.0; // final solution quality after repair
 };
-
-
-
-
 
 class Planner {
  public:

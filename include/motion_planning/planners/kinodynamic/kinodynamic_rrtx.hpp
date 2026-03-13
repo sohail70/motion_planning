@@ -39,6 +39,7 @@ class KinodynamicRRTX : public Planner {
     void visualizeTreeReal();
 
 
+    bool hasCycleInParentGraph(std::string& report);
     double getAvgOutDegree() const {
         if (tree_.empty()) return 0.0;
         long long total_out = 0;
