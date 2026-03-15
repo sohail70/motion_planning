@@ -3,8 +3,11 @@ project(MotionPlanning)
 # add_compile_options(-g -O0)  # Force debug symbols and disable optimizations
 set(CMAKE_CXX_STANDARD 17)
 # set(CMAKE_BUILD_TYPE Release)
-set(CMAKE_BUILD_TYPE RelWithDebInfo)
-# set(CMAKE_BUILD_TYPE Debug)
+# set(CMAKE_BUILD_TYPE RelWithDebInfo)
+set(CMAKE_BUILD_TYPE Debug)
+
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 
 # Override the default Release flags to include debug info for profiling
@@ -19,6 +22,8 @@ set(CMAKE_BUILD_TYPE RelWithDebInfo)
 # endif()
 
 
+find_package(tinyxml2 REQUIRED)
+
 find_package(Eigen3 REQUIRED)
 find_package(nanoflann REQUIRED)
 find_package(qpOASES REQUIRED)
@@ -30,23 +35,23 @@ find_package(yaml-cpp REQUIRED)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED) 
 find_package(visualization_msgs REQUIRED) 
-find_package(nav_msgs REQUIRED) 
-find_package(geometry_msgs REQUIRED) 
+# find_package(nav_msgs REQUIRED) 
+# find_package(geometry_msgs REQUIRED) 
 find_package(tf2_ros REQUIRED) 
-find_package(type_description_interfaces REQUIRED)
-find_package(nav2_msgs REQUIRED)  # Add this line
-find_package(rclcpp_action REQUIRED)  # Add this line
-# find_package(fcl REQUIRED)
-pkg_check_modules(FCL REQUIRED fcl)
+# find_package(type_description_interfaces REQUIRED)
+# find_package(nav2_msgs REQUIRED)  # Add this line
+# find_package(rclcpp_action REQUIRED)  # Add this line
+# # find_package(fcl REQUIRED)
+# pkg_check_modules(FCL REQUIRED fcl)
 
 
-find_package(Bullet REQUIRED)
+# find_package(Bullet REQUIRED)
 
-find_package(gz-transport13 REQUIRED)   # Gazebo transport
-find_package(gz-msgs10 REQUIRED)        # Gazebo messages
-find_package(Protobuf REQUIRED)         # Protocol Buffers
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(ZeroMQ REQUIRED libzmq)
+# find_package(gz-transport13 REQUIRED)   # Gazebo transport
+# find_package(gz-msgs10 REQUIRED)        # Gazebo messages
+# find_package(Protobuf REQUIRED)         # Protocol Buffers
+# find_package(PkgConfig REQUIRED)
+# pkg_check_modules(ZeroMQ REQUIRED libzmq)
 
 
 
@@ -57,18 +62,18 @@ include_directories(
   include
   ${EIGEN3_INCLUDE_DIRS} 
   ${rclcpp_INCLUDE_DIRS}
-  ${nav_msgs_INCLUDE_DIRS}
-  ${geometry_msgs_INCLUDE_DIRS}
+  # ${nav_msgs_INCLUDE_DIRS}
+  # ${geometry_msgs_INCLUDE_DIRS}
   ${tf2_ros_INCLUDE_DIRS}
-  ${gz-transport13_INCLUDE_DIRS}
-  ${gz-msgs10_INCLUDE_DIRS}
-  ${gz-utils2_INCLUDE_DIRS}
-  ${Protobuf_INCLUDE_DIRS}
-  ${ZeroMQ_INCLUDE_DIRS}
+  # ${gz-transport13_INCLUDE_DIRS}
+  # ${gz-msgs10_INCLUDE_DIRS}
+  # ${gz-utils2_INCLUDE_DIRS}
+  # ${Protobuf_INCLUDE_DIRS}
+  # ${ZeroMQ_INCLUDE_DIRS}
   ${type_description_interfaces_INCLUDE_DIRS}
   ${visualization_msgs_INCLUDE_DIRS}
-  ${FCL_INCLUDE_DIRS} 
-  ${BULLET_INCLUDE_DIRS}
+  # ${FCL_INCLUDE_DIRS} 
+  # ${BULLET_INCLUDE_DIRS}
 )
 
 # Visualization Library (ROS2 dependent)
@@ -78,20 +83,22 @@ add_library(visualization
 
 target_precompile_headers(visualization PRIVATE include/motion_planning/pch.hpp)
 target_include_directories(visualization PUBLIC include)
-target_link_libraries(visualization PUBLIC gz-utils2::gz-utils2)
-ament_target_dependencies(visualization PUBLIC rclcpp visualization_msgs nav2_msgs rclcpp_action) 
+# target_link_libraries(visualization PUBLIC gz-utils2::gz-utils2)
+target_link_libraries(visualization PUBLIC )
+# ament_target_dependencies(visualization PUBLIC rclcpp visualization_msgs nav2_msgs rclcpp_action) 
+ament_target_dependencies(visualization PUBLIC rclcpp visualization_msgs) 
 
 
 # Gazebo Obstacle Checker Library
 add_library(gz_obs src/utils/gazebo_obstacle_checker.cpp)
 target_precompile_headers(gz_obs PRIVATE include/motion_planning/pch.hpp)
 target_link_libraries(gz_obs PUBLIC
-  gz-transport13
-  gz-msgs10
-  ${Protobuf_LIBRARIES}
-  ${ZeroMQ_LIBRARIES}
-  ${FCL_LIBRARIES}
-  ${BULLET_LIBRARIES}
+  # gz-transport13
+  # gz-msgs10
+  # ${Protobuf_LIBRARIES}
+  # ${ZeroMQ_LIBRARIES}
+  # ${FCL_LIBRARIES}
+  # ${BULLET_LIBRARIES}
 )
 
 
@@ -131,7 +138,7 @@ add_library(motion_planning
 
 target_precompile_headers(motion_planning PRIVATE include/motion_planning/pch.hpp)
 target_include_directories(motion_planning PUBLIC include) 
-target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann visualization qpOASES absl::node_hash_map)
+target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann visualization qpOASES absl::node_hash_map tinyxml2)
 if(OpenMP_CXX_FOUND)
   target_compile_options(motion_planning PUBLIC "${OpenMP_CXX_FLAGS}")
   target_link_libraries(motion_planning PUBLIC OpenMP::OpenMP_CXX)
@@ -355,5 +362,6 @@ enable_testing()
 ##################################################
 add_executable(main test/unified/main.cpp)
 target_link_libraries(main motion_planning gz_obs yaml-cpp)
-ament_target_dependencies(main rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+# ament_target_dependencies(main rclcpp nav_msgs visualization_msgs tf2_ros geometry_msgs nav2_msgs rclcpp_action)
+ament_target_dependencies(main rclcpp  visualization_msgs tf2_ros )
 add_test(NAME main COMMAND main)

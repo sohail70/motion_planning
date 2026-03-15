@@ -446,7 +446,6 @@ public:
         std::shared_ptr<ObstacleChecker> obstacle_checker,
         std::shared_ptr<RVizVisualization> visualizer,
         const Params& params,
-        double robot_velocity,
         const Eigen::VectorXd& initial_sim_state,
         double initial_budget_time) 
         // : Node("r2t_ros_manager", rclcpp::NodeOptions().parameter_overrides({rclcpp::Parameter("use_sim_time", true)})),
@@ -455,7 +454,6 @@ public:
           visualizer_(visualizer),
           is_path_set_(false),
           last_known_theta_(0.0),
-          robot_velocity_(robot_velocity),
           initial_budget_time_(initial_budget_time)
     {
         inflation = params.getParam<double>("inflation");
@@ -731,7 +729,6 @@ std::shared_ptr<RVizVisualization> visualizer_;
     bool is_path_set_;
     double last_known_theta_;
     Eigen::VectorXd current_interpolated_state_;
-    double robot_velocity_; 
     std::atomic<int> collision_count_{0};
     bool is_in_collision_state_{false};
     std::set<std::string> current_threat_names_;

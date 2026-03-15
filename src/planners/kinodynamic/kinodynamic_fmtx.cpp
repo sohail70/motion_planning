@@ -34,16 +34,14 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     visualization_ = visualization;
     num_of_samples_ = params.getParam<int>("num_of_samples");
     partial_update = params.getParam<bool>("partial_update");
-    use_heuristic= params.getParam<bool>("use_heuristic");
     is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
     lower_bounds_ = problem_->getLowerBound();
     upper_bounds_ = problem_->getUpperBound();
-    use_kdtree = params.getParam<bool>("use_kdtree");
     kd_dim = params.getParam<int>("kd_dim", 2);
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
     use_knn = params.getParam<bool>("use_knn", false);
 
-    if (use_kdtree == true && kdtree_type == "NanoFlann"){
+    if (kdtree_type == "NanoFlann"){
         Eigen::VectorXd weights(kd_dim);
         // weights << 1.0, 1.0, 1.0; // Weights for x, y, time
         switch (kd_dim) {
@@ -63,7 +61,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
                 FMTX_ERROR("Unsupported k-d tree dimension: " << kd_dim);
         }
         kdtree_ = std::make_shared<WeightedNanoFlann>(kd_dim, weights);
-    } else if (use_kdtree == true && kdtree_type == "LieKDTree"){
+    } else if (kdtree_type == "LieKDTree"){
         kdtree_ = std::make_unique<LieSplittingKDTree>(statespace_->getDimension(), statespace_);
     } else {
         throw std::runtime_error("FMTX requires a KD-Tree.");
@@ -180,28 +178,26 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
     std::cout << "KDTree: \n\n";
-    if (use_kdtree == true) {
-        // // Put all the points at once because fmtx doesnt need incremental addition
-        // kdtree_->addPoints(statespace_->getSamplesCopy());
-        // // Build the tree all at once after we fill the data_ in the KDTree
-        // kdtree_->buildTree();
+    // // Put all the points at once because fmtx doesnt need incremental addition
+    // kdtree_->addPoints(statespace_->getSamplesCopy());
+    // // Build the tree all at once after we fill the data_ in the KDTree
+    // kdtree_->buildTree();
 
-        // Get the full 3D (or 4D) samples from the state space.
-        Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
+    // Get the full 3D (or 4D) samples from the state space.
+    Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
 
-        // // Use .leftCols() to create a new matrix with only the kd_dim data.
-        // //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
-        Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(kd_dim).eval();
-        
-        // Pass the 2D spatial matrix to the KD-tree.
-        kdtree_->addPoints(spatial_samples_only);
-        // kdtree_->addPoints(all_samples);
-        
-        // Build the tree all at once after we fill the data.
-        kdtree_->buildTree();
-        // kdtree_->printData();
+    // // Use .leftCols() to create a new matrix with only the kd_dim data.
+    // //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
+    Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(kd_dim).eval();
+    
+    // Pass the 2D spatial matrix to the KD-tree.
+    kdtree_->addPoints(spatial_samples_only);
+    // kdtree_->addPoints(all_samples);
+    
+    // Build the tree all at once after we fill the data.
+    kdtree_->buildTree();
+    // kdtree_->printData();
 
-    }
 
 
 
@@ -280,20 +276,17 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     /////////////////////////////////////////////////////////////////////////
     std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
 
-    neighbor_precache = params.getParam<bool>("precache_neighbors");
     // In complex state spaces with complex steer function its better to cache before leaving the robot in the wild!
-    if (params.getParam<bool>("precache_neighbors")){
-        std::cout << "Forcing neighbor caching for all " << tree_.size() << " nodes..." << std::endl;
-        auto cache_start = std::chrono::high_resolution_clock::now();
+    std::cout << "Forcing neighbor caching for all " << tree_.size() << " nodes..." << std::endl;
+    auto cache_start = std::chrono::high_resolution_clock::now();
 
-        for (size_t i = 0; i < tree_.size(); ++i) {
-            near(i);
-        }
-
-        auto cache_end = std::chrono::high_resolution_clock::now();
-        auto cache_duration = std::chrono::duration_cast<std::chrono::milliseconds>(cache_end - cache_start);
-        std::cout << "Neighbor caching complete. Time taken: " << cache_duration.count() << " ms." << std::endl;
+    for (size_t i = 0; i < tree_.size(); ++i) {
+        near(i);
     }
+
+    auto cache_end = std::chrono::high_resolution_clock::now();
+    auto cache_duration = std::chrono::duration_cast<std::chrono::milliseconds>(cache_end - cache_start);
+    std::cout << "Neighbor caching complete. Time taken: " << cache_duration.count() << " ms." << std::endl;
 
 
 
@@ -333,9 +326,9 @@ void KinodynamicFMTX::plan() {
 
 
 
-        // Find neighbors for z if they haven't been found yet.
-        if (!neighbor_precache)
-            near(z->getIndex());
+        // // Find neighbors for z if they haven't been found yet.
+        // if (!neighbor_precache)
+        //     near(z->getIndex());
         // --- STAGE 1: IDENTIFY POTENTIALLY SUBOPTIMAL NEIGHBORS ---
         // Iterate through all neighbors 'x' of the expanding node 'z'.
         for (auto& [x, edge_info_from_z] : z->backwardNeighbors()) { //backward means incoming . forward is outgoing
@@ -349,10 +342,10 @@ void KinodynamicFMTX::plan() {
 
 
 
-            // The edge we care about is from child 'x' to parent 'z' in our backward search.
-            // The authoritative trajectory is stored in the child's (x's) map for that edge.
-            if (!neighbor_precache)
-                near(x->getIndex()); // Ensure x's neighbor map is initialized.
+            // // The edge we care about is from child 'x' to parent 'z' in our backward search.
+            // // The authoritative trajectory is stored in the child's (x's) map for that edge.
+            // if (!neighbor_precache)
+            //     near(x->getIndex()); // Ensure x's neighbor map is initialized.
 
             // auto& edge_info_from_x = x->forwardNeighbors().at(z);
             auto& edge_info_from_x = edge_info_from_z;
@@ -625,7 +618,7 @@ void KinodynamicFMTX::near(int node_index) {
         // Test FORWARD connection
         Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
         
-        if (traj_forward.is_valid && (use_knn || traj_forward.cost < neighborhood_radius_ + 0.01)) {
+        if (traj_forward.is_valid && (use_knn || traj_forward.cost <= neighborhood_radius_ + 0.01)) {
             
             // Allocate trajectory to heap ONCE
             auto shared_traj_forward = std::make_shared<Trajectory>(std::move(traj_forward));
@@ -651,7 +644,7 @@ void KinodynamicFMTX::near(int node_index) {
                 // --- KINODYNAMIC CASE ---
                 // Test BACKWARD connection (Neighbor -> Node)
                 Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-                if (traj_backward.is_valid && (use_knn || traj_backward.cost < neighborhood_radius_ + 0.01)) {
+                if (traj_backward.is_valid && (use_knn || traj_backward.cost <= neighborhood_radius_ + 0.01)) {
                     
                     auto shared_traj_backward = std::make_shared<Trajectory>(std::move(traj_backward));
                     
@@ -695,11 +688,11 @@ void KinodynamicFMTX::printCacheStatus() const {
 
 // //////////////////////////////////////////////////////////////////////////////////////////////////////
 
-double KinodynamicFMTX::heuristic(int current_index) {
-    Eigen::VectorXd current_position = tree_.at(current_index)->getStateValue();
-    Eigen::VectorXd goal_position = tree_.at(robot_state_index_)->getStateValue();
-    return (goal_position-current_position).norm();
-}
+// double KinodynamicFMTX::heuristic(int current_index) {
+//     Eigen::VectorXd current_position = tree_.at(current_index)->getStateValue();
+//     Eigen::VectorXd goal_position = tree_.at(robot_state_index_)->getStateValue();
+//     return (goal_position-current_position).norm();
+// }
 
 
 
@@ -1260,9 +1253,9 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
             // node->setParent(nullptr, Trajectory{});
             node->setParent(nullptr, std::shared_ptr<Trajectory>{});
 
-            // 5. Find Boundary (Valid Parents)
-            // We look at neighbors. If a neighbor is NOT an orphan, it's a valid candidate parent.
-            if (!neighbor_precache) near(node_index);
+            // // 5. Find Boundary (Valid Parents)
+            // // We look at neighbors. If a neighbor is NOT an orphan, it's a valid candidate parent.
+            // if (!neighbor_precache) near(node_index);
             
             auto check_boundary = [&](const auto& neighbors) {
                 for (const auto& [neighbor_ptr, edge_data] : neighbors) {
@@ -1284,8 +1277,8 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
     // 6. Add Boundary to Open Heap
     for (FMTNode* valid_node : boundary_nodes_to_requeue) {
         if (!valid_node->in_queue_ && valid_node->getCost() != INFINITY) {
-            double h_value = use_heuristic ? heuristic(valid_node->getIndex()) : 0.0;
-            v_open_heap_.add(valid_node, valid_node->getCost() + h_value);
+            // double h_value = use_heuristic ? heuristic(valid_node->getIndex()) : 0.0;
+            v_open_heap_.add(valid_node, valid_node->getCost());
             last_replan_metrics_.queue_operations++;
         }
     }
@@ -1414,7 +1407,7 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
             counter ++; 
             continue; //JAN 9 NEW --> If the node already is on the graph then its already free!
         }
-        if (!neighbor_precache) near(node_index);
+        // if (!neighbor_precache) near(node_index);
 
         auto check_neighbors = [&](const auto& neighbors) {
             for (const auto& [neighbor_ptr, edge_data] : neighbors) {
@@ -1432,8 +1425,8 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
 
     // 3. Add to Open Heap
     for (FMTNode* neighbor : neighbors_to_requeue) {
-        double h_value = use_heuristic ? heuristic(neighbor->getIndex()) : 0.0;
-        v_open_heap_.add(neighbor, neighbor->getCost() + h_value);
+        // double h_value = use_heuristic ? heuristic(neighbor->getIndex()) : 0.0;
+        v_open_heap_.add(neighbor, neighbor->getCost());
         last_replan_metrics_.queue_operations++;
     }
 }

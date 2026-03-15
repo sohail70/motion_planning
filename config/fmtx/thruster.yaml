@@ -9,22 +9,22 @@ experiment:
 # Simulation Settings
 simulation:
   time_budget: 35.0
-  duration_limit: 20
+  # duration_limit: 20
   slice_time: 0.02
   seed: 42
 
 # Robot & State Space Definition
 robot:
   # Start: x, y, vx, vy, time_budget
-  start_state: [48.0, 48.0, 0.0, 0.0, 35.0]
+  start_state: [48.0, 48.0, 0.0, 0.0]
   # Goal: x, y, vx, vy, time_to_go
-  goal_state:  [-48.0, -48.0, 0.0, 0.0, 0.0]
+  goal_state:  [-48.0, -48.0, 0.0, 0.0]
   
   dimensions: 5
-  spatial_dim: 2
+  # spatial_dim: 2
   # Bounds: x, y, vx, vy, time
-  bounds_min: [-50.0, -50.0, -15.0, -15.0, 0.0]
-  bounds_max: [ 50.0,  50.0,  15.0,  15.0, 35.0]
+  bounds_min: [-50.0, -50.0, -15.0, -15.0]
+  bounds_max: [ 50.0,  50.0,  15.0,  15.0]
   
   # Dynamics
   min_velocity: 0.0
@@ -35,37 +35,37 @@ robot:
 planner_params:
   num_of_samples: 500
   factor: 3.0
-  use_kdtree: true
+  # use_kdtree: true
   kdtree_type: "NanoFlann"
   partial_update: true
-  partial_plot: true
-  static_obs_presence: true
-  obs_cache: false
+  # partial_plot: true
+  # static_obs_presence: true
+  # obs_cache: false
   kd_dim: 5 
-  precache_neighbors: true
-  use_heuristic: false
+  # precache_neighbors: true
+  # use_heuristic: false
   is_geometric_mode: false
 
 # Manager / Gazebo Parameters
 manager_params:
-  use_sim_time: true
-  sim_time_step: -0.04
-  sim_frequency_hz: 50
+  # use_sim_time: true
+  # sim_time_step: -0.04
+  # sim_frequency_hz: 50
   vis_frequency_hz: 30
-  follow_path: true
-  inflation: 0.0
+  # follow_path: true
+  # inflation: 0.0
 
 gazebo_params:
-  robot_model_name: "tugbot"
-  world_name: "default"
+  # robot_model_name: "tugbot"
+  # world_name: "default"
   sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10_slow.sdf"
-  default_robot_x: 48.0  
-  default_robot_y: 48.0
-  use_range: false
-  sensor_range: 20.0
-  estimation: true
+  # default_robot_x: 48.0  
+  # default_robot_y: 48.0
+  # use_range: false
+  # sensor_range: 20.0
+  # estimation: true
   inflation: 0.0
-  fcl: false
-  bullet: false
-  persistent_static_obstacles: false
-  is_geometric_mode: false
+  # fcl: false
+  # bullet: false
+  # persistent_static_obstacles: false
+  # is_geometric_mode: false

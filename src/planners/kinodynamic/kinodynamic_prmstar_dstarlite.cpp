@@ -27,12 +27,10 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
     
     // 1. Load Parameters
     num_samples_ = params.getParam<int>("num_of_samples");
-    use_kdtree_ = params.getParam<bool>("use_kdtree");
     kd_dim_ = params.getParam<int>("kd_dim", 2);
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
     use_knn_ = params.getParam<bool>("use_knn", false);
     factor_ = params.getParam<double>("factor", 1.0);
-    neighbor_precache_ = params.getParam<bool>("precache_neighbors", false);
     is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
     bool use_grid_sampling = false;
 #if USE_GRID_SAMPLING
@@ -42,7 +40,7 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
     upper_bounds_ = problem_def_->getUpperBound();
 
     // 2. Initialize KD-Tree
-    if (use_kdtree_ && kdtree_type == "NanoFlann") {
+    if (kdtree_type == "NanoFlann") {
         Eigen::VectorXd weights(kd_dim_);
         switch (kd_dim_) {
             case 2: weights << 1.0, 1.0; break;
@@ -52,7 +50,7 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
             default: throw std::runtime_error("Unsupported k-d tree dimension");
         }
         kdtree_ = std::make_shared<WeightedNanoFlann>(kd_dim_, weights);
-    } else if (use_kdtree_ && kdtree_type == "LieKDTree") {
+    } else if (kdtree_type == "LieKDTree") {
         kdtree_ = std::make_unique<LieSplittingKDTree>(statespace_->getDimension(), statespace_);
     } else {
         throw std::runtime_error("PRM* D* Lite requires a KD-Tree.");
@@ -289,12 +287,10 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
     std::cout << "PRM Built with " << nodes_.size() << " nodes (including Start/Goal).\n";
 
     // 4. Build KD-Tree
-    if (use_kdtree_) {
-        Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
-        Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(kd_dim_).eval();
-        kdtree_->addPoints(spatial_samples_only);
-        kdtree_->buildTree();
-    }
+    Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
+    Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(kd_dim_).eval();
+    kdtree_->addPoints(spatial_samples_only);
+    kdtree_->buildTree();
 
     // 5. Calculate Radius
     int d = statespace_->getDimension();
@@ -310,16 +306,14 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
     }
     std::cout<< "Neighborhood radius: "<< connection_radius_<<"\n";
     // 6. Neighbor Pre-caching
-    if (neighbor_precache_) {
-        std::cout << "Forcing neighbor caching for all " << nodes_.size() << " nodes..." << std::endl;
-        auto cache_start = std::chrono::high_resolution_clock::now();
-        for (size_t i = 0; i < nodes_.size(); ++i) {
-            near(i);
-        }
-        auto cache_end = std::chrono::high_resolution_clock::now();
-        auto cache_duration = std::chrono::duration_cast<std::chrono::milliseconds>(cache_end - cache_start);
-        std::cout << "Neighbor caching complete. Time taken: " << cache_duration.count() << " ms." << std::endl;
+    std::cout << "Forcing neighbor caching for all " << nodes_.size() << " nodes..." << std::endl;
+    auto cache_start = std::chrono::high_resolution_clock::now();
+    for (size_t i = 0; i < nodes_.size(); ++i) {
+        near(i);
     }
+    auto cache_end = std::chrono::high_resolution_clock::now();
+    auto cache_duration = std::chrono::duration_cast<std::chrono::milliseconds>(cache_end - cache_start);
+    std::cout << "Neighbor caching complete. Time taken: " << cache_duration.count() << " ms." << std::endl;
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_time);
@@ -1951,9 +1945,7 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
         std::vector<size_t> candidate_indices;
         
-        if (use_kdtree_) {
-            candidate_indices = kdtree_->radiusSearch(query_point, current_search_radius);
-        }
+        candidate_indices = kdtree_->radiusSearch(query_point, current_search_radius);
 
         for (size_t idx : candidate_indices) {
             DStarLiteNode* candidate = nodes_[idx].get();
@@ -3107,8 +3099,6 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
 void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
     if (ob.predicted_path.empty()) return;
 
-static long long total_other_checks_dlite = 0;
-long long checks_before = total_other_checks_dlite;
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     double search_radius = is_geometric_mode_ ? (obs_r + ob.inflation + connection_radius_) : (obs_r + ob.inflation + connection_radius_ + obs_r * (std::sqrt(2.0) - 1.0));
 
@@ -3132,14 +3122,12 @@ long long checks_before = total_other_checks_dlite;
         const double ttg = u->getTimeToGoal();
         bool should_restore = false;
         last_replan_metrics_.obstacle_checks++;
-        total_other_checks_dlite++;
         // Check if obstacle blocked it and whether other obstacles still block it
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
             bool conflicts_with_other = false;
             for (const auto& other_ob : all_obstacles) {
                 if (other_ob.name == ob.name) continue;
                 last_replan_metrics_.obstacle_checks++;
-                total_other_checks_dlite++;
                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, other_ob)) {
                     conflicts_with_other = true;
                     break;
@@ -3208,10 +3196,6 @@ long long checks_before = total_other_checks_dlite;
             updateVertex(u);
         }
     }
-    long long checks_this_call = total_other_checks_dlite - checks_before;
-    RCLCPP_ERROR(rclcpp::get_logger("DEBUG_RESTORE_DLITE"),
-        "removeObstacle '%s' | other-obstacle checks this call: %lld | cumulative: %lld",
-        ob.name.c_str(), checks_this_call, total_other_checks_dlite);
 }
 
 #endif

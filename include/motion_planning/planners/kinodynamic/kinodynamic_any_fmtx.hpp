@@ -37,7 +37,7 @@ class KinodynamicANYFMTX : public Planner {
             void updateObstacleSamples(const ObstacleVector& obstacles);
             void addNewObstacle(const Obstacle& ob);
             void removeObstacle(const Obstacle& ob);
-            double heuristic(int current_index);
+            // double heuristic(int current_index);
             void clearPlannerState();
             void dumpTreeToCSV(const std::string& filename) const;
             const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
@@ -94,7 +94,7 @@ class KinodynamicANYFMTX : public Planner {
             double neighborhood_radius_;
             int k_neighbors_;
             bool obs_cache = false;
-            bool use_heuristic = false;
+            // bool use_heuristic = false;
             bool partial_update = false;
             bool use_knn = false;
             double factor;

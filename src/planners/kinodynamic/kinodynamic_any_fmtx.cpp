@@ -38,17 +38,16 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
     visualization_ = visualization;
     num_of_samples_ = params.getParam<int>("num_of_samples");
     partial_update = params.getParam<bool>("partial_update");
-    use_heuristic= params.getParam<bool>("use_heuristic");
+    // use_heuristic= params.getParam<bool>("use_heuristic");
     is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
     epsilon = params.getParam<double>("epsilon", 1e-4);
     lower_bounds_ = problem_->getLowerBound();
     upper_bounds_ = problem_->getUpperBound();
-    use_kdtree = params.getParam<bool>("use_kdtree");
     kd_dim = params.getParam<int>("kd_dim", 2);
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
     use_knn = params.getParam<bool>("use_knn", false);
 
-    if (use_kdtree == true && kdtree_type == "NanoFlann"){
+    if (kdtree_type == "NanoFlann"){
         Eigen::VectorXd weights(kd_dim);
         // weights << 1.0, 1.0, 1.0; // Weights for x, y, time
         switch (kd_dim) {
@@ -68,7 +67,7 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
                 FMTX_ERROR("Unsupported k-d tree dimension: " << kd_dim);
         }
         kdtree_ = std::make_shared<DynamicWeightedNanoFlann>(kd_dim, weights);
-    } else if (use_kdtree == true && kdtree_type == "LieKDTree"){
+    } else if (kdtree_type == "LieKDTree"){
         kdtree_ = std::make_unique<LieSplittingKDTree>(statespace_->getDimension(), statespace_);
     } else {
         throw std::runtime_error("FMTX requires a KD-Tree.");
@@ -87,28 +86,26 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
 
 
     std::cout << "KDTree: \n\n";
-    if (use_kdtree == true) {
-        // // Put all the points at once because fmtx doesnt need incremental addition
-        // kdtree_->addPoints(statespace_->getSamplesCopy());
-        // // Build the tree all at once after we fill the data_ in the KDTree
-        // kdtree_->buildTree();
+    // // Put all the points at once because fmtx doesnt need incremental addition
+    // kdtree_->addPoints(statespace_->getSamplesCopy());
+    // // Build the tree all at once after we fill the data_ in the KDTree
+    // kdtree_->buildTree();
 
-        // Get the full 3D (or 4D) samples from the state space.
-        Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
+    // Get the full 3D (or 4D) samples from the state space.
+    Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
 
-        // // Use .leftCols() to create a new matrix with only the kd_dim data.
-        // //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
-        Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(kd_dim).eval();
-        
-        // Pass the 2D spatial matrix to the KD-tree.
-        kdtree_->addPoints(spatial_samples_only);
-        // kdtree_->addPoints(all_samples);
-        
-        // Build the tree all at once after we fill the data.
-        kdtree_->buildTree();
-        // kdtree_->printData();
+    // // Use .leftCols() to create a new matrix with only the kd_dim data.
+    // //    .eval() is used to ensure we pass a concrete matrix, not a temporary expression.
+    Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(kd_dim).eval();
+    
+    // Pass the 2D spatial matrix to the KD-tree.
+    kdtree_->addPoints(spatial_samples_only);
+    // kdtree_->addPoints(all_samples);
+    
+    // Build the tree all at once after we fill the data.
+    kdtree_->buildTree(); // Empty function in "DynamicWeightedNanoFlann" class
+    // kdtree_->printData();
 
-    }
 
     dimension_ = statespace_->getDimension();
     factor = params.getParam<double>("factor");
@@ -1528,11 +1525,11 @@ void KinodynamicANYFMTX::printCacheStatus() const {
               << " (" << std::fixed << std::setprecision(1) << percentage << "%)" << std::endl;
 }
 
-double KinodynamicANYFMTX::heuristic(int current_index) {
-    Eigen::VectorXd current_position = tree_.at(current_index)->getStateValue();
-    Eigen::VectorXd goal_position = tree_.at(robot_state_index_)->getStateValue();
-    return (goal_position-current_position).norm();
-}
+// double KinodynamicANYFMTX::heuristic(int current_index) {
+//     Eigen::VectorXd current_position = tree_.at(current_index)->getStateValue();
+//     Eigen::VectorXd goal_position = tree_.at(robot_state_index_)->getStateValue();
+//     return (goal_position-current_position).norm();
+// }
 
 
 std::vector<Eigen::VectorXd> KinodynamicANYFMTX::getPathPositions() const
@@ -2060,8 +2057,9 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
     // 6. Add Boundary to Open Heap
     for (FMTNode* valid_node : boundary_nodes_to_requeue) {
         if (!valid_node->in_queue_ && valid_node->getCost() != INFINITY) {
-            double h_value = use_heuristic ? heuristic(valid_node->getIndex()) : 0.0;
-            v_open_heap_.add(valid_node, valid_node->getCost() + h_value);
+            // double h_value = use_heuristic ? heuristic(valid_node->getIndex()) : 0.0;
+            // v_open_heap_.add(valid_node, valid_node->getCost() + h_value);
+            v_open_heap_.add(valid_node, valid_node->getCost());
             last_replan_metrics_.queue_operations++;
         }
     }
@@ -2178,8 +2176,9 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
 
     // 3. Add to Open Heap
     for (FMTNode* neighbor : neighbors_to_requeue) {
-        double h_value = use_heuristic ? heuristic(neighbor->getIndex()) : 0.0;
-        v_open_heap_.add(neighbor, neighbor->getCost() + h_value);
+        // double h_value = use_heuristic ? heuristic(neighbor->getIndex()) : 0.0;
+        // v_open_heap_.add(neighbor, neighbor->getCost() + h_value);
+        v_open_heap_.add(neighbor, neighbor->getCost());
         last_replan_metrics_.queue_operations++;
     }
 }

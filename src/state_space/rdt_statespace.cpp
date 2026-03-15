@@ -4,28 +4,53 @@
 #include <stdexcept>
 #include <random>
 
-RDTStateSpace::RDTStateSpace(int euclidean_dimension, double min_velocity, double max_velocity, double robot_velocity, int initial_capacity, unsigned int seed, bool is_geometric_mode)
-    // // The total dimension is the number of spatial dimensions plus one for time.
-    // : StateSpace(euclidean_dimension + 1, initial_capacity),
-    : StateSpace(is_geometric_mode ? euclidean_dimension : euclidean_dimension + 1, initial_capacity), 
+// RDTStateSpace::RDTStateSpace(int euclidean_dimension, double min_velocity, double max_velocity, double robot_velocity, int initial_capacity, unsigned int seed, bool is_geometric_mode)
+//     // // The total dimension is the number of spatial dimensions plus one for time.
+//     // : StateSpace(euclidean_dimension + 1, initial_capacity),
+//     : StateSpace(is_geometric_mode ? euclidean_dimension : euclidean_dimension + 1, initial_capacity), 
 
-      euclidean_dim_(euclidean_dimension),
+//       euclidean_dim_(euclidean_dimension),
+//       min_velocity_(min_velocity),
+//       max_velocity_(max_velocity),
+//       robot_velocity_(robot_velocity),
+//       is_geometric_mode_(is_geometric_mode)
+// {
+    
+//     std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
+
+//     // These weights are used in the distance() function for the KD-tree.
+//     // This helps balance the contribution of spatial distance vs. time difference.
+//     // You can tune the time_weight (last element). A smaller value makes time less
+//     // important when finding "near" neighbors.
+//     distance_weights_.resize(dimension_);
+//     distance_weights_.head(euclidean_dim_).setOnes(); // Weight of 1.0 for all spatial dimensions
+//     distance_weights_(dimension_ - 1) = 1.0;          // Weight for the time dimension
+// }
+
+
+RDTStateSpace::RDTStateSpace( int dimension, double min_velocity, double max_velocity, unsigned int seed, bool is_geometric_mode)
+    : StateSpace(dimension),
+      // if geometric -> all dims spatial
+      // if kinodynamic -> last dim is time
+      euclidean_dim_(is_geometric_mode ? dimension : dimension - 1),
       min_velocity_(min_velocity),
       max_velocity_(max_velocity),
-      robot_velocity_(robot_velocity),
       is_geometric_mode_(is_geometric_mode)
 {
-    
-    std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
+    std::srand(seed);
 
-    // These weights are used in the distance() function for the KD-tree.
-    // This helps balance the contribution of spatial distance vs. time difference.
-    // You can tune the time_weight (last element). A smaller value makes time less
-    // important when finding "near" neighbors.
     distance_weights_.resize(dimension_);
-    distance_weights_.head(euclidean_dim_).setOnes(); // Weight of 1.0 for all spatial dimensions
-    distance_weights_(dimension_ - 1) = 1.0;          // Weight for the time dimension
+
+    // spatial dimensions
+    distance_weights_.head(euclidean_dim_).setOnes();
+
+    // time dimension weight
+    if (!is_geometric_mode_) {
+        distance_weights_(dimension_ - 1) = 1.0;
+    }
 }
+
+
 
 // // The 'steer' function is the most important part. It defines the valid connections.
 // // Override the steer function to add time and velocity checks

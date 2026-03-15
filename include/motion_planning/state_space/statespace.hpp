@@ -11,7 +11,7 @@
 
 class StateSpace {
  public:
-    explicit StateSpace(int dimension, int initial_capacity = 1000)
+    explicit StateSpace(int dimension, int initial_capacity = 5000)
         : dimension_(dimension), num_states_(0) {
         states_.resize(initial_capacity, dimension);
     }

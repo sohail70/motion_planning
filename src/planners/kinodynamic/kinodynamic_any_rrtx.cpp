@@ -103,13 +103,12 @@ void KinodynamicANYRRTX::setup(const Params& params, std::shared_ptr<Visualizati
     is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
     lower_bounds_ = problem_->getLowerBound();
     upper_bounds_ = problem_->getUpperBound();
-    use_kdtree = params.getParam<bool>("use_kdtree");
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
     epsilon_ = params.getParam<double>("epsilon", 1e-4);
     kd_dim = params.getParam<int>("kd_dim",2);
 
 
-    if (use_kdtree == true && kdtree_type == "NanoFlann"){
+    if (kdtree_type == "NanoFlann"){
         Eigen::VectorXd weights(kd_dim);
         switch (kd_dim) {
             case 2: // (x, y)
@@ -134,7 +133,7 @@ void KinodynamicANYRRTX::setup(const Params& params, std::shared_ptr<Visualizati
                 RRTX_ERROR("Unsupported k-d tree dimension: " << kd_dim);
         }
         kdtree_ = std::make_shared<DynamicWeightedNanoFlann>(kd_dim, weights);
-    } else if (use_kdtree == true && kdtree_type == "LieKDTree"){
+    } else if (kdtree_type == "LieKDTree"){
         kdtree_ = std::make_unique<LieSplittingKDTree>(statespace_->getDimension(), statespace_);
     } else {
         throw std::runtime_error("FMTX requires a KD-Tree.");
@@ -147,14 +146,13 @@ void KinodynamicANYRRTX::setup(const Params& params, std::shared_ptr<Visualizati
     setStart(problem_->getStart());
     setGoal(problem_->getGoal()); //robots current position
 
-    if (use_kdtree == true) {
-        Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
-        int spatial_dimension = kd_dim;
-        Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(spatial_dimension).eval();
-        // kdtree_->addPoints(spatial_samples_only);
-        kdtree_->addPoints(all_samples);
-        kdtree_->buildTree();
-    }
+    // KD-TREE
+    Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
+    int spatial_dimension = kd_dim;
+    Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(spatial_dimension).eval();
+    // kdtree_->addPoints(spatial_samples_only);
+    kdtree_->addPoints(all_samples);
+    kdtree_->buildTree(); // Empty function in "DynamicWeightedNanoFlann" class
 
     ///////////////////Neighborhood Radius//////////////////////////
     dimension_ = statespace_->getDimension();

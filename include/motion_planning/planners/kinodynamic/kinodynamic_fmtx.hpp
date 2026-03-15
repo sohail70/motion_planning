@@ -41,7 +41,7 @@ class KinodynamicFMTX : public Planner {
             void updateObstacleSamples(const ObstacleVector& obstacles);
             void addNewObstacle(const Obstacle& ob);
             void removeObstacle(const Obstacle& ob);
-            double heuristic(int current_index);
+            // double heuristic(int current_index);
             void clearPlannerState();
             void dumpTreeToCSV(const std::string& filename) const;
             double getAvgOutDegree() const {
@@ -85,7 +85,7 @@ class KinodynamicFMTX : public Planner {
             bool use_kdtree;
             double neighborhood_radius_;
             int k_neighbors_;
-            bool use_heuristic = false;
+            // bool use_heuristic = false;
             bool partial_update = false;
             bool use_knn = false;
             bool neighbor_precache = false;

@@ -6,22 +6,13 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
                                             const Params& params,
                                             const std::unordered_map<std::string, ObstacleInfo>& obstacle_info)
         : clock_(clock),
-          obstacle_info_(obstacle_info),
-          robot_position_(Eigen::Vector2d::Zero()),
-          robot_orientation_(Eigen::VectorXd(4)) {  // Initialize orientation as a 4D vector for quaternion
+          obstacle_info_(obstacle_info){  // Initialize orientation as a 4D vector for quaternion
 
-    use_range = params.getParam<bool>("use_range");
-    sensor_range = params.getParam<double>("sensor_range");
     inflation = params.getParam<double>("inflation");
-    robot_position_ << params.getParam<double>("default_robot_x"), params.getParam<double>("default_robot_y");
-    spatial_dim_ = params.getParam<int>("spatial_dim", 2); // Defaults to 2 for backward compatibility
     is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
     initial_budget_time_ = params.getParam<double>("initial_budget_time");
 
-
-    // =========================================================================
-    // CRITICAL FIX: Initialize obstacle_positions_map_ from obstacle_info_
-    // =========================================================================
+    // Initialize obstacle_positions_map_ from obstacle_info_
     for (const auto& [name, info] : obstacle_info_) {
         Obstacle ob;
         ob.name = name;
@@ -372,18 +363,6 @@ bool GazeboObstacleChecker::isTrajectorySafe(
     }
 
     return true; // Safe against the whole world
-}
-
-
-
-Eigen::Vector2d GazeboObstacleChecker::getRobotPosition() const {
-    // std::lock_guard<std::mutex> lock(data_mutex_);
-    return robot_position_;
-}
-
-Eigen::VectorXd GazeboObstacleChecker::getRobotOrientation() const {
-    // std::lock_guard<std::mutex> lock(data_mutex_);
-    return robot_orientation_;
 }
 
 const ObstacleVector& GazeboObstacleChecker::getObstaclePositions() const {

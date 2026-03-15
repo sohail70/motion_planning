@@ -34,45 +34,87 @@ struct ExperimentConfig {
     std::vector<double> start_state;
     std::vector<double> goal_state;
     int dimensions;
-    int spatial_dim;
     std::vector<double> bounds_min;
     std::vector<double> bounds_max;
     double min_velocity = 0.0;
     double max_velocity = 20.0;
-    double robot_velocity = 10.0;
     double min_turning_radius = 2.0;
     double max_acceleration = 5.0;
     std::string sdf_path;
     std::map<std::string, std::string> planner_params_str;
     std::map<std::string, std::string> manager_params_str;
     std::map<std::string, std::string> gazebo_params_str;
-};
 
+
+    bool is_geometric_mode() const {
+        // Use the explicit planner flag as primary source
+        if (planner_params_str.count("is_geometric_mode")) {
+            std::string val = planner_params_str.at("is_geometric_mode");
+            return val == "true";
+        }
+    }
+
+    double time_extent() const {              // single source for time dimension
+        return is_geometric_mode() ? 0.0 : time_budget;
+    }
+
+    double get_inflation() const {
+        // Prefer gazebo → manager → default (minimal logic)
+        if (gazebo_params_str.count("inflation"))
+            return std::stod(gazebo_params_str.at("inflation"));
+        if (manager_params_str.count("inflation"))
+            return std::stod(manager_params_str.at("inflation"));
+        return 0.75;
+    }
+
+};
 ExperimentConfig loadConfig(const std::string& filepath) {
     YAML::Node config = YAML::LoadFile(filepath);
     ExperimentConfig c;
-    c.name = config["experiment"]["name"].as<std::string>();
-    c.planner_type = config["experiment"]["planner_type"].as<std::string>();
+
+    // Experiment block (required)
+    c.name            = config["experiment"]["name"].as<std::string>();
+    c.planner_type    = config["experiment"]["planner_type"].as<std::string>();
     c.state_space_type = config["experiment"]["state_space_type"].as<std::string>();
-    c.manager_type = config["experiment"]["manager_type"].as<std::string>();
-    c.time_budget = config["simulation"]["time_budget"].as<double>();
-    c.duration_limit = config["simulation"]["duration_limit"].as<int>();
+    c.manager_type    = config["experiment"]["manager_type"].as<std::string>();
+
+    // Simulation block (time_budget optional for geometric)
+    if (config["simulation"]["time_budget"]) {
+        c.time_budget = config["simulation"]["time_budget"].as<double>();
+    }
+    if (config["simulation"]["duration_limit"]) {
+        c.duration_limit = config["simulation"]["duration_limit"].as<int>();
+    } 
     c.slice_time = config["simulation"]["slice_time"].as<double>();
-    c.seed = config["simulation"]["seed"].as<unsigned int>();
-    c.start_state = config["robot"]["start_state"].as<std::vector<double>>();
-    c.goal_state = config["robot"]["goal_state"].as<std::vector<double>>();
-    c.dimensions = config["robot"]["dimensions"].as<int>();
-    c.spatial_dim = config["robot"]["spatial_dim"].as<int>();
-    c.bounds_min = config["robot"]["bounds_min"].as<std::vector<double>>();
-    c.bounds_max = config["robot"]["bounds_max"].as<std::vector<double>>();
-    if (config["robot"]["min_velocity"]) c.min_velocity = config["robot"]["min_velocity"].as<double>();
-    if (config["robot"]["max_velocity"]) c.max_velocity = config["robot"]["max_velocity"].as<double>();
-    if (config["robot"]["robot_velocity"]) c.robot_velocity = config["robot"]["robot_velocity"].as<double>();
-    if (config["robot"]["min_turning_radius"]) c.min_turning_radius = config["robot"]["min_turning_radius"].as<double>();
-    if (config["robot"]["max_acceleration"]) c.max_acceleration = config["robot"]["max_acceleration"].as<double>();
+    c.seed       = config["simulation"]["seed"].as<unsigned int>();
+
+    // Robot block (spatial parts always present, dynamics optional)
+    c.start_state    = config["robot"]["start_state"].as<std::vector<double>>();
+    c.goal_state     = config["robot"]["goal_state"].as<std::vector<double>>();
+    c.dimensions     = config["robot"]["dimensions"].as<int>();
+    c.bounds_min     = config["robot"]["bounds_min"].as<std::vector<double>>();
+    c.bounds_max     = config["robot"]["bounds_max"].as<std::vector<double>>();
+
+    // Dynamics — only set if present (no crash if missing)
+    if (config["robot"]["min_velocity"]) {
+        c.min_velocity = config["robot"]["min_velocity"].as<double>();
+    }
+    if (config["robot"]["max_velocity"]) {
+        c.max_velocity = config["robot"]["max_velocity"].as<double>();
+    }
+    if (config["robot"]["min_turning_radius"]) {
+        c.min_turning_radius = config["robot"]["min_turning_radius"].as<double>();
+    }
+    if (config["robot"]["max_acceleration"]) {
+        c.max_acceleration = config["robot"]["max_acceleration"].as<double>();
+    }
+
+    // SDF path (required for Gazebo)
     c.sdf_path = config["gazebo_params"]["sdf_path"].as<std::string>();
-    
+
+    // Param maps (optional sections)
     auto load_map = [](YAML::Node node, std::map<std::string, std::string>& map) {
+        if (!node) return;
         for (const auto& kv : node) {
             map[kv.first.as<std::string>()] = kv.second.as<std::string>();
         }
@@ -80,6 +122,7 @@ ExperimentConfig loadConfig(const std::string& filepath) {
     if (config["planner_params"]) load_map(config["planner_params"], c.planner_params_str);
     if (config["manager_params"]) load_map(config["manager_params"], c.manager_params_str);
     if (config["gazebo_params"]) load_map(config["gazebo_params"], c.gazebo_params_str);
+
     return c;
 }
 
@@ -114,8 +157,8 @@ struct LogEntry {
     double path_cost = 0.0;
     
     int obstacle_checks     = 0;
-    int nodes_updated       = 0;          // ← NEW
-    long long queue_operations = 0;       // ← NEW
+    int nodes_updated       = 0;
+    long long queue_operations = 0;
     int orphaned_nodes      = 0;
     int collision_count     = 0;
     int tree_size           = 0;
@@ -144,16 +187,14 @@ int main(int argc, char** argv) {
     populateParams(gazebo_params, cfg.gazebo_params_str);
     populateParams(planner_params, cfg.planner_params_str);
 
-    // CRITICAL: Propagate shared parameters to ensure consistency
     gazebo_params.setParam("initial_budget_time", cfg.time_budget);
-    manager_params.setParam("inflation", gazebo_params.getParam<double>("inflation"));
-    
-    // Determine mode globally
-    bool is_geometric_mode = (cfg.time_budget == 0.0);
-    
-    // FORCE SYNC: Ensure is_geometric_mode is set in both Gazebo and Planner params
+    bool is_geometric_mode = cfg.is_geometric_mode();
     gazebo_params.setParam("is_geometric_mode", is_geometric_mode);
     planner_params.setParam("is_geometric_mode", is_geometric_mode);
+    double infl = cfg.get_inflation();
+    gazebo_params.setParam("inflation", infl);
+    manager_params.setParam("inflation", infl);
+
 
     // --- 2. ROS & Vis ---
     auto vis_node = std::make_shared<rclcpp::Node>(cfg.name + "_visualizer",
@@ -167,14 +208,60 @@ int main(int argc, char** argv) {
 
     // --- 4. Problem Definition ---
     auto problem_def = std::make_shared<ProblemDefinition>(cfg.dimensions);
+
     Eigen::VectorXd start_vec(cfg.dimensions);
     Eigen::VectorXd goal_vec(cfg.dimensions);
     Eigen::VectorXd lower_vec(cfg.dimensions);
     Eigen::VectorXd upper_vec(cfg.dimensions);
-    for(int i=0; i<cfg.dimensions; ++i) start_vec(i) = cfg.start_state[i];
-    for(int i=0; i<cfg.dimensions; ++i) goal_vec(i) = cfg.goal_state[i];
-    for(int i=0; i<cfg.dimensions; ++i) lower_vec(i) = cfg.bounds_min[i];
-    for(int i=0; i<cfg.dimensions; ++i) upper_vec(i) = cfg.bounds_max[i];
+
+    // These vectors now have size = number of spatial dimensions only
+    Eigen::VectorXd start_spatial(cfg.start_state.size());
+    Eigen::VectorXd goal_spatial (cfg.goal_state.size());
+    Eigen::VectorXd lower_spatial(cfg.bounds_min.size());
+    Eigen::VectorXd upper_spatial(cfg.bounds_max.size());
+
+    for (size_t i = 0; i < cfg.start_state.size(); ++i)
+        start_spatial(i) = cfg.start_state[i];
+    for (size_t i = 0; i < cfg.goal_state.size(); ++i)
+        goal_spatial(i)  = cfg.goal_state[i];
+    for (size_t i = 0; i < cfg.bounds_min.size(); ++i)
+        lower_spatial(i) = cfg.bounds_min[i];
+    for (size_t i = 0; i < cfg.bounds_max.size(); ++i)
+        upper_spatial(i) = cfg.bounds_max[i];
+
+    // ── 2. Decide if we need to add a time dimension ──
+    bool needs_time_dimension = (cfg.dimensions > static_cast<int>(cfg.start_state.size()));
+
+    // Safety check (optional but very useful during development)
+    if (cfg.dimensions < static_cast<int>(cfg.start_state.size())) {
+        throw std::runtime_error("dimensions in YAML is smaller than start_state size!");
+    }
+    if (cfg.start_state.size() != cfg.goal_state.size() ||
+        cfg.start_state.size() != cfg.bounds_min.size() ||
+        cfg.start_state.size() != cfg.bounds_max.size()) {
+        throw std::runtime_error("start/goal/bounds size mismatch in YAML!");
+    }
+
+    // ── 3. Build final vectors ──
+    start_vec = start_spatial;
+    goal_vec  = goal_spatial;
+    lower_vec = lower_spatial;
+    upper_vec = upper_spatial;
+
+    if (needs_time_dimension) {
+        // Append time slot — single source of truth
+        int time_idx = cfg.dimensions - 1;
+
+        start_vec.conservativeResize(cfg.dimensions);
+        goal_vec.conservativeResize(cfg.dimensions);
+        lower_vec.conservativeResize(cfg.dimensions);
+        upper_vec.conservativeResize(cfg.dimensions);
+
+        start_vec(time_idx) = cfg.time_extent();   // 0.0 or time_budget
+        goal_vec(time_idx)  = 0.0;                 // goal time is always 0
+        lower_vec(time_idx) = 0.0;
+        upper_vec(time_idx) = cfg.time_extent();   // time budget is max time
+    }
     
     // Planner Setup: Start=Goal, Goal=Start (Backward Search)
     problem_def->setStart(goal_vec);  
@@ -185,7 +272,7 @@ int main(int argc, char** argv) {
     std::shared_ptr<StateSpace> statespace;
     if (cfg.state_space_type == "RDT") {
         // Pass the boolean flag directly to the constructor
-        statespace = std::make_shared<RDTStateSpace>(cfg.spatial_dim, cfg.min_velocity, cfg.max_velocity, cfg.robot_velocity, 30000, cfg.seed, is_geometric_mode);
+        statespace = std::make_shared<RDTStateSpace>(cfg.dimensions, cfg.min_velocity, cfg.max_velocity, cfg.seed, is_geometric_mode);
     } else if (cfg.state_space_type == "Dubins") {
         statespace = std::make_shared<DubinsTimeStateSpace>(cfg.min_turning_radius, cfg.min_velocity, cfg.max_velocity, cfg.seed);
     } else if (cfg.state_space_type == "Thruster") {
@@ -202,11 +289,7 @@ int main(int argc, char** argv) {
         std::cout << "[MODE] Geometric (R2) detected. Disabling ROS2 Manager." << std::endl;
     } else {
         if (cfg.manager_type == "R2T") {
-            Eigen::VectorXd r2t_initial_state(3);
-            r2t_initial_state(0) = start_vec(0); 
-            r2t_initial_state(1) = start_vec(1); 
-            r2t_initial_state(2) = cfg.time_budget; 
-            ros_manager = std::make_shared<R2TROS2Manager>(obstacle_checker, visualization, manager_params, cfg.robot_velocity, r2t_initial_state, cfg.time_budget);
+            ros_manager = std::make_shared<R2TROS2Manager>(obstacle_checker, visualization, manager_params, start_vec, cfg.time_budget);
         } else if (cfg.manager_type == "Dubins") {
             ros_manager = std::make_shared<DubinsROS2Manager>(obstacle_checker, visualization, manager_params, start_vec, cfg.time_budget);
         } else if (cfg.manager_type == "Thruster") {
@@ -296,7 +379,6 @@ int main(int argc, char** argv) {
     auto global_start = std::chrono::steady_clock::now();
     auto time_limit = std::chrono::seconds(cfg.duration_limit);
     auto start_time = std::chrono::steady_clock::now();
-    bool limited = !manager_params.getParam<bool>("follow_path");
     
     CALLGRIND_START_INSTRUMENTATION;
 
@@ -539,11 +621,9 @@ int main(int argc, char** argv) {
             double current_update_ms = 0.0;
             double current_plan_ms = 0.0;
 
-            if (limited) {
-                if (std::chrono::steady_clock::now() - start_time > time_limit) {
-                    std::cout << "[INFO] Time limit reached." << std::endl;
-                    break;
-                }
+            if (std::chrono::steady_clock::now() - start_time > time_limit) {
+                std::cout << "[INFO] Time limit reached." << std::endl;
+                break;
             }
 
             sim_time += 1.0 / loop_rate_hz;

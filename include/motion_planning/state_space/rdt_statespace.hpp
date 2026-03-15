@@ -13,7 +13,7 @@
  */
 class RDTStateSpace : public StateSpace {
 public:
-    RDTStateSpace(int euclidean_dimension, double min_velocity, double max_velocity, double robot_velocity, int initial_capacity = 1000, unsigned int seed = 42, bool is_geometric_mode = false);
+    RDTStateSpace(int euclidean_dimension, double min_velocity, double max_velocity, unsigned int seed = 42, bool is_geometric_mode = false);
 
     std::shared_ptr<State> addState(const Eigen::VectorXd& value) override;
     std::shared_ptr<State> sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) override;
@@ -34,7 +34,6 @@ private:
     int euclidean_dim_;
     double min_velocity_;
     double max_velocity_;
-    double robot_velocity_;
     Eigen::VectorXd distance_weights_;
     bool is_geometric_mode_;
 };

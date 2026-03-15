@@ -8,66 +8,65 @@ experiment:
 # Simulation Settings
 simulation:
   time_budget: 20.0
-  duration_limit: 30 # seconds
   slice_time: 0.02
   seed: 42
 
 # Robot & State Space Definition
 robot:
-  start_state: [48.0, 48.0, 20.0] # x, y, time_budget (Must match dim)
-  goal_state:  [-48.0, -48.0, 0.0] # x, y, time_to_go
+  start_state: [48.0, 48.0] # x, y, time_budget (Must match dim)
+  goal_state:  [-48.0, -48.0] # x, y, time_to_go
   dimensions: 3 # 2 for R2, 3 for R2T, 4 for Dubins, 5 for Thruster
-  spatial_dim: 2
-  bounds_min: [-50.0, -50.0, 0.0]
-  bounds_max: [50.0, 50.0, 20.0]
+  # spatial_dim: 2
+  bounds_min: [-50.0, -50.0]
+  bounds_max: [50.0, 50.0]
   
   # Dynamics specific parameters
   min_velocity: 0.0
   max_velocity: 20.0
-  robot_velocity: 10.0
+  # robot_velocity: 10.0
   # Dubins specific (ignored if R2T)
-  min_turning_radius: 2.0
+  # min_turning_radius: 2.0
   # Thruster specific (ignored if R2T)
-  max_acceleration: 5.0
+  # max_acceleration: 5.0
 
 # Planner Parameters
 planner_params:
-  num_of_samples: 500
+  num_of_samples: 65
   factor: 2.0
   delta: 15.0
-  partial_plot: "true" 
-  static_obs_presence: "true"
-  obs_cache: "false"
-  use_kdtree: true
+  # partial_plot: "true" 
+  # static_obs_presence: "true"
+  # obs_cache: "false"
+  # use_kdtree: true
   kdtree_type: "NanoFlann"
   partial_update: true
   kd_dim: 3 # 3 for R2T
-  precache_neighbors: true
-  use_heuristic: false
+  # precache_neighbors: true
+  # use_heuristic: false
   is_geometric_mode: false # Important flag for your planner
 
 
 # Manager / Gazebo Parameters
 manager_params:
-  use_sim_time: true
-  sim_time_step: -0.04
-  sim_frequency_hz: 50
+  # use_sim_time: true
+  # sim_time_step: -0.04
+  # sim_frequency_hz: 50
   vis_frequency_hz: 30
-  follow_path: true
-  inflation: 0.75
+  # follow_path: true
+  # inflation: 0.75
 
 gazebo_params:
-  robot_model_name: "tugbot"
-  world_name: "default"
-  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf"
+  # robot_model_name: "tugbot"
+  # world_name: "default"
+  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_1_obs.sdf"
   inflation: 0.75
-  default_robot_x: 48.0  
-  default_robot_y: 48.0
-  use_range: false
-  sensor_range: 20.0
-  estimation: true
-  kf_model_type: "cv"
-  fcl: false
-  bullet: false
-  persistent_static_obstacles: false
-  is_geometric_mode: false
+  # default_robot_x: 48.0  
+  # default_robot_y: 48.0
+  # use_range: false
+  # sensor_range: 20.0
+  # estimation: true
+  # kf_model_type: "cv"
+  # fcl: false
+  # bullet: false
+  # persistent_static_obstacles: false
+  # is_geometric_mode: false
