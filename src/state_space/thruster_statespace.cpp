@@ -970,8 +970,39 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
 
     traj_out.is_valid = true;
     // traj_out.cost = duration;
-    traj_out.cost = std::sqrt(duration * duration + traj_out.geometric_distance * traj_out.geometric_distance);
+    // traj_out.cost = std::sqrt(duration * duration + traj_out.geometric_distance * traj_out.geometric_distance);
     traj_out.time_duration = duration;    
+
+    // 1. Define scaling constants (weights) for the state space
+    // These constants balance position (m), velocity (m/s), and time (s).
+    // You should tune these based on your application so d(x,y) returns a reasonable neighbor set.
+    double c_x = 1.0; 
+    double c_v = 1.0; 
+    double c_t = 1.0; 
+
+    double state_space_cost = 0.0;
+    
+    // 2. Calculate State-Space Length via Numerical Integration
+    // The text specifies: "d_pi(x1, x2) is defined by the state-space length of the 
+    // trajectory, calculated using numerical integration".
+    for (long i = 0; i < fine_Time_local.size() - 1; ++i) {
+        // Since you are doing backward search, ensure dt is positive
+        double dt = std::abs(fine_Time_local(i+1) - fine_Time_local(i));
+        
+        // Calculate the Euclidean norm of position and velocity differences
+        double dx = (fine_X.row(i+1) - fine_X.row(i)).norm();
+        double dv = (fine_V.row(i+1) - fine_V.row(i)).norm();
+        
+        // Compute Euclidean distance in the weighted 5D state-space: 
+        // d = sqrt((c_x * dx)^2 + (c_v * dv)^2 + (c_t * dt)^2)
+        double segment_cost = std::sqrt((c_x * c_x * dx * dx) + 
+                                        (c_v * c_v * dv * dv) + 
+                                        (c_t * c_t * dt * dt));
+                                        
+        state_space_cost += segment_cost;
+    }
+
+    traj_out.cost = state_space_cost;
 
 
     // The solver gives us the correct path shape (X) and velocities (V).

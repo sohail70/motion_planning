@@ -79,6 +79,7 @@ public:
     // std::unordered_set<std::string> threats_;
     std::vector<const Obstacle*> threats_;
 
+    EdgeMap culled_outgoing_edges_; // Ghost edges (Sender forgot, but Receiver remembered) --> u forgot but v remembers (u is old and v is new)
     EdgeMap unculled_outgoing_edges_;  // RRTx never loses the outgoing edge object during cullNeighbor it just hides it from normal rewiring, but keeps it visible for obstacle checking. So I keep a copy of the unculled outgoing edges for addNewObstacle and only cull the outgoing_edges_
 private:
     std::shared_ptr<State> state_;

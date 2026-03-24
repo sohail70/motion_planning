@@ -200,7 +200,6 @@ bool GazeboObstacleChecker::isObstacleFree(const std::vector<Eigen::VectorXd>& p
 
 bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
     const Trajectory& trajectory,
-    double global_edge_start_time,
     const Obstacle& ob) const
 {
     // auto logger = rclcpp::get_logger("GazeboChecker");
@@ -347,8 +346,7 @@ bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
 
 
 bool GazeboObstacleChecker::isTrajectorySafe(
-    const Trajectory& trajectory,
-    double global_edge_start_time // Time-To-Goal (TTG)
+    const Trajectory& trajectory
 ) const {
     // 1. Get the current world snapshot
     // (This list already contains the updated positions/velocities)
@@ -357,7 +355,7 @@ bool GazeboObstacleChecker::isTrajectorySafe(
     // 2. Loop through EVERY obstacle and check its Tube
     for (const auto& ob : all_obs) {
         // If an edge hits ANY obstacle's predicted path, it's NOT safe
-        if (!isTrajectorySafeAgainstSingleObstacle(trajectory, global_edge_start_time, ob)) {
+        if (!isTrajectorySafeAgainstSingleObstacle(trajectory, ob)) {
             return false; 
         }
     }

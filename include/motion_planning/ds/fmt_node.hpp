@@ -14,8 +14,8 @@ public:
         Reasons: 1) Lots of looping over neighbors in FMTX
                  2) The number of neighbors are limited because we pre-sample in FMTx so cost of insertion which is log(n) in flat map due to sorting is negligble
     */
-    using NeighborMap = boost::container::flat_map<FMTNode*, EdgeInfo>;
-    // using NeighborMap = std::unordered_map<FMTNode*, EdgeInfo>;
+    // using NeighborMap = boost::container::flat_map<FMTNode*, EdgeInfo>;
+    using NeighborMap = std::unordered_map<FMTNode*, EdgeInfo>;
     // using NeighborMap = absl::node_hash_map<FMTNode*, EdgeInfo>;
     
     explicit FMTNode(std::shared_ptr<State> state, int index = -1);
@@ -95,7 +95,6 @@ public:
     size_t heap_index_;  // Tracks position in the priority queue
 
     bool in_unvisited_;
-    bool is_new = true;
     double edge_cost_;
     /*
         blocked_best_neighbor: one thing about FMT is it exhausts the z nodes as it goes and in some bad cases near obstacles 
@@ -124,6 +123,7 @@ public:
     std::vector<const Obstacle*> threats;
 
     double last_culled_radius_ = -1.0; // Initialize to invalid radius
+
 
 
 private:

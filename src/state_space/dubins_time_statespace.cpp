@@ -115,8 +115,13 @@ Trajectory DubinsTimeStateSpace::steer(const Eigen::VectorXd& from, const Eigen:
     // Replace the 3D path with the new 4D path
     traj_geom.path_points = path_points_4d;
 
-    // The true cost of this trajectory is the time it takes to execute --> NO I THINK THE SPATIAL DATA NEEDS TO BE INCLUDED ALSO!
-    traj_geom.cost = std::sqrt(std::pow(time_elapsed,2) + std::pow (workspace_distance,2));
+    // The true cost of this trajectory is the state-space arc length.
+    // We apply a scaling factor (c_t) to map seconds into a comparable metric space.
+    double c_t = 1.0; // Higher values penalize long durations more heavily.
+    
+    // Cost = sqrt((workspace_distance)^2 + (c_t * time_elapsed)^2)
+    traj_geom.cost = std::sqrt(std::pow(workspace_distance, 2) + std::pow(c_t * time_elapsed, 2));
+
     traj_geom.time_duration = time_elapsed;
     // auto end = std::chrono::steady_clock::now();
     // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);

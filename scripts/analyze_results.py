@@ -113,15 +113,53 @@
 # if __name__ == "__main__":
 #     main()
 
+##################################################################################################
+
 import pandas as pd
 import glob
 import os
 import re
 import numpy as np
-
+import matplotlib.pyplot as plt
 # --- CONFIGURATION ---
 BUILD_DIR = "../build/" 
 FILENAME_PATTERN = re.compile(r"sim_([A-Za-z0-9]+)_([A-Za-z0-9_]+)_(\d{8}_\d{6})_metrics\.csv")
+
+def save_path_cost_plot(results, scenario_name):
+    if not results:
+        return
+
+    plt.figure()
+
+    for res in results:
+        df = res['data']
+        planner = res['planner']
+
+        if 'path_cost' not in df.columns or 'time_to_goal' not in df.columns:
+            continue
+
+        # ✅ USE SIMULATION TIME
+        # The time_to_goal decreases from Budget down to 0.
+        # To make the X-axis go from 0 to Budget (forward simulation time):
+        max_budget = df['time_to_goal'].max()
+        x = max_budget - df['time_to_goal'] 
+        
+        y = df['path_cost']
+
+        plt.plot(x, y, label=planner)
+
+    plt.xlabel("Simulation Time (s)")
+    plt.ylabel("Path Cost")
+    plt.title(f"Path Cost vs Simulation Time - {scenario_name}")
+    plt.legend()
+    plt.grid()
+
+    out_path = os.path.join(BUILD_DIR, f"path_cost_{scenario_name}.png")
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+    print(f"[Saved] Path cost plot: {out_path}")
+
 
 def load_data(directory):
     if not os.path.exists(directory): return {}
@@ -230,6 +268,12 @@ def main():
     for scenario_name, results in scenarios.items():
         results.sort(key=lambda x: x['planner'])
         analyze_group("DETAILED", results, scenario_name)
+    
+        save_path_cost_plot(results, scenario_name)
 
 if __name__ == "__main__":
     main()
+
+
+##################################################################################################
+

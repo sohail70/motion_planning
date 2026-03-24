@@ -1513,11 +1513,10 @@ void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& tu
 // #if !USE_INVALIDATING_SET_STRATEGY
 //         if (edge.distance == std::numeric_limits<double>::infinity()) return; 
 // #endif
-//         const double edge_start_ttg = node->getTimeToGoal();
 //         last_replan_metrics_.obstacle_checks++;
 
 //         // Physics Check
-//         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+//         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             
 //             // 1. Mark as Blocked (Forward Edge)
 //             if (edge.distance != std::numeric_limits<double>::infinity()) {
@@ -1626,13 +1625,12 @@ void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& tu
 //                 }
 //             }
 // #else
-//             const double ttg = node->getTimeToGoal();
-//             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
+//             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
 //                 bool conflicts_with_other = false;
 //                 for (const auto& other_ob : all_obstacles) {
 //                     if (other_ob.name == ob.name) continue; 
 //                     last_replan_metrics_.obstacle_checks++;
-//                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, other_ob)) {
+//                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), other_ob)) {
 //                         conflicts_with_other = true;
 //                         break; 
 //                     }
@@ -1730,11 +1728,10 @@ void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& tu
 //         // THE FILTER: Skip if already blocked
 //         if (edge.distance == std::numeric_limits<double>::infinity()) return; 
 
-//         const double edge_start_ttg = node->getTimeToGoal();
 //         last_replan_metrics_.obstacle_checks++;
 
 //         // Physics Check ONLY against the new obstacle
-//         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+//         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             
 //             // 1. Mark as Blocked (Forward Edge)
 //             edge.distance = std::numeric_limits<double>::infinity();
@@ -1818,7 +1815,6 @@ void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& tu
 //     // --- HELPER LAMBDA ---
 //     auto checkAndRestoreEdge = [&](DStarLiteNode* node, DStarLiteNode* neighbor, EdgeInfo& edge, bool& u_needs_update) {
 //         if (edge.distance == std::numeric_limits<double>::infinity()) {
-//             const double ttg = node->getTimeToGoal();
             
 //             // THE SPEEDUP: Check against the node's current threat list
 //             bool is_safe = true;
@@ -1828,7 +1824,7 @@ void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& tu
 //                 // Fetch the fully updated obstacle directly from the tracking map
 //                 const Obstacle& threat_ob = previous_obstacles_.at(threat_name); 
                 
-//                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, threat_ob)) {
+//                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), threat_ob)) {
 //                     is_safe = false;
 //                     break; // Edge is still physically blocked by another threat
 //                 }
@@ -1920,7 +1916,7 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
             const auto& obstacles = obs_checker_->getObstacles();
             for (const auto& ob : obstacles) {
                 last_replan_metrics_.obstacle_checks++;
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, robot_time_to_go, ob)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, ob)) {
                     safe = false;
                     break;
                 }
@@ -1964,7 +1960,7 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
             const auto& obstacles = obs_checker_->getObstacles();
             for (const auto& ob : obstacles) {
                 last_replan_metrics_.obstacle_checks++;
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, robot_time_to_go, ob)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, ob)) {
                     safe = false;
                     break; // early exit on collision
                 }
@@ -2470,7 +2466,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
         const double edge_start_ttg = node->getTimeToGoal();
         last_replan_metrics_.obstacle_checks++;
 
-        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             
             // if (edge.distance != std::numeric_limits<double>::infinity()) {
             //     edge.distance = std::numeric_limits<double>::infinity();
@@ -2686,10 +2682,9 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
     auto checkAndBlockEdge = [&](DStarLiteNode* node, DStarLiteNode* neighbor, EdgeInfo& edge, bool& u_needs_update) {
         if (edge.distance == std::numeric_limits<double>::infinity()) return; 
 
-        const double edge_start_ttg = node->getTimeToGoal();
         last_replan_metrics_.obstacle_checks++;
 
-        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             
             // edge.distance = std::numeric_limits<double>::infinity();
             // u_needs_update = true;
@@ -2775,13 +2770,12 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
 
     auto checkAndRestoreEdge = [&](DStarLiteNode* node, DStarLiteNode* neighbor, EdgeInfo& edge, bool& u_needs_update) {
         if (edge.distance == std::numeric_limits<double>::infinity()) {
-            const double ttg = node->getTimeToGoal();
             bool is_safe = true;
             
             // Loop natively through pointers
             for (const Obstacle* threat_ptr : node->threats_) {
                 last_replan_metrics_.obstacle_checks++;
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, *threat_ptr)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), *threat_ptr)) {
                     is_safe = false;
                     break;
                 }
@@ -2880,7 +2874,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
 //         const double edge_start_ttg = node->getTimeToGoal();
 //         last_replan_metrics_.obstacle_checks++;
 
-//         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+//         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
 //             edge.distance = std::numeric_limits<double>::infinity();
 //             u_needs_update = true;
 
@@ -2943,15 +2937,14 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
 
 //     auto checkAndRestoreEdge = [&](DStarLiteNode* node, DStarLiteNode* neighbor, EdgeInfo& edge, bool& u_needs_update) {
 //         if (edge.distance == std::numeric_limits<double>::infinity()) {
-//             const double ttg = node->getTimeToGoal();
 //             bool should_restore = false;
             
-//             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
+//             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
 //                 bool conflicts_with_other = false;
 //                 for (const auto& other_ob : all_obstacles) {
 //                     if (other_ob.name == ob.name) continue; 
 //                     last_replan_metrics_.obstacle_checks++;
-//                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, other_ob)) {
+//                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), other_ob)) {
 //                         conflicts_with_other = true;
 //                         break; 
 //                     }
@@ -3024,10 +3017,9 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
     auto checkAndBlockEdge = [&](DStarLiteNode* u, DStarLiteNode* v, EdgeInfo& edge, bool& u_needs_update) {
         if (edge.distance == INFINITY) return; // already blocked
 
-        const double edge_start_ttg = u->getTimeToGoal();
         last_replan_metrics_.obstacle_checks++;
 
-        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             // OLD and NEW
             double c_old = edge.distance;
             double c_new = INFINITY;
@@ -3119,16 +3111,15 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
     auto checkAndRestoreEdge = [&](DStarLiteNode* u, DStarLiteNode* v, EdgeInfo& edge, bool& u_needs_update) {
         if (edge.distance != INFINITY) return; // already available
 
-        const double ttg = u->getTimeToGoal();
         bool should_restore = false;
         last_replan_metrics_.obstacle_checks++;
         // Check if obstacle blocked it and whether other obstacles still block it
-        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             bool conflicts_with_other = false;
             for (const auto& other_ob : all_obstacles) {
                 if (other_ob.name == ob.name) continue;
                 last_replan_metrics_.obstacle_checks++;
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, other_ob)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), other_ob)) {
                     conflicts_with_other = true;
                     break;
                 }

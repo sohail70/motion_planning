@@ -139,12 +139,12 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
                     weights << 1.0, 1.0, 1.0; // Weights for x, y, time
                 }
                 break;
-            case 4: // (x, y, theta, time) - From your Dubins example
+            case 4: // (x, y, theta, time)
                 {
                     weights << 1.0, 1.0, 1.0, 1.0; // Weights for x, y, theta, time
                 }
                 break;
-            case 5: // (x, y, vx, vy, time) - From your Dubins example
+            case 5: // (x, y, vx, vy, time)
                 {
                     weights << 1.0, 1.0, 1.0, 1.0, 1.0; 
                 }
@@ -321,7 +321,6 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     } else {
         new_node->setTimeToGoal(0.0);
     }
-    double v_time = new_node->getTimeToGoal();
 
     evaluated_edges.resize(neighbors.size());
     for (size_t i = 0; i < neighbors.size(); ++i) {
@@ -352,7 +351,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
             for (const Obstacle* ob_ptr : local_threats) {
                 const Obstacle& ob = *ob_ptr;
                 last_replan_metrics_.obstacle_checks++;
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_fwd_traj, v_time, ob)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_fwd_traj, ob)) {
                     evaluated_edges[i].fwd_safe = false;
                     evaluated_edges[i].fwd_blockers.push_back(ob_ptr); 
                 }
@@ -398,7 +397,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
                 for (const Obstacle* ob_ptr : local_threats) {
                     const Obstacle& ob = *ob_ptr;
                     last_replan_metrics_.obstacle_checks++;
-                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_rev_traj, u->getTimeToGoal(), ob)) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_rev_traj, ob)) {
                         evaluated_edges[i].rev_safe = false;
                         evaluated_edges[i].rev_blockers.push_back(ob_ptr);
                     }
@@ -494,7 +493,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
             
             for (const Obstacle* threat_ptr : new_node->threats_) {
                 last_replan_metrics_.obstacle_checks++;
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_fwd_traj, v_time, *threat_ptr)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_fwd_traj, *threat_ptr)) {
                     evaluated_edges[i].fwd_safe = false;
                     break; 
                 }
@@ -536,7 +535,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
                 
                 for (const Obstacle* threat_ptr : u->threats_) {
                     last_replan_metrics_.obstacle_checks++;
-                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_rev_traj, u->getTimeToGoal(), *threat_ptr)) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_rev_traj, *threat_ptr)) {
                         evaluated_edges[i].rev_safe = false;
                         break;
                     }
@@ -626,7 +625,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 //             // Brute force against all known obstacles
 //             for (const auto& ob : all_obstacles) {
 //                 last_replan_metrics_.obstacle_checks++;
-//                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(fwd_traj, v_time, ob)) {
+//                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(fwd_traj, ob)) {
 //                     evaluated_edges[i].fwd_safe = false;
 //                     break; 
 //                 }
@@ -667,7 +666,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 //                 // Brute force reverse edge
 //                 for (const auto& ob : all_obstacles) {
 //                     last_replan_metrics_.obstacle_checks++;
-//                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(rev_traj, u->getTimeToGoal(), ob)) {
+//                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(rev_traj, ob)) {
 //                         evaluated_edges[i].rev_safe = false;
 //                         break;
 //                     }
@@ -724,7 +723,6 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     } else {
         new_node->setTimeToGoal(0.0);
     }
-    double v_time = new_node->getTimeToGoal();
 
     // Fetch globally tracked obstacles for brute-force checking
     const ObstacleVector& all_obstacles = obs_checker_->getObstacles();
@@ -758,7 +756,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
             for (const auto& ob : all_obstacles) {
                 last_replan_metrics_.obstacle_checks++;
                 // Dereference pointer for the checker
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_fwd_traj, v_time, ob)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_fwd_traj, ob)) {
                     evaluated_edges[i].fwd_safe = false;
                     break;
                 }
@@ -803,7 +801,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
                 // Brute force reverse edge
                 for (const auto& ob : all_obstacles) {
                     last_replan_metrics_.obstacle_checks++;
-                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_rev_traj, u->getTimeToGoal(), ob)) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_rev_traj, ob)) {
                         evaluated_edges[i].rev_safe = false;
                         break;
                     }
@@ -995,6 +993,8 @@ void KinodynamicRRTX::cullNeighbors(RRTxNode* v) {
 
             // SOURCE CULL: Evaluate removing the neighbor from v's active set.
             if (!edge.is_initial) {
+                // Move it to the passive map (required for RRTX's obstacle repair)
+                v->culled_outgoing_edges_[neighbor] = edge;
                 // Remove from active map and advance iterator
                 it = outgoing.erase(it);
                 // outgoing.erase(it++); //for absl
@@ -1137,18 +1137,12 @@ void KinodynamicRRTX::propagateDescendants() {
 
 
 void KinodynamicRRTX::visualizeTree() {
-    // std::cout<<"--------------------------- \n";
-    // Using a more appropriate name since the edges are straight lines.
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-    // std::cout<<vbot_node_->getCost()<<"\n";
-    // OPTIMIZATION: Reserve memory for one edge per node (except the root).
-    // This is more accurate and prevents reallocations.
     if (!tree_.empty()) {
         edges.reserve(tree_.size());
     }
     std::vector<Eigen::VectorXd> tree_nodes;
 
-    // Iterate through all nodes in the tree.
     for (const auto& node_ptr : tree_) {
         RRTxNode* child_node = node_ptr.get();
         RRTxNode* parent_node = child_node->getParent();
@@ -1158,20 +1152,17 @@ void KinodynamicRRTX::visualizeTree() {
         // If a node has a parent, it forms a valid edge in the tree.
         if (parent_node) {
             
-            // std::cout<<"INDEX: "<<child_node->getIndex()<<" , COST: "<<child_node->getCost()<<"\n";
             // Add a single, straight-line edge from the parent's state to the child's state.
             // No need to check for intermediate points.
             edges.emplace_back(parent_node->getStateValue(), child_node->getStateValue());
         }
     }
     
-    // std::cout<<"Tree Size: "<< tree_nodes.size()<<"\n";
 
     // visualization_->visualizeNodes(tree_nodes, "map", 
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Red for tree
     //                         "tree_nodes");
     
-    // Visualize the collected straight-line edges.
     visualization_->visualizeEdges(edges, "map");
 }
 
@@ -1303,7 +1294,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     } else if (kd_dim == 5) {
         query_point = robot_continuous_state_; 
     }
-    // --- HYSTERESIS LOGIC ---
+    // HYSTERESIS LOGIC
     const double hysteresis_factor = 0.98;
     double cost_of_current_path = std::numeric_limits<double>::infinity();
     if (vbot_node_ && vbot_node_->getCost() != INFINITY) {
@@ -1319,7 +1310,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
                 last_replan_metrics_.obstacle_checks++;
 
                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(
-                        bridge, robot_time_to_go, ob)) {
+                        bridge, ob)) {
                     safe = false;
                     break;
                 }
@@ -1354,7 +1345,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
             for (const auto& ob : obstacles) {
                 last_replan_metrics_.obstacle_checks++;
 
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, robot_time_to_go, ob)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, ob)) {
                     safe = false;
                     break;  // stop checking remaining obstacles for this bridge
                 }
@@ -1397,42 +1388,15 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
     // INTERNAL DEBUG VISUALIZATION
     if (visualization_) {
-        // std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> debug_edges;
-        // // If we have a valid anchor, recalculate the bridge path for visualization
         if (vbot_node_) {
-            // // Recalculate strictly for visualization
-            // Trajectory viz_bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
-            
-            // // Convert points to edges (segments)
-            // if (viz_bridge.path_points.size() >= 2) {
-            //     for (size_t i = 0; i < viz_bridge.path_points.size() - 1; ++i) {
-            //         debug_edges.emplace_back(viz_bridge.path_points[i], viz_bridge.path_points[i+1]);
-            //     }
-            // } else {
-            //     // Fallback: simple straight line from robot to anchor node
-                 
-            //     debug_edges.emplace_back(robot_continuous_state_, vbot_node_->getStateValue());
-            // }
-            // // Visualize in CYAN (0, 1, 1) so it stands out from the path (Green) and Tree (Red/Green)
-            // // Using a unique namespace "debug_anchor_trajectory" ensures it overwrites the previous frame
-            // visualization_->visualizeEdges(debug_edges, "map", "0.0,1.0,1.0", "debug_anchor_trajectory");
-            
-            // // OPTIONAL: Visualize the anchor node itself as a big dot
             std::vector<Eigen::VectorXd> anchor_pt = { vbot_node_->getStateValue().head<2>() };
             visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
-        } else {
-            // // CLEAR THE VISUALIZATION
-            // // Sending an empty list to the same namespace effectively deletes the markers
-            // visualization_->visualizeEdges({}, "map", "0.0,0.0,0.0", "debug_anchor_trajectory");
-            // visualization_->visualizeNodes({}, "map", {0.0f, 0.0f, 0.0f}, "debug_anchor_point");
-        }
+        } 
     }
 
 }
 
 bool KinodynamicRRTX::isRobotSafe() {
-    // If vbot_node_ is null, we have no anchor.
-    // If cost is INFINITY, the anchor is invalid (trapped).
     return (vbot_node_ != nullptr) && (vbot_node_->getCost() != INFINITY);
 }
 
@@ -1456,11 +1420,10 @@ bool KinodynamicRRTX::runForensics() {
             
             // Re-steer from Child back to Parent (matching RRTX shortest-path direction)
             Trajectory edge_traj = statespace_->steer(node->getStateValue(), parent->getStateValue());
-            double time_ref = node->getTimeToGoal(); 
 
             // // Verify against Absolute Ground Truth (previous_obstacles_ map)
             // for (const auto& [name, ob] : previous_obstacles_) {
-            //     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_traj, time_ref, ob)) {
+            //     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_traj, ob)) {
             //         edge_collides = true;
             //         guilty_obstacle = name;
             //         break;
@@ -1469,7 +1432,7 @@ bool KinodynamicRRTX::runForensics() {
             const ObstacleVector& current_obstacles = obs_checker_->getObstacles();
             // Iterate directly over the obstacle objects
             for (const auto& ob : current_obstacles) {
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_traj, time_ref, ob)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_traj, ob)) {
                     edge_collides = true;
                     guilty_obstacle = ob.name; // Access name via ob.name
                     break;
@@ -1625,10 +1588,9 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
     }
 
     auto checkAndBlockEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge) {
-        const double edge_start_ttg = node->getTimeToGoal();
         last_replan_metrics_.obstacle_checks++;
 
-        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             edge.distance = std::numeric_limits<double>::infinity();
             if (std::find(edge.invalidating_obstacles.begin(), edge.invalidating_obstacles.end(), &ob) == edge.invalidating_obstacles.end()) {
                 edge.invalidating_obstacles.push_back(&ob);
@@ -1641,7 +1603,7 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
                 }
             }
             
-            if (neighbor->getParent() == node) verifyOrphan(neighbor);
+            // if (neighbor->getParent() == node) verifyOrphan(neighbor);
             if (node->getParent() == neighbor) verifyOrphan(node);
             if (is_geometric_mode_ && neighbor->outgoingEdges().count(node)) {
                 auto& rev_edge = neighbor->outgoingEdges().at(node);
@@ -1652,7 +1614,7 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
                         node->incomingEdges().at(neighbor).distance =
                             std::numeric_limits<double>::infinity();
                     }
-                    if (node->getParent() == neighbor) verifyOrphan(node);
+                    // if (node->getParent() == neighbor) verifyOrphan(node);
                     if (neighbor->getParent() == node) verifyOrphan(neighbor);
                 }
             }
@@ -1661,7 +1623,8 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
 
     for (int idx : unique_node_indices) {
         RRTxNode* node = tree_[idx].get();
-        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
     }
 }
 
@@ -1737,7 +1700,8 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
         RRTxNode* node = tree_[idx].get();
         bool neighborsWereBlocked = false;
         
-        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
         
         if (neighborsWereBlocked) {
             updateLMC(node);
@@ -1777,17 +1741,16 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
     auto checkAndBlockEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge) {
         if (edge.distance == std::numeric_limits<double>::infinity()) return; 
 
-        const double edge_start_ttg = node->getTimeToGoal();
         last_replan_metrics_.obstacle_checks++;
 
-        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             edge.distance = std::numeric_limits<double>::infinity();
             
             if (neighbor->incomingEdges().count(node)) {
                 neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
             }
             
-            if (neighbor->getParent() == node) verifyOrphan(neighbor);
+            // if (neighbor->getParent() == node) verifyOrphan(neighbor);
             if (node->getParent() == neighbor) verifyOrphan(node);
 
             if (is_geometric_mode_ && neighbor->outgoingEdges().count(node)) {
@@ -1799,7 +1762,7 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
                         node->incomingEdges().at(neighbor).distance =
                             std::numeric_limits<double>::infinity();
                     }
-                    if (node->getParent() == neighbor) verifyOrphan(node);
+                    // if (node->getParent() == neighbor) verifyOrphan(node);
                     if (neighbor->getParent() == node) verifyOrphan(neighbor);
                 }
             }
@@ -1811,8 +1774,8 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
         if (std::find(node->threats_.begin(), node->threats_.end(), &ob) == node->threats_.end()) {
             node->threats_.push_back(&ob);
         }
-        
-        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
     }
 }
 
@@ -1842,13 +1805,12 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
     }
     auto checkAndRestoreEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge, bool& neighborsWereBlocked) {
         if (edge.distance == std::numeric_limits<double>::infinity()) {
-            const double ttg = node->getTimeToGoal();
             bool is_safe = true;
             
             // Iteration through contiguous pointers
             for (const Obstacle* threat_ptr : node->threats_) {
                 last_replan_metrics_.obstacle_checks++;
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, *threat_ptr)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), *threat_ptr)) {
                     is_safe = false;
                     break;
                 }
@@ -1889,7 +1851,8 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
 
         bool neighborsWereBlocked = false;
         
-        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
         
         if (neighborsWereBlocked) {
             updateLMC(node);
@@ -1929,17 +1892,16 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
     auto checkAndBlockEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge) {
         if (edge.distance == std::numeric_limits<double>::infinity()) return; 
 
-        const double edge_start_ttg = node->getTimeToGoal();
         last_replan_metrics_.obstacle_checks++;
 
-        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), edge_start_ttg, ob)) {
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             edge.distance = std::numeric_limits<double>::infinity();
             
             if (neighbor->incomingEdges().count(node)) {
                 neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
             }
             
-            if (neighbor->getParent() == node) verifyOrphan(neighbor);
+            // if (neighbor->getParent() == node) verifyOrphan(neighbor);
             if (node->getParent() == neighbor) verifyOrphan(node);
 
 
@@ -1952,7 +1914,7 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
                         node->incomingEdges().at(neighbor).distance =
                             std::numeric_limits<double>::infinity();
                     }
-                    if (node->getParent() == neighbor) verifyOrphan(node);
+                    // if (node->getParent() == neighbor) verifyOrphan(node);
                     if (neighbor->getParent() == node) verifyOrphan(neighbor);
                 }
             }
@@ -1961,7 +1923,8 @@ void KinodynamicRRTX::addNewObstacle(const Obstacle& ob) {
 
     for (int idx : unique_node_indices) {
         RRTxNode* node = tree_[idx].get();
-        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndBlockEdge(node, neighbor, edge);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
     }
 }
 
@@ -1994,15 +1957,14 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
 
     auto checkAndRestoreEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge, bool& neighborsWereBlocked) {
         if (edge.distance == std::numeric_limits<double>::infinity()) {
-            const double ttg = node->getTimeToGoal();
             bool should_restore = false;
             last_replan_metrics_.obstacle_checks++;
-            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, ob)) {
+            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
                 bool conflicts_with_other = false;
                 for (const auto& other_ob : all_obstacles) {
                     if (other_ob.name == ob.name) continue; 
                     last_replan_metrics_.obstacle_checks++;
-                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ttg, other_ob)) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), other_ob)) {
                         conflicts_with_other = true;
                         break; 
                     }
@@ -2042,8 +2004,9 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
         RRTxNode* node = tree_[idx].get();
         bool neighborsWereBlocked = false;
         
-        for (auto& [neighbor, edge] : node->unculled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
-        // for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+        for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
+
         
         if (neighborsWereBlocked) {
             updateLMC(node);

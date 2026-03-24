@@ -32,7 +32,7 @@ robot:
 # Planner Parameters
 planner_params:
   num_of_samples: 1000
-  factor: 2.0
+  factor: 3.0
   # partial_plot: "true" 
   # static_obs_presence: "true"
   # obs_cache: "false"

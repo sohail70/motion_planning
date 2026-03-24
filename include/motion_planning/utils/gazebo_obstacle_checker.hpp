@@ -39,16 +39,8 @@ public:
 
 
 
-    bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, 
-                                           double global_start_time, 
-                                           const Obstacle& obstacle) const override;
-
-    
-
-
-
-
-    bool isTrajectorySafe( const Trajectory& trajectory, double start_node_time) const override;
+    bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, const Obstacle& obstacle) const override;
+    bool isTrajectorySafe( const Trajectory& trajectory) const override;
     Eigen::Vector2d getRobotPosition() const;
     Eigen::VectorXd getRobotOrientation() const;
 

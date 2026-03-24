@@ -826,7 +826,7 @@ int main(int argc, char** argv) {
                 
                 Eigen::VectorXd updated_state = ros_manager->getCurrentSimulatedState();
                 double dist_to_goal = (updated_state.head<2>() - goal_vec.head<2>()).norm();
-                if (dist_to_goal < 3.0) {
+                if (dist_to_goal < 0.5) {
                     RCLCPP_INFO(vis_node->get_logger(), "Goal Reached!");
                     g_running = false;
                 }

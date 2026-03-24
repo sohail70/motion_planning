@@ -24,7 +24,7 @@ robot:
   # Dynamics specific parameters
   min_velocity: 0.0
   max_velocity: 20.0
-  robot_velocity: 10.0
+  # robot_velocity: 10.0
   # Dubins specific (ignored if R2T)
   # min_turning_radius: 2.0
   # Thruster specific (ignored if R2T)
@@ -32,7 +32,7 @@ robot:
 
 # Planner Parameters
 planner_params:
-  num_of_samples: 65
+  num_of_samples: 2000 #100 with factor 3.0 with not using rrtx samples gives fmtx a segfault!
   factor: 2.0
   # partial_plot: "true" 
   # static_obs_presence: "true"
@@ -58,7 +58,8 @@ manager_params:
 gazebo_params:
   # robot_model_name: "tugbot"
   # world_name: "default"
-  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_1_obs.sdf"
+  sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle.sdf"
+  # sdf_path: "/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_1_obs.sdf"
   inflation: 0.75
   # default_robot_x: 48.0  
   # default_robot_y: 48.0

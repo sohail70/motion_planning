@@ -156,9 +156,9 @@ public:
     virtual bool isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& start, const Eigen::VectorXd& end, const Obstacle& obs) const = 0;
     virtual bool isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& point, const Obstacle& obs) const = 0;
 
-    virtual bool isTrajectorySafe( const Trajectory& trajectory, double start_node_time) const = 0;
+    virtual bool isTrajectorySafe( const Trajectory& trajectory) const = 0;
     
-    virtual bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, double global_start_time, const Obstacle& obstacle) const = 0;
+    virtual bool isTrajectorySafeAgainstSingleObstacle(const Trajectory& trajectory, const Obstacle& obstacle) const = 0;
 
     // virtual void updateGrid(const std::shared_ptr<nav_msgs::msg::OccupancyGrid> grid) = 0;
     virtual const ObstacleVector& getObstacles() const = 0;
