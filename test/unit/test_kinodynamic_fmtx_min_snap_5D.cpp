@@ -2,7 +2,7 @@
 
 #include "motion_planning/planners/planner_factory.hpp"
 #include "motion_planning/state_space/min_snap_statespace.hpp"
-#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+#include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
 #include "motion_planning/utils/ros2_manager_min_snap.hpp" 
 #include "motion_planning/utils/rviz_visualization.hpp"
@@ -183,7 +183,7 @@ int main(int argc, char **argv) {
     auto sim_clock = vis_node->get_clock();
 
     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_straight_box_circle_10_3D.sdf");
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
+    auto obstacle_checker = std::make_shared<DeterministicObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
     // --- Planner and Problem Definition (5D MinSnap) ---
     const int dim = 5; // STATE: [x, y, z, yaw, time]

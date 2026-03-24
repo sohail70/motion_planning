@@ -90,7 +90,7 @@ ament_target_dependencies(visualization PUBLIC rclcpp visualization_msgs)
 
 
 # Gazebo Obstacle Checker Library
-add_library(gz_obs src/utils/gazebo_obstacle_checker.cpp)
+add_library(gz_obs src/utils/deterministic_obstacle_checker.cpp)
 target_precompile_headers(gz_obs PRIVATE include/motion_planning/pch.hpp)
 target_link_libraries(gz_obs PUBLIC
   # gz-transport13

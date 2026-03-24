@@ -3,7 +3,7 @@
 // Includes
 #include "motion_planning/planners/planner_factory.hpp"
 #include "motion_planning/state_space/rdt_statespace.hpp"
-#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+#include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
 #include "motion_planning/utils/ros2_manager_r2t.hpp" 
 #include "motion_planning/utils/rviz_visualization.hpp"
@@ -197,7 +197,7 @@ int main(int argc, char** argv)
 
     // std::unordered_map<std::string, ObstacleInfo> obstacle_info;
 
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
+    auto obstacle_checker = std::make_shared<DeterministicObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
 
     // --- Planner and Problem Definition ---
@@ -312,7 +312,7 @@ int main(int argc, char** argv)
 
 
     // 1. Cast the shared_ptr to the specific Gazebo class
-    auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker);
+    auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker);
     // 3. Initialize the RRTx timers ONCE
     // STEP 3: Grab the actual "Frozen" positions from Gazebo
     if (gazebo_checker) {

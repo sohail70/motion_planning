@@ -2,7 +2,7 @@
 
 // // ////////////////////////////////////R2T StateSpace Collision Test//////////////////////////////////////////////////////////////
 #include "rclcpp/rclcpp.hpp"
-#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+#include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
 #include "motion_planning/utils/params.hpp"
 #include "motion_planning/ds/edge_info.hpp"
@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
     
     // IMPORTANT: Make sure this path is correct
     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_4_obs.sdf");
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
+    auto obstacle_checker = std::make_shared<DeterministicObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
 
     // --- Define Robot's Path ---
     const double MAX_ROBOT_SPEED = 5.0; 
@@ -224,7 +224,7 @@ int main(int argc, char** argv) {
 // ////////////////////////////////////////////////////////////////////////////////////////////////
 
 // #include "rclcpp/rclcpp.hpp"
-// #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+// #include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 // #include "motion_planning/utils/rviz_visualization.hpp"
 // #include "motion_planning/utils/params.hpp"
 // #include "motion_planning/ds/edge_info.hpp"
@@ -381,7 +381,7 @@ int main(int argc, char** argv) {
 //     gazebo_params.setParam("bullet", false);
 
 //     auto obstacle_info = parseSdfObstacles("/home/sohail/gazeb/GAZEBO_MOV/dynamic_world_4_obs.sdf");
-//     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
+//     auto obstacle_checker = std::make_shared<DeterministicObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
 
 //     // --- Define Robot's Path using DubinsTimeStateSpace ---
 //     const double MIN_TURNING_RADIUS = 5.0; // meters
@@ -511,13 +511,13 @@ int main(int argc, char** argv) {
 // //  trajectory and continuously checks the remainder of its path for
 // //  collisions with dynamic obstacles from a Gazebo simulation.
 // //
-// //  It serves as a validation for the GazeboObstacleChecker's ability to correctly
+// //  It serves as a validation for the DeterministicObstacleChecker's ability to correctly
 // //  predict collisions for non-linear paths.
 // //
 // ////////////////////////////////////////////////////////////////////////////////////////////////
 
 // #include "rclcpp/rclcpp.hpp"
-// #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+// #include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 // #include "motion_planning/utils/rviz_visualization.hpp"
 // #include "motion_planning/utils/params.hpp"
 // #include "motion_planning/ds/edge_info.hpp"
@@ -673,7 +673,7 @@ int main(int argc, char** argv) {
 //     gazebo_params.setParam("bullet", true);
     
 //     auto obstacle_info = parseSdfObstacles("dynamic_world_1_obs.sdf");
-//     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
+//     auto obstacle_checker = std::make_shared<DeterministicObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
 
 //     // --- 2. Define Robot's Path using ThrusterSteerStateSpace ---
 //     const int dim = 5;
@@ -869,7 +869,7 @@ int main(int argc, char** argv) {
 // ////////////////////////////////////////////////////////////////////////////////////////////////
 
 // #include "rclcpp/rclcpp.hpp"
-// #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+// #include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 // #include "motion_planning/utils/rviz_visualization.hpp"
 // #include "motion_planning/utils/params.hpp"
 // #include "motion_planning/ds/edge_info.hpp"
@@ -993,7 +993,7 @@ int main(int argc, char** argv) {
 //     gazebo_params.setParam("spatial_dim", 3);
     
 //     auto obstacle_info = parseSdfObstacles("dynamic_world_1_obs_3D.sdf");
-//     auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
+//     auto obstacle_checker = std::make_shared<DeterministicObstacleChecker>(node->get_clock(), gazebo_params, obstacle_info);
 
 //     Eigen::VectorXd w_vel(4), w_accel(4), w_snap(4);
 //     w_vel << 0.1, 0.1, 0.1, 0.1; // Set weights for x, y, z, yaw

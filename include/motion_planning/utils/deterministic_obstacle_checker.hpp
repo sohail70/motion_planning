@@ -9,15 +9,15 @@
 #include <unsupported/Eigen/Polynomials>  // for PolynomialSolver
 
 
-class GazeboObstacleChecker : public ObstacleChecker {
+class DeterministicObstacleChecker : public ObstacleChecker {
 public:
 
 
-    GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
+    DeterministicObstacleChecker(rclcpp::Clock::SharedPtr clock,
                         const Params& params,
                         const std::unordered_map<std::string, ObstacleInfo>& obstacle_info);
 
-    ~GazeboObstacleChecker();
+    ~DeterministicObstacleChecker();
 
     std::vector<Obstacle> getAndClearCulprits() const {
         std::vector<Obstacle> temp = culprit_cache_;

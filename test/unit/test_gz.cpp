@@ -1,7 +1,7 @@
 // Copyright 2025 Soheil E.nia
 
 #include "motion_planning/utils/ros2_manager.hpp"
-#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+#include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
 
@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
     }
     // GET THE CLOCK FROM THE NODE. This will be a sim clock.
     auto sim_clock = node->get_clock();
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info); // Robot model name and obstacle radius
+    auto obstacle_checker = std::make_shared<DeterministicObstacleChecker>(sim_clock, gazebo_params, obstacle_info); // Robot model name and obstacle radius
 
     auto visualizer = std::make_shared<RVizVisualization>(node);
 

@@ -4,7 +4,7 @@
 
 // #include "rclcpp/rclcpp.hpp"
 // #include "motion_planning/utils/rviz_visualization.hpp"
-// #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+// #include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 // #include "motion_planning/state_space/min_snap_statespace.hpp" // For the Trajectory struct
 // #include "motion_planning/utils/params.hpp"
 // #include <Eigen/Dense>
@@ -195,7 +195,7 @@
 //     void visualizationLoop() {
 //         if (!obstacle_checker_ || !visualizer_) return;
         
-//         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+//         auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
 //         if (!gazebo_checker) return;
 
 //         gazebo_checker->processLatestPoseInfo();
@@ -299,7 +299,7 @@
 
 //         ////////////////////////////////////
 //         // 3D collision check for counting.
-//         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+//         auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
 //         if (gazebo_checker) {
 //             // Get the full 3D position and yaw from the current state.
 //             Eigen::Vector3d current_pos_3d = current_pos_.head<3>();
@@ -351,7 +351,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
-#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+#include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 #include "motion_planning/state_space/min_snap_statespace.hpp" // For the Trajectory struct
 #include "motion_planning/utils/params.hpp"
 #include <Eigen/Dense>
@@ -539,7 +539,7 @@ private:
     void visualizationLoop() {
         if (!obstacle_checker_ || !visualizer_) return;
         
-        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+        auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
         if (!gazebo_checker) return;
 
         gazebo_checker->processLatestPoseInfo();
@@ -647,7 +647,7 @@ private:
         current_pos_(3) = normalizeAngle(current_pos_(3));
         current_pos_(4) = current_sim_time_;
 
-        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+        auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
         if (gazebo_checker) {
             Eigen::Vector3d current_pos_3d = current_pos_.head<3>();
             double current_yaw = current_pos_(3);

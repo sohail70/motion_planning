@@ -1,8 +1,8 @@
 // Copyright 2025 Soheil E.nia
 
-#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+#include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 
-GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
+DeterministicObstacleChecker::DeterministicObstacleChecker(rclcpp::Clock::SharedPtr clock,
                                             const Params& params,
                                             const std::unordered_map<std::string, ObstacleInfo>& obstacle_info)
         : clock_(clock),
@@ -77,11 +77,11 @@ GazeboObstacleChecker::GazeboObstacleChecker(rclcpp::Clock::SharedPtr clock,
 
 }
 
-GazeboObstacleChecker::~GazeboObstacleChecker() = default;
+DeterministicObstacleChecker::~DeterministicObstacleChecker() = default;
 
 
 
-bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const Eigen::VectorXd& end) const {
+bool DeterministicObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const Eigen::VectorXd& end) const {
     // std::lock_guard<std::mutex> lock(snapshot_mutex_);
     Eigen::Vector2d start2d = start.head<2>();
     Eigen::Vector2d end2d = end.head<2>();
@@ -107,7 +107,7 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& start, const E
     return true;
 }
 
-bool GazeboObstacleChecker::isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& start, const Eigen::VectorXd& end, const Obstacle& obs) const {
+bool DeterministicObstacleChecker::isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& start, const Eigen::VectorXd& end, const Obstacle& obs) const {
     const Eigen::Vector2d start2d = start.head<2>();
     const Eigen::Vector2d end2d = end.head<2>();
     const double inflated = obs.inflation;
@@ -130,7 +130,7 @@ bool GazeboObstacleChecker::isObstacleFreeAgainstSingleObstacle(const Eigen::Vec
     return true; // No collision with this specific obstacle
 }
 
-bool GazeboObstacleChecker::isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& point, const Obstacle& obs) const {
+bool DeterministicObstacleChecker::isObstacleFreeAgainstSingleObstacle(const Eigen::VectorXd& point, const Obstacle& obs) const {
     const Eigen::Vector2d point2d = point.head<2>();
     const double inflated = obs.inflation;
     const Eigen::Vector2d& center = obs.position;
@@ -154,7 +154,7 @@ bool GazeboObstacleChecker::isObstacleFreeAgainstSingleObstacle(const Eigen::Vec
     return true; // No collision with this specific obstacle
 }
 
-bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
+bool DeterministicObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
     // std::lock_guard<std::mutex> lock(snapshot_mutex_);
     Eigen::Vector2d point2d = point.head<2>();
     // IMPORTANT : I CHANGED THE FOLLOWING FROM obstacle_snapshot_ to obstacle_positions_
@@ -181,7 +181,7 @@ bool GazeboObstacleChecker::isObstacleFree(const Eigen::VectorXd& point) const {
 
 
 // Implementation of the new trajectory checking method
-bool GazeboObstacleChecker::isObstacleFree(const std::vector<Eigen::VectorXd>& path) const {
+bool DeterministicObstacleChecker::isObstacleFree(const std::vector<Eigen::VectorXd>& path) const {
     if (path.size() < 2) {
         return true; // A single point or empty path is considered collision-free
     }
@@ -198,7 +198,7 @@ bool GazeboObstacleChecker::isObstacleFree(const std::vector<Eigen::VectorXd>& p
 
 // FOR CHECKING THE WHOLE PATH POINTS IN THE TRAJECTORY!
 
-bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
+bool DeterministicObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
     const Trajectory& trajectory,
     const Obstacle& ob) const
 {
@@ -345,7 +345,7 @@ bool GazeboObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
 
 
 
-bool GazeboObstacleChecker::isTrajectorySafe(
+bool DeterministicObstacleChecker::isTrajectorySafe(
     const Trajectory& trajectory
 ) const {
     // 1. Get the current world snapshot
@@ -363,17 +363,17 @@ bool GazeboObstacleChecker::isTrajectorySafe(
     return true; // Safe against the whole world
 }
 
-const ObstacleVector& GazeboObstacleChecker::getObstaclePositions() const {
+const ObstacleVector& DeterministicObstacleChecker::getObstaclePositions() const {
     // std::lock_guard<std::mutex> lock(data_mutex_);
     return obstacle_positions_;
 }
 
-Eigen::VectorXd GazeboObstacleChecker::getRobotEulerAngles() const {
+Eigen::VectorXd DeterministicObstacleChecker::getRobotEulerAngles() const {
     // std::lock_guard<std::mutex> lock(data_mutex_);
     return quaternionToEuler(robot_orientation_);
 }
 
-Eigen::VectorXd GazeboObstacleChecker::quaternionToEuler(const Eigen::VectorXd& quaternion) const {
+Eigen::VectorXd DeterministicObstacleChecker::quaternionToEuler(const Eigen::VectorXd& quaternion) const {
     // Ensure the quaternion is of size 4 (x, y, z, w)
     if (quaternion.size() != 4) {
         throw std::invalid_argument("Quaternion must be a 4D vector (x, y, z, w).");
@@ -412,7 +412,7 @@ Eigen::VectorXd GazeboObstacleChecker::quaternionToEuler(const Eigen::VectorXd& 
     return euler_angles;
 }
 
-void GazeboObstacleChecker::processLatestPoseInfo(double sim_time) {
+void DeterministicObstacleChecker::processLatestPoseInfo(double sim_time) {
     obstacle_positions_.clear(); 
     
     for (auto& [name, ob] : obstacle_positions_map_) {
@@ -447,7 +447,7 @@ void GazeboObstacleChecker::processLatestPoseInfo(double sim_time) {
     }
 }
 
-double GazeboObstacleChecker::calculateYawFromQuaternion(const Eigen::VectorXd& quaternion) {
+double DeterministicObstacleChecker::calculateYawFromQuaternion(const Eigen::VectorXd& quaternion) {
     // Ensure the quaternion is valid (x, y, z, w)
     if (quaternion.size() != 4) {
         throw std::invalid_argument("Quaternion must be a 4D vector (x, y, z, w).");
@@ -468,7 +468,7 @@ double GazeboObstacleChecker::calculateYawFromQuaternion(const Eigen::VectorXd& 
 
 
 
-bool GazeboObstacleChecker::lineIntersectsCircle(const Eigen::Vector2d& start,
+bool DeterministicObstacleChecker::lineIntersectsCircle(const Eigen::Vector2d& start,
                                                  const Eigen::Vector2d& end,
                                                  const Eigen::Vector2d& center,
                                                  double radius) {
@@ -500,7 +500,7 @@ bool GazeboObstacleChecker::lineIntersectsCircle(const Eigen::Vector2d& start,
     return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
 }
 
-bool GazeboObstacleChecker::pointIntersectsCircle(const Eigen::Vector2d& point,
+bool DeterministicObstacleChecker::pointIntersectsCircle(const Eigen::Vector2d& point,
                                                   const Eigen::Vector2d& center,
                                                   double radius) {
     // Calculate the squared distance between the point and the center of the circle
@@ -513,7 +513,7 @@ bool GazeboObstacleChecker::pointIntersectsCircle(const Eigen::Vector2d& point,
 
 
 
-const ObstacleVector& GazeboObstacleChecker::getObstacles() const {
+const ObstacleVector& DeterministicObstacleChecker::getObstacles() const {
     // // std::lock_guard<std::mutex> lock(data_mutex_);
     // ObstacleVector filtered_obstacles;
     
@@ -538,13 +538,13 @@ const ObstacleVector& GazeboObstacleChecker::getObstacles() const {
     return obstacle_positions_;
 }
 
-int GazeboObstacleChecker::getObstaclesSize() const {
+int DeterministicObstacleChecker::getObstaclesSize() const {
     return obstacle_positions_.size();
 }
 
 
 // Add rectangle collision detection implementations
-bool GazeboObstacleChecker::lineIntersectsRectangle(const Eigen::Vector2d& start,
+bool DeterministicObstacleChecker::lineIntersectsRectangle(const Eigen::Vector2d& start,
                                                    const Eigen::Vector2d& end,
                                                    const Eigen::Vector2d& center,
                                                    double width, double height,
@@ -581,7 +581,7 @@ bool GazeboObstacleChecker::lineIntersectsRectangle(const Eigen::Vector2d& start
     return t0 < t1 && t0 < 1.0 && t1 > 0.0;
 }
 
-bool GazeboObstacleChecker::pointIntersectsRectangle(const Eigen::Vector2d& point,
+bool DeterministicObstacleChecker::pointIntersectsRectangle(const Eigen::Vector2d& point,
                                                     const Eigen::Vector2d& center,
                                                     double width, double height,
                                                     double rotation) {
@@ -594,7 +594,7 @@ bool GazeboObstacleChecker::pointIntersectsRectangle(const Eigen::Vector2d& poin
            std::abs(local_point.y()) <= height/2);
 }
 
-bool GazeboObstacleChecker::checkRobotCollision(const Eigen::Vector2d& robot_pos, double yaw) const {
+bool DeterministicObstacleChecker::checkRobotCollision(const Eigen::Vector2d& robot_pos, double yaw) const {
     // 1. Thread Safety Lock (CRITICAL if running in threaded executor)
     // std::lock_guard<std::mutex> lock(obstacles_mutex_); 
 
@@ -643,7 +643,7 @@ bool GazeboObstacleChecker::checkRobotCollision(const Eigen::Vector2d& robot_pos
 
 
 // Helper for circular checks (no change in logic, just making it private)
-bool GazeboObstacleChecker::checkCircularCollisionHelper(const Eigen::Vector2d& robot_position, double robot_radius) const {
+bool DeterministicObstacleChecker::checkCircularCollisionHelper(const Eigen::Vector2d& robot_position, double robot_radius) const {
     for (const auto& obstacle : obstacle_positions_) {
         if (obstacle.type == Obstacle::CIRCLE) {
             double required_dist = robot_radius + obstacle.dimensions.radius;
@@ -660,7 +660,7 @@ bool GazeboObstacleChecker::checkCircularCollisionHelper(const Eigen::Vector2d& 
 }
 
 // NEW: Overloaded 3D collision checking function
-bool GazeboObstacleChecker::checkRobotCollision(const Eigen::Vector3d& position, double yaw) const {
+bool DeterministicObstacleChecker::checkRobotCollision(const Eigen::Vector3d& position, double yaw) const {
     // For Min-Snap, the robot is best approximated by a cylinder (a circle with height).
     const double ROBOT_HEIGHT_3D = 0.5;
     const double ROBOT_RADIUS_3D = inflation; 
@@ -668,7 +668,7 @@ bool GazeboObstacleChecker::checkRobotCollision(const Eigen::Vector3d& position,
 }
 
 // NEW: Helper for 3D circular (cylinder-sphere/cylinder-box) collision
-bool GazeboObstacleChecker::checkCircularCollisionHelper3D(const Eigen::Vector3d& robot_pos, double robot_radius, double robot_height) const {
+bool DeterministicObstacleChecker::checkCircularCollisionHelper3D(const Eigen::Vector3d& robot_pos, double robot_radius, double robot_height) const {
     for (const auto& obs : obstacle_positions_) {
         Eigen::Vector3d obs_pos_3d(obs.position.x(), obs.position.y(), obs.z);
 
@@ -704,14 +704,14 @@ bool GazeboObstacleChecker::checkCircularCollisionHelper3D(const Eigen::Vector3d
 
 
 
-void GazeboObstacleChecker::recordCulprit(const Obstacle& obs) const {
+void DeterministicObstacleChecker::recordCulprit(const Obstacle& obs) const {
     // if (collision_culprits_names_.find(obs.name) == collision_culprits_names_.end()) {
     //     collision_culprits_names_.insert(obs.name);
     //     collision_culprits_data_.push_back(obs);
     // }
 }
 
-std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
+std::vector<Eigen::Vector3d> DeterministicObstacleChecker::generatePrediction(
     const Obstacle& ob, 
     double currentTime) const 
 {
@@ -795,7 +795,7 @@ std::vector<Eigen::Vector3d> GazeboObstacleChecker::generatePrediction(
     return path;
 }
 
-bool GazeboObstacleChecker::isNodeInObstacleTube(const Eigen::VectorXd& node_state, 
+bool DeterministicObstacleChecker::isNodeInObstacleTube(const Eigen::VectorXd& node_state, 
                                                 const Obstacle& ob, 
                                                 double max_edge_length) const {
     if (ob.predicted_path.empty()) return false;
@@ -839,7 +839,7 @@ bool GazeboObstacleChecker::isNodeInObstacleTube(const Eigen::VectorXd& node_sta
 }
 
 
-void GazeboObstacleChecker::initializeDynamicObstacles(double currentRobotTime) {
+void DeterministicObstacleChecker::initializeDynamicObstacles(double currentRobotTime) {
     // currentRobotTime is T_robot (e.g., 20.0)
     RCLCPP_INFO(rclcpp::get_logger("ObstacleChecker"), 
                 "Initializing Dynamic Obstacles (T_robot Mode).");
@@ -859,7 +859,7 @@ void GazeboObstacleChecker::initializeDynamicObstacles(double currentRobotTime) 
     }
 }
 
-ObstacleVector GazeboObstacleChecker::checkAndRepairObstacles(double T_robot) {
+ObstacleVector DeterministicObstacleChecker::checkAndRepairObstacles(double T_robot) {
     ObstacleVector triggered_obs;
     
     for (auto& [name, ob] : obstacle_positions_map_) {

@@ -5,7 +5,7 @@
 // #include "rclcpp/rclcpp.hpp"
 // #include "motion_planning/utils/obstacle_checker.hpp"
 // #include "motion_planning/utils/rviz_visualization.hpp"
-// #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+// #include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 // #include "motion_planning/utils/params.hpp"
 // #include <Eigen/Dense>
 // #include <Eigen/Geometry>
@@ -185,7 +185,7 @@
 //     double total_budget_;
 
 //     // // Optimized version
-//     void visualizationLoop() { if (!obstacle_checker_ || !visualizer_) return; auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); if (!gazebo_checker) return; gazebo_checker->processLatestPoseInfo(); const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; std::vector<double> safe_cyl_radii, threat_cyl_radii;
+//     void visualizationLoop() { if (!obstacle_checker_ || !visualizer_) return; auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_); if (!gazebo_checker) return; gazebo_checker->processLatestPoseInfo(); const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; std::vector<double> safe_cyl_radii, threat_cyl_radii;
 //             std::vector<std::tuple<Eigen::Vector2d, double, double, double>> safe_boxes, threat_boxes;
 
 //             std::vector<Eigen::Vector2d> safe_vel_pos, safe_vel_val;
@@ -243,7 +243,7 @@
 
 // // void visualizationLoop() { 
 // //         if (!obstacle_checker_ || !visualizer_) return; 
-// //         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); 
+// //         auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_); 
 // //         if (!gazebo_checker) return; 
 
 // //         gazebo_checker->processLatestPoseInfo(); 
@@ -381,7 +381,7 @@
 //     // 7. [MISSING PART RESTORED] COLLISION COUNTING LOGIC
 //     // -------------------------------------------------------------------
 //     // We check if the interpolated state is actually valid against current obstacles
-//     auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+//     auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
 //     if (gazebo_checker) {
 //         Eigen::Vector2d current_pos = current_robot_state.head<2>();
         
@@ -430,7 +430,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "motion_planning/utils/obstacle_checker.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
-#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+#include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 #include "motion_planning/utils/params.hpp"
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
@@ -548,7 +548,7 @@ public:
             last_known_theta_ = atan2(direction_vector.y(), direction_vector.x());
         }
 
-        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+        auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
         double current_planner_time = this->getCurrentSimTime(); 
         double current_sim_time = initial_budget_time_ - current_planner_time;
         gazebo_checker->processLatestPoseInfo(current_sim_time); 
@@ -564,7 +564,7 @@ public:
                 double robot_theta = last_known_theta_;
 
                 // Grab all threats nearby
-                auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+                auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
                 std::vector<std::string> colliding_obstacles;
                 if (gazebo_checker) {
                     const auto& all_obstacles = gazebo_checker->getObstaclePositions();
@@ -738,7 +738,7 @@ std::shared_ptr<RVizVisualization> visualizer_;
     // // Visualization Loop (Background Thread - Obstacles Only)
     // void visualizationLoop() { 
     //     if (!obstacle_checker_ || !visualizer_) return; 
-    //     auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); 
+    //     auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_); 
     //     if (!gazebo_checker) return; 
         
     //     double current_planner_time = this->getCurrentSimTime(); // e.g. 18.0 (decreasing)
@@ -788,7 +788,7 @@ std::shared_ptr<RVizVisualization> visualizer_;
         if (!obstacle_checker_ || !visualizer_) return; 
         
         // --- 1. PREPARE OBSTACLE DATA ---
-        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); 
+        auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_); 
         std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; 
         std::vector<double> safe_cyl_radii, threat_cyl_radii;
         std::vector<std::tuple<Eigen::Vector2d, double, double, double>> safe_boxes, threat_boxes;
@@ -881,7 +881,7 @@ std::shared_ptr<RVizVisualization> visualizer_;
 // #include "rclcpp/rclcpp.hpp"
 // #include "motion_planning/utils/obstacle_checker.hpp"
 // #include "motion_planning/utils/rviz_visualization.hpp"
-// #include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+// #include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 // #include "motion_planning/utils/params.hpp"
 // #include <Eigen/Dense>
 // #include <Eigen/Geometry>
@@ -971,7 +971,7 @@ std::shared_ptr<RVizVisualization> visualizer_;
 //         }
 
 //         // 5. Collision Check
-//         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+//         auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
 //         if (gazebo_checker) {
 //             Eigen::Vector2d current_pos = current_interpolated_state_.head<2>();
 //             bool is_colliding_now = gazebo_checker->checkRobotCollision(current_pos, last_known_theta_);
@@ -1078,7 +1078,7 @@ std::shared_ptr<RVizVisualization> visualizer_;
 //         // ------------------------
 
 //         if (!obstacle_checker_ || !visualizer_) return; 
-//         auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); 
+//         auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_); 
 //         if (!gazebo_checker) return; 
         
 //         gazebo_checker->processLatestPoseInfo(); 

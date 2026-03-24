@@ -3,7 +3,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "motion_planning/utils/obstacle_checker.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
-#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+#include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 #include "motion_planning/utils/params.hpp"
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
@@ -112,7 +112,7 @@ public:
         }
 
         // 4. Collision Check
-        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_);
+        auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
         if (gazebo_checker) {
             double current_planner_time = this->getCurrentSimTime(); 
             double current_sim_time = initial_budget_time_ - current_planner_time;
@@ -236,7 +236,7 @@ private:
         if (!obstacle_checker_ || !visualizer_) return; 
         
         // --- 1. PREPARE OBSTACLE DATA ---
-        auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker_); 
+        auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_); 
         std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; 
         std::vector<double> safe_cyl_radii, threat_cyl_radii;
         std::vector<std::tuple<Eigen::Vector2d, double, double, double>> safe_boxes, threat_boxes;

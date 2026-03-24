@@ -3,7 +3,7 @@
 #include "motion_planning/state_space/rdt_statespace.hpp"
 #include "motion_planning/state_space/dubins_time_statespace.hpp"
 #include "motion_planning/state_space/thruster_statespace.hpp"
-#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+#include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
 #include "motion_planning/utils/ros2_manager_base.hpp" 
 #include "motion_planning/utils/ros2_manager_r2t.hpp"
@@ -204,7 +204,7 @@ int main(int argc, char** argv) {
 
     // --- 3. Obstacles ---
     auto obstacle_info = parseSdfObstacles(cfg.sdf_path);
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
+    auto obstacle_checker = std::make_shared<DeterministicObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
     // --- 4. Problem Definition ---
     auto problem_def = std::make_shared<ProblemDefinition>(cfg.dimensions);
@@ -367,7 +367,7 @@ int main(int argc, char** argv) {
         executor.add_node(ros_manager);
     }
 
-    auto gazebo_checker = std::dynamic_pointer_cast<GazeboObstacleChecker>(obstacle_checker);
+    auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker);
     if (gazebo_checker) {
         // Initialize with T=0 for geometric, or time_budget for kinodynamic
         double initial_T = is_geometric_mode ? 0.0 : start_vec(start_vec.size()-1);

@@ -21,7 +21,7 @@
  *       But it seems easier to just connect the newly added node fast instead of heappush to vopen and leave it to plan function
  *       maybe we should add batch of nodes so that fmtx would be useful i don't know
  *       im merely thinking about the narrow pathway problem
- * TODO: You can add hold static obstalce in gazeboObstacleChecker for static envrionment with use_range and use_robot test!
+ * TODO: You can add hold static obstalce in DeterministicObstacleChecker for static envrionment with use_range and use_robot test!
  *       for dynamic obstalce we ignore their last know location 
  * 
  * WARN: some nodes might not get the chance to connect so they'll stay in vUnvisited (and they are not on sample on obstalces!) ---> the  reason they stay is because of object inflation you put not because of persistent vPromising
@@ -43,7 +43,7 @@
 #include "motion_planning/planners/planner_factory.hpp"
 #include "motion_planning/utils/rviz_visualization.hpp"
 #include "motion_planning/utils/occupancygrid_obstacle_checker.hpp"
-#include "motion_planning/utils/gazebo_obstacle_checker.hpp"
+#include "motion_planning/utils/deterministic_obstacle_checker.hpp"
 #include "motion_planning/utils/ros2_manager.hpp"
 #include "motion_planning/utils/parse_sdf.hpp"
 #include <valgrind/callgrind.h>
@@ -346,7 +346,7 @@ int main(int argc, char **argv) {
     
     // GET THE CLOCK FROM THE NODE. This will be a sim clock.
     auto sim_clock = node->get_clock();
-    auto obstacle_checker = std::make_shared<GazeboObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
+    auto obstacle_checker = std::make_shared<DeterministicObstacleChecker>(sim_clock, gazebo_params, obstacle_info);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Controller and Nav2Controller objects
