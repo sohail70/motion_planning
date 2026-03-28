@@ -10,7 +10,7 @@
 #define USE_THREAT_SET_STRATEGY 0
 // If both are 0, it falls back to the Default/Brute-Force Strategy
 
-#define DEBUG 1
+#define DEBUG 0
 
 KinodynamicANYRRTX::KinodynamicANYRRTX(std::shared_ptr<StateSpace> statespace, 
     std::shared_ptr<ProblemDefinition> problem_def,
