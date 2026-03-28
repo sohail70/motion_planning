@@ -7,6 +7,7 @@ FMTNode::FMTNode(std::shared_ptr<State> state, int index)
     : state_(state),
       index_(index),
       cost_(INFINITY),
+      broadcast_cost_(INFINITY),
       time_to_goal_(INFINITY),
       heuristic_(0.0),
       in_queue_(false),
@@ -29,6 +30,16 @@ const Eigen::VectorXd& FMTNode::getStateValue() const {
 // }
 
 void FMTNode::setCost(double cost) noexcept { 
+    if (index_ == 506 || index_ == 390) {
+        std::cout << "[TRACK-" << index_ << "] setCost: old=" << cost_ 
+                  << " new=" << cost 
+                  << " | parent=" << (parent_ ? std::to_string(parent_->getIndex()) : "NONE")
+                  << " | parent_cost=" << (parent_ ? parent_->getCost() : -1.0)
+                  << "\n";
+        // To find WHERE this was called from, add this:
+        // #include <execinfo.h>  --> then print a stack trace
+    }
+    
     cost_ = cost; 
 }
 
@@ -63,6 +74,13 @@ void FMTNode::setParent(FMTNode* parent, double edge_cost) {
 
 
 void FMTNode::setParent(FMTNode* parent, std::shared_ptr<Trajectory> trajectory_to_parent) {
+    if (index_ == 506 || index_ == 390) {
+        std::cout << "[TRACK-" << index_ << "] setParent: old_parent=" 
+                  << (parent_ ? std::to_string(parent_->getIndex()) : "NONE")
+                  << " new_parent=" << (parent ? std::to_string(parent->getIndex()) : "NONE")
+                  << " new_parent_cost=" << (parent ? parent->getCost() : -1.0)
+                  << "\n";
+    }
     // Early exit if parent is the same
     if (parent == parent_) { 
         return;

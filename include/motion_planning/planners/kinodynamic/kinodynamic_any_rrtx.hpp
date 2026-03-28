@@ -65,6 +65,7 @@ class KinodynamicANYRRTX : public Planner {
     int getTreeSize() { return tree_.size();}
 
     bool runForensics();
+    bool runCostForensics();
 
     struct ScalingMetrics {
         long long total_samples = 0;

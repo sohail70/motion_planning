@@ -65,6 +65,8 @@ class KinodynamicANYFMTX : public Planner {
         double getNeighborhoodRadius(){return neighborhood_radius_;}
 
         bool runForensics();
+        bool runCostForensics();
+        bool runGlobalCostForensics();
         struct SuboptimalityMetrics {
             int total_nodes_updated = 0;
             int nodes_with_missed_better = 0;

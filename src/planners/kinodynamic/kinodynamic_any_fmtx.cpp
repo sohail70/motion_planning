@@ -1,7 +1,7 @@
 // Copyright 2025 Soheil E.nia
 
 // TODO: Later implement KNN. with knn you wouldnt need cullNeighbor! use if (use_knn) return in cullNeighbor
-#define DEBUG 0
+#define DEBUG 1
 
 // Set to 1 to use my context-aware Threat Set.
 // Set to 0 to use the Default/Blind exhaustive checking.
@@ -38,6 +38,9 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
     visualization_ = visualization;
     num_of_samples_ = params.getParam<int>("num_of_samples");
     partial_update = params.getParam<bool>("partial_update");
+#if DEBUG
+    partial_update = false;
+#endif
     is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
     epsilon = params.getParam<double>("epsilon", 1e-4);
     lower_bounds_ = problem_->getLowerBound();
@@ -379,6 +382,204 @@ bool KinodynamicANYFMTX::runForensics() {
     }
 }
 
+bool KinodynamicANYFMTX::runGlobalCostForensics() {
+    // std::cout << "\n[FMTx FORENSICS] --- STARTING K*EPSILON COST DRIFT VERIFICATION ---" << std::endl;
+    int nodes_checked = 0;
+    int drift_violations = 0;
+    int optimistic_violations = 0;
+    double max_drift = 0.0;
+    FMTNode* worst_node = nullptr;
+
+    std::vector<double> true_costs(tree_.size(), -2.0);
+    std::vector<int> true_depths(tree_.size(), -2);
+    
+    std::function<std::pair<double, int>(FMTNode*)> computeTrueCostAndDepth = [&](FMTNode* node) -> std::pair<double, int> {
+        int idx = node->getIndex();
+        
+        if (idx == root_state_index_) return {0.0, 0};
+        
+        if (node->getParent() == nullptr || node->getCost() == std::numeric_limits<double>::infinity()) {
+            return {std::numeric_limits<double>::infinity(), 0};
+        }
+        
+        if (true_costs[idx] == -1.0) {
+            return {std::numeric_limits<double>::infinity(), 0};
+        }
+        
+        if (true_costs[idx] >= 0.0) {
+            return {true_costs[idx], true_depths[idx]};
+        }
+
+        true_costs[idx] = -1.0;
+
+        auto parent_result = computeTrueCostAndDepth(node->getParent());
+        double parent_true_cost = parent_result.first;
+        int parent_depth = parent_result.second;
+        
+        if (parent_true_cost == std::numeric_limits<double>::infinity()) {
+            true_costs[idx] = std::numeric_limits<double>::infinity();
+            return {std::numeric_limits<double>::infinity(), 0};
+        }
+
+        double edge_cost = 0.0;
+        if (node->getParentTrajectory() != nullptr) {
+            edge_cost = node->getParentTrajectory()->cost;
+        } else {
+            true_costs[idx] = std::numeric_limits<double>::infinity();
+            return {std::numeric_limits<double>::infinity(), 0};
+        }
+
+        true_costs[idx] = parent_true_cost + edge_cost;
+        true_depths[idx] = parent_depth + 1; 
+        
+        return {true_costs[idx], true_depths[idx]};
+    };
+
+    // Evaluate all nodes
+    for (size_t i = 0; i < tree_.size(); ++i) {
+        FMTNode* node = tree_[i].get();
+        double stored_cost = node->getCost(); 
+
+        if (stored_cost != std::numeric_limits<double>::infinity() && node->getIndex() != root_state_index_) {
+            nodes_checked++;
+            auto result = computeTrueCostAndDepth(node);
+            double actual_true_cost = result.first;
+            int k_depth = result.second;
+
+            if (actual_true_cost != std::numeric_limits<double>::infinity()) {
+                double drift = stored_cost - actual_true_cost;
+                
+                if (drift > max_drift) {
+                    max_drift = drift;
+                    worst_node = node;
+                }
+
+                double k_epsilon_bound = k_depth * epsilon;
+
+                if (drift > k_epsilon_bound + 1e-5) { 
+                    drift_violations++;
+                } else if (drift < -1e-5) {
+                    optimistic_violations++;
+                }
+            }
+        }
+    }
+
+    // std::cout << "-> Checked " << nodes_checked << " valid nodes.\n";
+    
+    if (worst_node != nullptr) {
+        auto result = computeTrueCostAndDepth(worst_node);
+        double k_epsilon_bound = result.second * epsilon;
+        std::cout << "-> Maximum pessimistic drift observed: " << max_drift 
+                  << " (at Node " << worst_node->getIndex() << ") | k*eps limit: " << k_epsilon_bound << "\n";
+                  
+        if (max_drift > k_epsilon_bound + 1e-5) {
+            std::cout << "\n\033[1;31m[X-RAY TRACE OF WORST VIOLATOR: NODE " << worst_node->getIndex() << "]\033[0m\n";
+            std::cout << "------------------------------------------------------\n";
+            FMTNode* curr = worst_node;
+            while (curr != nullptr && curr->getIndex() != root_state_index_) {
+                FMTNode* parent = curr->getParent();
+                double edge_cost = (curr->getParentTrajectory() != nullptr) ? curr->getParentTrajectory()->cost : 0.0;
+                
+                std::cout << "Node " << curr->getIndex() 
+                          << " | Stored g(v): " << curr->getCost() 
+                          << " | Broadcast g: " << curr->broadcast_cost_ << "\n";
+                std::cout << "   -> Parent " << parent->getIndex() 
+                          << " | Stored g(v): " << parent->getCost() 
+                          << " | Broadcast g: " << parent->broadcast_cost_ << "\n";
+                std::cout << "   -> Trajectory Edge Cost: " << edge_cost << "\n";
+                
+                // Check the exact math
+                double expected_lmc = parent->broadcast_cost_ + edge_cost;
+                std::cout << "   => Expected lmc(v): " << expected_lmc 
+                          << " | Actual Drift at this step: " << (curr->getCost() - expected_lmc) << "\n";
+                std::cout << "------------------------------------------------------\n";
+                
+                curr = parent;
+            }
+            std::cout << "Root Node " << root_state_index_ << " reached.\n\n";
+        }
+    }
+    
+    bool passed = true;
+    if (optimistic_violations > 0) passed = false;
+    if (drift_violations > 0) passed = false;
+    
+    if (passed) {
+        // std::cout << "[FMTx FORENSICS] --- \033[1;32mPASSED\033[0m: All nodes respect the k*epsilon suboptimality bound! ---\n\n";
+    } else {
+        std::cout << "[FMTx FORENSICS] --- \033[1;31mFAILED\033[0m: Theoretical limits broken! Check trace above. ---\n\n";
+    }
+
+    return passed;
+}
+
+bool KinodynamicANYFMTX::runCostForensics() {
+    std::cout << "\n[FMTx FORENSICS] --- STARTING STRICT EPSILON-CONSISTENCY VERIFICATION ---" << std::endl;
+    int nodes_checked = 0;
+    int violations = 0;
+    int queue_waiting = 0;
+    double max_local_inconsistency = 0.0;
+    int max_node = -1;
+
+    for (size_t i = 0; i < tree_.size(); ++i) {
+        FMTNode* node = tree_[i].get();
+        
+        // In FMTX:
+        // -> getCost() acts as LMC (the instantly updated best-known path)
+        // -> broadcast_cost_ acts as 'g' (the stale cost frozen until queue pops)
+        double lmc = node->getCost();
+        double g = node->broadcast_cost_;
+
+        // Skip completely unconnected nodes
+        if (g == std::numeric_limits<double>::infinity() && 
+            lmc == std::numeric_limits<double>::infinity()) {
+            continue;
+        }
+
+        // Calculate inconsistency
+        double inconsistency = g - lmc;
+
+        if (inconsistency > epsilon + 1e-5) {
+            if (node->in_queue_) {
+                // Legally inconsistent and waiting its turn in the wavefront
+                queue_waiting++;
+                continue; 
+            } else {
+                // REAL BUG: It exceeded epsilon but was forgotten!
+                violations++;
+                std::cout << "\033[1;31m[REAL VIOLATION]\033[0m Node " << node->getIndex() 
+                          << " | g(broadcast): " << g << " | lmc(cost): " << lmc 
+                          << " | Diff: " << inconsistency << " > eps(" << epsilon << ")\n"
+                          << "                 AND IT IS NOT IN THE QUEUE!\n";
+            }
+        }
+
+        // Settled node
+        nodes_checked++;
+        if (inconsistency > max_local_inconsistency) {
+            max_local_inconsistency = inconsistency;
+            max_node = node->getIndex();
+        }
+    }
+
+    std::cout << "-> Checked " << nodes_checked << " settled nodes.\n";
+    std::cout << "-> Safely ignored " << queue_waiting << " inconsistent nodes correctly waiting in the queue.\n";
+    std::cout << "-> Maximum local inconsistency of SETTLED nodes: " << max_local_inconsistency;
+    if (max_node != -1) {
+        std::cout << " (at Node " << max_node << ")";
+    }
+    std::cout << "\n";
+
+    if (violations > 0) {
+        std::cout << "[FMTx FORENSICS] --- \033[1;31mFAILED\033[0m: Found " << violations 
+                  << " nodes violating the epsilon bound and missing from the queue! ---\n";
+        return false;
+    } else {
+        std::cout << "[FMTx FORENSICS] --- \033[1;32mPASSED\033[0m: All FMTX nodes are locally consistent or safely queued! ---\n";
+        return true;
+    }
+}
 
 // Eager new sample insertion, later in plan we do lazy propagation
 // In anytime fmtx eager approach we still dont care about all the collision checking connections from new node to neighbors or neighbors to new node
@@ -387,6 +588,7 @@ bool KinodynamicANYFMTX::runForensics() {
 // Even this collision checking was not necessary if i could've found a way to make the addBatchOfSamplesLazy to not become O(n log^2 (n))
 // But here the O(n log(n)) will be preserved because we only do one heap push if the new node finds the best parent!
 void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
+    std::cout << "[BATCH] addBatchOfSamplesEager called. Tree size: " << tree_.size() << "\n";
     if (num_samples <= 0) return;
 
     std::vector<int> added_node_indices;
@@ -550,7 +752,16 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
 
                 new_node->setCost(candidate.first);
                 new_node->setParent(potential_parent, traj_xy);
-                new_node->setFinalDerivatives(traj_xy->final_velocity, traj_xy->final_acceleration);
+
+                if (new_node->getIndex() == 623 || potential_parent->getIndex() == 503) {
+                    std::cout << "[TRACK-BATCH] Connected Node " << new_node->getIndex() 
+                              << " to Parent " << potential_parent->getIndex() << "\n";
+                    std::cout << "   -> Parent's actual cost right now: " << potential_parent->getCost() << "\n";
+                    std::cout << "   -> Edge cost: " << edge_info.distance << "\n";
+                    std::cout << "   -> Assigned candidate.first cost: " << candidate.first << "\n";
+                }
+                // -----------------------
+
 
                 connected = true;
                 break; // Stop checking candidates.
@@ -560,6 +771,13 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
             // for future dynamic repairs.
         }
 
+        /*
+            Important Insight on AO with epsilon usage: as you can see the new samples is added to the tree and now is in vopen heap! we do not immediately connect the neighbors
+            which can use this! but if nothing happens and this new samples didnt get removed from the heap the neighbors would use this to connect. epsilon is not in the picture until now!
+            now if x's cost is improved little then we dont cascade! 
+            so the argument that when we use epsilon we have epsilon bounded AO is incorrect because those children that we didnt improve will get better by new samples!
+            so all in all the new sample will eventually betters their immediate neighbors if partial update allows (i.e., its useful)
+        */
         // THE SINGLE HEAP INSERTION
         if (connected) {
             v_open_heap_.add(new_node, new_node->getCost());
@@ -567,56 +785,168 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         } 
     }
 }
-
 void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
+    // // PERFORMANCE TRIGGER: Skip if radius hasn't shrunk significantly
+    // if (v->last_culled_radius_ > 0 && 
+    //     (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) {
+    //     return;
+    // }
 
-    // PERFORMANCE TRIGGER: Skip loop if radius hasn't shrunk
-    if (v->last_culled_radius_ > 0 && 
-        (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) {
-        return;
-    }
+    // auto& outgoing = v->forwardNeighbors();
+    // auto it = outgoing.begin();
+    
+    // while (it != outgoing.end()) {
+    //     auto neighbor = it->first;
+    //     auto& edge = it->second;
+        
+    //     double edge_cost = edge.cached_trajectory->cost;
+        
+    //     // Condition for culling: Edge is too long AND neighbor is not the current parent
+    //     if (edge_cost > (neighborhood_radius_ + 0.01) && neighbor != v->getParent()) {
+            
+    //         // --- DETERMINE CULLING PERMISSION ---
+            
+    //         // 1. Is 'neighbor' a child of 'v' in the tree?
+    //         bool is_child = (neighbor->getParent() == v);
+            
+    //         // 2. Is 'neighbor' currently in the Open set (V_open)?
+    //         // If neighbor is in V_open, it is active and might expand soon. 
+    //         // We must NOT break the link from neighbor -> v (backward link of neighbor)
+    //         // because 'v' might need to notify 'neighbor' of an improvement.
+    //         bool neighbor_is_open = neighbor->in_queue_;
+    //         // 3. Is the edge an initial (sacred) neighbor?
+    //         bool is_initial = edge.is_initial;
 
-    auto& outgoing = v->forwardNeighbors();
-    auto it = outgoing.begin();
+    //         // --- SYMMETRIC CULL (Neighbor's Side) ---
+    //         // We remove 'v' from 'neighbor's backward list ONLY if:
+    //         // 1. It is NOT an initial neighbor.
+    //         // 2. 'neighbor' is NOT a child of 'v'.
+    //         // 3. 'neighbor' is NOT in V_open.
+    //         if (!is_initial && !is_child && !neighbor_is_open) {
+    //             auto& incoming = neighbor->backwardNeighbors();
+    //             if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
+    //                 incoming.erase(incoming_it);
+    //             }
+    //         }
+    //         // if (!is_initial) {
+    //         //     auto& incoming = neighbor->backwardNeighbors();
+    //         //     if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
+    //         //         incoming.erase(incoming_it);
+    //         //     }
+    //         // }
+    //         // auto& incoming = neighbor->backwardNeighbors();
+    //         // if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
+    //         //     if (!incoming_it->second.is_initial) {
+    //         //         incoming.erase(incoming_it);
+    //         //     }
+    //         // }
 
-    while (it != outgoing.end()) {
-        auto neighbor = it->first;
-        auto& edge = it->second;
-        double edge_cost = edge.cached_trajectory->cost;
 
-        // An edge is only considered for culling if it is longer than the current radius
-        // AND the node is not the current parent in the shortest-path tree
-        if (edge_cost > (neighborhood_radius_ + 0.01) && neighbor != v->getParent()) {
 
-            // SYMMETRIC CULL (Neighbor's Side)
-            // Remove 'v' from the neighbor's backward list if it wasn't an 'initial' birth-neighbor.
-            auto& incoming = neighbor->backwardNeighbors();
-            if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
-                if (!incoming_it->second.is_initial) {
-                    incoming.erase(incoming_it);
-                }
-            }
-
-            // SOURCE CULL (v's Side)
-            // Remove the neighbor from the active forward set if it wasn't an 'initial' birth-neighbor.
-            // Preservation of N_0 neighbors is sacred for optimality
-            if (!edge.is_initial) {
-                it = outgoing.erase(it);
-                // outgoing.erase(it++); //for absl
-                continue; // Move to next neighbor
-            }
-        }
-        ++it;
-    }
-    v->last_culled_radius_ = neighborhood_radius_;
+    //         // --- SOURCE CULL (v's Side) ---
+    //         // We remove 'neighbor' from 'v's forward list if it is NOT initial.
+    //         // Note: We allow culling the forward link even if it is a child or open, 
+    //         // because 'v' just needs to stop looking at 'neighbor' as a potential parent.
+    //         // The backward link (preserved above) handles the notification.
+    //         if (!is_initial) {
+    //             it = outgoing.erase(it);
+    //             continue; 
+    //         }
+    //     }
+    //     ++it;
+    // }
+    // v->last_culled_radius_ = neighborhood_radius_;
 }
+
+
+/*
+    if node 623 is child and node 503 is parent there is chance 503 forgot 623 but 623 didnt! (thats why 503 become parent!)
+    in this case 503 cant notify 623 of its updated cost (in case of improvement) because fmtx is not like rrtx 
+    so in rrtx 623 in updateLMC goes through the outgoing and can update lmc by using 503! but in fmtx 
+    we loop through the backward (incoming) of 503 first to find the 623! but 623 got culled from 503's incoming neighbors so 623 never improves even if its parent (503) 
+    has improved 
+    the only solution for us is to not only loop over the backward neighbors of 503 (at the first for loop of plan) but to loop over the current children of 503! because it might have gotten culled!
+*/
+
+
+// void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
+
+//     // PERFORMANCE TRIGGER: Skip loop if radius hasn't shrunk
+//     if (v->last_culled_radius_ > 0 && 
+//         (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) {
+//         return;
+//     }
+
+//     auto& outgoing = v->forwardNeighbors();
+//     auto it = outgoing.begin();
+
+//     while (it != outgoing.end()) {
+//         auto neighbor = it->first;
+//         auto& edge = it->second;
+//         double edge_cost = edge.cached_trajectory->cost;
+
+//         // An edge is only considered for culling if it is longer than the current radius
+//         // AND the node is not the current parent in the shortest-path tree
+//         if (edge_cost > (neighborhood_radius_ + 0.01) && neighbor != v->getParent()) {
+
+//             // SYMMETRIC CULL (Neighbor's Side)
+//             // Remove 'v' from the neighbor's backward list if it wasn't an 'initial' birth-neighbor.
+//             auto& incoming = neighbor->backwardNeighbors();
+//             if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
+//                 if (!incoming_it->second.is_initial) {
+//                     incoming.erase(incoming_it);
+//                 }
+//             }
+
+//             // SOURCE CULL (v's Side)
+//             // Remove the neighbor from the active forward set if it wasn't an 'initial' birth-neighbor.
+//             // Preservation of N_0 neighbors is sacred for optimality
+//             if (!edge.is_initial) {
+//                 it = outgoing.erase(it);
+//                 // outgoing.erase(it++); //for absl
+//                 continue; // Move to next neighbor
+//             }
+//         }
+//         ++it;
+//     }
+//     v->last_culled_radius_ = neighborhood_radius_;
+// }
 
 void KinodynamicANYFMTX::plan() {
 #if DEBUG
     SuboptimalityMetrics dbg_metrics;
 #endif
 
+    static int plan_call_count = 0;
+    plan_call_count++;
+    std::cout << "\n========== PLAN() CALL #" << plan_call_count << " ==========\n";
+
+        // ==== NEW: FLAG TO TRACK POST-390 EVENTS ====
+    bool tracking_post_390 = false; 
+    // ============================================
+    // Set this to the node that failed your global cost forensics
+    constexpr int TARGET_NODE = 506; 
+
+    // Replace the unsafe direct access with a size check:
+    FMTNode* node390 = (tree_.size() > 390) ? tree_[390].get() : nullptr;
+    FMTNode* node506 = (tree_.size() > 506) ? tree_[506].get() : nullptr;
+
+    if (node390 && node506) {
+        std::cout << "[PLAN-ENTRY] Node 390 cost=" << node390->getCost() 
+                << " | Node 506 cost=" << node506->getCost()
+                << " | 506's parent=" << (node506->getParent() ? 
+                    std::to_string(node506->getParent()->getIndex()) : "NONE")
+                << "\n";
+    }
+
+
+
     addBatchOfSamplesEager(num_of_samples_); // Add a small batch (e.g., 10) instead of 1
+
+    if (node390 && node506) {
+        std::cout << "[POST-BATCH] Node 390 cost=" << node390->getCost() 
+                  << " | Node 506 cost=" << node506->getCost() << "\n";
+    }
 
     while (true) {
         if (v_open_heap_.empty()) {
@@ -639,6 +969,59 @@ void KinodynamicANYFMTX::plan() {
         double cost = top_element.first;
         FMTNode* z = top_element.second;
         int zIndex = z->getIndex();
+
+       // ==== NEW: QUEUE TRACKER LOGS ====
+        if (zIndex == 390) {
+            tracking_post_390 = true; // Activate tracker when 390 is popped
+        }
+
+        if (tracking_post_390 && zIndex != 390) {
+            std::cout << "[POST-390 QUEUE] Popped Node " << zIndex 
+                      << " with cost " << z->getCost() << "\n";
+            
+            if (tree_.size() > 506) {
+                FMTNode* n506 = tree_[506].get();
+                if (z->backwardNeighbors().count(n506) > 0) {
+                    double dist = z->backwardNeighbors().at(n506).distance;
+                    double proposed = z->getCost() + dist;
+                    std::cout << "   ---> It sees 506! Proposed cost: " << proposed 
+                              << " | 506's shield cost: " << n506->getCost() << "\n";
+                    if (proposed < n506->getCost()) {
+                        std::cout << "   ---> SUCCESS: This node breached the shield and will trigger an update!\n";
+                    } else {
+                        std::cout << "   ---> FAILED: Proposed cost is worse. Update rejected.\n";
+                    }
+                }
+            }
+        }
+        // =================================
+        
+        // --- X-RAY LOG 1: THE TARGET NODE IS POPPED ---
+        if (zIndex == TARGET_NODE) {
+            std::cout << "\n[X-RAY POP] Target Node " << TARGET_NODE << " popped from V_open.\n"
+                      << "   -> Current Cost: " << z->getCost() << "\n"
+                      << "   -> Parent: " << (z->getParent() ? std::to_string(z->getParent()->getIndex()) : "NONE") << "\n";
+        }
+        
+        // --- X-RAY LOG 2: Z IS EXPANDING AND SEES TARGET NODE ---
+        if (z->backwardNeighbors().count(tree_[TARGET_NODE].get()) > 0) {
+            std::cout << "\n[X-RAY TRIGGER] Node " << zIndex << " is expanding and sees Target Node " << TARGET_NODE << " in backwardNeighbors.\n"
+                      << "   -> Node " << zIndex << " Cost: " << z->getCost() << "\n";
+        }
+
+
+        /*
+            when a node becomes z (meaning it is acting as a parent and expanding the wavefront), 
+            it broadcasts its cost. Right after we read z, we lock its broadcast cost
+        */
+        z->broadcast_cost_ = z->getCost(); 
+
+        if (zIndex == 390) {
+            std::cout << "[TRACK-390-EXPAND] Node 390 starting expansion.\n"
+                    << "   -> broadcast_cost_ locked at: " << z->broadcast_cost_ << "\n"
+                    << "   -> actual getCost() right now: " << z->getCost() << "\n";
+        }
+
 
         // Before we expand z, we remove any temporary neighbors that are now outside the shrinking radius.
         cullNeighbors(z);
@@ -678,6 +1061,16 @@ void KinodynamicANYFMTX::plan() {
             }
        
             double cost_via_z = z->getCost() + edge_info_from_x.distance;
+
+            // --- X-RAY LOG 3: TARGET NODE EVALUATION START ---
+            if (x->getIndex() == TARGET_NODE) {
+                std::cout << "\n[X-RAY EVAL] Target Node " << TARGET_NODE << " is evaluating suboptimality via Node " << zIndex << "\n"
+                          << "   -> Current Cost: " << x->getCost() << "\n"
+                          << "   -> Proposed cost_via_z: " << cost_via_z << "\n"
+                          << "   -> Is sub-optimal? " << (x->getCost() > cost_via_z ? "YES" : "NO") << "\n";
+            }
+
+
             /*
                 This condition is the core of FMTX. It serves two purposes:
                 If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
@@ -725,12 +1118,32 @@ void KinodynamicANYFMTX::plan() {
                         auto traj_xy = edge_info_xy.cached_trajectory;
                         if (traj_xy->is_valid) {
                             double cost_via_y = y->getCost() + traj_xy->cost;
+
+
+                            // --- X-RAY LOG 4: TARGET NODE PARENT SEARCH ---
+                            if (x->getIndex() == TARGET_NODE) {
+                                std::cout << "   [X-RAY V_OPEN] Candidate Parent " << y->getIndex() 
+                                          << " | in_queue: YES | cost_via_y: " << cost_via_y << "\n";
+                            }
+
                             if (cost_via_y < min_cost_for_x) {
                                 min_cost_for_x = cost_via_y;
                                 best_parent_for_x = y;
                                 best_traj_for_x = traj_xy;
                             }
                         }
+                    }
+                }
+
+
+                if (x->getIndex() == TARGET_NODE) {
+                    std::cout << "[X-RAY BELLMAN] Target Node " << TARGET_NODE << " finished V_open search.\n";
+                    if (best_parent_for_x == nullptr) {
+                        std::cout << "   -> FATAL: NO VALID PARENT FOUND IN V_OPEN!\n";
+                    } else {
+                        std::cout << "   -> Chose Best Parent " << best_parent_for_x->getIndex() 
+                                  << " with min_cost = " << min_cost_for_x << "\n"
+                                  << "   -> Beat current cost? " << (min_cost_for_x < x->getCost() ? "YES" : "NO") << "\n";
                     }
                 }
 
@@ -764,16 +1177,36 @@ void KinodynamicANYFMTX::plan() {
 #endif
 
                     
+                    // --- X-RAY LOG 5: OBSTACLE CHECK RESULT ---
+                    if (x->getIndex() == TARGET_NODE) {
+                        std::cout << "[X-RAY OBSTACLE] Edge to Parent " << best_parent_for_x->getIndex() 
+                                  << " evaluated as " << (obstacle_free ? "SAFE" : "BLOCKED") << "\n";
+                    }
  
                     if (obstacle_free) {
+
+
+
                         // Need the old cost for the epsilon consistency approach
                         double old_cost = x->getCost();
+
+                        // --- X-RAY LOG 6: QUEUE BOUNCER ---
+                        if (x->getIndex() == TARGET_NODE) {
+                            std::cout << "[X-RAY BOUNCER] Target Node " << TARGET_NODE << " applying updates.\n"
+                                      << "   -> Previous Cost: " << old_cost << " -> New Cost: " << min_cost_for_x << "\n"
+                                      << "   -> in_queue_: " << (x->in_queue_ ? "YES" : "NO") << "\n"
+                                      << "   -> broadcast_cost_: " << x->broadcast_cost_ << "\n"
+                                      << "   -> Diff against broadcast: " << (x->broadcast_cost_ - min_cost_for_x) << " (epsilon = " << epsilon << ")\n";
+                        }
+
+
+
                         x->setCost(min_cost_for_x);
                         x->setParent(best_parent_for_x, best_traj_for_x);
 #if DEBUG
                         dbg_metrics.costUpdated[x] = true;
                         // Oracle!
-                        analyzeSuboptimality(x, best_parent_for_x, z, dbg_metrics);
+                        // analyzeSuboptimality(x, best_parent_for_x, z, dbg_metrics);
 #endif
 
                         last_replan_metrics_.nodes_updated++;
@@ -785,31 +1218,127 @@ void KinodynamicANYFMTX::plan() {
                             // If it is already scheduled to be processed, give it the best cost
                             v_open_heap_.update(x, priorityCost);
                             last_replan_metrics_.queue_operations++;
-                        } else if (old_cost == INFINITY || (old_cost - min_cost_for_x > epsilon)) {
+                        } 
+                        // else if (old_cost == INFINITY || (old_cost - min_cost_for_x > epsilon)) {
+                        else if (x->broadcast_cost_ == INFINITY || (x->broadcast_cost_ - min_cost_for_x > epsilon)) {
                             // If it is NOT in the queue, ONLY wake it up if the improvement is > epsilon 
                             // (or if it is a brand new node that must expand the wavefront)
                             v_open_heap_.add(x, priorityCost); 
                             last_replan_metrics_.queue_operations++;
                         }
                     }
+                    else if (x->getParent() != nullptr) {
+                        /* 
+                         * CASCADE SURVIVAL FALLBACK (Cost Synchronization)
+                         * If the greedy rewiring attempt hit an obstacle and failed, we DO NOT abort entirely.
+                         * If x's CURRENT parent's cost has dropped, failing to update x's cost will "strand" x 
+                         * and permanently break the optimal substructure (causing cascade death to its children).
+                         * Instead of trying more collision checks, we simply sync x's cost with its existing 
+                         * collision-verified parent and push it to the queue to keep the wave moving.
+                         */
+                        auto it_p = x->forwardNeighbors().find(x->getParent());
+                        if (it_p != x->forwardNeighbors().end()) {
+                            double sync_cost = x->getParent()->getCost() + it_p->second.distance;
+                            
+                            // Only queue if the parent's cost ACTUALLY dropped
+                            if (sync_cost < x->getCost()) {
+                                x->setCost(sync_cost);
+                                
+                                if (x->in_queue_) {
+                                    v_open_heap_.update(x, sync_cost);
+                                    last_replan_metrics_.queue_operations++;
+                                } else if (x->broadcast_cost_ == INFINITY || (x->broadcast_cost_ - sync_cost > epsilon)) {
+                                    v_open_heap_.add(x, sync_cost); 
+                                    last_replan_metrics_.queue_operations++;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+
+
+        // ==== CASCADE FORENSICS LOG ====
+        if (zIndex == 390) {
+            std::cout << "\n[CASCADE-DEATH-CHECK] Node 390 has finished expanding.\n";
+            if (tree_.size() > 506) {
+                FMTNode* n506 = tree_[506].get();
+                std::cout << "   -> Node 506 Current Cost: " << n506->getCost() << "\n";
+                std::cout << "   -> Let's check ALL neighbors of 506 to see if anyone can save it later:\n";
+                
+                bool anyone_can_save = false;
+                for (auto& [neighbor, edge_info] : n506->forwardNeighbors()) {
+                    double potential_cost = neighbor->getCost() + edge_info.distance;
+                    std::cout << "      Neighbor " << neighbor->getIndex() 
+                              << " | cost: " << neighbor->getCost() 
+                              << " | edge: " << edge_info.distance 
+                              << " | potential_cost: " << potential_cost;
+                    
+                    if (potential_cost < n506->getCost()) {
+                        std::cout << "  <-- CAN SAVE!\n";
+                        anyone_can_save = true;
+                    } else {
+                        std::cout << "  (Worse than 506's current cost)\n";
+                    }
+                }
+                
+                if (!anyone_can_save) {
+                    std::cout << "   -> CONCLUSION: NO NEIGHBOR CAN EVER SAVE 506. IT IS STRANDED.\n";
+                }
+            }
+        }
+        // ==== END CASCADE FORENSICS LOG ====
+
         v_open_heap_.pop();
+
+    if (zIndex == 390) {
+        std::cout << "[TRACK-390-POP] Node 390 permanently removed from V_open.\n"
+                << "   -> Final cost at removal: " << z->getCost() << "\n";
+        if (tree_.size() > 506) {
+            std::cout << "   -> Is 506 still suboptimal? " 
+                    << (tree_[506]->getCost() > (z->getCost() + 11.2793) ? "YES - STRANDED!" : "NO") << "\n";
+        } else {
+            std::cout << "   -> Node 506 does not exist yet (tree size=" << tree_.size() << ")\n";
+        }
+    }
+
         last_replan_metrics_.queue_operations++;
         // visualizeTree();
         // std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     } 
 
+    if (node390 && node506) {
+        std::cout << "[PLAN-EXIT] Node 390 cost=" << node390->getCost() 
+                  << " | Node 506 cost=" << node506->getCost() << "\n";
+    }
+
+
 #if DEBUG
-    printDebugSummary(dbg_metrics);
+    // printDebugSummary(dbg_metrics);
 #endif
 
 #if DEBUG 
-    runForensics();
+    // runForensics();
+    // runCostForensics();
+    runGlobalCostForensics();
 #endif
 
+
+    // // At the end of the plan() loop:
+    // for (auto& node_ptr : tree_) {
+    //     FMTNode* node = node_ptr.get();
+    //     if (node->getParent() != nullptr) {
+    //         FMTNode* p = node->getParent();
+    //         // If 'p' does not have 'node' in its backward neighbors, the graph is structurally broken!
+    //         if (p->backwardNeighbors().find(node) == p->backwardNeighbors().end()) {
+    //             std::cout << "[FATAL GRAPH ERROR] Node " << node->getIndex() 
+    //                     << " is a child of " << p->getIndex() 
+    //                     << " but is MISSING from the parent's backwardNeighbors!\n";
+    //         }
+    //     }
+    // }
 
 }
 
@@ -1175,6 +1704,7 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
         // Invalidate Cost (but keep Root valid)
         if (node->getIndex() != root_state_index_) {
             node->setCost(INFINITY); 
+            node->broadcast_cost_ = INFINITY;
             last_replan_metrics_.nodes_updated++;
             // NOTE: We do NOT set time_to_goal to INF, preserving heuristic.
         }

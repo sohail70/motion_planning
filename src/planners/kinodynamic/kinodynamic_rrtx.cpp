@@ -893,7 +893,7 @@ void KinodynamicRRTX::reduceInconsistency() {
         inconsistency_queue_.pop();
         last_replan_metrics_.queue_operations++;
         RRTxNode* node = top_element.second;
-        // Standard RRTx logic: if Cost > LMC, we need to update
+        // Standard RRTx logic: if Cost > LMC + eps, we need to update
         if (node->getCost() > node->getLMC() + epsilon_) {
             updateLMC(node);
             rewireNeighbors(node);
@@ -1048,8 +1048,8 @@ void KinodynamicRRTX::propagateDescendants() {
         for (RRTxNode* child : current->getChildren()) {
             int child_idx = child->getIndex();
             if (Vc_T_.count(child_idx)) continue;
-
-            Vc_T_.insert(child_idx);
+            // Vc_T_.insert(child_idx);
+            verifyOrphan(child);
             to_process.push(child);
         }
     }

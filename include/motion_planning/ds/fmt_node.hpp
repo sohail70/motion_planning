@@ -125,6 +125,7 @@ public:
     double last_culled_radius_ = -1.0; // Initialize to invalid radius
 
 
+    double broadcast_cost_; // This is the stale anchor. It is the cost the node had the last time it was actively expanding the wavefront.
 
 private:
     std::shared_ptr<State> state_;
@@ -138,7 +139,7 @@ private:
     std::shared_ptr<Trajectory> parent_trajectory_;
 
 
-    double cost_; // This is optimization cost
+    double cost_; // This is optimization cost. This is the real-time, instantly updated best path
     double time_to_goal_;
     int index_;
     bool on_obstacle; // not using this now! maybe later instead of samples_in_obstalce!

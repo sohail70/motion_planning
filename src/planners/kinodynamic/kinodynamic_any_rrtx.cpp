@@ -10,7 +10,7 @@
 #define USE_THREAT_SET_STRATEGY 0
 // If both are 0, it falls back to the Default/Brute-Force Strategy
 
-#define DEBUG 0
+#define DEBUG 1
 
 KinodynamicANYRRTX::KinodynamicANYRRTX(std::shared_ptr<StateSpace> statespace, 
     std::shared_ptr<ProblemDefinition> problem_def,
@@ -321,7 +321,78 @@ bool KinodynamicANYRRTX::runForensics() {
     }
 }
 
+bool KinodynamicANYRRTX::runCostForensics() {
+    std::cout << "\n[RRTx FORENSICS] --- STARTING STRICT EPSILON-CONSISTENCY VERIFICATION ---" << std::endl;
+    int nodes_checked = 0;
+    int violations = 0;
+    int queue_waiting = 0;
+    double max_local_inconsistency = 0.0;
+    int max_node = -1;
 
+    for (size_t i = 0; i < tree_.size(); ++i) {
+        RRTxNode* node = tree_[i].get();
+        
+        double g = node->getCost();
+        double lmc = node->getLMC();
+
+        // 1. Skip completely unconnected nodes
+        if (g == std::numeric_limits<double>::infinity() && 
+            lmc == std::numeric_limits<double>::infinity()) {
+            continue;
+        }
+
+        // Calculate inconsistency
+        double inconsistency = g - lmc;
+
+        // 2. Is this node violating the epsilon bound?
+        if (inconsistency > epsilon_ + 1e-5) {
+            
+            // ------------------------------------------------------------------
+            // REPLACE THIS with whatever method you use to check if a node 
+            // is currently in your priority queue (Q)
+            bool is_in_queue = node->in_queue_; // <--- UPDATE THIS LINE
+            // ------------------------------------------------------------------
+
+            if (is_in_queue) {
+                // This is perfectly legal! RRTX knows it's inconsistent 
+                // and has queued it for lazy evaluation.
+                queue_waiting++;
+                continue; 
+            } else {
+                // THIS IS A REAL BUG! It is inconsistent and the algorithm forgot about it!
+                violations++;
+                std::cout << "\033[1;31m[REAL VIOLATION]\033[0m Node " << node->getIndex() 
+                          << " | g: " << g << " | lmc: " << lmc 
+                          << " | Diff: " << inconsistency << " > eps(" << epsilon_ << ")\n"
+                          << "                 AND IT IS NOT IN THE QUEUE!\n";
+            }
+        }
+
+        // If we reach here, the node is considered "settled"
+        nodes_checked++;
+        if (inconsistency > max_local_inconsistency) {
+            max_local_inconsistency = inconsistency;
+            max_node = node->getIndex();
+        }
+    }
+
+    std::cout << "-> Checked " << nodes_checked << " settled nodes.\n";
+    std::cout << "-> Safely ignored " << queue_waiting << " inconsistent nodes correctly waiting in the queue.\n";
+    std::cout << "-> Maximum local inconsistency of SETTLED nodes: " << max_local_inconsistency;
+    if (max_node != -1) {
+        std::cout << " (at Node " << max_node << ")";
+    }
+    std::cout << "\n";
+
+    if (violations > 0) {
+        std::cout << "[RRTx FORENSICS] --- \033[1;31mFAILED\033[0m: Found " << violations 
+                  << " nodes that are inconsistent AND missing from the queue! ---\n";
+        return false;
+    } else {
+        std::cout << "[RRTx FORENSICS] --- \033[1;32mPASSED\033[0m: All nodes are either locally epsilon-consistent, or safely queued! ---\n";
+        return true;
+    }
+}
 
 void KinodynamicANYRRTX::plan() {
     for (int i = 0; i < num_of_samples_; ++i) {
@@ -365,7 +436,8 @@ void KinodynamicANYRRTX::plan() {
     }
 
     #if DEBUG
-        runForensics();
+        // runForensics();
+        runCostForensics();
     #endif
     
 }
@@ -960,12 +1032,18 @@ void KinodynamicANYRRTX::reduceInconsistency() {
         inconsistency_queue_.pop();
         last_replan_metrics_.queue_operations++;
         RRTxNode* node = top_element.second;
-        // Standard RRTx logic: if Cost > LMC, we need to update
+        // Standard RRTx logic: if Cost > LMC + eps, we need to update
         if (node->getCost() > node->getLMC() + epsilon_) {
             updateLMC(node);
             rewireNeighbors(node);
         }
-        // Synchronize Cost and LMC
+
+        /*
+            Synchronize Cost and LMC
+            Mind that some nodes have g and lmc with less than epsilon apart. 
+            The above filter keeps this improvement a secret from its children but the node it self uses that little improvement
+
+        */ 
         if (node->getCost() != node->getLMC()) {
             node->setCost(node->getLMC());
             last_replan_metrics_.nodes_updated++;
@@ -1101,7 +1179,9 @@ void KinodynamicANYRRTX::propagateDescendants() {
         for (RRTxNode* child : current->getChildren()) {
             int child_idx = child->getIndex();
             if (Vc_T_.count(child_idx)) continue;
-            Vc_T_.insert(child_idx);
+            // Vc_T_.insert(child_idx);
+            verifyOrphan(child);
+
             to_process.push(child);
         }
     }
