@@ -64,7 +64,7 @@ class KinodynamicANYRRTX : public Planner {
     bool isRobotSafe();
     int getTreeSize() { return tree_.size();}
 
-    bool runForensics();
+    bool runCollisionForensics();
     bool runCostForensics();
 
     struct ScalingMetrics {

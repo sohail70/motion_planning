@@ -68,7 +68,7 @@ class KinodynamicRRTX : public Planner {
 
     bool isRobotSafe();
     int getTreeSize() { return tree_.size();}
-    bool runForensics();
+    bool runCollisionForensics();
 
     // struct EdgeEval {
     //     RRTxNode* neighbor;

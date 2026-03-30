@@ -64,7 +64,7 @@ class KinodynamicANYFMTX : public Planner {
         }
         double getNeighborhoodRadius(){return neighborhood_radius_;}
 
-        bool runForensics();
+        bool runCollisionForensics();
         bool runCostForensics();
         bool runGlobalCostForensics();
         bool runTreePropagationForensics();

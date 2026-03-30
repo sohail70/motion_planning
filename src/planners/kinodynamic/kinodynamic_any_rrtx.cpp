@@ -241,7 +241,7 @@ Eigen::VectorXd KinodynamicANYRRTX::saturate(const Eigen::VectorXd& newPoint, co
     return saturatedPoint;
 }
 
-bool KinodynamicANYRRTX::runForensics() {
+bool KinodynamicANYRRTX::runCollisionForensics() {
     std::cout << "\n[RRTx FORENSICS] --- STARTING POST-PLAN GRAPH VERIFICATION ---" << std::endl;
     int illegal_connections = 0;
     int checked_nodes = 0;
@@ -436,7 +436,7 @@ void KinodynamicANYRRTX::plan() {
     }
 
     #if DEBUG
-        // runForensics();
+        runCollisionForensics();
         runCostForensics();
     #endif
     

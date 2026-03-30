@@ -679,7 +679,7 @@ void KinodynamicFMTX::plan() {
 
 #if DEBUG
     // printDebugSummary(dbg_metrics); // Experimental proof that increasing sample counts would reduce the average suboptimality cost which happens in FMTX (Inherited from FMT*)
-    runForensics(); // To Recheck All the trajectories again with all the obstacles to validify our repair!
+    runCollisionForensics(); // To Recheck All the trajectories again with all the obstacles to validify our repair!
     runCostForensics();
     runGlobalCostForensics();
 #endif
@@ -1070,7 +1070,7 @@ void KinodynamicFMTX::printDebugSummary(const SuboptimalityMetrics& metrics) {
     }
 }
 
-bool KinodynamicFMTX::runForensics() {
+bool KinodynamicFMTX::runCollisionForensics() {
     std::cout << "\n[FMTx FORENSICS] --- STARTING GOAL-ROOTED TREE VERIFICATION ---" << std::endl;
     int illegal_connections = 0;
     int checked_nodes = 0;

@@ -1,8 +1,8 @@
 // Copyright 2025 Soheil E.nia
 
 // TODO: Later implement KNN. with knn you wouldnt need cullNeighbor! use if (use_knn) return in cullNeighbor
-#define DEBUG 1
-
+#define DEBUG 0
+#define VIS 1 // For visualizing open heap node to see the partial update in play
 // Set to 1 to use my context-aware Threat Set.
 // Set to 0 to use the Default/Blind exhaustive checking.
 
@@ -310,7 +310,7 @@ void KinodynamicANYFMTX::printDebugSummary(const SuboptimalityMetrics& metrics) 
     }
 }
 
-bool KinodynamicANYFMTX::runForensics() {
+bool KinodynamicANYFMTX::runCollisionForensics() {
     std::cout << "\n[FMTx FORENSICS] --- STARTING GOAL-ROOTED TREE VERIFICATION ---" << std::endl;
     int illegal_connections = 0;
     int checked_nodes = 0;
@@ -895,6 +895,31 @@ void KinodynamicANYFMTX::plan() {
     addBatchOfSamplesEager(num_of_samples_); // Add a small batch (e.g., 10) instead of 1
 
 
+#if VIS
+    // VISUALIZATION: Visualize all nodes currently in the Open Set (V_open)
+    if (visualization_) {
+        std::vector<Eigen::VectorXd> open_set_nodes;
+        
+        // Access the underlying vector from the priority queue
+        const auto& heap_data = v_open_heap_.getHeap();
+        
+        // Iterate over all elements in the heap
+        for (const auto& element : heap_data) {
+            // element is std::pair<double, FMTNode*>
+            FMTNode* node = element.second;
+            if (node) {
+                open_set_nodes.push_back(node->getStateValue());
+            }
+        }
+
+        if (!open_set_nodes.empty()) {
+            visualization_->visualizeNodes(open_set_nodes, "map", 
+                                    std::vector<float>{1.0f, 0.0f, 0.0f}, 
+                                    "v_open_heap_nodes");
+        }
+    }
+#endif
+
 
     while (true) {
         if (v_open_heap_.empty()) {
@@ -1135,7 +1160,7 @@ void KinodynamicANYFMTX::plan() {
 #if DEBUG
                         dbg_metrics.costUpdated[x] = true;
                         // Oracle!
-                        // analyzeSuboptimality(x, best_parent_for_x, z, dbg_metrics);
+                        analyzeSuboptimality(x, best_parent_for_x, z, dbg_metrics);
 #endif
 
                         last_replan_metrics_.nodes_updated++;
@@ -1220,10 +1245,10 @@ void KinodynamicANYFMTX::plan() {
 
 
 #if DEBUG 
-    // printDebugSummary(dbg_metrics);
-    // runForensics();
-    // runCostForensics();
-    // runGlobalCostForensics();
+    printDebugSummary(dbg_metrics);
+    runCollisionForensics();
+    runCostForensics();
+    runGlobalCostForensics();
     runTreePropagationForensics();
 #endif
 

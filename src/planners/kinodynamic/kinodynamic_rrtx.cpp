@@ -1402,7 +1402,7 @@ bool KinodynamicRRTX::isRobotSafe() {
 
 
 
-bool KinodynamicRRTX::runForensics() {
+bool KinodynamicRRTX::runCollisionForensics() {
     std::cout << "\n[RRTx FORENSICS] --- STARTING POST-PLAN GRAPH VERIFICATION ---" << std::endl;
     int illegal_connections = 0;
     int checked_nodes = 0;
