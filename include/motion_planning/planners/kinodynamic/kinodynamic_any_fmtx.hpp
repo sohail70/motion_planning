@@ -67,6 +67,8 @@ class KinodynamicANYFMTX : public Planner {
         bool runForensics();
         bool runCostForensics();
         bool runGlobalCostForensics();
+        bool runTreePropagationForensics();
+
         struct SuboptimalityMetrics {
             int total_nodes_updated = 0;
             int nodes_with_missed_better = 0;

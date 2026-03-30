@@ -1,7 +1,7 @@
 // Copyright 2025 Soheil E.nia
 
 // TODO: Later implement KNN. with knn you wouldnt need cullNeighbor! use if (use_knn) return in cullNeighbor
-#define DEBUG 0
+#define DEBUG 1
 
 // Set to 1 to use my context-aware Threat Set.
 // Set to 0 to use the Default/Blind exhaustive checking.
@@ -581,6 +581,63 @@ bool KinodynamicANYFMTX::runCostForensics() {
     }
 }
 
+bool KinodynamicANYFMTX::runTreePropagationForensics() {
+    int nodes_checked = 0;
+    int stranded_children = 0;
+    int epsilon_saved_cascades = 0;
+
+    for (size_t i = 0; i < tree_.size(); ++i) {
+        FMTNode* child = tree_[i].get();
+        
+        if (child->getIndex() == root_state_index_ || 
+            child->getCost() == std::numeric_limits<double>::infinity() || 
+            child->getParent() == nullptr) {
+            continue;
+        }
+
+        FMTNode* parent = child->getParent();
+        auto traj = child->getParentTrajectory();
+        if (!traj || !traj->is_valid) continue; 
+
+        double expected_cost = parent->getCost() + traj->cost;
+        double actual_cost = child->getCost();
+        double difference = actual_cost - expected_cost;
+
+        nodes_checked++;
+
+        if (difference > 1e-5) {
+            if (parent->in_queue_) continue; 
+            if (child->in_queue_) continue;
+
+            // THE EPSILON FIX:
+            // If the lag is less than epsilon, it was intentionally suppressed by the algorithm
+            // to save queue operations. This is highly optimal behavior!
+            if (difference <= epsilon + 1e-5) {
+                epsilon_saved_cascades++;
+                continue; 
+            }
+
+            stranded_children++;
+            std::cout << "\033[1;31m[FATAL PROPAGATION FAILURE]\033[0m Node " << child->getIndex() 
+                      << " is illegally stranded!\n";
+            std::cout << "   -> Child Cost: " << actual_cost << "\n";
+            std::cout << "   -> Expected Cost via Parent: " << expected_cost << " (Diff: " << difference << " > " << epsilon << ")\n";
+        }
+    }
+
+    std::cout << "-> Suppressed " << epsilon_saved_cascades << " tiny cascades due to Epsilon optimization.\n";
+
+    if (stranded_children > 0) {
+        std::cout << "[FMTx FORENSICS] --- \033[1;31mFAILED\033[0m: Found " << stranded_children 
+                  << " illegally stranded children! ---\n\n";
+        return false;
+    } else {
+        std::cout << "[FMTx FORENSICS] --- \033[1;32mPASSED\033[0m: " << nodes_checked 
+                  << " tree edges verified. All nodes are Bellman-consistent or safely within epsilon! ---\n\n";
+        return true;
+    }
+}
+
 // Eager new sample insertion, later in plan we do lazy propagation
 // In anytime fmtx eager approach we still dont care about all the collision checking connections from new node to neighbors or neighbors to new node
 // except maybe the new sampled node to its forward neighbors! so we only collision check to find the parent here! but in anytime rrtx we have to check all of the
@@ -776,79 +833,6 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         } 
     }
 }
-// void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
-//     // PERFORMANCE TRIGGER: Skip if radius hasn't shrunk significantly
-//     if (v->last_culled_radius_ > 0 && 
-//         (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) {
-//         return;
-//     }
-
-//     auto& outgoing = v->forwardNeighbors();
-//     auto it = outgoing.begin();
-    
-//     while (it != outgoing.end()) {
-//         auto neighbor = it->first;
-//         auto& edge = it->second;
-        
-//         double edge_cost = edge.cached_trajectory->cost;
-        
-//         // Condition for culling: Edge is too long AND neighbor is not the current parent
-//         if (edge_cost > (neighborhood_radius_ + 0.01) && neighbor != v->getParent()) {
-            
-//             // --- DETERMINE CULLING PERMISSION ---
-            
-//             // 1. Is 'neighbor' a child of 'v' in the tree?
-//             bool is_child = (neighbor->getParent() == v);
-            
-//             // 2. Is 'neighbor' currently in the Open set (V_open)?
-//             // If neighbor is in V_open, it is active and might expand soon. 
-//             // We must NOT break the link from neighbor -> v (backward link of neighbor)
-//             // because 'v' might need to notify 'neighbor' of an improvement.
-//             bool neighbor_is_open = neighbor->in_queue_;
-//             // 3. Is the edge an initial (sacred) neighbor?
-//             bool is_initial = edge.is_initial;
-
-//             // --- SYMMETRIC CULL (Neighbor's Side) ---
-//             // We remove 'v' from 'neighbor's backward list ONLY if:
-//             // 1. It is NOT an initial neighbor.
-//             // 2. 'neighbor' is NOT a child of 'v'.
-//             // 3. 'neighbor' is NOT in V_open.
-//             if (!is_initial && !is_child && !neighbor_is_open) {
-//                 auto& incoming = neighbor->backwardNeighbors();
-//                 if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
-//                     incoming.erase(incoming_it);
-//                 }
-//             }
-//             // if (!is_initial) {
-//             //     auto& incoming = neighbor->backwardNeighbors();
-//             //     if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
-//             //         incoming.erase(incoming_it);
-//             //     }
-//             // }
-//             // auto& incoming = neighbor->backwardNeighbors();
-//             // if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
-//             //     if (!incoming_it->second.is_initial) {
-//             //         incoming.erase(incoming_it);
-//             //     }
-//             // }
-
-
-
-//             // --- SOURCE CULL (v's Side) ---
-//             // We remove 'neighbor' from 'v's forward list if it is NOT initial.
-//             // Note: We allow culling the forward link even if it is a child or open, 
-//             // because 'v' just needs to stop looking at 'neighbor' as a potential parent.
-//             // The backward link (preserved above) handles the notification.
-//             if (!is_initial) {
-//                 it = outgoing.erase(it);
-//                 continue; 
-//             }
-//         }
-//         ++it;
-//     }
-//     v->last_culled_radius_ = neighborhood_radius_;
-// }
-
 
 /*
     if node 623 is child and node 503 is parent there is chance 503 forgot 623 but 623 didnt! (thats why 503 become parent!)
@@ -856,7 +840,8 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
     so in rrtx 623 in updateLMC goes through the outgoing and can update lmc by using 503! but in fmtx 
     we loop through the backward (incoming) of 503 first to find the 623! but 623 got culled from 503's incoming neighbors so 623 never improves even if its parent (503) 
     has improved 
-    the only solution for us is to not only loop over the backward neighbors of 503 (at the first for loop of plan) but to loop over the current children of 503! because it might have gotten culled!
+    The perfect Solution which i found for the cost propagation cascade death also fixes the above problem!
+    because 623 eventually gets notified by using its current parent which is 503 in the elseif part of the plan function.
 */
 
 
@@ -907,7 +892,6 @@ void KinodynamicANYFMTX::plan() {
 #if DEBUG
     SuboptimalityMetrics dbg_metrics;
 #endif
-
     addBatchOfSamplesEager(num_of_samples_); // Add a small batch (e.g., 10) instead of 1
 
 
@@ -939,6 +923,68 @@ void KinodynamicANYFMTX::plan() {
             it broadcasts its cost. Right after we read z, we lock its broadcast cost
         */
         z->broadcast_cost_ = z->getCost(); 
+
+
+
+
+        // TOPOLOGICAL TREE PROPAGATION (The Strict Bellman Update)
+        // ========================================================================================
+        // This phase strictly enforces cost propagation down the shortest-path tree (g(x) = g(P) + c(P,x)).
+        // If z's cost drops, ALL of its children must inherit the improvement. 
+        // regardless of whether they have been geometrically culled!
+        // 
+        // This loop guarantees the survival of the anytime dynamic loop by solving TWO major 
+        // causes of "Cascade Death" (where a node is permanently stranded with a stale cost):
+        //
+        // 1. THE FMTX ASYMMETRIC CULLING PROBLEM:
+        //    'cullNeighbors' aggressively deletes long geometric edges to maintain O(log N) density.
+        //    If a parent 'z' culled child 'x' from its outgoing edges, the standard geometric 
+        //    wavefront physically cannot reach 'x'. This topological loop explicitly bridges that 
+        //    severed gap, ensuring 'x' receives the update.
+        //
+        // 2. THE INHERENT FMT* LAZY COLLISION PROBLEM:
+        //    In standard FMT*, if a node tries to rewire to a new parent but fails a lazy collision 
+        //    check, the node is simply ignored. If its *current* parent had also dropped in cost, 
+        //    ignoring the node permanently strands it, breaking the optimal substructure for its 
+        //    entire subtree. 
+        //    By pushing updates blindly down the 'children_' array (with ZERO collision checks, 
+        //    since the parent-child edge is already known to be safe), we guarantee the Bellman 
+        //    equation survives even if the node later fails to find a better shortcut.
+        //
+        // PHILOSOPHY: 
+        // We accept that a node might miss a shortcut due to lazy collision checking in Phase 2, 
+        // but we REFUSE to let the tree's mathematical cost structure break. 
+        //
+        // NO REDUNDANT WORK:
+        // Phase 1 updates the cost of z's children immediately. When Phase 2 (the geometric wavefront) 
+        // later loops over z's neighbors, the core condition `if (x->getCost() > cost_via_z)` naturally 
+        // evaluates to FALSE for z's own children. Therefore, Phase 2 completely skips them, saving 
+        // expensive collision checks. Rewiring a child to a *different* parent naturally happens 
+        // later when that competing parent expands.
+        // ========================================================================================
+
+        for (FMTNode* child : z->children_) {
+            auto traj = child->getParentTrajectory();
+            if (!traj) continue;
+
+            double cost_via_z = z->getCost() + traj->cost;
+            
+            // If the parent brings a better cost, push it down to the child
+            if (child->getCost() > cost_via_z) {
+                child->setCost(cost_via_z);
+                
+                // Wake the child up so it can propagate the cost to its own children
+                if (child->in_queue_) {
+                    v_open_heap_.update(child, cost_via_z);
+                    last_replan_metrics_.queue_operations++;
+                } else if (child->broadcast_cost_ == INFINITY || (child->broadcast_cost_ - cost_via_z > epsilon)) {
+                    v_open_heap_.add(child, cost_via_z); 
+                    last_replan_metrics_.queue_operations++;
+                }
+            }
+        }
+
+
 
 
         // Before we expand z, we remove any temporary neighbors that are now outside the shrinking radius.
@@ -992,6 +1038,7 @@ void KinodynamicANYFMTX::plan() {
                 as wavefront expands.  
             */
             if (x->getCost() > cost_via_z) {
+
 #if DEBUG
                 // Check if we've already updated this node in this plan() cycle
                 if (dbg_metrics.costUpdated.find(x) != dbg_metrics.costUpdated.end()) {
@@ -1031,8 +1078,6 @@ void KinodynamicANYFMTX::plan() {
                         if (traj_xy->is_valid) {
                             double cost_via_y = y->getCost() + traj_xy->cost;
 
-
-
                             if (cost_via_y < min_cost_for_x) {
                                 min_cost_for_x = cost_via_y;
                                 best_parent_for_x = y;
@@ -1044,39 +1089,37 @@ void KinodynamicANYFMTX::plan() {
 
 
 
-
-
-
                 // if (best_parent_for_x != nullptr && min_cost_for_x < (x->getCost()-epsilon)) { // The second && is the second line of defense if the cullNeighbor(x) deletes z and we are here for somereason! because the if condtion right after cullNiehgbor(x) would caught the lie and we never reach here but still its good to be safe!
                 if (best_parent_for_x != nullptr && min_cost_for_x < (x->getCost())) { // The second && is the second line of defense if the cullNeighbor(x) deletes z and we are here for somereason! because the if condtion right after cullNiehgbor(x) would caught the lie and we never reach here but still its good to be safe!
                     bool obstacle_free = true;
+                    if (best_parent_for_x != x->getParent()) {
 #if USE_THREAT_SET_STRATEGY
-                    if (!x->threats.empty()){
-                        for (const Obstacle* ob_ptr : x->threats) {
+                        if (!x->threats.empty()){
+                            for (const Obstacle* ob_ptr : x->threats) {
+                                last_replan_metrics_.obstacle_checks++;
+                                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*best_traj_for_x, *ob_ptr)) {
+                                    obstacle_free = false;
+                                    break;
+                                }
+                            }
+                        } else {
+                            // Safe by default.
+                            obstacle_free = true;
+                        }
+#else
+                        // Use previous_obstacles_ so the brute-force mode actually sees the tubes!
+                        for (const auto& [name, ob] : previous_obstacles_) {
                             last_replan_metrics_.obstacle_checks++;
-                            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*best_traj_for_x, *ob_ptr)) {
+                            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*best_traj_for_x, ob)) {
                                 obstacle_free = false;
                                 break;
                             }
                         }
-                    } else {
-                        // Safe by default.
-                        obstacle_free = true;
-                    }
-#else
-                    // Use previous_obstacles_ so the brute-force mode actually sees the tubes!
-                    for (const auto& [name, ob] : previous_obstacles_) {
-                        last_replan_metrics_.obstacle_checks++;
-                        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*best_traj_for_x, ob)) {
-                            obstacle_free = false;
-                            break;
-                        }
-                    }
 #endif
+                    }
 
       
                     if (obstacle_free) {
-
 
 
                         // Need the old cost for the epsilon consistency approach
@@ -1086,10 +1129,13 @@ void KinodynamicANYFMTX::plan() {
 
                         x->setCost(min_cost_for_x);
                         x->setParent(best_parent_for_x, best_traj_for_x);
+
+
+
 #if DEBUG
                         dbg_metrics.costUpdated[x] = true;
                         // Oracle!
-                        analyzeSuboptimality(x, best_parent_for_x, z, dbg_metrics);
+                        // analyzeSuboptimality(x, best_parent_for_x, z, dbg_metrics);
 #endif
 
                         last_replan_metrics_.nodes_updated++;
@@ -1110,33 +1156,55 @@ void KinodynamicANYFMTX::plan() {
                             last_replan_metrics_.queue_operations++;
                         }
                     }
-                    else if (x->getParent() != nullptr) {
-                        /* 
-                         * CASCADE SURVIVAL FALLBACK (Cost Synchronization)
-                         * If the greedy rewiring attempt hit an obstacle and failed, we DO NOT abort entirely.
-                         * If x's CURRENT parent's cost has dropped, failing to update x's cost will "strand" x 
-                         * and permanently break the optimal substructure (causing cascade death to its children).
-                         * Instead of trying more collision checks, we simply sync x's cost with its existing 
-                         * collision-verified parent and push it to the queue to keep the wave moving.
-                         */
-                        auto it_p = x->forwardNeighbors().find(x->getParent());
-                        if (it_p != x->forwardNeighbors().end()) {
-                            double sync_cost = x->getParent()->getCost() + it_p->second.distance;
+                    // else if (x->getParent() != nullptr) {
+                    //     if (debug_190) printf("[DEBUG-190] FALLBACK: Obstacle hit. Attempting fallback to current parent %d\n", x->getParent()->getIndex());
+
+                    //     /* 
+                    //      * CASCADE SURVIVAL FALLBACK (Cost Synchronization)
+                    //      * If the greedy rewiring attempt hit an obstacle and failed, we DO NOT abort entirely.
+                    //      * If x's CURRENT parent's cost has dropped, failing to update x's cost will "strand" x 
+                    //      * and permanently break the optimal substructure (causing cascade death to its children).
+                    //      * Instead of trying more collision checks, we simply sync x's cost with its existing 
+                    //      * collision-verified parent and push it to the queue to keep the wave moving.
+                    //      */
+                    //     /*
+                    //         this also solves the problem of cullNeigbor which causes a parent to not be able to notify its child because the child is not in its backward sets due to being culled
+                    //         even though i have parent filter in cull but there is a chance that we cull something but later it becoms the parent of a node that doesnt know about it because  hte bellman for loop
+                    //         the child chooses its parent and can choose an initial parent but that parent had this child in its running edges and culled it!
+                    //         here we can solve this issue at once!
+                    //         so this mechanism avoids the Cascade Death caused by FMT* inherent problem caused by lazy collision checking and the cullNeighbor!
+
+                    //         so I accept that a node might miss a shortcut due to lazy collision checking, but I REFUSE to let the tree's cost structure break.
+                    //     */
+                    //    /*
+                    //         the only concern is do we need collision check here or not? the plan cycles only happen after the updateObstacleSample function gets triggered due to obstalce's turnaround
+                    //         in addNewObstacle we make nodes with trajectory in the obstacle's tube orphan and make their cost inf and sever their parent relationship! but we keep the tree nodes that are collision free even though they are in the tube
+                    //         so this cant even trigger the else if because there is no parent!
+                    //         but how about removeObstacle? this frees up some nodes that was severed in the addNewObstacle so they are still having inf cost with no parent.
+                    //         in both cases we need to check the collision in the standard plan cycle! but i dont think when a node is already part of the tree and has parent is caused by addNewObstacle or removeObstacle! and i think its safe to just update the cost
+                    //         of that node with its current parent! but if the parent is something other than the current parent we need to collision check which happens in the standard part above!
+                    //         though i might be wrong and need to further investigate!  
+                        
+                    //    */
+                    //     auto it_p = x->forwardNeighbors().find(x->getParent());
+                    //     if (it_p != x->forwardNeighbors().end()) {
+                    //         double sync_cost = x->getParent()->getCost() + it_p->second.distance;
                             
-                            // Only queue if the parent's cost ACTUALLY dropped
-                            if (sync_cost < x->getCost()) {
-                                x->setCost(sync_cost);
+                    //         // Only queue if the parent's cost ACTUALLY dropped
+                    //         if (sync_cost < x->getCost()) {
+                    //             counter++;
+                    //             x->setCost(sync_cost);
                                 
-                                if (x->in_queue_) {
-                                    v_open_heap_.update(x, sync_cost);
-                                    last_replan_metrics_.queue_operations++;
-                                } else if (x->broadcast_cost_ == INFINITY || (x->broadcast_cost_ - sync_cost > epsilon)) {
-                                    v_open_heap_.add(x, sync_cost); 
-                                    last_replan_metrics_.queue_operations++;
-                                }
-                            }
-                        }
-                    }
+                    //             if (x->in_queue_) {
+                    //                 v_open_heap_.update(x, sync_cost);
+                    //                 last_replan_metrics_.queue_operations++;
+                    //             } else if (x->broadcast_cost_ == INFINITY || (x->broadcast_cost_ - sync_cost > epsilon)) {
+                    //                 v_open_heap_.add(x, sync_cost); 
+                    //                 last_replan_metrics_.queue_operations++;
+                    //             }
+                    //         }
+                    //     }
+                    // }
                 }
             }
         }
@@ -1151,14 +1219,12 @@ void KinodynamicANYFMTX::plan() {
 
 
 
-#if DEBUG
-    // printDebugSummary(dbg_metrics);
-#endif
-
 #if DEBUG 
+    // printDebugSummary(dbg_metrics);
     // runForensics();
-    runCostForensics();
-    runGlobalCostForensics();
+    // runCostForensics();
+    // runGlobalCostForensics();
+    runTreePropagationForensics();
 #endif
 
 

@@ -66,6 +66,8 @@ class KinodynamicFMTX : public Planner {
         int getTreeSize() { return tree_.size();}
 
         bool runForensics();
+        bool runCostForensics();
+        bool runGlobalCostForensics();
         struct SuboptimalityMetrics {
             int total_nodes_updated = 0;
             int nodes_with_missed_better = 0;
