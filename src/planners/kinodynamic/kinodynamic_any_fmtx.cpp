@@ -1,23 +1,17 @@
 // Copyright 2025 Soheil E.nia
 
 // TODO: Later implement KNN. with knn you wouldnt need cullNeighbor! use if (use_knn) return in cullNeighbor
-#define DEBUG 0
-#define VIS 1 // For visualizing open heap node to see the partial update in play
-// Set to 1 to use my context-aware Threat Set.
-// Set to 0 to use the Default/Blind exhaustive checking.
-
-#define USE_THREAT_SET_STRATEGY 0
-// The Threat Set is the bridge that allows a lazy algorithm (like FMTx) to behave with the same spatial intelligence as an eager one (Eager like RRTx)
+#define DEBUG 0 // Debugs included are a full "Collision/Cost propagation/Espsilon consistency/Suboptimality average cost" recheck
+#define VIS 0 // For visualizing open heap node to see the partial update in play
+#define USE_THREAT_SET_STRATEGY 0 // Context-aware Threat set: The Threat Set is the bridge that allows a lazy algorithm (like FMTx) to behave with the same spatial intelligence as an eager one (Eager like RRTx)
 
 #include "motion_planning/planners/kinodynamic/kinodynamic_any_fmtx.hpp"
 
 KinodynamicANYFMTX::KinodynamicANYFMTX(std::shared_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(statespace), problem_(problem_def), obs_checker_(obs_checker) {
     std::cout<< "KinodynamicANYFMTX Constructor \n";
-
 }
 
 void KinodynamicANYFMTX::clearPlannerState() {
-
     v_open_heap_.clear();
     for (auto& node : tree_) {
         node->disconnectFromGraph();
@@ -31,8 +25,8 @@ void KinodynamicANYFMTX::clearPlannerState() {
 
 }
 
-
 void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
+    std::cout << "------------------------------------------------------------\n";
     auto start = std::chrono::high_resolution_clock::now();
     clearPlannerState();
     visualization_ = visualization;
@@ -51,7 +45,6 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
 
     if (kdtree_type == "NanoFlann"){
         Eigen::VectorXd weights(kd_dim);
-        // weights << 1.0, 1.0, 1.0; // Weights for x, y, time
         switch (kd_dim) {
             case 2: // (x, y)
                 weights << 1.0, 1.0; // Weights for x, y,
@@ -74,44 +67,36 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
     } else {
         throw std::runtime_error("FMTX requires a KD-Tree.");
     }
-    std::cout << "num_of_samples=" << num_of_samples_
+    std::cout << "num_of_samples per batch=" << num_of_samples_
                 << ", bounds=[" << lower_bounds_ << ", " << upper_bounds_ << "]\n";
 
 
-    std::cout << "Taking care of the samples: \n \n";
     setStart(problem_->getStart());
     setGoal(problem_->getGoal());
 
-
-    std::cout << "KDTree: \n\n";
+    // KDTREE
     Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
     Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(kd_dim).eval();
     // kdtree_->addPoints(spatial_samples_only);
     kdtree_->addPoints(all_samples);
     kdtree_->buildTree(); // Empty function in "DynamicWeightedNanoFlann" class
-
+    std::cout << "KDTree is Initialized: \n\n";
 
     dimension_ = statespace_->getDimension();
     factor = params.getParam<double>("factor");
     delta = params.getParam<double>("delta");
     // Calculate initial radius based on N=2 (Start + Goal)
-    updateNeighborhoodRadius();
+    shrinkingBallRadius();
     std::cout << "Setup complete. Ready for incremental sampling.\n";
-
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Time taken by setup: " << duration.count() << " milliseconds\n";
-    std::cout << "---\n";
-
-
-
-
+    std::cout << "------------------------------------------------------------\n";
 }
 
-void KinodynamicANYFMTX::updateNeighborhoodRadius() {
+void KinodynamicANYFMTX::shrinkingBallRadius() {
     int N = tree_.size();
     if (N <= 1) return;
-
     // int d = statespace_->getDimension();
     int d = kd_dim;
     Eigen::VectorXd range = upper_bounds_ - lower_bounds_;
@@ -121,9 +106,8 @@ void KinodynamicANYFMTX::updateNeighborhoodRadius() {
         mu *= range(i);
     }
     double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1.0);
-    
-    double gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
-    // double gamma = std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); // Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star
+    // double gamma = std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); // FMT star gamma which is smaller than RRT* which makes the neighborhood size less than RRT*
+    double gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); // RRT* gamma
 
     neighborhood_radius_ = factor * gamma * std::pow(std::log(N) / N, 1.0 / d);
     neighborhood_radius_ = std::min(delta, neighborhood_radius_);
@@ -326,9 +310,7 @@ bool KinodynamicANYFMTX::runCollisionForensics() {
             
             Trajectory edge_traj = statespace_->steer(node->getStateValue(), parent->getStateValue());
             
-
-
-            // // 3. VERIFY: Absolute Ground Truth check
+            // // VERIFY: Absolute Ground Truth check
             // for (const auto& [name, ob] : previous_obstacles_) {
             //     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(edge_traj, ob)) {
             //         edge_collides = true;
@@ -611,7 +593,7 @@ bool KinodynamicANYFMTX::runTreePropagationForensics() {
 
             // THE EPSILON FIX:
             // If the lag is less than epsilon, it was intentionally suppressed by the algorithm
-            // to save queue operations. This is highly optimal behavior!
+            // to save queue operations.
             if (difference <= epsilon + 1e-5) {
                 epsilon_saved_cascades++;
                 continue; 
@@ -637,18 +619,18 @@ bool KinodynamicANYFMTX::runTreePropagationForensics() {
         return true;
     }
 }
-
-// Eager new sample insertion, later in plan we do lazy propagation
-// In anytime fmtx eager approach we still dont care about all the collision checking connections from new node to neighbors or neighbors to new node
-// except maybe the new sampled node to its forward neighbors! so we only collision check to find the parent here! but in anytime rrtx we have to check all of the
-// edges and make them to have edge.distance of INF because that how rrtx works! but here because of lazy collision checking we dont have to do this!
-// Even this collision checking was not necessary if i could've found a way to make the addBatchOfSamplesLazy to not become O(n log^2 (n))
-// But here the O(n log(n)) will be preserved because we only do one heap push if the new node finds the best parent!
+/*
+  Eager new sample insertion, later in plan we do lazy propagation
+  In anytime fmtx eager approach we still dont care about all the collision checking connections from new node to neighbors or neighbors to new node
+  except maybe the new sampled node to its forward neighbors! so we only collision check to find the parent here! but in anytime rrtx we have to check all of the
+  edges and make them to have edge.distance of INF because that how rrtx works! but here because of lazy collision checking we dont have to do this!
+  Even this collision checking was not necessary if i could've found a way to make the addBatchOfSamplesLazy to not become O(n log^2 (n))
+  But here the O(n log(n)) will be preserved because we only do one heap push if the new node finds the best parent!
+*/
 void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
     if (num_samples <= 0) return;
 
     std::vector<int> added_node_indices;
-    // std::vector<Eigen::VectorXd> new_samples_viz;
 
     for (int i = 0; i < num_samples; ++i) {
         // Generate Sample
@@ -665,7 +647,6 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
             continue;
         }
 
-
         // Create Node Object (Temporarily)
         // We create the node to get the pointer, but we don't push it to tree_ yet.
         auto node = std::make_shared<FMTNode>(statespace_->addState(sample_val), tree_.size());
@@ -675,36 +656,10 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         // INITIALIZE THREATS FOR NEW NODES
         // Use previous_obstacles_ because it contains the fully populated predicted_path!
         /*
-            the reason we do the following is this:
-
-            Tree Nodes: 529
-            Tree Nodes: 530
-            Tree Nodes: 530
-            Tree Nodes: 530
-            Tree Nodes: 531
-            Tree Nodes: 532
-            [DEBUG] THREAT SET BYPASS DETECTED!!
-            -> CHILD Node: 531
-                State: [0.578503 -49.4121  -2.4241 -1.08705  24.4029]
-                Cost: inf
-                Threats: { EMPTY }
-            -> PARENT Node: 532
-                State: [ 1.62292 -23.1327  8.06325 0.589202  19.6487]
-                Cost: 69.8477
-                Threats: { EMPTY }
-            -> OBSTACLE: [moving_box_8]
-                Current Pos: [0, -40.44]
-                Distance to Child: 8.99075
-                Distance to Parent: 17.3832
-            -> FATAL: Edge slices through [moving_box_8]
-
-            during the above run the updateobstalcesample has updated once before the node 500 started working
-            so even though we obstalce check to connect the node 531 to its best collision free parent but what if the
-            next sampled node 532 would be a better parent!? then the child node (531) threat set needed to be updated
-            or it will falsky gets connected to 532 without any valid collision check in parent!!
-        
+            We immediately update the threat set of the new sample because even though we collision check later at this function to find it a collision free parent
+            but later a new sample maybe generated and rewire that previous new sample! so new samples need to update their threat set immediately and we cant ait for the 
+            addNewObstacle function to update the threat set!
         */
-
         for (const auto& [name, ob] : previous_obstacles_) {
             if (obs_checker_->isNodeInObstacleTube(node->getStateValue(), ob, delta)) {
                 node->threats.push_back(&ob); // Pointer insertion
@@ -715,7 +670,6 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
 
 
         // CHECK FEASIBILITY & CONNECT
-        // We pass the sample_val and the node pointer.
         // updateNeighbors will perform the steering and populate the neighbor maps.
         // It returns TRUE if at least one valid steer was found.
         if (!updateNeighbors(sample_val, node.get())) {
@@ -738,7 +692,6 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         kdtree_->addPoint(sample_val.head(kd_dim)); 
         
         added_node_indices.push_back(node_index);
-        // new_samples_viz.push_back(sample_val);
     }
 
     if (added_node_indices.empty()) return;
@@ -747,8 +700,16 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
     kdtree_->buildTree();
 
     // UPDATE NEIGHBORHOOD RADIUS
-    updateNeighborhoodRadius();
-    // SEED V_OPEN (EAGER INSERTION + LAZY PROPAGATION WITH THREATS) --> Mention this in the paper: Mind that there is no immediate rewiring like rrtx here! the propagation is lazy! but in rrtx there is an immediate rewiring because the neighbors need to know if they are getting better through the new sample and then go into the queue for triggering the propagation (when needed!) but here the new node goes into the queue and triggers the new propagation when needed so we dont have to check the neighbors right away! its ineherent to the main fmt expand function
+    shrinkingBallRadius();
+    // SEED V_OPEN (EAGER INSERTION + LAZY PROPAGATION WITH THREATS)
+    /*
+        Mention this in the paper: Mind that there is no immediate rewiring like rrtx here!
+        the propagation is lazy! but in rrtx there is an immediate rewiring because the neighbors 
+        need to know if they are getting better through the new sample and then go into the queue
+        for triggering the propagation (when needed!) but here the new node goes into the queue and
+        triggers the new propagation when needed so we dont have to check the neighbors right away!
+        its ineherent to the main fmt expand function
+    */ 
     for (int idx : added_node_indices) {
         FMTNode* new_node = tree_[idx].get();
 
@@ -805,12 +766,8 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
 
             if (collision_free) {
                 // SUCCESS!
-
                 new_node->setCost(candidate.first);
                 new_node->setParent(potential_parent, traj_xy);
-
-
-
                 connected = true;
                 break; // Stop checking candidates.
             }
@@ -820,9 +777,10 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         }
 
         /*
-            Important Insight on AO with epsilon usage: as you can see the new samples is added to the tree and now is in vopen heap! we do not immediately connect the neighbors
-            which can use this! but if nothing happens and this new samples didnt get removed from the heap the neighbors would use this to connect. epsilon is not in the picture until now!
-            now if x's cost is improved little then we dont cascade! 
+            Important Insight on AO with epsilon usage: as you can see the new samples is added to the tree and now is in vopen heap! we do not immediately improve the neighbors
+            which can use this! but if nothing happens and this new samples didnt get removed from the heap the neighbors would use this to connect. epsilon is not in the picture 
+            until the queue operations in plan function!
+            now if x's cost is improved little then we wouldn't cascade! 
             so the argument that when we use epsilon we have epsilon bounded AO is incorrect because those children that we didnt improve will get better by new samples!
             so all in all the new sample will eventually betters their immediate neighbors if partial update allows (i.e., its useful)
         */
@@ -835,19 +793,23 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
 }
 
 /*
+    Insights on CullNeighbor: even though we put parent filter in the cullNeighbor this doesnt mean later in time a child of a parent will
+    still be in the parent's backward neighbors. because that child can alway choose the parent that is is_initial (even though far away wrt to rn) 
     if node 623 is child and node 503 is parent there is chance 503 forgot 623 but 623 didnt! (thats why 503 become parent!)
     in this case 503 cant notify 623 of its updated cost (in case of improvement) because fmtx is not like rrtx 
     so in rrtx 623 in updateLMC goes through the outgoing and can update lmc by using 503! but in fmtx 
     we loop through the backward (incoming) of 503 first to find the 623! but 623 got culled from 503's incoming neighbors so 623 never improves even if its parent (503) 
     has improved 
-    The perfect Solution which i found for the cost propagation cascade death also fixes the above problem!
-    because 623 eventually gets notified by using its current parent which is 503 in the elseif part of the plan function.
+    The perfect Solution which i found for the cost propagation cascade death also fixes the above problem and we just need to decouple the current tree update (current parent to children)
+    from the wavefront expansion.
+    because 623 eventually gets notified by using its current parent which is 503 in the first for loop of the plan function
+    Mind that the wavefront expansion can partly do this job but its not guranteed but the loop over children of popped z gurantees propagation never gets interupted
 */
 
 
 void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
 
-    // PERFORMANCE TRIGGER: Skip loop if radius hasn't shrunk
+    // Skip loop if radius hasn't shrunk
     if (v->last_culled_radius_ > 0 && 
         (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) {
         return;
@@ -899,44 +861,32 @@ void KinodynamicANYFMTX::plan() {
     // VISUALIZATION: Visualize all nodes currently in the Open Set (V_open)
     if (visualization_) {
         std::vector<Eigen::VectorXd> open_set_nodes;
-        
-        // Access the underlying vector from the priority queue
         const auto& heap_data = v_open_heap_.getHeap();
-        
-        // Iterate over all elements in the heap
         for (const auto& element : heap_data) {
-            // element is std::pair<double, FMTNode*>
             FMTNode* node = element.second;
             if (node) {
                 open_set_nodes.push_back(node->getStateValue());
             }
         }
-
         if (!open_set_nodes.empty()) {
-            visualization_->visualizeNodes(open_set_nodes, "map", 
-                                    std::vector<float>{1.0f, 0.0f, 0.0f}, 
-                                    "v_open_heap_nodes");
+            visualization_->visualizeNodes(open_set_nodes, "map", std::vector<float>{1.0f, 0.0f, 0.0f}, "v_open_heap_nodes");
         }
     }
 #endif
-
-
-    while (true) {
-        if (v_open_heap_.empty()) {
-            // If heap is empty, we can't plan. 
-            break; 
-        }
-
-        // PARTIAL UPDATE CONDITION: Check if we should stop based on robot cost
-        if (partial_update) {
-            double top_cost = v_open_heap_.top().first;
-            // If robot is valid, and the best node in heap is worse than robot's current cost, stop.
-            if (robot_node_ != nullptr && 
-                robot_node_->getCost() != INFINITY && 
-                top_cost >= robot_node_->getCost() + bridge_cost_) {
-                break;
-            }
-        }
+    /*
+        If heap is empty, we can't plan. 
+        Check if we should stop based on robot cost
+        If the robot node (the node that the robot is reaching to) is valid,
+        and the best node in heap is worse than robot's current cost, stop.
+    */
+    while (!v_open_heap_.empty() &&
+          (!partial_update || 
+                robot_node_ == nullptr || 
+                robot_node_->in_queue_ ||
+                robot_node_->getCost() == INFINITY ||
+                // v_open_heap_.top().first < robot_node_->getCost() + bridge_cost_))
+                v_open_heap_.top().first < robot_node_->getCost()))
+    {
 
         auto top_element = v_open_heap_.top();
         double cost = top_element.first;
@@ -951,42 +901,52 @@ void KinodynamicANYFMTX::plan() {
 
 
 
+        /*
+            TOPOLOGICAL TREE PROPAGATION (The Strict Bellman Update)
+            This phase strictly enforces cost propagation down the shortest-path tree (g(x) = g(P) + c(P,x)).
+            If z's cost drops, ALL of its children must inherit the improvement. 
+            regardless of whether they have been geometrically culled!
+            
+            This loop guarantees the survival of the anytime dynamic loop by solving TWO major 
+            causes of "Cascade Death" (where a node is permanently stranded with a stale cost):
+            
+            1. THE FMTX ASYMMETRIC CULLING PROBLEM:
+                'cullNeighbors' aggressively deletes long geometric edges to maintain O(log N) density.
+                If a parent 'z' culled child 'x' from its outgoing edges, the standard geometric 
+                wavefront physically cannot reach 'x'. This topological loop explicitly bridges that 
+                severed gap, ensuring 'x' receives the update.
+            
+            2. THE INHERENT FMT* LAZY COLLISION PROBLEM:
+                In standard FMT*, if a node tries to rewire to a new parent but fails a lazy collision 
+                check, the node is simply ignored. If its *current* parent had also dropped in cost, 
+                ignoring the node permanently strands it, breaking the optimal substructure for its 
+                entire subtree. 
+                By pushing updates blindly down the 'children_' array (with ZERO collision checks, 
+                since the parent-child edge is already known to be safe), we guarantee the Bellman 
+                equation survives even if the node later fails to find a better shortcut.
+            
+            PHILOSOPHY: 
+            We accept that a node might miss a shortcut due to lazy collision checking in Phase 2, 
+            but we REFUSE to let the tree's mathematical cost structure break. Because there is a
+            chance that z cannot propagate its improvement in Phase 2 
+            
+            NO REDUNDANT WORK:
+            Phase 1 updates the cost of z's children immediately. When Phase 2 (the geometric wavefront) 
+            later loops over z's neighbors, the core condition `if (x->getCost() > cost_via_z)` naturally 
+            evaluates to FALSE for z's own children. Therefore, Phase 2 completely skips them, saving 
+            expensive collision checks. Rewiring a child to a *different* parent naturally happens 
+            later when that competing parent expands (i.e., later queue expansions)
 
-        // TOPOLOGICAL TREE PROPAGATION (The Strict Bellman Update)
-        // ========================================================================================
-        // This phase strictly enforces cost propagation down the shortest-path tree (g(x) = g(P) + c(P,x)).
-        // If z's cost drops, ALL of its children must inherit the improvement. 
-        // regardless of whether they have been geometrically culled!
-        // 
-        // This loop guarantees the survival of the anytime dynamic loop by solving TWO major 
-        // causes of "Cascade Death" (where a node is permanently stranded with a stale cost):
-        //
-        // 1. THE FMTX ASYMMETRIC CULLING PROBLEM:
-        //    'cullNeighbors' aggressively deletes long geometric edges to maintain O(log N) density.
-        //    If a parent 'z' culled child 'x' from its outgoing edges, the standard geometric 
-        //    wavefront physically cannot reach 'x'. This topological loop explicitly bridges that 
-        //    severed gap, ensuring 'x' receives the update.
-        //
-        // 2. THE INHERENT FMT* LAZY COLLISION PROBLEM:
-        //    In standard FMT*, if a node tries to rewire to a new parent but fails a lazy collision 
-        //    check, the node is simply ignored. If its *current* parent had also dropped in cost, 
-        //    ignoring the node permanently strands it, breaking the optimal substructure for its 
-        //    entire subtree. 
-        //    By pushing updates blindly down the 'children_' array (with ZERO collision checks, 
-        //    since the parent-child edge is already known to be safe), we guarantee the Bellman 
-        //    equation survives even if the node later fails to find a better shortcut.
-        //
-        // PHILOSOPHY: 
-        // We accept that a node might miss a shortcut due to lazy collision checking in Phase 2, 
-        // but we REFUSE to let the tree's mathematical cost structure break. 
-        //
-        // NO REDUNDANT WORK:
-        // Phase 1 updates the cost of z's children immediately. When Phase 2 (the geometric wavefront) 
-        // later loops over z's neighbors, the core condition `if (x->getCost() > cost_via_z)` naturally 
-        // evaluates to FALSE for z's own children. Therefore, Phase 2 completely skips them, saving 
-        // expensive collision checks. Rewiring a child to a *different* parent naturally happens 
-        // later when that competing parent expands.
-        // ========================================================================================
+
+
+            the only concern is do we need collision check here or not? the plan cycles only happen after the updateObstacleSample function gets triggered due to obstalce's turnaround
+            in addNewObstacle we make nodes with trajectory in the obstacle's tube orphan and make their cost inf and sever their parent relationship! but we keep the tree nodes that are collision free even though they are in the tube
+            so this cant even trigger the else if because there is no parent!
+            but how about removeObstacle? this frees up some nodes that was severed in the addNewObstacle so they are still having inf cost with no parent.
+            in both cases we need to check the collision in the standard plan cycle! but i dont think when a node is already part of the tree and has parent is caused by addNewObstacle or removeObstacle! and i think its safe to just update the cost
+            of that node with its current parent! but if the parent is something other than the current parent we need to collision check which happens in the standard part above!
+            though i might be wrong and need to further investigate!  
+        */
 
         for (FMTNode* child : z->children_) {
             auto traj = child->getParentTrajectory();
@@ -1012,52 +972,28 @@ void KinodynamicANYFMTX::plan() {
 
 
 
-        // Before we expand z, we remove any temporary neighbors that are now outside the shrinking radius.
+        /*
+            Before we expand z, we remove any temporary neighbors that are now outside the shrinking radius.
+            We have no worries on cascade death because we already propagated the cost improvment of z to its children
+        */ 
         cullNeighbors(z);
-
-        // // VISUALIZE 'z' (The Expanding Node)
-        // if (visualization_) {
-        //     std::vector<Eigen::VectorXd> z_node_viz;
-        //     z_node_viz.push_back(z->getStateValue().head(2));
-        //     // Visualize 'z' in RED
-        //     visualization_->visualizeNodes(z_node_viz, "map", 
-        //                             std::vector<float>{1.0f, 0.0f, 0.0f}, 
-        //                             "current_z_node");
-        // }
 
         // IDENTIFY POTENTIALLY SUBOPTIMAL NEIGHBORS
         // Iterate through all neighbors 'x' of the expanding node 'z'.
         auto& backward_neighbors = z->backwardNeighbors();
         for (auto it = backward_neighbors.begin(); it != backward_neighbors.end(); ) {
             auto x = it->first;
-
-            // // due to symmetric cull that happens in cullNeighbor x might be deleted already! --> maybe this can be usefull when i use flat map instead of unordered map!
-            // if (x == nullptr) {          // ← catches the garbage case you are seeing
-            //     ++it;
-            //     continue;
-            // }
-
-            const auto& edge_info_from_z = it->second; 
-            // SAFELY advance the iterator BEFORE any potential deletion occurs
-            ++it;
-
-
-            auto& edge_info_from_x = edge_info_from_z;
-
-            const Trajectory& traj_xz = *(edge_info_from_x.cached_trajectory);
+            auto& edge_info_x_to_z = it->second; 
+            ++it; // advance the iterator BEFORE any potential deletion occurs;
+            const Trajectory& traj_xz = *(edge_info_x_to_z.cached_trajectory);
             if (!traj_xz.is_valid) {
                 continue;
             }
-       
-            double cost_via_z = z->getCost() + edge_info_from_x.distance;
-
-
-
-
+            double cost_via_z = z->getCost() + edge_info_x_to_z.distance;
             /*
                 This condition is the core of FMTX. It serves two purposes:
                 If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
-                If x is already connected, this condition acts as a "witness" that a better path might exist.
+                If x is already connected, this condition acts as a "witness" or an "Alarm bell" that a better path might exist for x.
                 It proves x's current cost is suboptimal and justifies the more expensive search that follows.
                 This adds implicit rewiring to FMTX. There is no explicit rewiring here (like RRTX). It repairs the graph
                 as wavefront expands.  
@@ -1071,28 +1007,37 @@ void KinodynamicANYFMTX::plan() {
                 }
 #endif
 
-
-                // Since x might be not visited (never popped), its neighbors 
-                // might contain stale temporary edges from an older, larger radius.
-                // We must clean them now to ensure we pick a valid parent.
-                // Safe to call now! If this deletes 'x' from z's map, 
-                // our iterator 'it' has already safely moved past it. --> so for this reason we couldnt use the range based for loop! because cullNeihgbor(x) could've deleted the incoming node from x to z from the z's perpective, the one that we are already using in this region of code!
+                /*
+                    Since x might be not visited (never popped), its neighbors 
+                    might contain stale temporary edges from an older, larger radius.
+                    We must clean them now to ensure we pick a valid parent.
+                    Safe to call now! If this deletes 'x' from z's map, 
+                    our iterator 'it' has already safely moved past it. --> so for this reason we couldnt use the range based for loop!
+                    because cullNeihgbor(x) could've deleted the incoming node from x to z from the z's perpective, the one that we are already using in this region of code!
+                */
                 cullNeighbors(x);
-
-                // THE BOUNCER: Did 'z' survive the cull?
-                // If 'x' deleted 'z', the edge is illegal and 'cost_via_z' was a lie.
-                // even if we do not use this if contion it will reach the "if (best_parent_for_x != nullptr && min_cost_for_x < x->getCost()) " line
-                // and it will see that x's new parent is not better than its previous one but mind that if we dont use these two lines of defenses 
-                // then x will connect to a suboptimal parent and cant find its previous parent because of in_queue if condtion in the bellman update
+                /*
+                    Optional step: Did 'z' survive the cull?
+                    In this step we can decide to ignore this witness or not!
+                    This step is a proof that z it self cannot help x but x might find another y
+                    and we can eagerly connect x!
+                    but mind that, that y is in queue and will later be popped from the queue
+                    we can trust the queue to pop y and connect x to it or we can connect eagerly in this step
+                    the difference is its best to wait instead of eagerly connect because number of collision checks 
+                    will be little bit higher in eager connection specially in high number of batches
+                    who know what happens if we delay it a little! some new node may come and change the picture or something else!
+                    So its best to wait (skip for now) and no 'panic rewires'. we wait for the priority to pop the best parent because 
+                    in the process that leads to that pop alot could happen.
+                */
                 if (x->forwardNeighbors().count(z) == 0) {
-                    continue; // Skip entirely!
+                    continue; // Skip entirely! but its optional
                 }
 
 
 
-                // SEARCH FOR THE TRUE BEST PARENT ---
                 // 'x' is suboptimal. We now search for its true best parent among ALL its neighbors that are currently in the open set.
-                double min_cost_for_x = std::numeric_limits<double>::infinity();
+                // double min_cost_for_x = std::numeric_limits<double>::infinity();
+                double min_cost_for_x = x->getCost();
                 FMTNode* best_parent_for_x = nullptr;
                 std::shared_ptr<Trajectory> best_traj_for_x;
 
@@ -1102,7 +1047,6 @@ void KinodynamicANYFMTX::plan() {
                         auto traj_xy = edge_info_xy.cached_trajectory;
                         if (traj_xy->is_valid) {
                             double cost_via_y = y->getCost() + traj_xy->cost;
-
                             if (cost_via_y < min_cost_for_x) {
                                 min_cost_for_x = cost_via_y;
                                 best_parent_for_x = y;
@@ -1114,8 +1058,8 @@ void KinodynamicANYFMTX::plan() {
 
 
 
-                // if (best_parent_for_x != nullptr && min_cost_for_x < (x->getCost()-epsilon)) { // The second && is the second line of defense if the cullNeighbor(x) deletes z and we are here for somereason! because the if condtion right after cullNiehgbor(x) would caught the lie and we never reach here but still its good to be safe!
-                if (best_parent_for_x != nullptr && min_cost_for_x < (x->getCost())) { // The second && is the second line of defense if the cullNeighbor(x) deletes z and we are here for somereason! because the if condtion right after cullNiehgbor(x) would caught the lie and we never reach here but still its good to be safe!
+                // if (best_parent_for_x != nullptr && min_cost_for_x < (x->getCost())) { // Depend on min_cost_for_x initialization!
+                if (best_parent_for_x != nullptr ) { 
                     bool obstacle_free = true;
                     if (best_parent_for_x != x->getParent()) {
 #if USE_THREAT_SET_STRATEGY
@@ -1145,102 +1089,39 @@ void KinodynamicANYFMTX::plan() {
 
       
                     if (obstacle_free) {
-
-
-                        // Need the old cost for the epsilon consistency approach
-                        double old_cost = x->getCost();
-
-
-
                         x->setCost(min_cost_for_x);
                         x->setParent(best_parent_for_x, best_traj_for_x);
-
-
-
 #if DEBUG
                         dbg_metrics.costUpdated[x] = true;
                         // Oracle!
                         analyzeSuboptimality(x, best_parent_for_x, z, dbg_metrics);
 #endif
-
                         last_replan_metrics_.nodes_updated++;
                         double priorityCost = min_cost_for_x;
 
 
-                        // THE EPSILON QUEUE BOUNCER --> we just dont put the 
+                        // THE EPSILON QUEUE BOUNCER
                         if (x->in_queue_) {
                             // If it is already scheduled to be processed, give it the best cost
                             v_open_heap_.update(x, priorityCost);
                             last_replan_metrics_.queue_operations++;
                         } 
-                        // else if (old_cost == INFINITY || (old_cost - min_cost_for_x > epsilon)) {
                         else if (x->broadcast_cost_ == INFINITY || (x->broadcast_cost_ - min_cost_for_x > epsilon)) {
                             // If it is NOT in the queue, ONLY wake it up if the improvement is > epsilon 
-                            // (or if it is a brand new node that must expand the wavefront)
+                            // or if it is a brand new node or an orphan node that must expand the wavefront
                             v_open_heap_.add(x, priorityCost); 
                             last_replan_metrics_.queue_operations++;
                         }
                     }
-                    // else if (x->getParent() != nullptr) {
-                    //     if (debug_190) printf("[DEBUG-190] FALLBACK: Obstacle hit. Attempting fallback to current parent %d\n", x->getParent()->getIndex());
-
-                    //     /* 
-                    //      * CASCADE SURVIVAL FALLBACK (Cost Synchronization)
-                    //      * If the greedy rewiring attempt hit an obstacle and failed, we DO NOT abort entirely.
-                    //      * If x's CURRENT parent's cost has dropped, failing to update x's cost will "strand" x 
-                    //      * and permanently break the optimal substructure (causing cascade death to its children).
-                    //      * Instead of trying more collision checks, we simply sync x's cost with its existing 
-                    //      * collision-verified parent and push it to the queue to keep the wave moving.
-                    //      */
-                    //     /*
-                    //         this also solves the problem of cullNeigbor which causes a parent to not be able to notify its child because the child is not in its backward sets due to being culled
-                    //         even though i have parent filter in cull but there is a chance that we cull something but later it becoms the parent of a node that doesnt know about it because  hte bellman for loop
-                    //         the child chooses its parent and can choose an initial parent but that parent had this child in its running edges and culled it!
-                    //         here we can solve this issue at once!
-                    //         so this mechanism avoids the Cascade Death caused by FMT* inherent problem caused by lazy collision checking and the cullNeighbor!
-
-                    //         so I accept that a node might miss a shortcut due to lazy collision checking, but I REFUSE to let the tree's cost structure break.
-                    //     */
-                    //    /*
-                    //         the only concern is do we need collision check here or not? the plan cycles only happen after the updateObstacleSample function gets triggered due to obstalce's turnaround
-                    //         in addNewObstacle we make nodes with trajectory in the obstacle's tube orphan and make their cost inf and sever their parent relationship! but we keep the tree nodes that are collision free even though they are in the tube
-                    //         so this cant even trigger the else if because there is no parent!
-                    //         but how about removeObstacle? this frees up some nodes that was severed in the addNewObstacle so they are still having inf cost with no parent.
-                    //         in both cases we need to check the collision in the standard plan cycle! but i dont think when a node is already part of the tree and has parent is caused by addNewObstacle or removeObstacle! and i think its safe to just update the cost
-                    //         of that node with its current parent! but if the parent is something other than the current parent we need to collision check which happens in the standard part above!
-                    //         though i might be wrong and need to further investigate!  
-                        
-                    //    */
-                    //     auto it_p = x->forwardNeighbors().find(x->getParent());
-                    //     if (it_p != x->forwardNeighbors().end()) {
-                    //         double sync_cost = x->getParent()->getCost() + it_p->second.distance;
-                            
-                    //         // Only queue if the parent's cost ACTUALLY dropped
-                    //         if (sync_cost < x->getCost()) {
-                    //             counter++;
-                    //             x->setCost(sync_cost);
-                                
-                    //             if (x->in_queue_) {
-                    //                 v_open_heap_.update(x, sync_cost);
-                    //                 last_replan_metrics_.queue_operations++;
-                    //             } else if (x->broadcast_cost_ == INFINITY || (x->broadcast_cost_ - sync_cost > epsilon)) {
-                    //                 v_open_heap_.add(x, sync_cost); 
-                    //                 last_replan_metrics_.queue_operations++;
-                    //             }
-                    //         }
-                    //     }
-                    // }
                 }
             }
         }
-
-
         v_open_heap_.pop();
         last_replan_metrics_.queue_operations++;
         // visualizeTree();
         // std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
     } 
+
 
 
 
@@ -1316,7 +1197,7 @@ void KinodynamicANYFMTX::setGoal(const Eigen::VectorXd& goal) {
     auto node = std::make_shared<FMTNode>(statespace_->addState(goal),tree_.size());
     node->in_unvisited_ = true;
     node->setTimeToGoal(std::numeric_limits<double>::infinity());
-    robot_node_ = node.get(); // Management of the node variable above will be done by the unique_ptr i'll send to tree_ below so robot_node_ is just using it!
+    robot_node_ = node.get();
     tree_.push_back(node);
     std::cout << "KinodynamicANYFMTX: Goal node created on Index: " << robot_state_index_ << "\n";
 }
@@ -1399,25 +1280,18 @@ void KinodynamicANYFMTX::visualizeTreeReal() {
 
 
 void KinodynamicANYFMTX::visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints) {
-    // A path needs at least two points to have an edge.
     if (path_waypoints.size() < 2) {
         return;
     }
 
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-    // Iterate through the waypoints to create line segments.
-    // The loop goes to size() - 1 to prevent going out of bounds.
     for (size_t i = 0; i < path_waypoints.size() - 1; ++i) {
-        // Create an edge from the current point to the next point.
         const Eigen::VectorXd& start_point = path_waypoints[i];
         const Eigen::VectorXd& end_point = path_waypoints[i+1];
         edges.emplace_back(start_point.head(2), end_point.head(2));
     }
 
-    // Use your existing visualization class to draw the edges.
-    // We'll use a distinct namespace and color (e.g., green and thick) to see it clearly.
     if (visualization_) {
-        // The last argument is a namespace to keep it separate from the main tree visualization.
         visualization_->visualizeEdges(edges, "map", "0.0,1.0,0.0", "executable_path");
     }
 }
@@ -1500,7 +1374,7 @@ void KinodynamicANYFMTX::updateObstacleSamples(const ObstacleVector& turned_obst
 void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
     if (ob.predicted_path.empty()) return;
 
-    // 1. Calculate Search Radius (as before)
+    // Calculate Search Radius
     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
     
@@ -1554,6 +1428,7 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
 
 
     /*
+        Optional Filter
         Filter Orphan Indices using isTrajectorySafeAgainstSingleObstacle
         we keep the tree edges that are not in collision. This procedure
         doesn't violate the order of complexity of the collision check inherited from FMT*
@@ -1619,11 +1494,9 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
             node->setCost(INFINITY); 
             node->broadcast_cost_ = INFINITY;
             last_replan_metrics_.nodes_updated++;
-            // NOTE: We do NOT set time_to_goal to INF, preserving heuristic.
         }
         
         // Sever Parent Connection
-        // node->setParent(nullptr, Trajectory{});
         node->setParent(nullptr, std::shared_ptr<Trajectory>{});
 
         // Find Boundary (Valid Parents)
@@ -1639,7 +1512,6 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
         };
 
         check_boundary(node->forwardNeighbors());
-        // check_boundary(node->backwardNeighbors());
     }
 
     // Add Boundary to Open Heap
@@ -1728,7 +1600,6 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
         };
 
         check_neighbors(node->forwardNeighbors());
-        // check_neighbors(node->backwardNeighbors()); 
     }
 
     // Add to Open Heap

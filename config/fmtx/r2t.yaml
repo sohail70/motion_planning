@@ -32,7 +32,7 @@ robot:
 
 # Planner Parameters
 planner_params:
-  num_of_samples: 2000 #100 with factor 3.0 with not using rrtx samples gives fmtx a segfault!
+  num_of_samples: 1000 #100 with factor 3.0 with not using rrtx samples gives fmtx a segfault!
   factor: 2.0
   # partial_plot: "true" 
   # static_obs_presence: "true"

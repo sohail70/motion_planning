@@ -74,7 +74,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
 
     std::cout << "Taking care of the samples: \n \n";
-    bool use_rrtx_saved_samples_ = true;
+    bool use_rrtx_saved_samples_ = false;
     if (use_rrtx_saved_samples_) {
         std::string filepath = "./rrtx_tree_nodes.csv";
                std::cout << "Loading nodes from file: " << filepath << "\n";
@@ -416,10 +416,20 @@ void KinodynamicFMTX::plan() {
     SuboptimalityMetrics dbg_metrics;
 #endif
 
-    while (!v_open_heap_.empty() &&
-           (partial_update ? (robot_node_== nullptr || v_open_heap_.top().first < robot_node_->getCost() + bridge_cost_||
-                               robot_node_->getCost() == INFINITY || robot_node_->in_queue_ == true) : true)) {
+    // while (!v_open_heap_.empty() &&
+    //        (partial_update ? (robot_node_== nullptr || v_open_heap_.top().first < robot_node_->getCost() + bridge_cost_||
+    //                            robot_node_->getCost() == INFINITY || robot_node_->in_queue_ == true) : true)) {
 
+    while (!v_open_heap_.empty() &&
+          (!partial_update || 
+                robot_node_ == nullptr || 
+                robot_node_->in_queue_ ||
+                robot_node_->getCost() == INFINITY ||
+                // v_open_heap_.top().first < robot_node_->getCost() + bridge_cost_))
+                v_open_heap_.top().first < robot_node_->getCost()))
+    {
+
+    
 
         auto top_element = v_open_heap_.top();
         double cost = top_element.first;
@@ -428,43 +438,54 @@ void KinodynamicFMTX::plan() {
 
 
 
-        // TOPOLOGICAL TREE PROPAGATION (The Strict Bellman Update)
-        // ========================================================================================
-        // This phase strictly enforces cost propagation down the shortest-path tree (g(x) = g(P) + c(P,x)).
-        // If z's cost drops, ALL of its children must inherit the improvement. 
-        // regardless of whether they have been geometrically culled!
-        // 
-        // This loop guarantees the survival of the anytime dynamic loop by solving TWO major 
-        // causes of "Cascade Death" (where a node is permanently stranded with a stale cost):
-        //
-        // 1. THE FMTX ASYMMETRIC CULLING PROBLEM:
-        //    'cullNeighbors' aggressively deletes long geometric edges to maintain O(log N) density.
-        //    If a parent 'z' culled child 'x' from its outgoing edges, the standard geometric 
-        //    wavefront physically cannot reach 'x'. This topological loop explicitly bridges that 
-        //    severed gap, ensuring 'x' receives the update.
-        //
-        // 2. THE INHERENT FMT* LAZY COLLISION PROBLEM:
-        //    In standard FMT*, if a node tries to rewire to a new parent but fails a lazy collision 
-        //    check, the node is simply ignored. If its *current* parent had also dropped in cost, 
-        //    ignoring the node permanently strands it, breaking the optimal substructure for its 
-        //    entire subtree. 
-        //    By pushing updates blindly down the 'children_' array (with ZERO collision checks, 
-        //    since the parent-child edge is already known to be safe), we guarantee the Bellman 
-        //    equation survives even if the node later fails to find a better shortcut.
-        //
-        // PHILOSOPHY: 
-        // We accept that a node might miss a shortcut due to lazy collision checking in Phase 2, 
-        // but we REFUSE to let the tree's mathematical cost structure break. 
-        //
-        // NO REDUNDANT WORK:
-        // Phase 1 updates the cost of z's children immediately. When Phase 2 (the geometric wavefront) 
-        // later loops over z's neighbors, the core condition `if (x->getCost() > cost_via_z)` naturally 
-        // evaluates to FALSE for z's own children. Therefore, Phase 2 completely skips them, saving 
-        // expensive collision checks. Rewiring a child to a *different* parent naturally happens 
-        // later when that competing parent expands.
-        // ========================================================================================
 
 
+        /*
+            TOPOLOGICAL TREE PROPAGATION (The Strict Bellman Update)
+            This phase strictly enforces cost propagation down the shortest-path tree (g(x) = g(P) + c(P,x)).
+            If z's cost drops, ALL of its children must inherit the improvement. 
+            regardless of whether they have been geometrically culled!
+            
+            This loop guarantees the survival of the anytime dynamic loop by solving TWO major 
+            causes of "Cascade Death" (where a node is permanently stranded with a stale cost):
+            
+            1. THE FMTX ASYMMETRIC CULLING PROBLEM:
+                'cullNeighbors' aggressively deletes long geometric edges to maintain O(log N) density.
+                If a parent 'z' culled child 'x' from its outgoing edges, the standard geometric 
+                wavefront physically cannot reach 'x'. This topological loop explicitly bridges that 
+                severed gap, ensuring 'x' receives the update.
+            
+            2. THE INHERENT FMT* LAZY COLLISION PROBLEM:
+                In standard FMT*, if a node tries to rewire to a new parent but fails a lazy collision 
+                check, the node is simply ignored. If its *current* parent had also dropped in cost, 
+                ignoring the node permanently strands it, breaking the optimal substructure for its 
+                entire subtree. 
+                By pushing updates blindly down the 'children_' array (with ZERO collision checks, 
+                since the parent-child edge is already known to be safe), we guarantee the Bellman 
+                equation survives even if the node later fails to find a better shortcut.
+            
+            PHILOSOPHY: 
+            We accept that a node might miss a shortcut due to lazy collision checking in Phase 2, 
+            but we REFUSE to let the tree's mathematical cost structure break. Because there is a
+            chance that z cannot propagate its improvement in Phase 2 
+            
+            NO REDUNDANT WORK:
+            Phase 1 updates the cost of z's children immediately. When Phase 2 (the geometric wavefront) 
+            later loops over z's neighbors, the core condition `if (x->getCost() > cost_via_z)` naturally 
+            evaluates to FALSE for z's own children. Therefore, Phase 2 completely skips them, saving 
+            expensive collision checks. Rewiring a child to a *different* parent naturally happens 
+            later when that competing parent expands (i.e., later queue expansions)
+
+
+
+            the only concern is do we need collision check here or not? the plan cycles only happen after the updateObstacleSample function gets triggered due to obstalce's turnaround
+            in addNewObstacle we make nodes with trajectory in the obstacle's tube orphan and make their cost inf and sever their parent relationship! but we keep the tree nodes that are collision free even though they are in the tube
+            so this cant even trigger the else if because there is no parent!
+            but how about removeObstacle? this frees up some nodes that was severed in the addNewObstacle so they are still having inf cost with no parent.
+            in both cases we need to check the collision in the standard plan cycle! but i dont think when a node is already part of the tree and has parent is caused by addNewObstacle or removeObstacle! and i think its safe to just update the cost
+            of that node with its current parent! but if the parent is something other than the current parent we need to collision check which happens in the standard part above!
+            though i might be wrong and need to further investigate!  
+        */
 
         for (FMTNode* child : z->children_) {
             auto traj = child->getParentTrajectory();
@@ -536,7 +557,8 @@ void KinodynamicFMTX::plan() {
                     'x' is suboptimal. We now search for its true best parent among ALL its neighbors
                     that are currently in the open set.
                 */
-                double min_cost_for_x = std::numeric_limits<double>::infinity();
+                // double min_cost_for_x = std::numeric_limits<double>::infinity();
+                double min_cost_for_x = x->getCost();
                 FMTNode* best_parent_for_x = nullptr;
                 std::shared_ptr<Trajectory> best_traj_for_x;
                 for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
@@ -593,7 +615,7 @@ void KinodynamicFMTX::plan() {
 #if DEBUG
                         dbg_metrics.costUpdated[x] = true;
                         // Oracle!
-                        // analyzeSuboptimality(x, best_parent_for_x, z, dbg_metrics);
+                        analyzeSuboptimality(x, best_parent_for_x, z, dbg_metrics);
 #endif
                         double priorityCost = min_cost_for_x;
                         if (x->in_queue_) {
@@ -604,68 +626,6 @@ void KinodynamicFMTX::plan() {
                             last_replan_metrics_.queue_operations++;
                         }
                     }
-                    // else if (x->getParent() != nullptr) {
-                    //     /* 
-                    //      * CASCADE SURVIVAL FALLBACK (Cost Synchronization)
-                    //      * If the greedy rewiring attempt hit an obstacle and failed, we DO NOT abort entirely.
-                    //      * If x's CURRENT parent's cost has dropped, failing to update x's cost will "strand" x 
-                    //      * and permanently break the optimal substructure (causing cascade death to its children).
-                    //      * Instead of trying more collision checks, we simply sync x's cost with its existing 
-                    //      * collision-verified parent and push it to the queue to keep the wave moving.
-                    //      */
-                    //     /*
-                    //         this also solves the problem of cullNeigbor which causes a parent to not be able to notify its child because the child is not in its backward sets due to being culled
-                    //         even though i have parent filter in cull but there is a chance that we cull something but later it becoms the parent of a node that doesnt know about it because  hte bellman for loop
-                    //         the child chooses its parent and can choose an initial parent but that parent had this child in its running edges and culled it!
-                    //         here we can solve this issue at once!
-                    //         so this mechanism avoids the Cascade Death caused by FMT* inherent problem caused by lazy collision checking and the cullNeighbor!
-
-                    //         so I accept that a node might miss a shortcut due to lazy collision checking, but I REFUSE to let the tree's cost structure break.
-                    //     */
-                    //    /*
-                    //         the only concern is do we need collision check here or not? the plan cycles only happen after the updateObstacleSample function gets triggered due to obstalce's turnaround
-                    //         in addNewObstacle we make nodes with trajectory in the obstacle's tube orphan and make their cost inf and sever their parent relationship! but we keep the tree nodes that are collision free even though they are in the tube
-                    //         so this cant even trigger the else if because there is no parent!
-                    //         but how about removeObstacle? this frees up some nodes that was severed in the addNewObstacle so they are still having inf cost with no parent.
-                    //         in both cases we need to check the collision in the standard plan cycle! but i dont think when a node is already part of the tree and has parent is caused by addNewObstacle or removeObstacle! and i think its safe to just update the cost
-                    //         of that node with its current parent! but if the parent is something other than the current parent we need to collision check which happens in the standard part above!
-                    //         though i might be wrong and need to further investigate!  
-
-
-
-                    //         So FMT* accepts suboptimality in exchange for fewer collision checks, assuming dense sampling will smooth it out. However, 
-                    //         in a dynamic replanner, accepting suboptimality is fine, but breaking the Bellman equation g(x)=g(P)+c(P,x)) is fatal.
-                    //         so we separates these two concepts. We allow the physical tree structure to be temporarily suboptimal (blocked rewiring), but we strictly enforce the mathematical cost consistency (Cascade Survival Fallback), ensuring the anytime dynamic loop remains perfectly stable.
-                            
-
-                    //         So we don’t know for sure that P (the current parent) will make x ’s cost better. 
-                    //         But we check it anyway, because if we don’t, we risk ignoring a cost drop that traveled down P ’s branch.
-
-
-                    //         Either P (parent) did rang the bell or some other z range the bell! if p did it then else if will take care of it if bellman above fails
-                    //         if its not the parent then bellman above will either connect the x to some parent (which is fine) or cant connect because of collision then this else if again at least check the parent
-                    //         to save the cascade! if else if also fails it means if some z node taunted x for being suboptimal then either there is no way to best optiaml parent or we need to accpet that
-                    //         fmt* couldnt rewire the x (this incident is inherent to fmt* which is rare and vanishes as n increases)
-                        
-                    //    */
-                    //     auto it_p = x->forwardNeighbors().find(x->getParent());
-                    //     if (it_p != x->forwardNeighbors().end()) {
-                    //         double sync_cost = x->getParent()->getCost() + it_p->second.distance;
-                            
-                    //         // Only queue if the parent's cost ACTUALLY dropped
-                    //         if (sync_cost < x->getCost()) {
-                    //             x->setCost(sync_cost);
-                    //             if (x->in_queue_) {
-                    //                 v_open_heap_.update(x, sync_cost);
-                    //                 last_replan_metrics_.queue_operations++;
-                    //             } else {
-                    //                 v_open_heap_.add(x, sync_cost); 
-                    //                 last_replan_metrics_.queue_operations++;
-                    //             }
-                    //         }
-                    //     }
-                    // }
-
                 }
             }
         }
@@ -678,7 +638,7 @@ void KinodynamicFMTX::plan() {
 
 
 #if DEBUG
-    // printDebugSummary(dbg_metrics); // Experimental proof that increasing sample counts would reduce the average suboptimality cost which happens in FMTX (Inherited from FMT*)
+    printDebugSummary(dbg_metrics); // Experimental proof that increasing sample counts would reduce the average suboptimality cost which happens in FMTX (Inherited from FMT*)
     runCollisionForensics(); // To Recheck All the trajectories again with all the obstacles to validify our repair!
     runCostForensics();
     runGlobalCostForensics();

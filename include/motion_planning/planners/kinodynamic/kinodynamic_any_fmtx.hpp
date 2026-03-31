@@ -85,7 +85,7 @@ class KinodynamicANYFMTX : public Planner {
     private:
         bool updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node);
         void cullNeighbors(FMTNode* v);
-        void updateNeighborhoodRadius();
+        void shrinkingBallRadius();
 
 
 

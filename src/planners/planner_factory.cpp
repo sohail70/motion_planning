@@ -4,7 +4,7 @@
 #include "motion_planning/planners/geometric/fmtx.hpp"
 
 PlannerFactory::PlannerFactory() {
-    std::cout<<"Planner Factory Constructor \n";
+    // std::cout<<"Planner Factory Constructor \n";
 }
 
 PlannerFactory& PlannerFactory::getInstance() {

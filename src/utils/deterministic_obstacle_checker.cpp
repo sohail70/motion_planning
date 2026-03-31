@@ -48,33 +48,8 @@ DeterministicObstacleChecker::DeterministicObstacleChecker(rclcpp::Clock::Shared
         // Insert into the map so processLatestPoseInfo finds valid data
         obstacle_positions_map_[name] = ob;
     }
-    // =========================================================================
 
-    
-
-    footprint_type_ = params.getParam<std::string>("collision_check_footprint", "circular");
-    RCLCPP_INFO(rclcpp::get_logger("ObstacleChecker"), "Using '%s' footprint for collision detection.", footprint_type_.c_str());
-
-    if (footprint_type_ == "rectangular") {
-        if (params.hasParam("rectangular_footprint_points")) {
-            std::vector<double> points = params.getParam<std::vector<double>>("rectangular_footprint_points");
-            if (points.size() % 2 != 0) {
-                throw std::runtime_error("Rectangular footprint points must be in pairs (x1 y1 x2 y2 ...).");
-            }
-            // Convert the flat vector of doubles into a vector of 2D points
-            for (size_t i = 0; i < points.size(); i += 2) {
-                rectangular_footprint_.emplace_back(points[i], points[i+1]);
-            }
-        } else {
-            throw std::runtime_error("Footprint type is 'rectangular' but 'rectangular_footprint_points' parameter was not provided.");
-        }
-    } else { // "circular" is the default
-        // robot_radius_ = params.getParam<double>("inflation", 0.5);
-        robot_radius_ = 0.0;
-    }
-
-
-
+    robot_radius_ = 0.0; // Leave this (use inflation as an integrated variable for both robot radius and obstacle inflation!).
 }
 
 DeterministicObstacleChecker::~DeterministicObstacleChecker() = default;

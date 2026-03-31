@@ -882,7 +882,8 @@ void KinodynamicRRTX::reduceInconsistency() {
             bool robot_consistent = (vbot_node_->getCost() == vbot_node_->getLMC());
             // Check if the queue has passed the robot
             // We stop if the smallest key in the queue is greater than the robot's cost.
-            bool queue_past_robot = (min_key > vbot_node_->getCost() + bridge_cost_);
+            // bool queue_past_robot = (min_key > vbot_node_->getCost() + bridge_cost_);
+            bool queue_past_robot = (min_key > vbot_node_->getCost());
             // STOP CONDITION:
             // If the robot is consistent AND the queue only contains nodes more expensive than the robot,
             // then we have successfully repaired the path up to the robot.
