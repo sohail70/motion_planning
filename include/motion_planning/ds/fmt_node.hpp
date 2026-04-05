@@ -22,6 +22,16 @@ public:
     
     const Eigen::VectorXd& getStateValue() const;
     // double getCost() const noexcept;
+    inline double getLMC() const { 
+        return lmc_; 
+    }
+    void setLMC(double cost) noexcept;
+
+    inline double getG() const { 
+        return g_; 
+    }
+    void setG(double cost) noexcept;
+
     inline double getCost() const { 
         return cost_; 
     }
@@ -125,7 +135,6 @@ public:
     double last_culled_radius_ = -1.0; // Initialize to invalid radius
 
 
-    double broadcast_cost_; // This is the stale anchor. It is the cost the node had the last time it was actively expanding the wavefront.
 
 private:
     std::shared_ptr<State> state_;
@@ -139,7 +148,9 @@ private:
     std::shared_ptr<Trajectory> parent_trajectory_;
 
 
-    double cost_; // This is optimization cost. This is the real-time, instantly updated best path
+    double lmc_; // This is optimization cost. This is the real-time, instantly updated best path
+    double g_; // This is the stale anchor. It is the cost the node had the last time it was actively expanding the wavefront.
+    double cost_; // Used for static version of fmt* because g_, lmc_ have the same meaning in this case
     double time_to_goal_;
     int index_;
     bool on_obstacle; // not using this now! maybe later instead of samples_in_obstalce!

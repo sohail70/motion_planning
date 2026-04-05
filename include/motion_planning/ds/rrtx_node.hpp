@@ -16,8 +16,8 @@ public:
     explicit RRTxNode(std::shared_ptr<State> state, int index = -1);
     
     const Eigen::VectorXd& getStateValue() const;
-    void setCost(double cost) noexcept;
-    double getCost() const noexcept;
+    void setG(double cost) noexcept;
+    double getG() const noexcept;
     void setLMC(double lmc) noexcept;
     double getLMC() const noexcept;
 
@@ -95,7 +95,7 @@ private:
     std::shared_ptr<Trajectory> parent_trajectory_;
     
     double lmc_;
-    double cost_;
+    double g_;
     int index_;
     double time_to_goal_;
     std::vector<RRTxNode*> children_; // Successor nodes

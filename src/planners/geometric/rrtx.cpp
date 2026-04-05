@@ -81,11 +81,11 @@ void RRTX::setRobotIndex(const Eigen::VectorXd& robot_position) {
 
     for (size_t index : nearest_indices) {
         auto node = tree_.at(index).get();
-        if (node->getCost() == std::numeric_limits<double>::infinity()) continue;
+        if (node->getG() == std::numeric_limits<double>::infinity()) continue;
 
         Eigen::VectorXd node_position = node->getStateValue();  // Fixed typo: getStateValue -> getStateValue
         double distance_to_node = (node_position - robot_position).norm();
-        double total_cost = distance_to_node + node->getCost();
+        double total_cost = distance_to_node + node->getG();
 
         if (total_cost < min_total_cost) {
             min_total_cost = total_cost;
@@ -232,7 +232,7 @@ void RRTX::setup(const Params& params, std::shared_ptr<Visualization> visualizat
     /////////////////////////SETTING UP DS//////////////
 
 
-    tree_.at(0)->setCost(0);
+    tree_.at(0)->setG(0);
     tree_.at(0)->setLMC(0);
 
     edge_length_[0] = -std::numeric_limits<double>::infinity();
@@ -308,7 +308,7 @@ void RRTX::plan() {
             // Update node costs and neighbors
             rewireNeighbors(new_node);
             reduceInconsistency();
-            new_node->setCost(new_node->getLMC());
+            new_node->setG(new_node->getLMC());
         }
         
     }
@@ -383,7 +383,7 @@ void RRTX::plan() {
 
 bool RRTX::extend(Eigen::VectorXd v) {
     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), sample_counter);
-    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue(), neighborhood_radius_ + 0.01);
+    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue(), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
     
     findParent(new_node, neighbors);
 
@@ -426,7 +426,7 @@ bool RRTX::extend(Eigen::VectorXd v) {
 
 
 void RRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& candidates) {
-    double min_lmc = INFINITY;
+    double min_lmc = std::numeric_limits<double>::infinity();
     RRTxNode* best_parent = nullptr;
     double best_dist = 0.0;
 
@@ -462,7 +462,7 @@ void RRTX::findParent(std::shared_ptr<RRTxNode> v, const std::vector<size_t>& ca
 
 
 void RRTX::rewireNeighbors(RRTxNode* v) {
-    const double inconsistency = v->getCost() - v->getLMC();
+    const double inconsistency = v->getG() - v->getLMC();
     if (inconsistency <= epsilon_) return;
 
     cullNeighbors(v);
@@ -483,7 +483,7 @@ void RRTX::rewireNeighbors(RRTxNode* v) {
             // makeParentOf(u, v, edge.distance);
             u->setParent(v,edge.distance);
             edge_length_[u->getIndex()] = edge.distance;
-            if (u->getCost() - candidate_lmc > epsilon_) {
+            if (u->getG() - candidate_lmc > epsilon_) {
                 verifyQueue(u);
             }
         }
@@ -493,9 +493,9 @@ void RRTX::rewireNeighbors(RRTxNode* v) {
 void RRTX::reduceInconsistency() {
     while (!inconsistency_queue_.empty() 
             && (!partial_update ||
-               (inconsistency_queue_.top().first < vbot_node_->getCost() ||  // .first instead of .min_key
-                vbot_node_->getLMC() != vbot_node_->getCost() ||
-                vbot_node_->getCost() == INFINITY ||
+               (inconsistency_queue_.top().first < vbot_node_->getG() ||  // .first instead of .min_key
+                vbot_node_->getLMC() != vbot_node_->getG() ||
+                vbot_node_->getG() == std::numeric_limits<double>::infinity() ||
                 vbot_node_->in_queue_ == true))
         ) 
     {
@@ -508,12 +508,12 @@ void RRTX::reduceInconsistency() {
         int node_idx = node->getIndex();
         if (node_idx == -1 || Vc_T_.count(node_idx)) continue;
 
-        if (node->getCost() - node->getLMC() > epsilon_) {
+        if (node->getG() - node->getLMC() > epsilon_) {
             updateLMC(node);
             rewireNeighbors(node);
         }
 
-        node->setCost(node->getLMC());
+        node->setG(node->getLMC());
     }
 }
 
@@ -590,7 +590,7 @@ void RRTX::updateLMC(RRTxNode* v) {
     cullNeighbors(v);
     double min_lmc = v->getLMC();
     RRTxNode* best_parent = nullptr;
-    double best_edge_distance = INFINITY;  // Track the distance of the best edge
+    double best_edge_distance = std::numeric_limits<double>::infinity();  // Track the distance of the best edge
 
     // Iterate over outgoing edges (v → u)
     for (const auto& [u, edge] : v->outgoingEdges()) {
@@ -600,7 +600,7 @@ void RRTX::updateLMC(RRTxNode* v) {
         //     std::cout<<edge.distance <<"\n";
 
 
-        if (Vc_T_.count(u->getIndex()) || edge.distance == INFINITY) continue;
+        if (Vc_T_.count(u->getIndex()) || edge.distance == std::numeric_limits<double>::infinity()) continue;
 
         const double candidate_lmc = u->getLMC() + edge.distance;
         if (candidate_lmc < min_lmc) {
@@ -659,8 +659,8 @@ void RRTX::cullNeighbors(RRTxNode* v) {
 
 
 void RRTX::verifyQueue(RRTxNode* node) {
-    const double min_key = std::min(node->getLMC(), node->getCost());
-    const double g_value = node->getCost();
+    const double min_key = std::min(node->getLMC(), node->getG());
+    const double g_value = node->getG();
     
 
     if (node->in_queue_) {
@@ -728,8 +728,8 @@ void RRTX::propagateDescendants() {
             int neighbor_idx = neighbor->getIndex();
             if (neighbor_idx == -1 || Vc_T_.count(neighbor_idx)) continue;
 
-            edge_length_[neighbor_idx] = -INFINITY;
-            neighbor->setCost(INFINITY);
+            edge_length_[neighbor_idx] = -std::numeric_limits<double>::infinity();
+            neighbor->setG(std::numeric_limits<double>::infinity());
             verifyQueue(neighbor);
         }
 
@@ -744,8 +744,8 @@ void RRTX::propagateDescendants() {
             if (it != parent_edges.end() ) {
                 int parent_idx = parent->getIndex();
                 if (parent_idx != -1 && !Vc_T_.count(parent_idx)) {
-                    edge_length_[parent_idx] = -INFINITY;
-                    parent->setCost(INFINITY);
+                    edge_length_[parent_idx] = -std::numeric_limits<double>::infinity();
+                    parent->setG(std::numeric_limits<double>::infinity());
                     verifyQueue(parent);
                 }
             }
@@ -757,8 +757,8 @@ void RRTX::propagateDescendants() {
         if (idx < 0 || idx >= tree_.size()) continue;
         auto node = tree_[idx].get();
 
-        node->setCost(INFINITY);
-        node->setLMC(INFINITY);
+        node->setG(std::numeric_limits<double>::infinity());
+        node->setLMC(std::numeric_limits<double>::infinity());
 
 
 
@@ -773,19 +773,19 @@ void RRTX::propagateDescendants() {
 
 
 bool RRTX::isValidEdge(RRTxNode* from, RRTxNode* to, const EdgeInfo& edge) const {
-    return edge.distance != INFINITY && 
+    return edge.distance != std::numeric_limits<double>::infinity() && 
            obs_checker_->isObstacleFree(from->getStateValue(), to->getStateValue());
 }
 
 void RRTX::visualizeTree() {
     std::vector<Eigen::VectorXd> nodes;
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
-    const double goal_cost = vbot_node_ ? vbot_node_->getCost() : INFINITY;
+    const double goal_cost = vbot_node_ ? vbot_node_->getG() : std::numeric_limits<double>::infinity();
     
     // Collect valid nodes and their connections
     std::unordered_set<RRTxNode*> valid_nodes;
     for (const auto& node : tree_) {
-        if (node->getCost() <= goal_cost) {
+        if (node->getG() <= goal_cost) {
             nodes.push_back(node->getStateValue());
             valid_nodes.insert(node.get());
         }
@@ -1052,7 +1052,7 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
             for (int idx : previously_affected_indices) {
                 RRTxNode* node = tree_[idx].get();
                 for (auto& [u, edge] : node->outgoingEdges()) {
-                    if (edge.distance == INFINITY) {
+                    if (edge.distance == std::numeric_limits<double>::infinity()) {
                         // isObstacleFree checks against ALL obstacles in the new snapshot.
                         if (obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue())) {
                             // Restore the edge and all its symmetric counterparts.
@@ -1064,7 +1064,7 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                     }
                 }
                 updateLMC(node);
-                if (node->getCost() != node->getLMC()) {
+                if (node->getG() != node->getLMC()) {
                     verifyQueue(node);
                 }
             }
@@ -1089,10 +1089,10 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
                 // if (!obs_checker_->isObstacleFreeAgainstSingleObstacle(node->getStateValue(), current_obs)) {
                 //     // The node is unusable. All its edges must be invalidated.
                 //     for (auto& [neighbor, edge] : node->outgoingEdges()) {
-                //          edge.distance = INFINITY;
-                //          if (neighbor->incomingEdges().count(node)) neighbor->incomingEdges().at(node).distance = INFINITY;
-                //          if (neighbor->outgoingEdges().count(node)) neighbor->outgoingEdges().at(node).distance = INFINITY;
-                //          if (node->incomingEdges().count(neighbor)) node->incomingEdges().at(neighbor).distance = INFINITY;
+                //          edge.distance = std::numeric_limits<double>::infinity();
+                //          if (neighbor->incomingEdges().count(node)) neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
+                //          if (neighbor->outgoingEdges().count(node)) neighbor->outgoingEdges().at(node).distance = std::numeric_limits<double>::infinity();
+                //          if (node->incomingEdges().count(neighbor)) node->incomingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
                 //     }
                 //     // Since the node is invalid, it and its children must be orphaned and reconsidered.
                 //     verifyOrphan(node);
@@ -1102,17 +1102,17 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
                 // If the node point is clear, proceed to check its edges.
                 for (auto& [neighbor, edge] : node->outgoingEdges()) {
-                    if (edge.distance == INFINITY) continue;
+                    if (edge.distance == std::numeric_limits<double>::infinity()) continue;
 
                     // Check the edge against only the current obstacle for efficiency.
                     if (!obs_checker_->isObstacleFreeAgainstSingleObstacle(node->getStateValue(), neighbor->getStateValue(), current_obs)) {
                         // Invalidate the edge
-                        edge.distance = INFINITY; 
+                        edge.distance = std::numeric_limits<double>::infinity(); 
                         
                         // Invalidate all symmetric representations of this edge for graph consistency.
-                        if (neighbor->incomingEdges().count(node)) neighbor->incomingEdges().at(node).distance = INFINITY;
-                        if (neighbor->outgoingEdges().count(node)) neighbor->outgoingEdges().at(node).distance = INFINITY;
-                        if (node->incomingEdges().count(neighbor)) node->incomingEdges().at(neighbor).distance = INFINITY;
+                        if (neighbor->incomingEdges().count(node)) neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
+                        if (neighbor->outgoingEdges().count(node)) neighbor->outgoingEdges().at(node).distance = std::numeric_limits<double>::infinity();
+                        if (node->incomingEdges().count(neighbor)) node->incomingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
 
                         // If the invalidated edge was part of the shortest-path tree, handle orphaning.
                         if (neighbor->getParent() == node) {
@@ -1149,7 +1149,7 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //         for (auto& [u, edge] : node->outgoingEdges()) {
 //             // Common edge invalidation logic
 //             const bool should_invalidate = ignore_sample ? true : 
-//                 (edge.distance != INFINITY && 
+//                 (edge.distance != std::numeric_limits<double>::infinity() && 
 //                 !obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue()));
 
 //             if (!should_invalidate) continue;
@@ -1159,27 +1159,27 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //                 so its like the outgoing of node i.e, node->u (with the focus on node!) and incoming of node (u->node) should be inf and also the incoming of u from node i.e, node->u needs to be inf, but how about outgoing of u i.e., u->node  --> this should be ALSO handled!--> don't confuse the asymetry
 //             */
 //             // Common invalidation operations
-//             edge.distance = INFINITY;
-//             u->incomingEdges().at(node).distance = INFINITY;
-//             u->outgoingEdges().at(node).distance = INFINITY;
-//             node->incomingEdges().at(u).distance = INFINITY;
+//             edge.distance = std::numeric_limits<double>::infinity();
+//             u->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
+//             u->outgoingEdges().at(node).distance = std::numeric_limits<double>::infinity();
+//             node->incomingEdges().at(u).distance = std::numeric_limits<double>::infinity();
 
 //             // Common parent relationship handling
 //             if (u->getParent() == node) {
-//                 u->setParent(nullptr, INFINITY);
+//                 u->setParent(nullptr, std::numeric_limits<double>::infinity());
 //                 verifyOrphan(u);
 //             }
 //             if (node->getParent() == u) {
-//                 node->setParent(nullptr, INFINITY);
+//                 node->setParent(nullptr, std::numeric_limits<double>::infinity());
 //                 verifyOrphan(node);
 //             }
 //         }
 
 //         // // Additional operations for ignore_sample mode
 //         // if (ignore_sample) {
-//         //     node->setCost(INFINITY);
-//         //     node->setLMC(INFINITY);
-//         //     edge_length_[idx] = -INFINITY;
+//         //     node->setG(std::numeric_limits<double>::infinity());
+//         //     node->setLMC(std::numeric_limits<double>::infinity());
+//         //     edge_length_[idx] = -std::numeric_limits<double>::infinity();
 //         //     node->setParent(nullptr, 0.0);
 //         //     verifyOrphan(node);
 //         // }
@@ -1196,7 +1196,7 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //         for (auto& [u, edge] : node->outgoingEdges()) {
 //             // Mode-specific condition components
 //             const bool is_neighbor_clear = !samples_in_obstacles_.count(u->getIndex());
-//             const bool was_invalidated = (edge.distance == INFINITY);
+//             const bool was_invalidated = (edge.distance == std::numeric_limits<double>::infinity());
 //             const bool is_now_clear = obs_checker_->isObstacleFree(node->getStateValue(), 
 //                                                                   u->getStateValue());
             
@@ -1216,7 +1216,7 @@ void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
 //         // Common node updates
 //         updateLMC(node);
-//         if (node->getCost() != node->getLMC()) {
+//         if (node->getG() != node->getLMC()) {
 //             verifyQueue(node);
 //         }
 //     }
@@ -1258,21 +1258,21 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
                 // All its existing edges become invalid WITHOUT individual collision checks for these edges.
                 for (auto& [u, edge] : node->outgoingEdges()) {
                     // Invalidate this edge (node -> u)
-                    edge.distance = INFINITY;
+                    edge.distance = std::numeric_limits<double>::infinity();
                     // And its symmetric counterparts if your graph stores them this way
                     if (u->incomingEdges().count(node)) {
-                        u->incomingEdges().at(node).distance = INFINITY;
+                        u->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
                     }
                     if (u->outgoingEdges().count(node)) { // For u -> node
-                        u->outgoingEdges().at(node).distance = INFINITY;
+                        u->outgoingEdges().at(node).distance = std::numeric_limits<double>::infinity();
                     }
                     if (node->incomingEdges().count(u)) { // For u -> node (from node's perspective)
-                        node->incomingEdges().at(u).distance = INFINITY;
+                        node->incomingEdges().at(u).distance = std::numeric_limits<double>::infinity();
                     }
 
                     // If this invalidated edge was a parent link, handle orphaning
                     if (u->getParent() == node) {
-                        u->setParent(nullptr, INFINITY);
+                        u->setParent(nullptr, std::numeric_limits<double>::infinity());
                         verifyOrphan(u);
                     }
                     // Note: if node->getParent() == u, this will be handled below
@@ -1284,8 +1284,8 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
                 // However, the current symmetric updates in the loop above likely cover this.
 
                 // Directly mark 'node' as unusable and orphan it.
-                node->setCost(INFINITY); // Assuming setCost updates the main cost (g-value)
-                node->setLMC(INFINITY);  // Assuming setLMC updates the lookahead-cost (rhs-value)
+                node->setG(std::numeric_limits<double>::infinity()); // Assuming setG updates the main cost (g-value)
+                node->setLMC(std::numeric_limits<double>::infinity());  // Assuming setLMC updates the lookahead-cost (rhs-value)
                 
                 RRTxNode* old_parent = node->getParent();
                 if (old_parent) {
@@ -1294,34 +1294,34 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
                     // We might need to ensure 'old_parent' updates its children list if applicable,
                     // though 'verifyOrphan(node)' and subsequent processing should handle graph consistency.
                 }
-                node->setParent(nullptr, INFINITY); // Sever parent link
+                node->setParent(nullptr, std::numeric_limits<double>::infinity()); // Sever parent link
                 verifyOrphan(node); // Ensure 'node' itself is processed by the orphan logic
 
             } else {
                 // Node itself is in free space, and ignore_sample is false.
                 // Check its outgoing edges individually.
                 for (auto& [u, edge] : node->outgoingEdges()) {
-                    if (edge.distance != INFINITY &&
+                    if (edge.distance != std::numeric_limits<double>::infinity() &&
                         !obs_checker_->isObstacleFree(node->getStateValue(), u->getStateValue())) {
                         // This specific edge (node -> u) is now blocked.
-                        edge.distance = INFINITY;
+                        edge.distance = std::numeric_limits<double>::infinity();
                         if (u->incomingEdges().count(node)) {
-                            u->incomingEdges().at(node).distance = INFINITY;
+                            u->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
                         }
                         if (u->outgoingEdges().count(node)) {
-                            u->outgoingEdges().at(node).distance = INFINITY;
+                            u->outgoingEdges().at(node).distance = std::numeric_limits<double>::infinity();
                         }
                         if (node->incomingEdges().count(u)) {
-                            node->incomingEdges().at(u).distance = INFINITY;
+                            node->incomingEdges().at(u).distance = std::numeric_limits<double>::infinity();
                         }
 
                         // Handle parent relationships
                         if (u->getParent() == node) {
-                            u->setParent(nullptr, INFINITY);
+                            u->setParent(nullptr, std::numeric_limits<double>::infinity());
                             verifyOrphan(u);
                         }
                         if (node->getParent() == u) {
-                            node->setParent(nullptr, INFINITY);
+                            node->setParent(nullptr, std::numeric_limits<double>::infinity());
                             verifyOrphan(node);
                         }
                     }
@@ -1350,16 +1350,16 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
             if (node_is_unusable) {
                 // Invalidate all outgoing edges
                 for (auto& [neighbor, edge] : node->outgoingEdges()) {
-                    edge.distance = INFINITY;
+                    edge.distance = std::numeric_limits<double>::infinity();
                     if (neighbor->incomingEdges().count(node)) {
-                        neighbor->incomingEdges().at(node).distance = INFINITY;
+                        neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
                     }
                 }
                 // Invalidate all incoming edges (for completeness)
                 for (auto& [neighbor, edge] : node->incomingEdges()) {
-                    edge.distance = INFINITY;
+                    edge.distance = std::numeric_limits<double>::infinity();
                     if (neighbor->outgoingEdges().count(node)) {
-                        neighbor->outgoingEdges().at(node).distance = INFINITY;
+                        neighbor->outgoingEdges().at(node).distance = std::numeric_limits<double>::infinity();
                     }
                 }
                 verifyOrphan(node);
@@ -1368,7 +1368,7 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
 
             // If the node is valid, proceed with the original per-edge checks.
             for (auto& [neighbor, edge] : node->outgoingEdges()) {
-                if (edge.distance == INFINITY) continue;
+                if (edge.distance == std::numeric_limits<double>::infinity()) continue;
                 
                 bool becomes_invalid = false;
                 for (const auto& obs : threats) {
@@ -1379,16 +1379,16 @@ void RRTX::addNewObstacle(const std::vector<int>& added_indices) {
                 }
 
                 if (becomes_invalid) {
-                    edge.distance = INFINITY;
+                    edge.distance = std::numeric_limits<double>::infinity();
                     if (neighbor->incomingEdges().count(node)) {
-                        neighbor->incomingEdges().at(node).distance = INFINITY;
+                        neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
                     }
                     //////////ARE THESE NECESSARY?/////////
                     if (neighbor->outgoingEdges().count(node)) {
-                        neighbor->outgoingEdges().at(node).distance = INFINITY;
+                        neighbor->outgoingEdges().at(node).distance = std::numeric_limits<double>::infinity();
                     }
                     if (node->incomingEdges().count(neighbor)) {
-                        node->incomingEdges().at(neighbor).distance = INFINITY;
+                        node->incomingEdges().at(neighbor).distance = std::numeric_limits<double>::infinity();
                     }
                     //////////////////////////////////////
 
@@ -1434,7 +1434,7 @@ void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
                             should_attempt_restore = true;
                         }
                     } else { // Not ignore_sample
-                        if (edge.distance == INFINITY) { // Only consider edges that were previously blocked
+                        if (edge.distance == std::numeric_limits<double>::infinity()) { // Only consider edges that were previously blocked
                             should_attempt_restore = true;
                         }
                     }
@@ -1447,7 +1447,7 @@ void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
                             if (u->outgoingEdges().count(node)) u->outgoingEdges().at(node).distance = edge.distance_original;
                             if (node->incomingEdges().count(u)) node->incomingEdges().at(u).distance = edge.distance_original;
                         }
-                        // If it's not free (e.g., blocked by another, different obstacle), its distance remains INFINITY or its current value.
+                        // If it's not free (e.g., blocked by another, different obstacle), its distance remains std::numeric_limits<double>::infinity() or its current value.
                     }
                 }
             }
@@ -1455,7 +1455,7 @@ void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
             // After attempting to restore edges, update LMC and queue if inconsistent.
             // This should happen if the node itself became free and thus usable.
             updateLMC(node);
-            if (node->getCost() != node->getLMC()) {
+            if (node->getG() != node->getLMC()) {
                 verifyQueue(node);
             }
         }
@@ -1467,11 +1467,11 @@ void RRTX::removeObstacle(const std::vector<int>& removed_indices) {
         // about *when* to update LMC based on the node's own state.
         // For simplicity and safety, the original broader updateLMC/verifyQueue might be fine:
         // updateLMC(node);
-        // if (node->getCost() != node->getLMC()) {
+        // if (node->getG() != node->getLMC()) {
         //     verifyQueue(node);
         // }
         // This will work because if node_location_is_currently_free is false, updateLMC should ideally
-        // result in node->LMC being INFINITY if all its edges are INFINITY.
+        // result in node->LMC being std::numeric_limits<double>::infinity() if all its edges are std::numeric_limits<double>::infinity().
     }
 }
 /////////////////////////////////////////////////////////////////////////////////////////

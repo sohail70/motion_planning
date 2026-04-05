@@ -108,7 +108,7 @@ void FMTX::plan() {
     // std::unordered_map<FMTNode*, bool> costUpdated;
     /*
         We go until the heap is empty and the top expansion node has the g_value thats less than the robot's current node g_value because why would we waste time exploring past that!
-        also we consider if the g_value of the robot is infinity we need to keep poping heap nodes in the hope it reaches the robot
+        also we consider if the g_value of the robot is std::numeric_limits<double>::infinity() we need to keep poping heap nodes in the hope it reaches the robot
         or if the robot node is in v_unvistited node which has the same meaning as the cost inf so it maybe redundant
         also if the robot is in heap (queue) we contine poping ---> can't remeber the reason i did this!
 
@@ -123,7 +123,7 @@ void FMTX::plan() {
 
     while (!v_open_heap_.empty() &&
            (partial_update ? (v_open_heap_.top().first < robot_node_->getCost() ||
-            robot_node_->getCost() == INFINITY || //I think the above condtion also covers this because if the cost is inf the heap pops till the end because the above condition would be always true
+            robot_node_->getCost() == std::numeric_limits<double>::infinity() || //I think the above condtion also covers this because if the cost is inf the heap pops till the end because the above condition would be always true
             robot_node_->in_queue_==true)  : true  )){
 
 
@@ -248,7 +248,7 @@ void FMTX::plan() {
                 // checks++;
                 near(xIndex);
                 double min_cost = std::numeric_limits<double>::infinity(); //the above condtion doesnt let it come after x got its optimal cost after being inf/sub-optimal so no need for the next line but lets leave it for safety until i can have solid math proof
-                // double min_cost = x->getCost(); // Because x might have a cost it self and even if it doesnt its INFINITY by default in the FMTNode CLass
+                // double min_cost = x->getCost(); // Because x might have a cost it self and even if it doesnt its std::numeric_limits<double>::infinity() by default in the FMTNode CLass
                 FMTNode* best_neighbor_node = nullptr;
                 double best_edge_length = 0.0;
                 // EdgeInfo best_edge_info;
@@ -277,7 +277,7 @@ void FMTX::plan() {
                 // else
                 //     std::cout<<"best is z \n";
 
-                // if (!best_neighbor_node || best_edge_info.distance ==INFINITY) {
+                // if (!best_neighbor_node || best_edge_info.distance == std::numeric_limits<double>::infinity()) {
                 //     continue;
                 // }
                 if (!best_neighbor_node ) {
@@ -722,24 +722,24 @@ void FMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //             auto node = tree_[idx].get();
 //             near(idx);
 //             for (auto& [neighbor, edge_info] : node->neighbors()) {
-//                 if (edge_info.distance == INFINITY) continue;
+//                 if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
 //                 /*
-//                     Note: i think we don't need to obstacle check for all the node->neighbor relatioship because i think we can utilize dualFindSample and instantly make nodes on samples_in_obstalce distances to INFINITY
+//                     Note: i think we don't need to obstacle check for all the node->neighbor relatioship because i think we can utilize dualFindSample and instantly make nodes on samples_in_obstalce distances to std::numeric_limits<double>::infinity()
 //                           but for now since rrtx didn't do optimization in this part i keep the code this way
 //                 */
 //                 bool is_free_ = obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue());
 //                 if (is_free_) continue;
 
-//                 edge_info.distance = INFINITY;
+//                 edge_info.distance = std::numeric_limits<double>::infinity();
 //                 near(neighbor->getIndex());
-//                 neighbor->neighbors().at(node).distance = INFINITY;
+//                 neighbor->neighbors().at(node).distance = std::numeric_limits<double>::infinity();
 
 //                 if (node->getParent() == neighbor){
 //                     orphan_nodes.insert(node->getIndex()); // In the current tree_ we check if an edge connection the node and its parent is on obstalce or not, if it is, then we send it and its descendant to orphan list
 //                     auto descendants = getDescendants(node->getIndex());
 //                     orphan_nodes.insert(descendants.begin(), descendants.end());
 //                 }
-//                 if (neighbor->getParent() == node) { //We check bidirectionaly because we used "neighbor->neighbors().at(node).distance = INFINITY;" in above line
+//                 if (neighbor->getParent() == node) { //We check bidirectionaly because we used "neighbor->neighbors().at(node).distance = std::numeric_limits<double>::infinity();" in above line
 //                     orphan_nodes.insert(neighbor->getIndex());
 //                     auto descendants = getDescendants(neighbor->getIndex());
 //                     orphan_nodes.insert(descendants.begin(), descendants.end());
@@ -791,8 +791,8 @@ void FMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //             // node->in_queue_ = false;
 //         }
 //         if (!node->getIndex() == 0) // Root of the tree must keep its zero cost!
-//             node->setCost(INFINITY); 
-//         node->setParent(nullptr, INFINITY);
+//             node->setCost(std::numeric_limits<double>::infinity()); 
+//         node->setParent(nullptr, std::numeric_limits<double>::infinity());
 //         // node->getChildrenMutable().clear(); // We don't need to do this even though at this current iteration this node has children but they will be removed as we iterate by the setParent function
 //         edge_length_[node_index] = -std::numeric_limits<double>::infinity();
 //     }
@@ -803,7 +803,7 @@ void FMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //         how can you be sure we don't have any vopen heap nodes left? in partial update false the vopen heap gets fully cleaned because of the while loop but in partial update true
 //         we early exit that loop so some vopen heap nodes are left! in this scenraio now imagine an obstalce is being added and at the worst case scenario it is being added to the region where there are already vopen heap nodes!
 //         the result of adding obstalce means two things! ---> some vclosed (conceptually i mean because i don't use vclose in my algorithm!) nodes become vunvisted or some vopen nodes become vunvisted! and the previously vunvisited due to partial update
-//         stays in vunvisted! mind that the cost of these per say messeup nodes will become infinity or stay infinity
+//         stays in vunvisted! mind that the cost of these per say messeup nodes will become std::numeric_limits<double>::infinity() or stay std::numeric_limits<double>::infinity()
 //         for expansion we need CORRECT vopen heap nodes! (by correct i mean the correct cost that resembles the changes of the environment) and one rule you need to follow for safety is to not put any vunvisted node into vopen or if some vunvisted node is in vopen you need to remove it
 //         so since the cost of nodes doesnt change to any numbers but inf! so we only need to remove them. the following addition to heap is also for covering the vunvisted node for the next batch of update in plan function
 //         in the next for loop i do the heap removal
@@ -849,7 +849,7 @@ void FMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //         near(node_index);
 //         for (const auto& [neighbor, dist] : node->neighbors()){
 //             int index = neighbor->getIndex();
-//             if (neighbor->in_queue_ || neighbor->getCost()==INFINITY ) continue;
+//             if (neighbor->in_queue_ || neighbor->getCost()== std::numeric_limits<double>::infinity() ) continue;
 //             double h_value = use_heuristic ? heuristic(index) : 0.0;
 //             v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
 //             // neighbor->in_queue_ = true;
@@ -867,7 +867,7 @@ void FMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
 //     //     for (const auto& [neighbor, dist] : node->neighbors()) {
 //     //         // skip if already enqueued or not yet reachable
-//     //         if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
+//     //         if (neighbor->in_queue_ || neighbor->getCost() == std::numeric_limits<double>::infinity()) 
 //     //             continue;
 
 //     //         // mark so we don’t enqueue duplicates
@@ -921,11 +921,11 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) { /
             // Invalidate all its existing edges WITHOUT individual collision checks for each edge.
             near(idx); // Ensure neighbors are loaded if needed by your 'near' implementation
             for (auto& [neighbor, edge_info] : node->neighbors()) { // Iterate existing graph neighbors
-                edge_info.distance = INFINITY;
+                edge_info.distance = std::numeric_limits<double>::infinity();
                 // Also update the symmetric part in the neighbor
                 near(neighbor->getIndex()); // Ensure neighbor's neighbors are loaded
                 if (neighbor->neighbors().count(node)) { // Check if symmetric entry exists
-                    neighbor->neighbors().at(node).distance = INFINITY;
+                    neighbor->neighbors().at(node).distance = std::numeric_limits<double>::infinity();
                 }
 
                 // If this edge was a parent link, the child becomes an orphan candidate
@@ -945,15 +945,15 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) { /
             // PRUNE MODE, BUT NODE ITSELF IS FINE: Check its edges individually.
             near(idx);
             for (auto& [neighbor, edge_info] : node->neighbors()) {
-                if (edge_info.distance == INFINITY) continue;
+                if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
 
                 // Perform collision check for this specific edge (node -> neighbor)
                 if (!obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue())) {
                     // Edge is blocked
-                    edge_info.distance = INFINITY;
+                    edge_info.distance = std::numeric_limits<double>::infinity();
                     near(neighbor->getIndex());
                     if (neighbor->neighbors().count(node)) {
-                        neighbor->neighbors().at(node).distance = INFINITY;
+                        neighbor->neighbors().at(node).distance = std::numeric_limits<double>::infinity();
                     }
 
                     // Handle parent relationships leading to orphans
@@ -987,9 +987,9 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) { /
             v_open_heap_.remove(node); // Assuming remove also sets node->in_queue_ = false
         }
         if (node->getIndex() != 0) { // Assuming 0 is a special root/goal node index
-            node->setCost(INFINITY); 
+            node->setCost(std::numeric_limits<double>::infinity()); 
         }
-        node->setParent(nullptr, INFINITY); // Sever parent link and set parent_edge_cost_
+        node->setParent(nullptr, std::numeric_limits<double>::infinity()); // Sever parent link and set parent_edge_cost_
         // Children links will be broken when their parent (this node) is no longer their parent,
         // or when they themselves are processed as orphans and get a new parent (or nullptr).
         // You might need an explicit RRTxNode::removeChild if setParent doesn't notify the old parent.
@@ -1003,8 +1003,8 @@ void FMTX::handleAddedObstacleSamples(const std::vector<int>& added_indices) { /
         near(node_index); // Ensure neighbors are loaded
         for (const auto& [neighbor_ptr, edge_data] : node->neighbors()){ // Assuming edge_data not used here, just neighbor_ptr
             // 'neighbor_ptr' is of type FMTNode* (or RRTxNode*)
-            if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == INFINITY ) continue; 
-            // If neighbor_ptr->getCost() == INFINITY, it means it's also an orphan, so skip.
+            if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == std::numeric_limits<double>::infinity() ) continue; 
+            // If neighbor_ptr->getCost() == std::numeric_limits<double>::infinity(), it means it's also an orphan, so skip.
             // We only want to queue neighbors that are still validly connected to the goal.
 
             double h_value = use_heuristic ? heuristic(neighbor_ptr->getIndex()) : 0.0;
@@ -1027,7 +1027,7 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
         
         */
 
-        if (node->in_queue_ && node->getCost()==INFINITY) {
+        if (node->in_queue_ && node->getCost()== std::numeric_limits<double>::infinity()) {
         /*
             it doesnt come here so maybe we don't need this --> im thinking there shouldn't be a node in remove that is in heap
             my reason is the removed nodes are the current nodes of the previous iteration and we didn't put any of the current
@@ -1043,7 +1043,7 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
         if (!ignore_sample && prune) {
             near(node_index);
             for (auto& [neighbor, edge_info] : node->neighbors()) {
-                if (edge_info.distance != INFINITY) continue;
+                if (edge_info.distance != std::numeric_limits<double>::infinity()) continue;
                 if (obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue())) {
                     edge_info.distance = edge_info.distance_original;
                     near(neighbor->getIndex());
@@ -1058,7 +1058,7 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
         near(node_index);
         for (const auto& [neighbor, dist] : node->neighbors()) {
             const int n_idx = neighbor->getIndex();
-            if (neighbor->in_queue_ || neighbor->getCost()==INFINITY) continue;
+            if (neighbor->in_queue_ || neighbor->getCost()== std::numeric_limits<double>::infinity()) continue;
             double h_value = use_heuristic ? heuristic(n_idx) : 0.0;
             v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
             // neighbor->in_queue_ = true;
@@ -1075,7 +1075,7 @@ void FMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
     //     near(node_index);  // ensure neighbors are cached
 
     //     for (const auto& [neighbor, dist] : node->neighbors()) {
-    //         if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
+    //         if (neighbor->in_queue_ || neighbor->getCost() == std::numeric_limits<double>::infinity()) 
     //             continue;
 
     //         neighbor->in_queue_ = true;  // mark to avoid duplicates
@@ -1536,7 +1536,7 @@ void FMTX::visualizeHeapAndUnvisited() {
     
     for (const auto& element : heap_elements) {
         // Access priority with element.first and node with element.second
-        if (element.first == INFINITY) {
+        if (element.first == std::numeric_limits<double>::infinity()) {
             std::cerr << "Warning: Node " << element.second->getIndex() 
                       << " is in v_open_heap_ but has INF cost!" << std::endl;
             found_conflict = true;

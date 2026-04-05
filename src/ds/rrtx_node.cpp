@@ -8,20 +8,20 @@ RRTxNode::RRTxNode(std::shared_ptr<State> state, int index)
       index_(index),
       in_queue_(false),
       heap_index_(-1),
-      lmc_(INFINITY),
-      cost_(INFINITY),
-      time_to_goal_(INFINITY){}
+      lmc_(std::numeric_limits<double>::infinity()),
+      g_(std::numeric_limits<double>::infinity()),
+      time_to_goal_(std::numeric_limits<double>::infinity()){}
 
 const Eigen::VectorXd& RRTxNode::getStateValue() const {
     return state_->getValue();
 }
 
-void RRTxNode::setCost(double cost) noexcept {
-    cost_ = cost;
+void RRTxNode::setG(double cost) noexcept {
+    g_ = cost;
 }
 
-double RRTxNode::getCost() const noexcept {
-    return cost_;
+double RRTxNode::getG() const noexcept {
+    return g_;
 }
 
 void RRTxNode::setLMC(double lmc) noexcept {

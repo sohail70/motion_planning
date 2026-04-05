@@ -6,9 +6,9 @@
 FMTNode::FMTNode(std::shared_ptr<State> state, int index)
     : state_(state),
       index_(index),
-      cost_(INFINITY),
-      broadcast_cost_(INFINITY),
-      time_to_goal_(INFINITY),
+      lmc_(std::numeric_limits<double>::infinity()),
+      g_(std::numeric_limits<double>::infinity()),
+      time_to_goal_(std::numeric_limits<double>::infinity()),
       heuristic_(0.0),
       in_queue_(false),
       heap_index_(-1),
@@ -28,6 +28,14 @@ const Eigen::VectorXd& FMTNode::getStateValue() const {
 // double FMTNode::getCost() const noexcept { 
 //     return cost_; 
 // }
+
+void FMTNode::setLMC(double cost) noexcept { 
+    lmc_ = cost; 
+}
+
+void FMTNode::setG(double cost) noexcept { 
+    g_ = cost; 
+}
 
 void FMTNode::setCost(double cost) noexcept { 
     cost_ = cost; 

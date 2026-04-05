@@ -58,14 +58,14 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
     if (T <= 1e-6) {
         Trajectory traj;
         traj.is_valid = false;
-        // traj.cost is already infinity by default
+        // traj.cost is already std::numeric_limits<double>::infinity() by default
         return traj;
     }
     double spatial_dist = (from.head<3>() - to.head<3>()).norm();
     if (spatial_dist / T > v_max_) {
         Trajectory traj;
         traj.is_valid = false;
-        // traj.cost is already infinity by default
+        // traj.cost is already std::numeric_limits<double>::infinity() by default
         return traj;
     }
 
@@ -129,7 +129,7 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
         if (qp.init(H_r.data(), g.data(), A_r.data(), nullptr, nullptr, lbA.data(), ubA.data(), nWSR) != qpOASES::SUCCESSFUL_RETURN) {
             Trajectory traj;
             traj.is_valid = false;
-            // traj.cost is already infinity by default
+            // traj.cost is already std::numeric_limits<double>::infinity() by default
             return traj;
         }
         
@@ -137,7 +137,7 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
         if (qp.getPrimalSolution(p_optimal.data()) != qpOASES::SUCCESSFUL_RETURN) {
             Trajectory traj;
             traj.is_valid = false;
-            // traj.cost is already infinity by default
+            // traj.cost is already std::numeric_limits<double>::infinity() by default
             return traj;
         }
         
@@ -195,14 +195,14 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
     if (T <= 1e-6) {
         Trajectory traj;
         traj.is_valid = false;
-        // traj.cost is already infinity by default
+        // traj.cost is already std::numeric_limits<double>::infinity() by default
         return traj;
     }
     double spatial_dist = (from.head<3>() - to.head<3>()).norm();
     if (spatial_dist / T > v_max_) {
         Trajectory traj;
         traj.is_valid = false;
-        // traj.cost is already infinity by default
+        // traj.cost is already std::numeric_limits<double>::infinity() by default
         return traj;
     }
 
@@ -283,7 +283,7 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
         if (!solved) {
             Trajectory traj;
             traj.is_valid = false;
-            // traj.cost is already infinity by default
+            // traj.cost is already std::numeric_limits<double>::infinity() by default
             return traj;
         }
         coeffs_per_axis.push_back(best_solution);
@@ -352,14 +352,14 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
     if (T <= 1e-6) {
         Trajectory traj;
         traj.is_valid = false;
-        // traj.cost is already infinity by default
+        // traj.cost is already std::numeric_limits<double>::infinity() by default
         return traj;
     }
     double spatial_dist = (from.head<3>() - to.head<3>()).norm();
     if (spatial_dist / T > v_max_) {
         Trajectory traj;
         traj.is_valid = false;
-        // traj.cost is already infinity by default
+        // traj.cost is already std::numeric_limits<double>::infinity() by default
         return traj;
     }
 
@@ -449,7 +449,7 @@ Trajectory MinSnapStateSpace::steer(const Eigen::VectorXd& from, const Eigen::Ve
     if (!overall_success) {
         Trajectory traj;
         traj.is_valid = false;
-        // traj.cost is already infinity by default
+        // traj.cost is already std::numeric_limits<double>::infinity() by default
         return traj;
     }
 

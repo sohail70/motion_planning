@@ -21,7 +21,7 @@ public:
         heap_index_(-1), in_queue_(false),
         neighbors_cached_(false),
         best_parent_(nullptr),
-        time_to_goal_(INFINITY),   // initialize time
+        time_to_goal_(std::numeric_limits<double>::infinity()),   // initialize time
         k1(std::numeric_limits<double>::infinity()),
         k2(std::numeric_limits<double>::infinity())
     {}

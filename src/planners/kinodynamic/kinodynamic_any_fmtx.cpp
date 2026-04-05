@@ -114,7 +114,7 @@ void KinodynamicANYFMTX::shrinkingBallRadius() {
 }
 
 bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node) {
-    std::vector<size_t> candidate_indices = kdtree_->radiusSearch(sample_val.head(kd_dim), neighborhood_radius_ + 0.01);
+    std::vector<size_t> candidate_indices = kdtree_->radiusSearch(sample_val.head(kd_dim), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
     bool is_valid_sample = false;
 
     // OUTGOING VALIDATION & DIRECT COMMIT
@@ -122,7 +122,7 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
         FMTNode* neighbor = tree_[idx].get();
         Trajectory traj_outgoing = statespace_->steer(sample_val, neighbor->getStateValue());
         
-        if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + 0.01) {
+        if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
             is_valid_sample = true; 
             
             auto shared_traj_outgoing = std::make_shared<Trajectory>(std::move(traj_outgoing));
@@ -160,7 +160,7 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
             FMTNode* neighbor = tree_[idx].get();
             Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
             
-            if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + 0.01) {
+            if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
                 
                 auto shared_traj_incoming = std::make_shared<Trajectory>(std::move(traj_incoming));
                 
@@ -185,10 +185,10 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
 void KinodynamicANYFMTX::analyzeSuboptimality(FMTNode* x, FMTNode* best_parent_for_x, FMTNode* z, SuboptimalityMetrics& metrics) {
     metrics.total_nodes_updated++;
     int missed_for_this_node = 0;
-    double chosen_cost = x->getCost();
+    double chosen_cost = x->getLMC();
     FMTNode* best_missed = nullptr;
     double best_missed_cost = chosen_cost;
-    double witness_cost = z->getCost();
+    double witness_cost = z->getLMC();
 
     // Cache chosen dt/dx
     double chosen_dt = 0.0; double chosen_dx = 0.0;
@@ -203,7 +203,7 @@ void KinodynamicANYFMTX::analyzeSuboptimality(FMTNode* x, FMTNode* best_parent_f
         auto traj_xy = edge_info_xy.cached_trajectory;
         if (!traj_xy || !traj_xy->is_valid) continue;
 
-        double candidate_cost = y->getCost() + traj_xy->cost;
+        double candidate_cost = y->getLMC() + traj_xy->cost;
         if (candidate_cost >= chosen_cost) continue;
 
         // Collision check
@@ -302,7 +302,7 @@ bool KinodynamicANYFMTX::runCollisionForensics() {
     for (size_t i = 0; i < tree_.size(); ++i) { 
         FMTNode* node = tree_[i].get();
 
-        if (node->getParent() != nullptr && node->getCost() != std::numeric_limits<double>::infinity()) {
+        if (node->getParent() != nullptr && node->getLMC() != std::numeric_limits<double>::infinity()) {
             checked_nodes++;
             bool edge_collides = false;
             std::string guilty_obstacle = "";
@@ -331,7 +331,7 @@ bool KinodynamicANYFMTX::runCollisionForensics() {
                 illegal_connections++;
                 std::cout << "\033[1;31m[VIOLATION]\033[0m Node " << node->getIndex() 
                           << " -> Parent " << parent->getIndex()
-                          << " | Cost: " << node->getCost()
+                          << " | Cost: " << node->getLMC()
                           << " | \033[1;35mFATAL: Edge hits [" << guilty_obstacle << "]\033[0m\n";
                 
                 bool in_node_threats = false;
@@ -380,7 +380,7 @@ bool KinodynamicANYFMTX::runGlobalCostForensics() {
         
         if (idx == root_state_index_) return {0.0, 0};
         
-        if (node->getParent() == nullptr || node->getCost() == std::numeric_limits<double>::infinity()) {
+        if (node->getParent() == nullptr || node->getLMC() == std::numeric_limits<double>::infinity()) {
             return {std::numeric_limits<double>::infinity(), 0};
         }
         
@@ -420,7 +420,7 @@ bool KinodynamicANYFMTX::runGlobalCostForensics() {
     // Evaluate all nodes
     for (size_t i = 0; i < tree_.size(); ++i) {
         FMTNode* node = tree_[i].get();
-        double stored_cost = node->getCost(); 
+        double stored_cost = node->getLMC(); 
 
         if (stored_cost != std::numeric_limits<double>::infinity() && node->getIndex() != root_state_index_) {
             nodes_checked++;
@@ -464,17 +464,17 @@ bool KinodynamicANYFMTX::runGlobalCostForensics() {
                 double edge_cost = (curr->getParentTrajectory() != nullptr) ? curr->getParentTrajectory()->cost : 0.0;
                 
                 std::cout << "Node " << curr->getIndex() 
-                          << " | Stored g(v): " << curr->getCost() 
-                          << " | Broadcast g: " << curr->broadcast_cost_ << "\n";
+                          << " | Stored g(v): " << curr->getLMC() 
+                          << " | Broadcast g: " << curr->getG() << "\n";
                 std::cout << "   -> Parent " << parent->getIndex() 
-                          << " | Stored g(v): " << parent->getCost() 
-                          << " | Broadcast g: " << parent->broadcast_cost_ << "\n";
+                          << " | Stored g(v): " << parent->getLMC() 
+                          << " | Broadcast g: " << parent->getG() << "\n";
                 std::cout << "   -> Trajectory Edge Cost: " << edge_cost << "\n";
                 
                 // Check the exact math
-                double expected_lmc = parent->broadcast_cost_ + edge_cost;
+                double expected_lmc = parent->getG() + edge_cost;
                 std::cout << "   => Expected lmc(v): " << expected_lmc 
-                          << " | Actual Drift at this step: " << (curr->getCost() - expected_lmc) << "\n";
+                          << " | Actual Drift at this step: " << (curr->getLMC() - expected_lmc) << "\n";
                 std::cout << "------------------------------------------------------\n";
                 
                 curr = parent;
@@ -508,10 +508,10 @@ bool KinodynamicANYFMTX::runCostForensics() {
         FMTNode* node = tree_[i].get();
         
         // In FMTX:
-        // -> getCost() acts as LMC (the instantly updated best-known path)
+        // -> getLMC() acts as LMC (the instantly updated best-known path)
         // -> broadcast_cost_ acts as 'g' (the stale cost frozen until queue pops)
-        double lmc = node->getCost();
-        double g = node->broadcast_cost_;
+        double lmc = node->getLMC();
+        double g = node->getG();
 
         // Skip completely unconnected nodes
         if (g == std::numeric_limits<double>::infinity() && 
@@ -572,7 +572,7 @@ bool KinodynamicANYFMTX::runTreePropagationForensics() {
         FMTNode* child = tree_[i].get();
         
         if (child->getIndex() == root_state_index_ || 
-            child->getCost() == std::numeric_limits<double>::infinity() || 
+            child->getLMC() == std::numeric_limits<double>::infinity() || 
             child->getParent() == nullptr) {
             continue;
         }
@@ -581,8 +581,8 @@ bool KinodynamicANYFMTX::runTreePropagationForensics() {
         auto traj = child->getParentTrajectory();
         if (!traj || !traj->is_valid) continue; 
 
-        double expected_cost = parent->getCost() + traj->cost;
-        double actual_cost = child->getCost();
+        double expected_cost = parent->getLMC() + traj->cost;
+        double actual_cost = child->getLMC();
         double difference = actual_cost - expected_cost;
 
         nodes_checked++;
@@ -717,10 +717,10 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         candidate_parents.reserve(new_node->forwardNeighbors().size());
 
         for (auto& [neighbor, edge_info] : new_node->forwardNeighbors()) {
-            if (neighbor->getCost() == INFINITY) {
+            if (neighbor->getLMC() == std::numeric_limits<double>::infinity()) {
                 continue; 
             }
-            double potential_cost = neighbor->getCost() + edge_info.distance; 
+            double potential_cost = neighbor->getLMC() + edge_info.distance; 
             candidate_parents.emplace_back(potential_cost, neighbor); // emplace_back is slightly faster than push_back
         }
 
@@ -766,7 +766,7 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
 
             if (collision_free) {
                 // SUCCESS!
-                new_node->setCost(candidate.first);
+                new_node->setLMC(candidate.first);
                 new_node->setParent(potential_parent, traj_xy);
                 connected = true;
                 break; // Stop checking candidates.
@@ -786,7 +786,7 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         */
         // THE SINGLE HEAP INSERTION
         if (connected) {
-            v_open_heap_.add(new_node, new_node->getCost());
+            v_open_heap_.add(new_node, new_node->getLMC());
             last_replan_metrics_.queue_operations++;
         } 
     }
@@ -825,7 +825,7 @@ void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
 
         // An edge is only considered for culling if it is longer than the current radius
         // AND the node is not the current parent in the shortest-path tree
-        if (edge_cost > (neighborhood_radius_ + 0.01) && neighbor != v->getParent()) {
+        if (edge_cost > (neighborhood_radius_ + std::numeric_limits<double>::epsilon()) && neighbor != v->getParent()) {
 
             // SYMMETRIC CULL (Neighbor's Side)
             // Remove 'v' from the neighbor's backward list if it wasn't an 'initial' birth-neighbor.
@@ -849,6 +849,45 @@ void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
     }
     v->last_culled_radius_ = neighborhood_radius_;
 }
+
+/*
+    * SEMANTICS OF COST: 'g' vs 'lmc' (Inspired by D* Lite / RRTX)
+    * To maintain strict mathematical correctness during dynamic replanning, we decouple 
+    * a node's cost into two distinct values:
+    * 
+    * 1. 'lmc' (Locally Minimal Cost): The absolute best cost known *right now*. It updates 
+    *    instantly the moment a better path is found.
+    * 2. 'g' (Broadcast/Frozen Cost): The cost the node had the last time it popped from 
+    *    the priority queue. It represents the "official" cost that has been fully 
+    *    propagated to the node's subtree.
+    * 
+    * GOLDEN RULES FOR USAGE:
+    * 
+    * RULE 1: The Broadcaster (z) uses 'g'.
+    * When the active node 'z' pops from the queue, it commits its live cost to history 
+    * ( z->setG(z->getLMC()) ). It must then broadcast `z->getG()` to its children and 
+    * neighbors to ensure the wavefront uses the strictly committed cost.
+    *   -> Example: double cost_via_z = z->getG() + edge_distance;
+    * 
+    * RULE 2: The Receiver (x or child) protects its 'lmc'.
+    * When a node checks if an incoming path is better than its current best, it evaluates 
+    * the offer against its live 'lmc'.
+    *   -> Example: if (x->getLMC() > cost_via_z) { x->setLMC(cost_via_z); }
+    * 
+    * RULE 3: The Parent Searcher (x) looks at the 'lmc' of queued parents (y).
+    * When 'x' is suboptimal and searches for a new parent 'y' that is waiting in the queue, 
+    * it MUST read `y->getLMC()`. Because 'y' hasn't popped yet, its 'g' is stale, but 
+    * its 'lmc' holds the newly discovered optimal promise.
+    *   -> Example: double cost_via_y = y->getLMC() + traj_xy->cost;
+    * 
+    * RULE 4: The Epsilon Queue Bouncer compares 'g' vs 'lmc'.
+    * To decide if a node needs to enter the priority queue, we check if the new reality 
+    * (lmc) is significantly better than the frozen history (g). If the gap exceeds epsilon, 
+    * it enters the queue to sync its descendants.
+    *   -> Example: if (x->getG() - x->getLMC() > epsilon) { v_open_heap_.add(x); }
+*/
+
+
 
 void KinodynamicANYFMTX::plan() {
 #if DEBUG
@@ -883,9 +922,9 @@ void KinodynamicANYFMTX::plan() {
           (!partial_update || 
                 robot_node_ == nullptr || 
                 robot_node_->in_queue_ ||
-                robot_node_->getCost() == INFINITY ||
-                // v_open_heap_.top().first < robot_node_->getCost() + bridge_cost_))
-                v_open_heap_.top().first < robot_node_->getCost()))
+                robot_node_->getLMC() == std::numeric_limits<double>::infinity() ||
+                // v_open_heap_.top().first < robot_node_->getLMC() + bridge_cost_))
+                v_open_heap_.top().first < robot_node_->getLMC()))
     {
 
         auto top_element = v_open_heap_.top();
@@ -897,8 +936,7 @@ void KinodynamicANYFMTX::plan() {
             when a node becomes z (meaning it is acting as a parent and expanding the wavefront), 
             it broadcasts its cost. Right after we read z, we lock its broadcast cost
         */
-        z->broadcast_cost_ = z->getCost(); 
-
+        z->setG(z->getLMC());
 
 
         /*
@@ -932,7 +970,7 @@ void KinodynamicANYFMTX::plan() {
             
             NO REDUNDANT WORK:
             Phase 1 updates the cost of z's children immediately. When Phase 2 (the geometric wavefront) 
-            later loops over z's neighbors, the core condition `if (x->getCost() > cost_via_z)` naturally 
+            later loops over z's neighbors, the core condition `if (x->getLMC() > cost_via_z)` naturally 
             evaluates to FALSE for z's own children. Therefore, Phase 2 completely skips them, saving 
             expensive collision checks. Rewiring a child to a *different* parent naturally happens 
             later when that competing parent expands (i.e., later queue expansions)
@@ -952,17 +990,17 @@ void KinodynamicANYFMTX::plan() {
             auto traj = child->getParentTrajectory();
             if (!traj) continue;
 
-            double cost_via_z = z->getCost() + traj->cost;
+            double cost_via_z = z->getG() + traj->cost;
             
             // If the parent brings a better cost, push it down to the child
-            if (child->getCost() > cost_via_z) {
-                child->setCost(cost_via_z);
+            if (child->getLMC() > cost_via_z) {
+                child->setLMC(cost_via_z);
                 
                 // Wake the child up so it can propagate the cost to its own children
                 if (child->in_queue_) {
                     v_open_heap_.update(child, cost_via_z);
                     last_replan_metrics_.queue_operations++;
-                } else if (child->broadcast_cost_ == INFINITY || (child->broadcast_cost_ - cost_via_z > epsilon)) {
+                } else if (child->getG() == std::numeric_limits<double>::infinity() || (child->getG() - cost_via_z > epsilon)) {
                     v_open_heap_.add(child, cost_via_z); 
                     last_replan_metrics_.queue_operations++;
                 }
@@ -989,7 +1027,7 @@ void KinodynamicANYFMTX::plan() {
             if (!traj_xz.is_valid) {
                 continue;
             }
-            double cost_via_z = z->getCost() + edge_info_x_to_z.distance;
+            double cost_via_z = z->getG() + edge_info_x_to_z.distance;
             /*
                 This condition is the core of FMTX. It serves two purposes:
                 If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
@@ -998,7 +1036,7 @@ void KinodynamicANYFMTX::plan() {
                 This adds implicit rewiring to FMTX. There is no explicit rewiring here (like RRTX). It repairs the graph
                 as wavefront expands.  
             */
-            if (x->getCost() > cost_via_z) {
+            if (x->getLMC() > cost_via_z) {
 
 #if DEBUG
                 // Check if we've already updated this node in this plan() cycle
@@ -1037,7 +1075,7 @@ void KinodynamicANYFMTX::plan() {
 
                 // 'x' is suboptimal. We now search for its true best parent among ALL its neighbors that are currently in the open set.
                 // double min_cost_for_x = std::numeric_limits<double>::infinity();
-                double min_cost_for_x = x->getCost();
+                double min_cost_for_x = x->getLMC();
                 FMTNode* best_parent_for_x = nullptr;
                 std::shared_ptr<Trajectory> best_traj_for_x;
 
@@ -1046,7 +1084,7 @@ void KinodynamicANYFMTX::plan() {
                     if (y->in_queue_) { // We only consider parents that are in V_open.
                         auto traj_xy = edge_info_xy.cached_trajectory;
                         if (traj_xy->is_valid) {
-                            double cost_via_y = y->getCost() + traj_xy->cost;
+                            double cost_via_y = y->getLMC() + traj_xy->cost;
                             if (cost_via_y < min_cost_for_x) {
                                 min_cost_for_x = cost_via_y;
                                 best_parent_for_x = y;
@@ -1058,7 +1096,7 @@ void KinodynamicANYFMTX::plan() {
 
 
 
-                // if (best_parent_for_x != nullptr && min_cost_for_x < (x->getCost())) { // Depend on min_cost_for_x initialization!
+                // if (best_parent_for_x != nullptr && min_cost_for_x < (x->getLMC())) { // Depend on min_cost_for_x initialization!
                 if (best_parent_for_x != nullptr ) { 
                     bool obstacle_free = true;
                     if (best_parent_for_x != x->getParent()) {
@@ -1089,7 +1127,7 @@ void KinodynamicANYFMTX::plan() {
 
       
                     if (obstacle_free) {
-                        x->setCost(min_cost_for_x);
+                        x->setLMC(min_cost_for_x);
                         x->setParent(best_parent_for_x, best_traj_for_x);
 #if DEBUG
                         dbg_metrics.costUpdated[x] = true;
@@ -1106,7 +1144,7 @@ void KinodynamicANYFMTX::plan() {
                             v_open_heap_.update(x, priorityCost);
                             last_replan_metrics_.queue_operations++;
                         } 
-                        else if (x->broadcast_cost_ == INFINITY || (x->broadcast_cost_ - min_cost_for_x > epsilon)) {
+                        else if (x->getG() == std::numeric_limits<double>::infinity() || (x->getG() - min_cost_for_x > epsilon)) {
                             // If it is NOT in the queue, ONLY wake it up if the improvement is > epsilon 
                             // or if it is a brand new node or an orphan node that must expand the wavefront
                             v_open_heap_.add(x, priorityCost); 
@@ -1139,7 +1177,7 @@ void KinodynamicANYFMTX::plan() {
 std::vector<Eigen::VectorXd> KinodynamicANYFMTX::getPathPositions() const
 {
     // Check if the planner has a valid anchor point for the robot (setRobotState should have found one).
-    if (!robot_node_ || robot_node_->getCost() == INFINITY) {
+    if (!robot_node_ || robot_node_->getLMC() == std::numeric_limits<double>::infinity()) {
         FMTX_ERROR("FMTX_Path_Assembly: Robot has no valid anchor node. Cannot build path");
         return {}; // Return empty path
     }
@@ -1196,7 +1234,7 @@ std::vector<Eigen::VectorXd> KinodynamicANYFMTX::getPathPositions() const
 void KinodynamicANYFMTX::setStart(const Eigen::VectorXd& start) {
     root_state_index_ = statespace_->getNumStates();
     auto node = std::make_shared<FMTNode>(statespace_->addState(start),tree_.size());
-    node->setCost(0);
+    node->setLMC(0);
     node->setTimeToGoal(0);
     v_open_heap_.add(node.get(),0);
     last_replan_metrics_.queue_operations++;
@@ -1261,7 +1299,7 @@ void KinodynamicANYFMTX::visualizeTreeReal() {
 
         tree_nodes.push_back(child_node->getStateValue().head(3));
 
-        if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
+        if (child_node->getLMC() != std::numeric_limits<double>::infinity()) {
             connected_nodes_count++;
         }
 
@@ -1502,8 +1540,8 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
 
         // Invalidate Cost (but keep Root valid)
         if (node->getIndex() != root_state_index_) {
-            node->setCost(INFINITY); 
-            node->broadcast_cost_ = INFINITY;
+            node->setLMC(std::numeric_limits<double>::infinity()); 
+            node->setG(std::numeric_limits<double>::infinity());
             last_replan_metrics_.nodes_updated++;
         }
         
@@ -1527,8 +1565,8 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
 
     // Add Boundary to Open Heap
     for (FMTNode* valid_node : boundary_nodes_to_requeue) {
-        if (!valid_node->in_queue_ && valid_node->getCost() != INFINITY) {
-            v_open_heap_.add(valid_node, valid_node->getCost());
+        if (!valid_node->in_queue_ && valid_node->getLMC() != std::numeric_limits<double>::infinity()) {
+            v_open_heap_.add(valid_node, valid_node->getLMC());
             last_replan_metrics_.queue_operations++;
         }
     }
@@ -1595,7 +1633,7 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
         }
 #endif
 
-        if (node->getCost()!= INFINITY) {
+        if (node->getLMC()!= std::numeric_limits<double>::infinity()) {
             continue; // If the node already is on the graph then its already free!
         }
 
@@ -1604,7 +1642,7 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
         auto check_neighbors = [&](const auto& neighbors) {
             for (const auto& [neighbor_ptr, edge_data] : neighbors) {
                 // If neighbor is valid (has cost) and not in queue, add it.
-                if (neighbor_ptr->getCost() != INFINITY && !neighbor_ptr->in_queue_) {
+                if (neighbor_ptr->getLMC() != std::numeric_limits<double>::infinity() && !neighbor_ptr->in_queue_) {
                     neighbors_to_requeue.insert(neighbor_ptr);
                 }
             }
@@ -1615,7 +1653,7 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
 
     // Add to Open Heap
     for (FMTNode* neighbor : neighbors_to_requeue) {
-        v_open_heap_.add(neighbor, neighbor->getCost());
+        v_open_heap_.add(neighbor, neighbor->getLMC());
         last_replan_metrics_.queue_operations++;
     }
 }
@@ -1647,7 +1685,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     // const double hysteresis_factor = 0.98;
     // double cost_of_current_path = std::numeric_limits<double>::infinity();
 
-    // if (robot_node_ && robot_node_->getCost() != INFINITY) {
+    // if (robot_node_ && robot_node_->getLMC() != std::numeric_limits<double>::infinity()) {
     //     Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
     //     if (bridge.is_valid) {
     //         bool safe = true;
@@ -1660,7 +1698,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     //             }
     //         }
     //         if (safe) {
-    //             cost_of_current_path = bridge.cost + robot_node_->getCost();
+    //             cost_of_current_path = bridge.cost + robot_node_->getLMC();
     //             robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
     //             // return;
     //         }
@@ -1672,7 +1710,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     double cost_of_current_path = std::numeric_limits<double>::infinity();
     Trajectory bridge;
 
-    if (robot_node_ && robot_node_->getCost() != INFINITY) {
+    if (robot_node_ && robot_node_->getLMC() != std::numeric_limits<double>::infinity()) {
         bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         if (bridge.is_valid) {
             bool safe = true;
@@ -1685,7 +1723,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
                 }
             }
             if (safe) {
-                cost_of_current_path = bridge.cost + robot_node_->getCost();
+                cost_of_current_path = bridge.cost + robot_node_->getLMC();
                 robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
             }
         }
@@ -1707,7 +1745,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
         for (auto idx : nearby_indices) {
             FMTNode* candidate = tree_[idx].get();
-            if (candidate->getCost() == INFINITY) continue;
+            if (candidate->getLMC() == std::numeric_limits<double>::infinity()) continue;
 
             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
 
@@ -1727,7 +1765,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
 
 
-            double cost = bridge.cost + candidate->getCost();
+            double cost = bridge.cost + candidate->getLMC();
             if (cost < best_candidate_cost) {
                 best_candidate_node = candidate;
                 best_candidate_bridge = bridge;
@@ -1782,7 +1820,7 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
         if (cached_is_safe) {
             robot_current_time_to_goal_ = current_bridge_trajectory_.time_duration + robot_node_->getTimeToGoal();
-            last_replan_metrics_.path_cost = current_bridge_trajectory_.cost + robot_node_->getCost();
+            last_replan_metrics_.path_cost = current_bridge_trajectory_.cost + robot_node_->getLMC();
             // current_bridge_trajectory_ remains unchanged
         } else {
             // The cached trajectory is blocked by a new dynamic obstacle. We are trapped.
@@ -1815,5 +1853,5 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
 }
 
 bool KinodynamicANYFMTX::isRobotSafe() {
-    return (robot_node_ != nullptr) && (robot_node_->getCost() != INFINITY);
+    return (robot_node_ != nullptr) && (robot_node_->getLMC() != std::numeric_limits<double>::infinity());
 }

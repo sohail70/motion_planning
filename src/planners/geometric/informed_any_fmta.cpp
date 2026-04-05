@@ -117,7 +117,7 @@ void InformedANYFMTA::setup(const Params& params, std::shared_ptr<Visualization>
 //         prune();
 //         pruneSamples();
 
-//         if(robot_node_->getCost()==INFINITY)
+//         if(robot_node_->getCost()== std::numeric_limits<double>::infinity())
 //             addBatchOfSamplesUninformed(num_batch_);
 //         else
 //             addBatchOfSamples(num_batch_);
@@ -365,7 +365,7 @@ void InformedANYFMTA::plan() {
         for (auto& sample : samples_) {
             sample->is_new_ = false;
         }
-        if(robot_node_->getCost()==INFINITY)
+        if(robot_node_->getCost()== std::numeric_limits<double>::infinity())
             addBatchOfSamplesUninformed(num_batch_);
         else
             addBatchOfSamples(num_batch_);
@@ -387,7 +387,7 @@ void InformedANYFMTA::plan() {
 
             // node->is_new_ = false;
             double priority;
-            // if(robot_node_->getCost() == INFINITY)
+            // if(robot_node_->getCost() == std::numeric_limits<double>::infinity())
             //     priority =  node->getHeuristic();
             // else
                 priority = node->getCost() + node->getHeuristic();
@@ -501,7 +501,7 @@ void InformedANYFMTA::plan() {
 
 
         
-        // if(z->unexpand_==true && robot_node_->getCost()!=INFINITY){ //&& z->is_new_==false){
+        // if(z->unexpand_==true && robot_node_->getCost()!= std::numeric_limits<double>::infinity()){ //&& z->is_new_==false){
         if(z->unexpand_==true){
             std::vector<std::pair<std::shared_ptr<IFMTNode>, EdgeInfo>> near_z_tree;
             near2tree(z, near_z_tree);  // Get neighbors from tree
@@ -637,7 +637,7 @@ void InformedANYFMTA::processNode(
         //           << x->getStateValue().transpose() << " <-> "
         //           << best_neighbor_node->getStateValue().transpose()
         //           << " | Total duplicates: " << ++duplicate_checks_ <<"| "<<x->getCost() <<" vs " <<min_cost <<"\n";
-        if(x->getCost() == INFINITY) // Well if its a duplicate and the cost is inf then retrun because its blocked!--> it lowers the collision check but you need to undesrtand why we even this happens!!!
+        if(x->getCost() == std::numeric_limits<double>::infinity()) // Well if its a duplicate and the cost is inf then retrun because its blocked!--> it lowers the collision check but you need to undesrtand why we even this happens!!!
             return;
     } else {
         processed_edges_.insert(edge_id);
@@ -707,7 +707,7 @@ void InformedANYFMTA::processNode(
         // Update priority queue (common logic)
         // double priorityCost = x->getCost() + x->getHeuristic();
         double priorityCost;
-        // if(robot_node_->getCost() == INFINITY)
+        // if(robot_node_->getCost() == std::numeric_limits<double>::infinity())
         //     priorityCost =  x->getHeuristic();
         // else
             priorityCost = x->getCost() + x->getHeuristic();
@@ -1073,7 +1073,7 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
     double b = std::sqrt(std::max(c_best*c_best - c_min*c_min, 0.0)) / 2.0;    // Add samples
 
     const double solution_cost = robot_node_->getCost();
-    const bool has_solution = solution_cost < INFINITY;
+    const bool has_solution = solution_cost < std::numeric_limits<double>::infinity();
     // std::vector<Eigen::VectorXd> nodes;
 
     for (int i = 0; i < num_samples; ++i) {
@@ -1149,7 +1149,7 @@ void InformedANYFMTA::addBatchOfSamples(int num_samples) {
     //     near2tree(node,near_node);
     //     for (const auto& [neighbor, dist] : near_node ) {
     //         const int n_idx = neighbor->getIndex();
-    //         if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) continue;
+    //         if (neighbor->in_queue_ || neighbor->getCost() == std::numeric_limits<double>::infinity()) continue;
     //         double h_value = neighbor->getHeuristic();
     //         double priorityCost = neighbor->getCost() + h_value;
 
@@ -1310,7 +1310,7 @@ void InformedANYFMTA::addBatchOfSamplesUninformed(int num_samples) {
     //     near2tree(node, near_node);
     //     for (const auto& [neighbor, dist] : near_node) {
     //         const int n_idx = neighbor->getIndex();
-    //         if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) continue;
+    //         if (neighbor->in_queue_ || neighbor->getCost() == std::numeric_limits<double>::infinity()) continue;
     //         double h_value = neighbor->getHeuristic();
     //         double priorityCost = neighbor->getCost() + h_value;
 
@@ -1669,7 +1669,7 @@ void InformedANYFMTA::visualizeHeapAndUnvisited() {
     
     for (const auto& element : heap_elements) {
         // Access priority with element.first and node with element.second
-        if (element.first == INFINITY) {
+        if (element.first == std::numeric_limits<double>::infinity()) {
             std::cerr << "Warning: Node " << element.second->getIndex() 
                       << " is in v_open_heap_ but has INF cost!" << std::endl;
             found_conflict = true;

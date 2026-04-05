@@ -116,7 +116,7 @@ void BITStar::plan() {
 
 
         // samples_.clear(); // Clearing samples would violate uniform sampling assumption! // also messes up with your kdtree_samples_ indices consistency with samples_ vector!
-        if (robot_node_->getCost() == INFINITY) {
+        if (robot_node_->getCost() == std::numeric_limits<double>::infinity()) {
             addBatchOfSamplesUninformed(num_batch_);
         } else {
             addBatchOfSamples(num_batch_);
@@ -753,7 +753,7 @@ void BITStar::setRobotIndex(const Eigen::VectorXd& robot_position) {
 
     for (size_t index : nearest_indices) {
         auto node = tree_[index];
-        if (node->getCost() == INFINITY) continue;
+        if (node->getCost() == std::numeric_limits<double>::infinity()) continue;
 
         double distance = (node->getStateValue() - robot_position).norm();
         double total_cost = distance + node->getCost();
@@ -959,7 +959,7 @@ void BITStar::visualizeHeapAndUnvisited() {
         auto [priority, node] = temp_queue.top();
         temp_queue.pop();
         
-        if (priority == INFINITY) {
+        if (priority == std::numeric_limits<double>::infinity()) {
             std::cerr << "Warning: Node " << node->getIndex() 
                       << " is in vertex_queue_ but has INF cost!\n";
         }

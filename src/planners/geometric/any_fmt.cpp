@@ -265,7 +265,7 @@ void ANYFMT::addBatchOfSamples(int num_samples) {
         // Update neighbors in the heap
         for (const auto& [neighbor, dist] : node->neighbors()) {
             const int n_idx = neighbor->getIndex();
-            if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) continue;
+            if (neighbor->in_queue_ || neighbor->getCost() == std::numeric_limits<double>::infinity()) continue;
             v_open_heap_.add(neighbor, neighbor->getCost());
         }
     }
@@ -632,7 +632,7 @@ void ANYFMT::visualizeHeapAndUnvisited() {
     
     for (const auto& element : heap_elements) {
         // Access priority with element.first and node with element.second
-        if (element.first == INFINITY) {
+        if (element.first == std::numeric_limits<double>::infinity()) {
             std::cerr << "Warning: Node " << element.second->getIndex() 
                       << " is in v_open_heap_ but has INF cost!" << std::endl;
             found_conflict = true;

@@ -288,7 +288,7 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
                     Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
                     std::shared_ptr<Trajectory> shared_traj_forward;
                     
-                    if (traj_forward.is_valid && traj_forward.cost <= connection_radius_ + 0.01) {
+                    if (traj_forward.is_valid && traj_forward.cost <= connection_radius_ + std::numeric_limits<double>::epsilon()) {
                         shared_traj_forward = std::make_shared<Trajectory>(std::move(traj_forward));
                         
                         EdgeInfo info_forward;
@@ -315,7 +315,7 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
                         }
                     } else {
                         Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-                        if (traj_backward.is_valid && traj_backward.cost <= connection_radius_ + 0.01) {
+                        if (traj_backward.is_valid && traj_backward.cost <= connection_radius_ + std::numeric_limits<double>::epsilon()) {
                             auto shared_traj_backward = std::make_shared<Trajectory>(std::move(traj_backward));
                             
                             EdgeInfo info_backward;
@@ -340,7 +340,7 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
             }
         } else {
             if (connection_radius_ > 0) {
-                candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim_), connection_radius_ + 0.01);
+                candidate_indices = kdtree_->radiusSearch(node->getStateValue().head(kd_dim_), connection_radius_ + std::numeric_limits<double>::epsilon());
             }
         }
 
@@ -352,7 +352,7 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
             Trajectory traj_forward = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
             std::shared_ptr<Trajectory> shared_traj_forward;
             
-            if (traj_forward.is_valid && traj_forward.cost <= connection_radius_ + 0.01) {
+            if (traj_forward.is_valid && traj_forward.cost <= connection_radius_ + std::numeric_limits<double>::epsilon()) {
                 shared_traj_forward = std::make_shared<Trajectory>(std::move(traj_forward));
                 
                 EdgeInfo info_forward;
@@ -379,7 +379,7 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
                 }
             } else {
                 Trajectory traj_backward = statespace_->steer(neighbor->getStateValue(), node->getStateValue());
-                if (traj_backward.is_valid && traj_backward.cost <= connection_radius_ + 0.01) {
+                if (traj_backward.is_valid && traj_backward.cost <= connection_radius_ + std::numeric_limits<double>::epsilon()) {
                     auto shared_traj_backward = std::make_shared<Trajectory>(std::move(traj_backward));
                     
                     EdgeInfo info_backward;
@@ -1255,7 +1255,7 @@ std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> dslite_tree_edges;
 
 std::vector<Eigen::VectorXd> KinodynamicPRMStarDStarLite::getPathPositions() const{
     // Check if the planner has a valid anchor point for the robot.
-    if (!start_node_ || start_node_->g == INFINITY) {
+    if (!start_node_ || start_node_->g == std::numeric_limits<double>::infinity()) {
         DSTARLITE_ERROR("[DSTARLITE_Path_Assembly] Robot has no valid anchor node in the tree. Cannot build path.");
         return {}; // Return empty path
     }
@@ -1353,9 +1353,9 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
             //     u_needs_update = true;
             // }
             double c_old = edge.distance;
-            double c_new = INFINITY;
+            double c_new = std::numeric_limits<double>::infinity();
 
-            if (c_old != INFINITY) {
+            if (c_old != std::numeric_limits<double>::infinity()) {
                 edge.distance = c_new;
                 u_needs_update = true;
 
@@ -1467,7 +1467,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
                     u_needs_update = true;
 
                     // D* Lite cost decrease rule
-                    if (neighbor->g != INFINITY && c_new != INFINITY) {
+                    if (neighbor->g != std::numeric_limits<double>::infinity() && c_new != std::numeric_limits<double>::infinity()) {
                         double candidate = c_new + neighbor->g;
                         if (candidate + 1e-9 < node->rhs) {
                             node->rhs = candidate;
@@ -1504,7 +1504,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
                                         rev_inc_edge.invalidating_obstacles.pop_back();
                                     }
                                 }
-                                if (node->g != INFINITY) {
+                                if (node->g != std::numeric_limits<double>::infinity()) {
                                     double candidate_rev = rev_edge.distance_original + node->g;
                                     if (candidate_rev + 1e-9 < neighbor->rhs) {
                                         neighbor->rhs = candidate_rev;
@@ -1570,9 +1570,9 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
             // u_needs_update = true;
 
             double c_old = edge.distance;
-            double c_new = INFINITY;
+            double c_new = std::numeric_limits<double>::infinity();
 
-            if (c_old != INFINITY) {
+            if (c_old != std::numeric_limits<double>::infinity()) {
                 edge.distance = c_new;
                 u_needs_update = true;
 
@@ -1671,7 +1671,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
                 u_needs_update = true;
 
                 // D* Lite cost decrease rule
-                if (neighbor->g != INFINITY && c_new != INFINITY) {
+                if (neighbor->g != std::numeric_limits<double>::infinity() && c_new != std::numeric_limits<double>::infinity()) {
                     double candidate = c_new + neighbor->g;
                     if (candidate + 1e-9 < node->rhs) {
                         node->rhs = candidate;
@@ -1691,7 +1691,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
                     }
                     // recomputeRHS(neighbor);
                     // updateVertex(neighbor);
-                    if (node->g != INFINITY) {
+                    if (node->g != std::numeric_limits<double>::infinity()) {
                         double candidate_rev = rev_edge.distance_original + node->g;
                         if (candidate_rev + 1e-9 < neighbor->rhs) {
                             neighbor->rhs = candidate_rev;
@@ -1751,14 +1751,14 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
     }
 
     auto checkAndBlockEdge = [&](DStarLiteNode* u, DStarLiteNode* v, EdgeInfo& edge, bool& u_needs_update) {
-        if (edge.distance == INFINITY) return; // already blocked
+        if (edge.distance == std::numeric_limits<double>::infinity()) return; // already blocked
 
         last_replan_metrics_.obstacle_checks++;
 
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             // OLD and NEW
             double c_old = edge.distance;
-            double c_new = INFINITY;
+            double c_new = std::numeric_limits<double>::infinity();
 
             // set forward cost to INF
             edge.distance = c_new;
@@ -1783,13 +1783,13 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
             if (is_geometric_mode_ && v->forward_neighbors_.count(u)) {
                 auto& rev_edge = v->forward_neighbors_.at(u);
                 double rev_old = rev_edge.distance;
-                if (rev_old != INFINITY) {
-                    rev_edge.distance = INFINITY;
+                if (rev_old != std::numeric_limits<double>::infinity()) {
+                    rev_edge.distance = std::numeric_limits<double>::infinity();
                     if (u->backward_neighbors_.count(v)) {
-                        u->backward_neighbors_.at(v).distance = INFINITY;
+                        u->backward_neighbors_.at(v).distance = std::numeric_limits<double>::infinity();
                     }
                     // // If reverse edge existed and was the best for v, we must recompute v too
-                    // if (v != goal_node_ && std::isfinite(rev_old) && u->g != INFINITY) {
+                    // if (v != goal_node_ && std::isfinite(rev_old) && u->g != std::numeric_limits<double>::infinity()) {
                     //     double rev_old_contrib = rev_old + u->g;
                     //     if (std::abs(v->rhs - rev_old_contrib) <= 1e-9) {
                     //         recomputeRHS(v);
@@ -1845,7 +1845,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
     const ObstacleVector& all_obstacles = obs_checker_->getObstacles();
 
     auto checkAndRestoreEdge = [&](DStarLiteNode* u, DStarLiteNode* v, EdgeInfo& edge, bool& u_needs_update) {
-        if (edge.distance != INFINITY) return; // already available
+        if (edge.distance != std::numeric_limits<double>::infinity()) return; // already available
 
         bool should_restore = false;
         last_replan_metrics_.obstacle_checks++;
@@ -1878,7 +1878,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
 
             // ---- optimized D* Lite logic for decreased cost ----
             // Only tighten rhs(u) if this gives a smaller rhs (and successor has finite g)
-            if (v->g != INFINITY && c_new != INFINITY) {
+            if (v->g != std::numeric_limits<double>::infinity() && c_new != std::numeric_limits<double>::infinity()) {
                 double candidate = c_new + v->g;
                 if (candidate + 1e-9 < u->rhs) {
                     u->rhs = candidate;
@@ -1898,7 +1898,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
                 }
 
                 // tighten v's rhs if applicable
-                if (u->g != INFINITY && rev_new != INFINITY) {
+                if (u->g != std::numeric_limits<double>::infinity() && rev_new != std::numeric_limits<double>::infinity()) {
                     double candidate_rev = rev_new + u->g;
                     if (candidate_rev + 1e-9 < v->rhs) {
                         v->rhs = candidate_rev;

@@ -32,7 +32,7 @@ void KinodynamicRRTX::setStart(const Eigen::VectorXd& start) {
     auto node = std::make_shared<RRTxNode>(statespace_->addState(start) ,  tree_.size());
     tree_.push_back(node);
     node->setTimeToGoal(0);
-    node->setCost(0);
+    node->setG(0);
     node->setLMC(0);
     std::cout << "KinodynamicRRTX: Start node created on Index: " << index << "\n";
 }
@@ -48,7 +48,7 @@ void KinodynamicRRTX::setGoal(const Eigen::VectorXd& goal) {
 
 std::vector<Eigen::VectorXd> KinodynamicRRTX::getPathPositions() const {
     // Check if the planner has a valid anchor point for the robot.
-    if (!vbot_node_ || vbot_node_->getCost() == INFINITY) {
+    if (!vbot_node_ || vbot_node_->getG() == std::numeric_limits<double>::infinity()) {
         RRTX_ERROR("[RRTX_Path_Assembly] Robot has no valid anchor node in the tree. Cannot build path.");
         return {}; // Return empty path
     }
@@ -292,7 +292,7 @@ void KinodynamicRRTX::plan() {
         if (node_added) {
             RRTxNode* new_node = tree_.back().get();
             rewireNeighbors(new_node);
-            new_node->setCost(new_node->getLMC()); // RRTx julia implementation puts the new node in the queue instead so that reduce function would set it but that causes redundant rewiring and update lmc again!
+            new_node->setG(new_node->getLMC()); // RRTx julia implementation puts the new node in the queue instead so that reduce function would set it but that causes redundant rewiring and update lmc again!
             reduceInconsistency();
         }
         // std::this_thread::sleep_for(std::chrono::milliseconds(150));
@@ -309,16 +309,16 @@ void KinodynamicRRTX::plan() {
 #if USE_INVALIDATING_SET_STRATEGY
 bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), tree_.size());
-    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
+    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
     
-    double min_lmc = INFINITY;
+    double min_lmc = std::numeric_limits<double>::infinity();
     RRTxNode* best_parent = nullptr;
     std::shared_ptr<Trajectory> best_traj;
 
     // 1. LOCAL THREAT SET FOR EXTEND
     std::vector<const Obstacle*> local_threats;
     for (const auto& [name, ob] : previous_obstacles_) {
-        if (obs_checker_->isNodeInObstacleTube(new_node->getStateValue(), ob, neighborhood_radius_ + 0.01)) {
+        if (obs_checker_->isNodeInObstacleTube(new_node->getStateValue(), ob, neighborhood_radius_ + std::numeric_limits<double>::epsilon())) {
             local_threats.push_back(&ob);
         }
     }
@@ -348,7 +348,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 
         Trajectory temp_traj = statespace_->steer(new_node->getStateValue(), u->getStateValue());
         
-        if (temp_traj.is_valid && temp_traj.cost <= neighborhood_radius_ + 0.01) {
+        if (temp_traj.is_valid && temp_traj.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
             auto shared_fwd_traj = std::make_shared<Trajectory>(std::move(temp_traj));
             
             evaluated_edges[i].fwd_exists = true;
@@ -395,7 +395,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
             evaluated_edges[i].rev_blockers = evaluated_edges[i].fwd_blockers;
         } else {
             Trajectory temp_rev_traj = statespace_->steer(u->getStateValue(), new_node->getStateValue());
-            if (temp_rev_traj.is_valid && temp_rev_traj.cost <= neighborhood_radius_ + 0.01) {
+            if (temp_rev_traj.is_valid && temp_rev_traj.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
                 auto shared_rev_traj = std::make_shared<Trajectory>(std::move(temp_rev_traj));
                 
                 evaluated_edges[i].rev_exists = true;
@@ -454,9 +454,9 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 #elif USE_THREAT_SET_STRATEGY
 bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), tree_.size());
-    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
+    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
     
-    double min_lmc = INFINITY;
+    double min_lmc = std::numeric_limits<double>::infinity();
     RRTxNode* best_parent = nullptr;
     std::shared_ptr<Trajectory> best_traj;
 
@@ -492,7 +492,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 
         Trajectory temp_traj = statespace_->steer(new_node->getStateValue(), u->getStateValue());
         
-        if (temp_traj.is_valid && temp_traj.cost <= neighborhood_radius_ + 0.01) {
+        if (temp_traj.is_valid && temp_traj.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
             auto shared_fwd_traj = std::make_shared<Trajectory>(std::move(temp_traj));
             
             evaluated_edges[i].fwd_exists = true;
@@ -534,7 +534,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
             evaluated_edges[i].rev_safe = evaluated_edges[i].fwd_safe;
         } else {
             Trajectory temp_rev_traj = statespace_->steer(u->getStateValue(), new_node->getStateValue());
-            if (temp_rev_traj.is_valid && temp_rev_traj.cost <= neighborhood_radius_ + 0.01) {
+            if (temp_rev_traj.is_valid && temp_rev_traj.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
                 auto shared_rev_traj = std::make_shared<Trajectory>(std::move(temp_rev_traj));
                 
                 evaluated_edges[i].rev_exists = true;
@@ -590,9 +590,9 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 
 // bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 //     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), tree_.size());
-//     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
+//     auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
     
-//     double min_lmc = INFINITY;
+//     double min_lmc = std::numeric_limits<double>::infinity();
 //     RRTxNode* best_parent = nullptr;
 //     Trajectory best_traj;
 
@@ -625,7 +625,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 //         evaluated_edges[i].neighbor = u;
 
 //         Trajectory fwd_traj = statespace_->steer(new_node->getStateValue(), u->getStateValue());
-//         if (fwd_traj.is_valid && fwd_traj.cost <= neighborhood_radius_ + 0.01) {
+//         if (fwd_traj.is_valid && fwd_traj.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
 //             evaluated_edges[i].fwd_exists = true;
 //             evaluated_edges[i].fwd_traj = fwd_traj;
 //             evaluated_edges[i].fwd_safe = true;
@@ -666,7 +666,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 //             evaluated_edges[i].rev_safe = evaluated_edges[i].fwd_safe;
 //         } else {
 //             Trajectory rev_traj = statespace_->steer(u->getStateValue(), new_node->getStateValue());
-//             if (rev_traj.is_valid && rev_traj.cost <= neighborhood_radius_ + 0.01) {
+//             if (rev_traj.is_valid && rev_traj.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
 //                 evaluated_edges[i].rev_exists = true;
 //                 evaluated_edges[i].rev_traj = rev_traj;
 //                 evaluated_edges[i].rev_safe = true;
@@ -719,9 +719,9 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 // }
 bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     auto new_node = std::make_shared<RRTxNode>(statespace_->addState(v), tree_.size());
-    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + 0.01);
+    auto neighbors = kdtree_->radiusSearch(new_node->getStateValue().head(kd_dim), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
     
-    double min_lmc = INFINITY;
+    double min_lmc = std::numeric_limits<double>::infinity();
     RRTxNode* best_parent = nullptr;
     std::shared_ptr<Trajectory> best_traj; // Use shared_ptr to hold the best trajectory
 
@@ -752,7 +752,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
         // 1. Steer
         Trajectory temp_traj = statespace_->steer(new_node->getStateValue(), u->getStateValue());
 
-        if (temp_traj.is_valid && temp_traj.cost <= neighborhood_radius_ + 0.01) {
+        if (temp_traj.is_valid && temp_traj.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
             // 2. Wrap in shared_ptr immediately (Optimization: Avoids copy inside EdgeEval)
             auto shared_fwd_traj = std::make_shared<Trajectory>(std::move(temp_traj));
             
@@ -799,7 +799,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
         } else {
             // Kinodynamic: Must steer separately
             Trajectory temp_rev_traj = statespace_->steer(u->getStateValue(), new_node->getStateValue());
-            if (temp_rev_traj.is_valid && temp_rev_traj.cost <= neighborhood_radius_ + 0.01) {
+            if (temp_rev_traj.is_valid && temp_rev_traj.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
                 auto shared_rev_traj = std::make_shared<Trajectory>(std::move(temp_rev_traj));
                 
                 evaluated_edges[i].rev_exists = true;
@@ -864,7 +864,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
 
 
 void KinodynamicRRTX::rewireNeighbors(RRTxNode* v) {
-    const double inconsistency = v->getCost() - v->getLMC();
+    const double inconsistency = v->getG() - v->getLMC();
     if (inconsistency <= epsilon_) return;
     cullNeighbors(v);
     for (auto& [u, edge] : v->incomingEdges()) {
@@ -874,7 +874,7 @@ void KinodynamicRRTX::rewireNeighbors(RRTxNode* v) {
             u->setLMC(candidate_lmc);
             u->setParent(v, edge.cached_trajectory);
             last_replan_metrics_.nodes_updated++;
-            if (u->getCost() - candidate_lmc > epsilon_) {
+            if (u->getG() - candidate_lmc > epsilon_) {
                 verifyQueue(u);
             }
         }
@@ -887,11 +887,11 @@ void KinodynamicRRTX::reduceInconsistency() {
         double min_key = top_element.first;
         if (partial_update && vbot_node_) {
             // Check if Robot is already consistent (Cost == LMC)
-            bool robot_consistent = (vbot_node_->getCost() == vbot_node_->getLMC());
+            bool robot_consistent = (vbot_node_->getG() == vbot_node_->getLMC());
             // Check if the queue has passed the robot
             // We stop if the smallest key in the queue is greater than the robot's cost.
-            // bool queue_past_robot = (min_key > vbot_node_->getCost() + bridge_cost_);
-            bool queue_past_robot = (min_key > vbot_node_->getCost());
+            // bool queue_past_robot = (min_key > vbot_node_->getG() + bridge_cost_);
+            bool queue_past_robot = (min_key > vbot_node_->getG());
             // STOP CONDITION:
             // If the robot is consistent AND the queue only contains nodes more expensive than the robot,
             // then we have successfully repaired the path up to the robot.
@@ -903,13 +903,13 @@ void KinodynamicRRTX::reduceInconsistency() {
         last_replan_metrics_.queue_operations++;
         RRTxNode* node = top_element.second;
         // Standard RRTx logic: if Cost > LMC + eps, we need to update
-        if (node->getCost() > node->getLMC() + epsilon_) {
+        if (node->getG() > node->getLMC() + epsilon_) {
             updateLMC(node);
             rewireNeighbors(node);
         }
         // Synchronize Cost and LMC 
-        if (node->getCost() != node->getLMC()) {
-            node->setCost(node->getLMC());
+        if (node->getG() != node->getLMC()) {
+            node->setG(node->getLMC());
             last_replan_metrics_.nodes_updated++;
         }
     }
@@ -927,11 +927,11 @@ void KinodynamicRRTX::updateLMC(RRTxNode* v) {
     cullNeighbors(v);
     double min_lmc = v->getLMC();
     RRTxNode* best_parent = nullptr;
-    double best_edge_distance = INFINITY;
+    double best_edge_distance = std::numeric_limits<double>::infinity();
     std::shared_ptr<Trajectory> best_traj; 
     // Iterate over outgoing edges (v → u)
     for (auto& [u, edge] : v->outgoingEdges()) {
-        if (Vc_T_.count(u->getIndex()) || edge.distance == INFINITY) continue;
+        if (Vc_T_.count(u->getIndex()) || edge.distance == std::numeric_limits<double>::infinity()) continue;
         const double candidate_lmc = u->getLMC() + edge.distance;
         if (candidate_lmc < min_lmc) {
             min_lmc = candidate_lmc;
@@ -989,7 +989,7 @@ void KinodynamicRRTX::cullNeighbors(RRTxNode* v) {
         double edge_cost = edge.cached_trajectory->cost;
 
         // Only evaluate culling if the edge is too long AND not the parent.
-        if (edge_cost > (neighborhood_radius_ + 0.01) && neighbor != v->getParent()) {
+        if (edge_cost > (neighborhood_radius_ + std::numeric_limits<double>::epsilon()) && neighbor != v->getParent()) {
 
             // SYMMETRIC CULL: Evaluate removing 'v' from the neighbor's incoming list.
             auto& incoming = neighbor->incomingEdges();
@@ -1016,8 +1016,8 @@ void KinodynamicRRTX::cullNeighbors(RRTxNode* v) {
 }
 
 void KinodynamicRRTX::verifyQueue(RRTxNode* node) {
-    const double min_key = std::min(node->getLMC(), node->getCost());
-    const double g_value = node->getCost();
+    const double min_key = std::min(node->getLMC(), node->getG());
+    const double g_value = node->getG();
     
 
     if (node->in_queue_) {
@@ -1095,10 +1095,10 @@ void KinodynamicRRTX::propagateDescendants() {
         for (const auto& [neighbor, edge] : node->outgoingEdges()) {
             int neighbor_idx = neighbor->getIndex();
             if (Vc_T_.count(neighbor_idx)) continue;
-            // neighbor->setCost(INFINITY);
+            // neighbor->setG(std::numeric_limits<double>::infinity());
             // verifyQueue(neighbor);
-            if (neighbor->getCost() != std::numeric_limits<double>::infinity()) {
-                neighbor->setCost(std::numeric_limits<double>::infinity());
+            if (neighbor->getG() != std::numeric_limits<double>::infinity()) {
+                neighbor->setG(std::numeric_limits<double>::infinity());
                 verifyQueue(neighbor);
             }
         }
@@ -1113,11 +1113,11 @@ void KinodynamicRRTX::propagateDescendants() {
             if (it != parent_edges.end() ) {
                 int parent_idx = parent->getIndex();
                 // if (!Vc_T_.count(parent_idx)) {
-                //     parent->setCost(INFINITY);
+                //     parent->setG(std::numeric_limits<double>::infinity());
                 //     verifyQueue(parent);
                 // }
-                if (!Vc_T_.count(parent_idx) && parent->getCost() != std::numeric_limits<double>::infinity()) {
-                    parent->setCost(std::numeric_limits<double>::infinity());
+                if (!Vc_T_.count(parent_idx) && parent->getG() != std::numeric_limits<double>::infinity()) {
+                    parent->setG(std::numeric_limits<double>::infinity());
                     verifyQueue(parent);
                 }
             }
@@ -1127,8 +1127,8 @@ void KinodynamicRRTX::propagateDescendants() {
     // Reset orphaned nodes using new parent API
     for (int idx : Vc_T_) {
         auto node = tree_[idx].get();
-        node->setCost(INFINITY);
-        node->setLMC(INFINITY);
+        node->setG(std::numeric_limits<double>::infinity());
+        node->setLMC(std::numeric_limits<double>::infinity());
         last_replan_metrics_.nodes_updated++;
         /*
             An orphaned node doesn't move in time; it just has no path to the goal. 
@@ -1194,7 +1194,7 @@ void KinodynamicRRTX::visualizeTreeReal() {
 
         tree_nodes.push_back(child_node->getStateValue().head(3));
 
-        if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
+        if (child_node->getG() != std::numeric_limits<double>::infinity()) {
             connected_nodes_count++;
         }
 
@@ -1307,7 +1307,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     const double hysteresis_factor = 0.98;
     double cost_of_current_path = std::numeric_limits<double>::infinity();
     Trajectory bridge;
-    if (vbot_node_ && vbot_node_->getCost() != INFINITY) {
+    if (vbot_node_ && vbot_node_->getG() != std::numeric_limits<double>::infinity()) {
         bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
 
         // Use robot_time_to_go so collision check is synced with the world
@@ -1327,7 +1327,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
             }
 
             if (safe) {
-                cost_of_current_path = bridge.cost + vbot_node_->getCost();
+                cost_of_current_path = bridge.cost + vbot_node_->getG();
                 robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
                 // return;
             }
@@ -1345,7 +1345,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         auto nearby_indices = kdtree_->radiusSearch(query_point, current_search_radius);
         for (auto idx : nearby_indices) {
             RRTxNode* candidate = tree_[idx].get();
-            if (candidate->getCost() == INFINITY) continue;
+            if (candidate->getG() == std::numeric_limits<double>::infinity()) continue;
             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
             
             if (!bridge.is_valid) continue;
@@ -1366,7 +1366,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
 
 
-            double cost = bridge.cost + candidate->getCost();
+            double cost = bridge.cost + candidate->getG();
             if (cost < best_candidate_cost) {
                 best_candidate_node = candidate;
                 best_candidate_bridge = bridge;
@@ -1420,7 +1420,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
         if (cached_is_safe) {
             robot_current_time_to_goal_ = current_bridge_trajectory_.time_duration + vbot_node_->getTimeToGoal();
-            last_replan_metrics_.path_cost = current_bridge_trajectory_.cost + vbot_node_->getCost();
+            last_replan_metrics_.path_cost = current_bridge_trajectory_.cost + vbot_node_->getG();
             // current_bridge_trajectory_ remains unchanged
         } else {
             // The cached trajectory is blocked by a new dynamic obstacle. We are trapped.
@@ -1453,7 +1453,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
 }
 
 bool KinodynamicRRTX::isRobotSafe() {
-    return (vbot_node_ != nullptr) && (vbot_node_->getCost() != INFINITY);
+    return (vbot_node_ != nullptr) && (vbot_node_->getG() != std::numeric_limits<double>::infinity());
 }
 
 
@@ -1468,7 +1468,7 @@ bool KinodynamicRRTX::runCollisionForensics() {
         RRTxNode* node = tree_[i].get();
 
         // Only check nodes that have an active parent connection
-        if (node->getParent() != nullptr && node->getCost() != std::numeric_limits<double>::infinity()) {
+        if (node->getParent() != nullptr && node->getG() != std::numeric_limits<double>::infinity()) {
             checked_nodes++;
             bool edge_collides = false;
             std::string guilty_obstacle = "";
@@ -1499,7 +1499,7 @@ bool KinodynamicRRTX::runCollisionForensics() {
                 illegal_connections++;
                 std::cout << "\033[1;31m[VIOLATION]\033[0m Node " << node->getIndex() 
                           << " -> Parent " << parent->getIndex()
-                          << " | Cost: " << node->getCost()
+                          << " | Cost: " << node->getG()
                           << " | \033[1;35mFATAL: Edge hits [" << guilty_obstacle << "]\033[0m\n";
                 
                 // Root Cause Analysis: Is the graph aware of the break?
@@ -1761,7 +1761,7 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
         
         if (neighborsWereBlocked) {
             updateLMC(node);
-            if (node->getCost() != node->getLMC()) verifyQueue(node);
+            if (node->getG() != node->getLMC()) verifyQueue(node);
         }
     }
 }
@@ -1912,7 +1912,7 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
         
         if (neighborsWereBlocked) {
             updateLMC(node);
-            if (node->getCost() != node->getLMC()) verifyQueue(node);
+            if (node->getG() != node->getLMC()) verifyQueue(node);
         }
     }
 }
@@ -2066,7 +2066,7 @@ void KinodynamicRRTX::removeObstacle(const Obstacle& ob) {
         
         if (neighborsWereBlocked) {
             updateLMC(node);
-            if (node->getCost() != node->getLMC()) verifyQueue(node);
+            if (node->getG() != node->getLMC()) verifyQueue(node);
         }
     }
 

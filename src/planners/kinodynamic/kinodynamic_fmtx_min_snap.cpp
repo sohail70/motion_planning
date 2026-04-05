@@ -326,7 +326,7 @@ void KinodynamicFMTX::plan() {
 
     // Get the current best time-to-go from the robot's anchor node.
     //    Use a large fallback if the path is not yet found.
-    // const double best_known_time_to_goal = (robot_node_ && robot_node_->getTimeToGoal() != INFINITY)
+    // const double best_known_time_to_goal = (robot_node_ && robot_node_->getTimeToGoal() != std::numeric_limits<double>::infinity())
     //                                        ? robot_node_->getTimeToGoal()
     //                                        : problem_->getGoal()(2); // Use initial time budget as fallback
 
@@ -342,7 +342,7 @@ void KinodynamicFMTX::plan() {
     int checks = 0;
     while (!v_open_heap_.empty() &&
            (partial_update ? (v_open_heap_.top().first < robot_node_->getCost() ||
-                               robot_node_->getCost() == INFINITY || robot_node_->in_queue_ == true) : true)) {
+                               robot_node_->getCost() == std::numeric_limits<double>::infinity() || robot_node_->in_queue_ == true) : true)) {
 
         // visualizeHeapAndUnvisited();
         // Get the node with the lowest cost from the priority queue.
@@ -980,24 +980,24 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //             auto node = tree_[idx].get();
 //             near(idx);
 //             for (auto& [neighbor, edge_info] : node->neighbors()) {
-//                 if (edge_info.distance == INFINITY) continue;
+//                 if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
 //                 /*
-//                     Note: i think we don't need to obstacle check for all the node->neighbor relatioship because i think we can utilize dualFindSample and instantly make nodes on samples_in_obstalce distances to INFINITY
+//                     Note: i think we don't need to obstacle check for all the node->neighbor relatioship because i think we can utilize dualFindSample and instantly make nodes on samples_in_obstalce distances to std::numeric_limits<double>::infinity()
 //                           but for now since rrtx didn't do optimization in this part i keep the code this way
 //                 */
 //                 bool is_free_ = obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue());
 //                 if (is_free_) continue;
 
-//                 edge_info.distance = INFINITY;
+//                 edge_info.distance = std::numeric_limits<double>::infinity();
 //                 near(neighbor->getIndex());
-//                 neighbor->neighbors().at(node).distance = INFINITY;
+//                 neighbor->neighbors().at(node).distance = std::numeric_limits<double>::infinity();
 
 //                 if (node->getParent() == neighbor){
 //                     orphan_nodes.insert(node->getIndex()); // In the current tree_ we check if an edge connection the node and its parent is on obstalce or not, if it is, then we send it and its descendant to orphan list
 //                     auto descendants = getDescendants(node->getIndex());
 //                     orphan_nodes.insert(descendants.begin(), descendants.end());
 //                 }
-//                 if (neighbor->getParent() == node) { //We check bidirectionaly because we used "neighbor->neighbors().at(node).distance = INFINITY;" in above line
+//                 if (neighbor->getParent() == node) { //We check bidirectionaly because we used "neighbor->neighbors().at(node).distance = std::numeric_limits<double>::infinity();" in above line
 //                     orphan_nodes.insert(neighbor->getIndex());
 //                     auto descendants = getDescendants(neighbor->getIndex());
 //                     orphan_nodes.insert(descendants.begin(), descendants.end());
@@ -1049,8 +1049,8 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //             // node->in_queue_ = false;
 //         }
 //         if (!node->getIndex() == 0) // Root of the tree must keep its zero cost!
-//             node->setCost(INFINITY); 
-//         node->setParent(nullptr, INFINITY);
+//             node->setCost(std::numeric_limits<double>::infinity()); 
+//         node->setParent(nullptr, std::numeric_limits<double>::infinity());
 //         // node->getChildrenMutable().clear(); // We don't need to do this even though at this current iteration this node has children but they will be removed as we iterate by the setParent function
 //         edge_length_[node_index] = -std::numeric_limits<double>::infinity();
 //     }
@@ -1061,7 +1061,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //         how can you be sure we don't have any vopen heap nodes left? in partial update false the vopen heap gets fully cleaned because of the while loop but in partial update true
 //         we early exit that loop so some vopen heap nodes are left! in this scenraio now imagine an obstalce is being added and at the worst case scenario it is being added to the region where there are already vopen heap nodes!
 //         the result of adding obstalce means two things! ---> some vclosed (conceptually i mean because i don't use vclose in my algorithm!) nodes become vunvisted or some vopen nodes become vunvisted! and the previously vunvisited due to partial update
-//         stays in vunvisted! mind that the cost of these per say messeup nodes will become infinity or stay infinity
+//         stays in vunvisted! mind that the cost of these per say messeup nodes will become std::numeric_limits<double>::infinity() or stay std::numeric_limits<double>::infinity()
 //         for expansion we need CORRECT vopen heap nodes! (by correct i mean the correct cost that resembles the changes of the environment) and one rule you need to follow for safety is to not put any vunvisted node into vopen or if some vunvisted node is in vopen you need to remove it
 //         so since the cost of nodes doesnt change to any numbers but inf! so we only need to remove them. the following addition to heap is also for covering the vunvisted node for the next batch of update in plan function
 //         in the next for loop i do the heap removal
@@ -1107,7 +1107,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 //         near(node_index);
 //         for (const auto& [neighbor, dist] : node->neighbors()){
 //             int index = neighbor->getIndex();
-//             if (neighbor->in_queue_ || neighbor->getCost()==INFINITY ) continue;
+//             if (neighbor->in_queue_ || neighbor->getCost()== std::numeric_limits<double>::infinity() ) continue;
 //             double h_value = use_heuristic ? heuristic(index) : 0.0;
 //             v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
 //             // neighbor->in_queue_ = true;
@@ -1125,7 +1125,7 @@ bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
 
 //     //     for (const auto& [neighbor, dist] : node->neighbors()) {
 //     //         // skip if already enqueued or not yet reachable
-//     //         if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
+//     //         if (neighbor->in_queue_ || neighbor->getCost() == std::numeric_limits<double>::infinity()) 
 //     //             continue;
 
 //     //         // mark so we don’t enqueue duplicates
@@ -1179,11 +1179,11 @@ void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_i
             // Invalidate all its existing edges WITHOUT individual collision checks for each edge.
             near(idx); // Ensure neighbors are loaded if needed by your 'near' implementation
             for (auto& [neighbor, edge_info] : node->neighbors()) { // Iterate existing graph neighbors
-                edge_info.distance = INFINITY;
+                edge_info.distance = std::numeric_limits<double>::infinity();
                 // Also update the symmetric part in the neighbor
                 near(neighbor->getIndex()); // Ensure neighbor's neighbors are loaded
                 if (neighbor->neighbors().count(node)) { // Check if symmetric entry exists
-                    neighbor->neighbors().at(node).distance = INFINITY;
+                    neighbor->neighbors().at(node).distance = std::numeric_limits<double>::infinity();
                 }
 
                 // If this edge was a parent link, the child becomes an orphan candidate
@@ -1203,15 +1203,15 @@ void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_i
             // PRUNE MODE, BUT NODE ITSELF IS FINE: Check its edges individually.
             near(idx);
             for (auto& [neighbor, edge_info] : node->neighbors()) {
-                if (edge_info.distance == INFINITY) continue;
+                if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
 
                 // Perform collision check for this specific edge (node -> neighbor)
                 if (!obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue())) {
                     // Edge is blocked
-                    edge_info.distance = INFINITY;
+                    edge_info.distance = std::numeric_limits<double>::infinity();
                     near(neighbor->getIndex());
                     if (neighbor->neighbors().count(node)) {
-                        neighbor->neighbors().at(node).distance = INFINITY;
+                        neighbor->neighbors().at(node).distance = std::numeric_limits<double>::infinity();
                     }
 
                     // Handle parent relationships leading to orphans
@@ -1245,10 +1245,10 @@ void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_i
             v_open_heap_.remove(node); // Assuming remove also sets node->in_queue_ = false
         }
         if (node->getIndex() != 0) { // Assuming 0 is a special root/goal node index
-            node->setCost(INFINITY); 
+            node->setCost(std::numeric_limits<double>::infinity()); 
             node->setTimeToGoal(std::numeric_limits<double>::infinity());
         }
-        node->setParent(nullptr, INFINITY); // Sever parent link and set parent_edge_cost_
+        node->setParent(nullptr, std::numeric_limits<double>::infinity()); // Sever parent link and set parent_edge_cost_
         // Children links will be broken when their parent (this node) is no longer their parent,
         // or when they themselves are processed as orphans and get a new parent (or nullptr).
         // You might need an explicit RRTxNode::removeChild if setParent doesn't notify the old parent.
@@ -1262,8 +1262,8 @@ void KinodynamicFMTX::handleAddedObstacleSamples(const std::vector<int>& added_i
         near(node_index); // Ensure neighbors are loaded
         for (const auto& [neighbor_ptr, edge_data] : node->neighbors()){ // Assuming edge_data not used here, just neighbor_ptr
             // 'neighbor_ptr' is of type FMTNode* (or RRTxNode*)
-            if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == INFINITY ) continue; 
-            // If neighbor_ptr->getCost() == INFINITY, it means it's also an orphan, so skip.
+            if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == std::numeric_limits<double>::infinity() ) continue; 
+            // If neighbor_ptr->getCost() == std::numeric_limits<double>::infinity(), it means it's also an orphan, so skip.
             // We only want to queue neighbors that are still validly connected to the goal.
 
             double h_value = use_heuristic ? heuristic(neighbor_ptr->getIndex()) : 0.0;
@@ -1286,7 +1286,7 @@ void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& remov
         
         */
 
-        if (node->in_queue_ && node->getCost()==INFINITY) {
+        if (node->in_queue_ && node->getCost()== std::numeric_limits<double>::infinity()) {
         /*
             it doesnt come here so maybe we don't need this --> im thinking there shouldn't be a node in remove that is in heap
             my reason is the removed nodes are the current nodes of the previous iteration and we didn't put any of the current
@@ -1302,7 +1302,7 @@ void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& remov
         if (!ignore_sample && prune) {
             near(node_index);
             for (auto& [neighbor, edge_info] : node->neighbors()) {
-                if (edge_info.distance != INFINITY) continue;
+                if (edge_info.distance != std::numeric_limits<double>::infinity()) continue;
                 if (obs_checker_->isObstacleFree(node->getStateValue(), neighbor->getStateValue())) {
                     edge_info.distance = edge_info.distance_original;
                     near(neighbor->getIndex());
@@ -1317,7 +1317,7 @@ void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& remov
         near(node_index);
         for (const auto& [neighbor, dist] : node->neighbors()) {
             const int n_idx = neighbor->getIndex();
-            if (neighbor->in_queue_ || neighbor->getCost()==INFINITY) continue;
+            if (neighbor->in_queue_ || neighbor->getCost()== std::numeric_limits<double>::infinity()) continue;
             double h_value = use_heuristic ? heuristic(n_idx) : 0.0;
             v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
             // neighbor->in_queue_ = true;
@@ -1334,7 +1334,7 @@ void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& remov
     //     near(node_index);  // ensure neighbors are cached
 
     //     for (const auto& [neighbor, dist] : node->neighbors()) {
-    //         if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) 
+    //         if (neighbor->in_queue_ || neighbor->getCost() == std::numeric_limits<double>::infinity()) 
     //             continue;
 
     //         neighbor->in_queue_ = true;  // mark to avoid duplicates
@@ -1411,7 +1411,7 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 //     std::vector<Eigen::VectorXd> final_executable_path;
 
 //     // Ensure a valid plan exists from our anchor node.
-//     if (!robot_node_ || robot_node_->getCost() == INFINITY) {
+//     if (!robot_node_ || robot_node_->getCost() == std::numeric_limits<double>::infinity()) {
 //         return final_executable_path; // Return empty path if no solution.
 //     }
 
@@ -1476,7 +1476,7 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 //         FMTNode* candidate_node = tree_[index].get();
         
 //         // Skip nodes that aren't connected to the goal.
-//         if (candidate_node->getCost() == INFINITY) continue;
+//         if (candidate_node->getCost() == std::numeric_limits<double>::infinity()) continue;
 
 //         // Step A: Check for a kinodynamically valid bridge.
 //         Trajectory bridge_candidate_traj = statespace_->steer(robot_continuous_state_, candidate_node->getStateValue());
@@ -1544,7 +1544,7 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 //         for (const auto& index : nearby_indices) {
 //             FMTNode* candidate_node = tree_[index].get();
             
-//             if (candidate_node->getCost() == INFINITY) continue;
+//             if (candidate_node->getCost() == std::numeric_limits<double>::infinity()) continue;
 
 //             Trajectory bridge_candidate_traj = statespace_->steer(robot_continuous_state_, candidate_node->getStateValue());
             
@@ -1648,7 +1648,7 @@ std::vector<size_t> KinodynamicFMTX::getPathIndex() const {
 
 //         for (auto idx : nearby_indices) {
 //             FMTNode* candidate = tree_[idx].get();
-//             if (candidate->getCost() == INFINITY) continue;
+//             if (candidate->getCost() == std::numeric_limits<double>::infinity()) continue;
 
 //             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
 //             if (!bridge.is_valid) continue;
@@ -1720,7 +1720,7 @@ std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
 {
     // Check if the planner has a valid anchor point for the robot.
     //    (setRobotState should have found one).
-    if (!robot_node_ || robot_node_->getCost() == INFINITY) {
+    if (!robot_node_ || robot_node_->getCost() == std::numeric_limits<double>::infinity()) {
         RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"),
                      "Robot has no valid anchor node in the tree. Cannot build path.");
         return {}; // Return empty path
@@ -1779,7 +1779,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
     // First, calculate the cost of sticking with the current anchor node, if it's valid.
     // This gives us a baseline to beat.
-    if (robot_node_ && robot_node_->getCost() != INFINITY) {
+    if (robot_node_ && robot_node_->getCost() != std::numeric_limits<double>::infinity()) {
         Trajectory bridge_to_current_anchor = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         if (bridge_to_current_anchor.is_valid && obs_checker_->isTrajectorySafe(bridge_to_current_anchor, clock_->now().seconds())) {
             cost_of_current_path = bridge_to_current_anchor.cost + robot_node_->getCost();
@@ -1803,7 +1803,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
         for (auto idx : nearby_indices) {
             FMTNode* candidate = tree_[idx].get();
-            if (candidate->getCost() == INFINITY) continue;
+            if (candidate->getCost() == std::numeric_limits<double>::infinity()) continue;
 
             Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
             if (!bridge.is_valid || !obs_checker_->isTrajectorySafe(bridge, clock_->now().seconds())) continue;
@@ -1862,7 +1862,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_pos, const Eige
     const double hysteresis_factor = 0.95; 
     double cost_of_current_path = std::numeric_limits<double>::infinity();
 
-    if (robot_node_ && robot_node_->getCost() != INFINITY) {
+    if (robot_node_ && robot_node_->getCost() != std::numeric_limits<double>::infinity()) {
         // --- CORRECTED STEER CALL ---
         Trajectory bridge_to_current_anchor = min_snap_space->steer_with_initial_and_final(
             robot_pos, robot_node_->getStateValue(),
@@ -1887,7 +1887,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_pos, const Eige
 
         for (auto idx : nearby_indices) {
             FMTNode* candidate = tree_[idx].get();
-            if (candidate->getCost() == INFINITY) continue;
+            if (candidate->getCost() == std::numeric_limits<double>::infinity()) continue;
 
             // --- CORRECTED STEER CALL ---
             Trajectory bridge = min_snap_space->steer_with_initial_and_final(
@@ -1936,7 +1936,7 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_pos, const Eige
 std::vector<Trajectory> KinodynamicFMTX::getPathAsTrajectories() const
 {
     std::vector<Trajectory> segments;
-    if (!robot_node_ || robot_node_->getCost() == INFINITY) {
+    if (!robot_node_ || robot_node_->getCost() == std::numeric_limits<double>::infinity()) {
         RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"), "Robot has no valid anchor node. Cannot build path.");
         return segments;
     }
@@ -1978,7 +1978,7 @@ ExecutionTrajectory KinodynamicFMTX::getFinalExecutionTrajectory() const {
     final_traj.is_valid = false; // Default to invalid
 
     // Ensure a valid plan exists from the robot's anchor node.
-    if (!robot_node_ || robot_node_->getCost() == INFINITY) {
+    if (!robot_node_ || robot_node_->getCost() == std::numeric_limits<double>::infinity()) {
         RCLCPP_ERROR(rclcpp::get_logger("FMTX_Path_Assembly"), "Robot has no valid anchor. Cannot build execution path.");
         return final_traj;
     }
@@ -2561,7 +2561,7 @@ void KinodynamicFMTX::visualizeTree() {
         FMTNode* parent_node = child_node->getParent();
 
         // --- COUNTING LOGIC ---
-        // A node is considered "connected" if its cost is not INFINITY.
+        // A node is considered "connected" if its cost is not std::numeric_limits<double>::infinity().
         // Dangling nodes that were never reached from the root will have infinite cost.
         if (child_node->getCost() != std::numeric_limits<double>::infinity()) {
             connected_nodes_count++;
@@ -2733,7 +2733,7 @@ void KinodynamicFMTX::visualizeHeapAndUnvisited() {
     
     for (const auto& element : heap_elements) {
         // Access priority with element.first and node with element.second
-        if (element.first == INFINITY) {
+        if (element.first == std::numeric_limits<double>::infinity()) {
             std::cerr << "Warning: Node " << element.second->getIndex() 
                       << " is in v_open_heap_ but has INF cost!" << std::endl;
             found_conflict = true;
@@ -2814,10 +2814,10 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 //             // Node 'idx' itself is in an obstacle. Invalidate all its edges.
 //             near(idx);
 //             for (auto& [neighbor, edge_info] : node->neighbors()) {
-//                 edge_info.distance = INFINITY;
+//                 edge_info.distance = std::numeric_limits<double>::infinity();
 //                 near(neighbor->getIndex());
 //                 if (neighbor->neighbors().count(node)) {
-//                     neighbor->neighbors().at(node).distance = INFINITY;
+//                     neighbor->neighbors().at(node).distance = std::numeric_limits<double>::infinity();
 //                 }
 //                 if (node->getParent() == neighbor) {
 //                     nodes_to_make_orphan_and_process_neighbors.insert(node->getIndex());
@@ -2832,7 +2832,7 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 //             // Node is fine, but check its edges individually using the new method.
 //             near(idx);
 //             for (auto& [neighbor, edge_info] : node->neighbors()) {
-//                 if (edge_info.distance == INFINITY) continue;
+//                 if (edge_info.distance == std::numeric_limits<double>::infinity()) continue;
 
 //                 // --- START OF MODIFIED LOGIC ---
 //                 // Ensure the trajectory for this edge is computed and cached.
@@ -2856,10 +2856,10 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 //                 if (!is_safe) {
 //                     // --- END OF MODIFIED LOGIC ---
 //                     // Edge is blocked
-//                     edge_info.distance = INFINITY;
+//                     edge_info.distance = std::numeric_limits<double>::infinity();
 //                     near(neighbor->getIndex());
 //                     if (neighbor->neighbors().count(node)) {
-//                         neighbor->neighbors().at(node).distance = INFINITY;
+//                         neighbor->neighbors().at(node).distance = std::numeric_limits<double>::infinity();
 //                     }
 
 //                     // Handle parent relationships leading to orphans
@@ -2890,10 +2890,10 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 //             v_open_heap_.remove(node);
 //         }
 //         if (node->getIndex() != 0) {
-//             node->setCost(INFINITY); 
+//             node->setCost(std::numeric_limits<double>::infinity()); 
 //             node->setTimeToGoal(std::numeric_limits<double>::infinity());
 //         }
-//         node->setParent(nullptr, INFINITY);
+//         node->setParent(nullptr, std::numeric_limits<double>::infinity());
 //         edge_length_[node_index] = -std::numeric_limits<double>::infinity();
 //     }
   
@@ -2901,7 +2901,7 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 //         auto node = tree_.at(node_index).get();
 //         near(node_index);
 //         for (const auto& [neighbor_ptr, edge_data] : node->neighbors()){
-//             if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == INFINITY) continue;
+//             if (neighbor_ptr->in_queue_ || neighbor_ptr->getCost() == std::numeric_limits<double>::infinity()) continue;
 //             double h_value = use_heuristic ? heuristic(neighbor_ptr->getIndex()) : 0.0;
 //             v_open_heap_.add(neighbor_ptr, neighbor_ptr->getCost() + h_value);
 //         }
@@ -2911,14 +2911,14 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 // void KinodynamicFMTX::handleRemovedObstacleSamples(const std::vector<int>& removed) {
 //     for (const auto& node_index : removed) {
 //         auto node = tree_[node_index].get();
-//         if (node->in_queue_ && node->getCost() == INFINITY) {
+//         if (node->in_queue_ && node->getCost() == std::numeric_limits<double>::infinity()) {
 //             v_open_heap_.remove(node);
 //         }
 
 //         if (!ignore_sample && prune) {
 //             near(node_index);
 //             for (auto& [neighbor, edge_info] : node->neighbors()) {
-//                 if (edge_info.distance != INFINITY) continue;
+//                 if (edge_info.distance != std::numeric_limits<double>::infinity()) continue;
 
 //                 // --- START OF MODIFIED LOGIC ---
 //                 // Ensure the trajectory is computed for this previously blocked edge.
@@ -2951,7 +2951,7 @@ void KinodynamicFMTX::dumpTreeToCSV(const std::string& filename) const {
 //         near(node_index);
 //         for (const auto& [neighbor, dist] : node->neighbors()) {
 //             const int n_idx = neighbor->getIndex();
-//             if (neighbor->in_queue_ || neighbor->getCost() == INFINITY) continue;
+//             if (neighbor->in_queue_ || neighbor->getCost() == std::numeric_limits<double>::infinity()) continue;
 //             double h_value = use_heuristic ? heuristic(n_idx) : 0.0;
 //             v_open_heap_.add(neighbor , neighbor->getCost() + h_value);
 //         }

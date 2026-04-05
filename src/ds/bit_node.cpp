@@ -5,7 +5,7 @@
 BITNode::BITNode(std::shared_ptr<State> state, int index)
     : state_(state),
       index_(index),
-      cost_(INFINITY),
+      cost_(std::numeric_limits<double>::infinity()),
       heuristic_(0.0),
       in_queue_(false),
       in_samples_(false),
@@ -57,7 +57,7 @@ void BITNode::disconnectFromGraph() {
     this->in_samples_ = false;
     this->unexpand_ = false;
     this->in_queue_ = false;
-    this->cost_ = INFINITY;
+    this->cost_ = std::numeric_limits<double>::infinity();
     
     // Remove .lock() since children_ stores shared_ptr directly
     for (auto& child : children_) {

@@ -69,7 +69,7 @@ struct RRTxComparator {
                    const std::pair<double, RRTxNode*>& b) const {
         if (a.first != b.first) 
             return a.first < b.first;  // Primary: min_key (LMC)
-        return a.second->getCost() < b.second->getCost();  // Secondary: g_value
+        return a.second->getG() < b.second->getG();  // Secondary: g_value
     }
 };
 

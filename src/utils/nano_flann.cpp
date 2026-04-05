@@ -29,7 +29,7 @@ void NanoFlann::addPoint(const Eigen::VectorXd& stateValue) {
     // if (num_points_ >= capacity_) {
     //     size_t new_capacity = (capacity_ == 0) ? 1 : capacity_ * 2;
     //     data_.conservativeResize(new_capacity, dimension_);
-    //     // Initialize the newly added rows with infinity
+    //     // Initialize the newly added rows with std::numeric_limits<double>::infinity()
     //     data_.bottomRows(new_capacity - num_points_).setConstant(std::numeric_limits<double>::infinity());
 
 

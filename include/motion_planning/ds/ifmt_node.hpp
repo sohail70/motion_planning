@@ -69,7 +69,7 @@ public:
     //----------------
     std::vector<NeighborInfo> neighbors_sorted_;
     size_t next_neighbor_idx_ = 0;
-    double current_min_f_ = INFINITY;
+    double current_min_f_ = std::numeric_limits<double>::infinity();
 
     // // Implementation of key neighbor methods
     // inline void addNeighbor(std::shared_ptr<IFMTNode> node, double distance) {
@@ -80,7 +80,7 @@ public:
     //     });
     //     // Mark for re-sort on next access
     //     next_neighbor_idx_ = 0;
-    //     current_min_f_ = INFINITY;
+    //     current_min_f_ = std::numeric_limits<double>::infinity();
     // }
 
     inline void addNeighbor(std::shared_ptr<IFMTNode> node, double distance) {
@@ -123,7 +123,7 @@ public:
             current_min_f_ = cost_ + next.edge_.distance + next.node->getHeuristic();
         } else {
             if(index_ != 0)
-                current_min_f_ = INFINITY;
+                current_min_f_ = std::numeric_limits<double>::infinity();
         }
     }
 

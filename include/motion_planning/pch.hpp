@@ -42,7 +42,6 @@
 // #include <gz/msgs/pose_v.pb.h>
 
 
-#include <rclcpp/rclcpp.hpp>
 // #include <nav_msgs/msg/occupancy_grid.hpp>
 // #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <tf2_ros/transform_listener.h>

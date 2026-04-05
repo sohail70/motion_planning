@@ -96,7 +96,7 @@ private:
     int collision_check_ = 0;
 
     double ci_ = std::numeric_limits<double>::infinity();
-    double current_best_cost_ = INFINITY;
+    double current_best_cost_ = std::numeric_limits<double>::infinity();
     double lower_bound_;
     double upper_bound_;
     double neighborhood_radius_;
