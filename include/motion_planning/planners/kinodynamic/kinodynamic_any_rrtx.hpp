@@ -14,135 +14,136 @@
 
 
 class KinodynamicANYRRTX : public Planner {
- public:
-    KinodynamicANYRRTX(std::shared_ptr<StateSpace> statespace, 
-        std::shared_ptr<ProblemDefinition> problem_def,
-        std::shared_ptr<ObstacleChecker> obs_checker);
-    
-    void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
-    void plan() override;
-    std::vector<Eigen::VectorXd> getPathPositions() const;
-
-    void setStart(const Eigen::VectorXd& start) override;
-    void setGoal(const Eigen::VectorXd& goal) override;
-    void clearPlannerState() ;
-
-    void updateObstacleSamples(const ObstacleVector& obstacles);
-    void visualizeTree();
-
-    void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
-
-    void setRobotState(const Eigen::VectorXd& robot_state);
-
-    void dumpTreeToCSV(const std::string& filename) const;
-
-
-    double getAvgOutDegree() const {
-        if (tree_.empty()) return 0.0;
-        long long total_out = 0;
-        for (const auto& node_ptr : tree_) {
-            total_out += node_ptr->outgoingEdges().size(); 
-        }
-        return static_cast<double>(total_out) / tree_.size();
-    }
-
-    double getAvgInDegree() const {
-        if (tree_.empty()) return 0.0;
-        long long total_in = 0;
-        for (const auto& node_ptr : tree_) {
-            total_in += node_ptr->incomingEdges().size(); 
-        }
-        return static_cast<double>(total_in) / tree_.size();
-    }
-
-
-    double getNeighborhoodRadius(){return neighborhood_radius_;}
-    const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
-    void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
-    double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
-
-    bool isRobotSafe();
-    int getTreeSize() { return tree_.size();}
-
-    bool runCollisionForensics();
-    bool runCostForensics();
-
-    struct ScalingMetrics {
-        long long total_samples = 0;
-        long long total_extend_edges = 0;  // Edges checked during extend()
-        long long total_rewire_edges = 0;  // Edges checked during rewireNeighbors()
-        long long total_lmc_edges = 0;     // Edges checked during updateLMC()
-        long long total_reduce_iterations = 0; // Total pops from inconsistency queue
-    };
-    ScalingMetrics metrics_;
-
-
-
-    // struct EdgeEval {
-    //     RRTxNode* neighbor;
-    //     bool fwd_exists = false; Trajectory fwd_traj; bool fwd_safe = false; 
-    //     std::vector<const Obstacle*> fwd_blockers; 
-    //     bool rev_exists = false; Trajectory rev_traj; bool rev_safe = false; 
-    //     std::vector<const Obstacle*> rev_blockers; 
-    // };
-    struct EdgeEval {
-        RRTxNode* neighbor;
-        bool fwd_exists = false; 
-        std::shared_ptr<Trajectory> fwd_traj; // Changed to shared_ptr
-        bool fwd_safe = false; 
-        std::vector<const Obstacle*> fwd_blockers; 
+    public:
+        KinodynamicANYRRTX(std::shared_ptr<StateSpace> statespace, 
+            std::shared_ptr<ProblemDefinition> problem_def,
+            std::shared_ptr<ObstacleChecker> obs_checker);
         
-        bool rev_exists = false; 
-        std::shared_ptr<Trajectory> rev_traj; // Changed to shared_ptr
-        bool rev_safe = false; 
-        std::vector<const Obstacle*> rev_blockers; 
-    };
-    std::vector<EdgeEval> evaluated_edges;
+        void setup(const Params& params, std::shared_ptr<Visualization> visualization) override;
+        void plan() override;
+        std::vector<Eigen::VectorXd> getPathPositions() const;
 
- private:
-    std::vector<std::shared_ptr<RRTxNode>> tree_;
-    std::shared_ptr<KDTree> kdtree_;
-    PriorityQueue<RRTxNode, RRTxComparator> inconsistency_queue_;
-    
-    std::shared_ptr<StateSpace> statespace_;
-    std::shared_ptr<ProblemDefinition> problem_;
-    std::shared_ptr<ObstacleChecker> obs_checker_;
-    std::shared_ptr<Visualization> visualization_;
+        void setStart(const Eigen::VectorXd& start) override;
+        void setGoal(const Eigen::VectorXd& goal) override;
+        void clearPlannerState() ;
 
-    RRTxNode*  vbot_node_;
-    std::unordered_set<int> Vc_T_;
-    double neighborhood_radius_;
-    double epsilon_;
-    double gamma_;
-    double delta = 20.0; 
-    double factor;
-    int num_of_samples_;
-    int dimension_;
-    size_t sample_counter = 0;
-    bool cap_samples_ = true;
-    bool partial_update;
-    Eigen::VectorXd lower_bounds_;
-    Eigen::VectorXd upper_bounds_;
-    bool use_kdtree;
-    int kd_dim ; 
-    bool static_obs_presence;
-    Eigen::VectorXd robot_continuous_state_;
-    double robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
-    Trajectory robot_bridge_trajectory_;
-    bool extend(Eigen::VectorXd v);
-    void rewireNeighbors(RRTxNode* v);
-    void reduceInconsistency();
-    void cullNeighbors(RRTxNode* v);
-    void updateLMC(RRTxNode* v);
-    void verifyQueue(RRTxNode* node);
-    void propagateDescendants();
-    void verifyOrphan(RRTxNode* node);
-    double shrinkingBallRadius() const;
-    void addNewObstacle(const Obstacle& ob);
-    void removeObstacle(const Obstacle& ob);
-    Eigen::VectorXd saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta);
-    ReplanMetrics last_replan_metrics_; 
-    std::unordered_map<std::string, Obstacle> previous_obstacles_;
-    double bridge_cost_;
-    bool is_geometric_mode_;
+        void updateObstacleSamples(const ObstacleVector& obstacles);
+        void visualizeTree();
+
+        void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
+
+        void setRobotState(const Eigen::VectorXd& robot_state);
+
+        void dumpTreeToCSV(const std::string& filename) const;
+
+
+        double getAvgOutDegree() const {
+            if (tree_.empty()) return 0.0;
+            long long total_out = 0;
+            for (const auto& node_ptr : tree_) {
+                total_out += node_ptr->outgoingEdges().size(); 
+            }
+            return static_cast<double>(total_out) / tree_.size();
+        }
+
+        double getAvgInDegree() const {
+            if (tree_.empty()) return 0.0;
+            long long total_in = 0;
+            for (const auto& node_ptr : tree_) {
+                total_in += node_ptr->incomingEdges().size(); 
+            }
+            return static_cast<double>(total_in) / tree_.size();
+        }
+
+
+        double getNeighborhoodRadius(){return neighborhood_radius_;}
+        const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
+        void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
+        double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
+
+        bool isRobotSafe();
+        int getTreeSize() { return tree_.size();}
+
+        bool runCollisionForensics();
+        bool runCostForensics();
+
+        struct ScalingMetrics {
+            long long total_samples = 0;
+            long long total_extend_edges = 0;  // Edges checked during extend()
+            long long total_rewire_edges = 0;  // Edges checked during rewireNeighbors()
+            long long total_lmc_edges = 0;     // Edges checked during updateLMC()
+            long long total_reduce_iterations = 0; // Total pops from inconsistency queue
+        };
+        ScalingMetrics metrics_;
+
+
+
+        // struct EdgeEval {
+        //     RRTxNode* neighbor;
+        //     bool fwd_exists = false; Trajectory fwd_traj; bool fwd_safe = false; 
+        //     std::vector<const Obstacle*> fwd_blockers; 
+        //     bool rev_exists = false; Trajectory rev_traj; bool rev_safe = false; 
+        //     std::vector<const Obstacle*> rev_blockers; 
+        // };
+        struct EdgeEval {
+            RRTxNode* neighbor;
+            bool fwd_exists = false; 
+            std::shared_ptr<Trajectory> fwd_traj; // Changed to shared_ptr
+            bool fwd_safe = false; 
+            std::vector<const Obstacle*> fwd_blockers; 
+            
+            bool rev_exists = false; 
+            std::shared_ptr<Trajectory> rev_traj; // Changed to shared_ptr
+            bool rev_safe = false; 
+            std::vector<const Obstacle*> rev_blockers; 
+        };
+        std::vector<EdgeEval> evaluated_edges;
+
+    private:
+        std::vector<std::shared_ptr<RRTxNode>> tree_;
+        std::shared_ptr<KDTree> kdtree_;
+        PriorityQueue<RRTxNode, RRTxComparator> inconsistency_queue_;
+        
+        std::shared_ptr<StateSpace> statespace_;
+        std::shared_ptr<ProblemDefinition> problem_;
+        std::shared_ptr<ObstacleChecker> obs_checker_;
+        std::shared_ptr<Visualization> visualization_;
+
+        RRTxNode*  vbot_node_;
+        std::unordered_set<int> Vc_T_;
+        double neighborhood_radius_;
+        double epsilon_;
+        double gamma_;
+        double delta = 20.0; 
+        double factor;
+        int num_of_samples_;
+        int dimension_;
+        size_t sample_counter = 0;
+        bool cap_samples_ = true;
+        bool partial_update;
+        Eigen::VectorXd lower_bounds_;
+        Eigen::VectorXd upper_bounds_;
+        bool use_kdtree;
+        int kd_dim ; 
+        bool static_obs_presence;
+        Eigen::VectorXd robot_continuous_state_;
+        double robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        Trajectory robot_bridge_trajectory_;
+        bool extend(Eigen::VectorXd v);
+        void rewireNeighbors(RRTxNode* v);
+        void reduceInconsistency();
+        void cullNeighbors(RRTxNode* v);
+        void updateLMC(RRTxNode* v);
+        void verifyQueue(RRTxNode* node);
+        void propagateDescendants();
+        void verifyOrphan(RRTxNode* node);
+        double shrinkingBallRadius() const;
+        void addNewObstacle(const Obstacle& ob);
+        void removeObstacle(const Obstacle& ob);
+        Eigen::VectorXd saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta);
+        ReplanMetrics last_replan_metrics_; 
+        std::unordered_map<std::string, Obstacle> previous_obstacles_;
+        double bridge_cost_;
+        bool is_geometric_mode_;
+        Trajectory current_bridge_trajectory_;
 };

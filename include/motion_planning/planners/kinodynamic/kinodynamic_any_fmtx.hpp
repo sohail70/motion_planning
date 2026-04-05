@@ -127,6 +127,7 @@ class KinodynamicANYFMTX : public Planner {
 
 
         double epsilon;
+        Trajectory current_bridge_trajectory_;
 
 };
 

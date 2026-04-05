@@ -1144,16 +1144,27 @@ std::vector<Eigen::VectorXd> KinodynamicANYFMTX::getPathPositions() const
         return {}; // Return empty path
     }
 
-    // Generate the "bridge" trajectory from the robot's continuous state to the anchor node on the fly.
-    Trajectory bridge_traj = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+    // // Generate the "bridge" trajectory from the robot's continuous state to the anchor node on the fly.
+    // Trajectory bridge_traj = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
 
-    if (!bridge_traj.is_valid) {
-        FMTX_ERROR("FMTX_Path_Assembly: Failed to steer from robot's continuous state to the anchor node.");
+    // if (!bridge_traj.is_valid) {
+    //     FMTX_ERROR("FMTX_Path_Assembly: Failed to steer from robot's continuous state to the anchor node.");
+    //     return {};
+    // }
+
+    // Safety check on the cached bridge
+    if (!current_bridge_trajectory_.is_valid || current_bridge_trajectory_.path_points.empty()) {
+        FMTX_ERROR("FMTX_Path_Assembly: Cached bridge trajectory is invalid. Cannot build path");
         return {};
     }
 
+    // Start the final path with the CACHED bridge trajectory! (Zero computation time)
+    std::vector<Eigen::VectorXd> final_executable_path = current_bridge_trajectory_.path_points;
+
+
+
     // Start the final path with this bridge trajectory.
-    std::vector<Eigen::VectorXd> final_executable_path = bridge_traj.path_points;
+    // std::vector<Eigen::VectorXd> final_executable_path = bridge_traj.path_points;
 
     // Traverse the rest of the tree from the anchor node using parent pointers.
     FMTNode* child = robot_node_;
@@ -1632,12 +1643,37 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         query_point = robot_continuous_state_; 
     }
 
+    // // HYSTERESIS LOGIC
+    // const double hysteresis_factor = 0.98;
+    // double cost_of_current_path = std::numeric_limits<double>::infinity();
+
+    // if (robot_node_ && robot_node_->getCost() != INFINITY) {
+    //     Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+    //     if (bridge.is_valid) {
+    //         bool safe = true;
+    //         const auto& obstacles = obs_checker_->getObstacles();
+    //         for (const auto& ob : obstacles) {
+    //             last_replan_metrics_.obstacle_checks++;
+    //             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, ob)) {
+    //                 safe = false;
+    //                 break;
+    //             }
+    //         }
+    //         if (safe) {
+    //             cost_of_current_path = bridge.cost + robot_node_->getCost();
+    //             robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
+    //             // return;
+    //         }
+    //     }
+    // }
+
     // HYSTERESIS LOGIC
     const double hysteresis_factor = 0.98;
     double cost_of_current_path = std::numeric_limits<double>::infinity();
+    Trajectory bridge;
 
     if (robot_node_ && robot_node_->getCost() != INFINITY) {
-        Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+        bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         if (bridge.is_valid) {
             bool safe = true;
             const auto& obstacles = obs_checker_->getObstacles();
@@ -1651,10 +1687,11 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
             if (safe) {
                 cost_of_current_path = bridge.cost + robot_node_->getCost();
                 robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
-                // return;
             }
         }
     }
+
+
 
     FMTNode* best_candidate_node = nullptr;
     Trajectory best_candidate_bridge;
@@ -1707,16 +1744,62 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         robot_node_ = best_candidate_node;
         robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
         last_replan_metrics_.path_cost = best_candidate_cost;
+        current_bridge_trajectory_ = best_candidate_bridge;
     } else if (robot_node_ && cost_of_current_path != std::numeric_limits<double>::infinity()) {
-        Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+        // Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
         // The cost changes slightly every frame as the robot moves towards the anchor.
         last_replan_metrics_.path_cost = cost_of_current_path;
-    } else {
+        current_bridge_trajectory_ = bridge;
+    } 
+    else if (robot_node_ && !bridge.is_valid && current_bridge_trajectory_.is_valid) {
+        /*
+            When steer() mathematically fails near an anchor, we fallback to recycling 
+            the 'current_bridge_trajectory_' from a previous control loop. One might worry 
+            that the 2nd or 3rd points of this old array are "stale" and will cause the 
+            robot to jump backwards. This will NOT happen due to the time-driven pipeline:
+            1. setPath(): Overwrites index [0]'s position/velocity to match the robot's 
+            ACTUAL current physical state, preventing any theoretical first-frame jump.
+            2. stepSimulation(): Interpolation is strictly driven by 'current_sim_time_'. 
+            The std::lower_bound function automatically "fast-forwards" through the array. 
+            Because time has passed since the trajectory was cached, std::lower_bound 
+            in ros2manager completely ignores the stitched index [0] and any other passed points.
+            It skips directly to the exact time-segment where the robot belongs chronologically, 
+            smoothly riding the rest of the valid curve into the anchor.
+        */
+        // Steer failed mathematically, so we try to recycle the previous valid bridge.
+        // BUT we must verify it is still safe against current dynamic obstacles!
+        
+        bool cached_is_safe = true;
+        const auto& obstacles = obs_checker_->getObstacles();
+        for (const auto& ob : obstacles) {
+            last_replan_metrics_.obstacle_checks++;
+            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(current_bridge_trajectory_, ob)) {
+                cached_is_safe = false;
+                break;
+            }
+        }
+
+        if (cached_is_safe) {
+            robot_current_time_to_goal_ = current_bridge_trajectory_.time_duration + robot_node_->getTimeToGoal();
+            last_replan_metrics_.path_cost = current_bridge_trajectory_.cost + robot_node_->getCost();
+            // current_bridge_trajectory_ remains unchanged
+        } else {
+            // The cached trajectory is blocked by a new dynamic obstacle. We are trapped.
+            robot_node_ = nullptr;
+            robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+            bridge_cost_ = std::numeric_limits<double>::infinity();
+            current_bridge_trajectory_ = Trajectory();
+            last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+            FMTX_WARN("Set Robot State: CACHED BRIDGE BLOCKED! LOST SAFE ANCHOR!");
+        }
+    } 
+    else {
         // We are trapped. No nodes in radius are safe.
         robot_node_ = nullptr;
         robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
         bridge_cost_ = std::numeric_limits<double>::infinity();
+        current_bridge_trajectory_ = Trajectory();
         last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
         FMTX_WARN("Set Robot State: LOST SAFE ANCHOR!");
     }

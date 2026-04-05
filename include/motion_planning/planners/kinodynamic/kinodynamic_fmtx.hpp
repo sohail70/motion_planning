@@ -110,5 +110,6 @@ class KinodynamicFMTX : public Planner {
         std::unordered_map<std::string, Obstacle> previous_obstacles_;
         double bridge_cost_;
         bool is_geometric_mode_;
+        Trajectory current_bridge_trajectory_;
 };
 

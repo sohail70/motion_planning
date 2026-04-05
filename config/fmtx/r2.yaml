@@ -3,7 +3,7 @@ experiment:
   name: "FMTX_R2_Geometric_Test"
   planner_type: "KinodynamicFMTX"
   state_space_type: "RDT"
-  manager_type: "R2T" # Or "R2" if you have a specific geometric manager
+  manager_type: "R2T"
 
 # Simulation Settings
 simulation:
