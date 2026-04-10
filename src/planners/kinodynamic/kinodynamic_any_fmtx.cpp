@@ -25,6 +25,39 @@ void KinodynamicANYFMTX::clearPlannerState() {
 
 }
 
+void KinodynamicANYFMTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes) {
+    double max_time = upper_bounds_(statespace_->getDimension() - 1); 
+
+    // Protect the original main root (T=0)
+    time_pillar_indices_.insert(root_state_index_); 
+    for (int i = 1; i <= num_pillar_nodes; ++i) {
+        Eigen::VectorXd pillar_state = goal_state_val;
+
+        // Safely zero velocities ONLY for 5D (x, y, vx, vy, t)
+        if (statespace_->getDimension() == 5) {
+            pillar_state(2) = 0.0; // vx
+            pillar_state(3) = 0.0; // vy
+        }
+
+        // Distribute evenly across time
+        double t_val = (max_time / num_pillar_nodes) * i; 
+        pillar_state(statespace_->getDimension() - 1) = t_val;
+
+        auto state_ptr = statespace_->addState(pillar_state);
+        auto node = std::make_shared<FMTNode>(state_ptr, tree_.size());
+        node->setTimeToGoal(t_val);
+        
+        node->setLMC(0.0);
+        v_open_heap_.add(node.get(), 0.0);
+        last_replan_metrics_.queue_operations++;
+
+        // Track index for O(1) obstacle protection
+        time_pillar_indices_.insert(node->getIndex()); 
+
+        tree_.push_back(node);
+    }
+}
+
 void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
     std::cout << "------------------------------------------------------------\n";
     auto start = std::chrono::high_resolution_clock::now();
@@ -42,6 +75,7 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
     kd_dim = params.getParam<int>("kd_dim", 2);
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
     use_knn = params.getParam<bool>("use_knn", false);
+    num_pillar_nodes_ = params.getParam<int>("num_pillar_nodes", 50);
 
     if (kdtree_type == "NanoFlann"){
         Eigen::VectorXd weights(kd_dim);
@@ -73,6 +107,8 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
 
     setStart(problem_->getStart());
     setGoal(problem_->getGoal());
+    // Inject the rest of the Time Pillars (Backward search: start is the destination)
+    injectTimePillarNodes(problem_->getStart(), num_pillar_nodes_);
 
     // KDTREE
     Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
@@ -85,6 +121,20 @@ void KinodynamicANYFMTX::setup(const Params& params, std::shared_ptr<Visualizati
     dimension_ = statespace_->getDimension();
     factor = params.getParam<double>("factor");
     delta = params.getParam<double>("delta");
+
+    // GAMMA CALC
+    int d = kd_dim;
+    Eigen::VectorXd range = upper_bounds_ - lower_bounds_;
+    // double mu = range.prod();
+    double mu = 1.0;
+    for(int i = 0; i < d; ++i) {
+        mu *= range(i);
+    }
+    double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1.0);
+    // gamma_ = std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); // FMT star gamma which is smaller than RRT* which makes the neighborhood size less than RRT*
+    gamma_ = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); // RRT* gamma
+
+
     // Calculate initial radius based on N=2 (Start + Goal)
     shrinkingBallRadius();
     std::cout << "Setup complete. Ready for incremental sampling.\n";
@@ -99,17 +149,7 @@ void KinodynamicANYFMTX::shrinkingBallRadius() {
     if (N <= 1) return;
     // int d = statespace_->getDimension();
     int d = kd_dim;
-    Eigen::VectorXd range = upper_bounds_ - lower_bounds_;
-    // double mu = range.prod();
-    double mu = 1.0;
-    for(int i = 0; i < d; ++i) {
-        mu *= range(i);
-    }
-    double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1.0);
-    // double gamma = std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); // FMT star gamma which is smaller than RRT* which makes the neighborhood size less than RRT*
-    double gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); // RRT* gamma
-
-    neighborhood_radius_ = factor * gamma * std::pow(std::log(N) / N, 1.0 / d);
+    neighborhood_radius_ = factor * gamma_ * std::pow(std::log(N) / N, 1.0 / d);
     neighborhood_radius_ = std::min(delta, neighborhood_radius_);
 }
 
@@ -748,6 +788,7 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
 #if USE_THREAT_SET_STRATEGY
             // We ONLY check the exact obstacle pointers in memory!
             for (const Obstacle* ob_ptr : new_node->threats) {
+                last_replan_metrics_.obstacle_checks++;
                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*traj_xy, *ob_ptr)) {
                     collision_free = false;
                     break; // Short-circuit
@@ -757,6 +798,7 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
             // Default Blind strategy
             // Again, brute-force must check everything in previous_obstacles_
             for (const auto& [name, ob] : previous_obstacles_) {
+                last_replan_metrics_.obstacle_checks++;
                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*traj_xy, ob)) {
                     collision_free = false;
                     break;
@@ -978,12 +1020,11 @@ void KinodynamicANYFMTX::plan() {
 
 
             the only concern is do we need collision check here or not? the plan cycles only happen after the updateObstacleSample function gets triggered due to obstalce's turnaround
+            or in the intial phase where the first propagation is involved (which is not of concern here)
             in addNewObstacle we make nodes with trajectory in the obstacle's tube orphan and make their cost inf and sever their parent relationship! but we keep the tree nodes that are collision free even though they are in the tube
-            so this cant even trigger the else if because there is no parent!
             but how about removeObstacle? this frees up some nodes that was severed in the addNewObstacle so they are still having inf cost with no parent.
             in both cases we need to check the collision in the standard plan cycle! but i dont think when a node is already part of the tree and has parent is caused by addNewObstacle or removeObstacle! and i think its safe to just update the cost
-            of that node with its current parent! but if the parent is something other than the current parent we need to collision check which happens in the standard part above!
-            though i might be wrong and need to further investigate!  
+            of that node with its current parent! but if the parent is something other than the current parent we need to collision check which happens in the standard implicit rewiring below!
         */
 
         for (FMTNode* child : z->children_) {
@@ -1134,7 +1175,7 @@ void KinodynamicANYFMTX::plan() {
                         // Oracle!
                         analyzeSuboptimality(x, best_parent_for_x, z, dbg_metrics);
 #endif
-                        last_replan_metrics_.nodes_updated++;
+                        
                         double priorityCost = min_cost_for_x;
 
 
@@ -1251,6 +1292,42 @@ void KinodynamicANYFMTX::setGoal(const Eigen::VectorXd& goal) {
     std::cout << "KinodynamicANYFMTX: Goal node created on Index: " << robot_state_index_ << "\n";
 }
 
+void KinodynamicANYFMTX::visualizeTreeGradient() {
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+    std::vector<double> edge_costs;
+
+    if (!tree_.empty()) {
+        edges.reserve(tree_.size());
+        edge_costs.reserve(tree_.size());
+    }
+    
+    // Find max cost in the tree to normalize the gradient
+    double max_tree_cost = 0.001; 
+    for (const auto& node_ptr : tree_) {
+        if (node_ptr->getLMC() > max_tree_cost && !std::isinf(node_ptr->getLMC())) {
+            max_tree_cost = node_ptr->getLMC();
+        }
+    }
+
+    for (const auto& node_ptr : tree_) {
+        FMTNode* child_node = node_ptr.get();
+        FMTNode* parent_node = child_node->getParent();
+
+        if (parent_node && !std::isinf(child_node->getLMC())) {
+            // Use the full states so visualization has access to Z or time if needed
+            edges.emplace_back(parent_node->getStateValue(), child_node->getStateValue());
+            
+            // Normalize the cost between 0.0 and 1.0
+            edge_costs.push_back(child_node->getLMC() / max_tree_cost); 
+        }
+    }
+    
+    if (robot_node_) {
+        std::vector<Eigen::VectorXd> anchor_pt = { robot_node_->getStateValue().head<2>() };
+        visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
+    } 
+    visualization_->visualizeTreeGradient(edges, edge_costs, "map");
+}
 
 // straight line
 void KinodynamicANYFMTX::visualizeTree() {
@@ -1275,6 +1352,12 @@ void KinodynamicANYFMTX::visualizeTree() {
     // visualization_->visualizeNodes(tree_nodes, "map", 
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
     //                         "tree_nodes");
+    
+
+    if (robot_node_) {
+        std::vector<Eigen::VectorXd> anchor_pt = { robot_node_->getStateValue().head<2>() };
+        visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
+    } 
     
     visualization_->visualizeEdges(edges, "map");
 }
@@ -1322,11 +1405,40 @@ void KinodynamicANYFMTX::visualizeTreeReal() {
     // Visualization calls
     // visualization_->visualizeNodes(tree_nodes, "map", {0.0f, 1.0f, 0.0f}, "tree_nodes");
     // visualization_->visualizeEdges(edges, "map", "1.0,1.0,1.0", "tree_edges");
+    if (robot_node_) {
+        std::vector<Eigen::VectorXd> anchor_pt = { robot_node_->getStateValue().head<2>() };
+        visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
+    } 
     visualization_->visualizeEdges(edges, "map");
 }
 
+void KinodynamicANYFMTX::visualizePathGradient(const std::vector<Eigen::VectorXd>& path_waypoints) {
+    if (path_waypoints.size() < 2 || !visualization_ || robot_node_ == nullptr) {
+        return;
+    }
+    
+    double robot_lmc = robot_node_->getLMC();
+    if (std::isinf(robot_lmc)) return;
 
 
+    double current_robot_cost = robot_lmc + bridge_cost_;
+    if (global_max_cost_ < current_robot_cost) {
+        global_max_cost_ = current_robot_cost;
+    }
+    double max_c = (global_max_cost_ > 0.0) ? global_max_cost_ : 1.0;
+
+
+    std::vector<double> path_costs(path_waypoints.size(), 0.0);
+    size_t N = path_waypoints.size();
+    
+    for (size_t i = 0; i < N; ++i) {
+        double fraction = (double)(N - 1 - i) / (N - 1);
+        path_costs[i] = fraction * current_robot_cost;
+    }
+
+
+    visualization_->visualizePathGradient(path_waypoints, path_costs, "map", max_c);
+}
 
 void KinodynamicANYFMTX::visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints) {
     if (path_waypoints.size() < 2) {
@@ -1341,11 +1453,66 @@ void KinodynamicANYFMTX::visualizePath(const std::vector<Eigen::VectorXd>& path_
     }
 
     if (visualization_) {
-        visualization_->visualizeEdges(edges, "map", "0.0,1.0,0.0", "executable_path");
+        visualization_->visualizeEdges(edges, "map", "0.13,0.59,0.15", "executable_path");
     }
 }
 
+void KinodynamicANYFMTX::visualizeSearchArea() {
+    if (!visualization_) return;
 
+    // RATE LIMITING (30 FPS MAX)
+    static auto last_vis_time = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_vis_time).count() < 33) {
+        return; 
+    }
+    last_vis_time = now;
+
+    if (robot_node_ == nullptr || std::isinf(robot_node_->getLMC())) {
+        return; 
+    }
+
+    double current_robot_cost = robot_node_->getLMC() + bridge_cost_;
+    
+    // Check if we need to calibrate the color gradient on this frame
+    bool is_first_run = (global_max_cost_ < 0.0);
+    double max_tree_cost = current_robot_cost;
+
+    std::vector<Eigen::VectorXd> surface_points;
+    std::vector<double> surface_costs;
+    surface_points.reserve(tree_.size());
+    surface_costs.reserve(tree_.size());
+
+    for (const auto& node_ptr : tree_) {
+        if (node_ptr) {
+            double cost = node_ptr->getLMC();
+            
+            if (!std::isinf(cost)) {
+                
+                // Find the absolute highest cost in the tree (only on the first run)
+                if (is_first_run && cost > max_tree_cost) {
+                    max_tree_cost = cost;
+                }
+                
+                // Collect the points for rendering
+                if (cost <= current_robot_cost) {
+                    surface_points.push_back(node_ptr->getStateValue());
+                    surface_costs.push_back(cost);
+                }
+            }
+        }
+    }
+
+    // Lock in the globally calibrated max cost so the colors stay stable
+    if (is_first_run) {
+        global_max_cost_ = max_tree_cost;
+    }
+
+    visualization_->visualizeContinuousMesh(
+        surface_points, surface_costs, global_max_cost_, getNeighborhoodRadius(), 
+        lower_bounds_, upper_bounds_, "map"
+    );
+}
 
 void KinodynamicANYFMTX::dumpTreeToCSV(const std::string& filename) const {
     std::ofstream fout(filename);
@@ -1381,7 +1548,7 @@ void KinodynamicANYFMTX::dumpTreeToCSV(const std::string& filename) const {
 }
 
 // The Manager
-void KinodynamicANYFMTX::updateObstacleSamples(const ObstacleVector& turned_obstacles) {
+void KinodynamicANYFMTX::updateObstacles(const ObstacleVector& turned_obstacles) {
     if (turned_obstacles.empty()) return;
 
     if (robot_continuous_state_.size() == 0) {
@@ -1468,8 +1635,12 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
 
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
         for (size_t idx : indices) {
-            if (idx != root_state_index_)
-                orphan_indices.insert(static_cast<int>(idx));
+            // Protect ALL Time Pillars and the main root instantly!
+            if (time_pillar_indices_.find(static_cast<int>(idx)) != time_pillar_indices_.end()) {
+                continue; 
+            }
+            // if (idx != root_state_index_)
+            orphan_indices.insert(static_cast<int>(idx));
         }
     }
     // if (kd_dim == 4)
@@ -1527,7 +1698,6 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
         }
     }
 
-    last_replan_metrics_.orphaned_nodes += orphan_indices.size();
 
     // Invalidate Nodes & Queue Boundary Parents
     std::unordered_set<FMTNode*> boundary_nodes_to_requeue;
@@ -1542,7 +1712,7 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
         if (node->getIndex() != root_state_index_) {
             node->setLMC(std::numeric_limits<double>::infinity()); 
             node->setG(std::numeric_limits<double>::infinity());
-            last_replan_metrics_.nodes_updated++;
+            
         }
         
         // Sever Parent Connection
@@ -1610,7 +1780,12 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
 
         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
         for (size_t idx : indices) {
-            if (idx == root_state_index_) continue; 
+            // if (idx == root_state_index_) continue; 
+
+            // Protect ALL Time Pillars and the main root instantly!
+            if (time_pillar_indices_.find(static_cast<int>(idx)) != time_pillar_indices_.end()) {
+                continue; 
+            }
             freed_indices.insert(static_cast<int>(idx));
         }
     }
@@ -1658,8 +1833,6 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
     }
 }
 
-
-
 void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     robot_continuous_state_ = robot_state;
     // Extract actual planner-time from the state (last element)
@@ -1680,30 +1853,6 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     } else if (kd_dim == 5) {
         query_point = robot_continuous_state_; 
     }
-
-    // // HYSTERESIS LOGIC
-    // const double hysteresis_factor = 0.98;
-    // double cost_of_current_path = std::numeric_limits<double>::infinity();
-
-    // if (robot_node_ && robot_node_->getLMC() != std::numeric_limits<double>::infinity()) {
-    //     Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
-    //     if (bridge.is_valid) {
-    //         bool safe = true;
-    //         const auto& obstacles = obs_checker_->getObstacles();
-    //         for (const auto& ob : obstacles) {
-    //             last_replan_metrics_.obstacle_checks++;
-    //             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, ob)) {
-    //                 safe = false;
-    //                 break;
-    //             }
-    //         }
-    //         if (safe) {
-    //             cost_of_current_path = bridge.cost + robot_node_->getLMC();
-    //             robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
-    //             // return;
-    //         }
-    //     }
-    // }
 
     // HYSTERESIS LOGIC
     const double hysteresis_factor = 0.98;
@@ -1729,12 +1878,15 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         }
     }
 
-
-
     FMTNode* best_candidate_node = nullptr;
     Trajectory best_candidate_bridge;
     double best_candidate_cost = std::numeric_limits<double>::infinity();
     
+    // Radius Expansion fallback tracking (for unexplored nodes)
+    FMTNode* best_fallback_node = nullptr;
+    Trajectory best_fallback_bridge;
+    double best_fallback_cost = std::numeric_limits<double>::infinity();
+
     // Radius Expansion to handle sparse graphs
     double current_search_radius = neighborhood_radius_; 
     const int max_attempts = 5; 
@@ -1745,32 +1897,37 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
         for (auto idx : nearby_indices) {
             FMTNode* candidate = tree_[idx].get();
-            if (candidate->getLMC() == std::numeric_limits<double>::infinity()) continue;
-
-            Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
-
-            if (!bridge.is_valid) continue;
             
+            Trajectory temp_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
 
+            if (!temp_bridge.is_valid) continue;
+            
             bool safe = true;
             const auto& obstacles = obs_checker_->getObstacles();
             for (const auto& ob : obstacles) {
                 last_replan_metrics_.obstacle_checks++;
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, ob)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(temp_bridge, ob)) {
                     safe = false;
                     break;
                 }
             }
             if (!safe) continue;
 
+            // Fallback Tracking: Easiest safe physical node to reach
+            if (temp_bridge.cost < best_fallback_cost) {
+                best_fallback_node = candidate;
+                best_fallback_bridge = temp_bridge;
+                best_fallback_cost = temp_bridge.cost;
+            }
 
-
-            double cost = bridge.cost + candidate->getLMC();
-            if (cost < best_candidate_cost) {
-                best_candidate_node = candidate;
-                best_candidate_bridge = bridge;
-                best_candidate_cost = cost;
-                bridge_cost_ = bridge.cost;
+            // Connected Tracking: Best node that ALREADY has a finite path
+            if (candidate->getLMC() != std::numeric_limits<double>::infinity()) {
+                double cost = temp_bridge.cost + candidate->getLMC();
+                if (cost < best_candidate_cost) {
+                    best_candidate_node = candidate;
+                    best_candidate_bridge = temp_bridge;
+                    best_candidate_cost = cost;
+                }
             }
         }
         if (best_candidate_node) break;
@@ -1783,12 +1940,12 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
         last_replan_metrics_.path_cost = best_candidate_cost;
         current_bridge_trajectory_ = best_candidate_bridge;
+        bridge_cost_ = best_candidate_bridge.cost;
     } else if (robot_node_ && cost_of_current_path != std::numeric_limits<double>::infinity()) {
-        // Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
-        // The cost changes slightly every frame as the robot moves towards the anchor.
         last_replan_metrics_.path_cost = cost_of_current_path;
         current_bridge_trajectory_ = bridge;
+        bridge_cost_ = bridge.cost;
     } 
     else if (robot_node_ && !bridge.is_valid && current_bridge_trajectory_.is_valid) {
         /*
@@ -1805,9 +1962,6 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
             It skips directly to the exact time-segment where the robot belongs chronologically, 
             smoothly riding the rest of the valid curve into the anchor.
         */
-        // Steer failed mathematically, so we try to recycle the previous valid bridge.
-        // BUT we must verify it is still safe against current dynamic obstacles!
-        
         bool cached_is_safe = true;
         const auto& obstacles = obs_checker_->getObstacles();
         for (const auto& ob : obstacles) {
@@ -1820,37 +1974,42 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
         if (cached_is_safe) {
             robot_current_time_to_goal_ = current_bridge_trajectory_.time_duration + robot_node_->getTimeToGoal();
-            last_replan_metrics_.path_cost = current_bridge_trajectory_.cost + robot_node_->getLMC();
+            // We must mark the cost as finite so we don't trigger the TRAPPED fallback!
+            cost_of_current_path = current_bridge_trajectory_.cost + robot_node_->getLMC();
+            last_replan_metrics_.path_cost = cost_of_current_path;
             // current_bridge_trajectory_ remains unchanged
         } else {
             // The cached trajectory is blocked by a new dynamic obstacle. We are trapped.
+            cost_of_current_path = std::numeric_limits<double>::infinity();
+        }
+    } 
+    else {
+        // Steering truly failed and we are not near the node
+        cost_of_current_path = std::numeric_limits<double>::infinity();
+    }
+
+    // Anchor is completely blocked AND no pre-connected nodes are nearby
+    if (cost_of_current_path == std::numeric_limits<double>::infinity() && !best_candidate_node) {
+        if (best_fallback_node) {
+            // Give ANYFMTX the unconnected node! The cost wave will sweep towards it.
+            robot_node_ = best_fallback_node;
+            robot_current_time_to_goal_ = std::numeric_limits<double>::infinity(); // Unknown until planner runs
+            bridge_cost_ = best_fallback_cost;
+            current_bridge_trajectory_ = best_fallback_bridge;
+            last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+        } else {
+            // We are truly trapped. No nodes in radius are safe.
             robot_node_ = nullptr;
             robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
             bridge_cost_ = std::numeric_limits<double>::infinity();
             current_bridge_trajectory_ = Trajectory();
             last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
-            FMTX_WARN("Set Robot State: CACHED BRIDGE BLOCKED! LOST SAFE ANCHOR!");
+            FMTX_WARN("Set Robot State: LOST SAFE ANCHOR. TRULY TRAPPED.");
         }
-    } 
-    else {
-        // We are trapped. No nodes in radius are safe.
-        robot_node_ = nullptr;
-        robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
-        bridge_cost_ = std::numeric_limits<double>::infinity();
-        current_bridge_trajectory_ = Trajectory();
-        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
-        FMTX_WARN("Set Robot State: LOST SAFE ANCHOR!");
     }
 
-
-    // INTERNAL DEBUG VISUALIZATION
-    if (visualization_) {
-        if (robot_node_) {
-            std::vector<Eigen::VectorXd> anchor_pt = { robot_node_->getStateValue().head<2>() };
-            visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
-        } 
-    }
 }
+
 
 bool KinodynamicANYFMTX::isRobotSafe() {
     return (robot_node_ != nullptr) && (robot_node_->getLMC() != std::numeric_limits<double>::infinity());

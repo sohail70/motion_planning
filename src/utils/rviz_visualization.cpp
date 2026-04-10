@@ -2,30 +2,179 @@
 
 #include "motion_planning/utils/rviz_visualization.hpp"
 
-
-// std::string getRandomColor() {
-//     // Seed the random number generator
-//     std::srand(std::time(nullptr));
-
-//     // Generate random values for RGB between 0.0 and 1.0
-//     float r = static_cast<float>(std::rand()) / RAND_MAX;
-//     float g = static_cast<float>(std::rand()) / RAND_MAX;
-//     float b = static_cast<float>(std::rand()) / RAND_MAX;
-
-//     // Convert to string
-//     std::ostringstream ss;
-//     ss << std::fixed << std::setprecision(2) << r << "," << g << "," << b;
-//     return ss.str();
-// }
-
-
 RVizVisualization::RVizVisualization(rclcpp::Node::SharedPtr node, const std::string& marker_topic)
     : node_(node),marker_id_counter_(0)  {
     marker_pub_ = node_->create_publisher<visualization_msgs::msg::Marker>(marker_topic, 10);
     marker_pub_2_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("marker2", 10);
     marker_pub_3_ = node_->create_publisher<visualization_msgs::msg::Marker>("marker3", 10);
+    marker_array_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array", 10);
 
 }
+
+void RVizVisualization::visualizeAxes(
+    const Eigen::VectorXd& lower_bounds,
+    const Eigen::VectorXd& upper_bounds,
+    double step_size,
+    const std::string& frame_id) 
+{
+    if (lower_bounds.size() < 2 || upper_bounds.size() < 2) return;
+
+    // Use a MarkerArray to send everything in ONE message so nothing gets dropped
+    visualization_msgs::msg::MarkerArray axis_array;
+
+    double text_height = 2.0; 
+    double offset = text_height * 1.2; 
+    int marker_id = 10000;
+
+    // --- 1. DRAW THE BOUNDING BOX (Complete Square) ---
+    visualization_msgs::msg::Marker lines;
+    lines.header.frame_id = frame_id;
+    lines.header.stamp = rclcpp::Time();
+    lines.ns = "axis_lines";
+    lines.id = 0;
+    lines.type = visualization_msgs::msg::Marker::LINE_STRIP; // STRIP draws a continuous perimeter
+    lines.action = visualization_msgs::msg::Marker::ADD;
+    lines.pose.orientation.w = 1.0;
+    lines.scale.x = 0.2; // Line thickness
+    lines.color.r = 0.0; lines.color.g = 0.0; lines.color.b = 0.0; lines.color.a = 1.0;
+
+    geometry_msgs::msg::Point p1, p2, p3, p4;
+    
+    // Bottom-Left
+    p1.x = lower_bounds[0]; p1.y = lower_bounds[1]; p1.z = 0.1;
+    // Bottom-Right
+    p2.x = upper_bounds[0]; p2.y = lower_bounds[1]; p2.z = 0.1;
+    // Top-Right
+    p3.x = upper_bounds[0]; p3.y = upper_bounds[1]; p3.z = 0.1;
+    // Top-Left
+    p4.x = lower_bounds[0]; p4.y = upper_bounds[1]; p4.z = 0.1;
+
+    // Connect the dots in a loop to close the square
+    lines.points.push_back(p1); // Start bottom-left
+    lines.points.push_back(p2); // Draw to bottom-right
+    lines.points.push_back(p3); // Draw to top-right
+    lines.points.push_back(p4); // Draw to top-left
+    lines.points.push_back(p1); // Close the square back to bottom-left
+
+    axis_array.markers.push_back(lines);
+
+    // --- 2. DRAW X-AXIS LABELS (Bottom Edge) ---
+    for (double x = lower_bounds[0]; x <= upper_bounds[0] + 1e-5; x += step_size) {
+        visualization_msgs::msg::Marker text_marker;
+        text_marker.header.frame_id = frame_id;
+        text_marker.header.stamp = rclcpp::Time();
+        text_marker.ns = "axis_labels_x";
+        text_marker.id = marker_id++;
+        text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+        text_marker.action = visualization_msgs::msg::Marker::ADD;
+        text_marker.pose.orientation.w = 1.0;
+        
+        text_marker.pose.position.x = x;
+        text_marker.pose.position.y = lower_bounds[1] - offset; 
+        text_marker.pose.position.z = 0.1;
+
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(0) << x;
+        text_marker.text = ss.str();
+        text_marker.scale.z = text_height;
+        text_marker.color.r = 0.0; text_marker.color.g = 0.0; text_marker.color.b = 0.0; text_marker.color.a = 1.0;
+        
+        axis_array.markers.push_back(text_marker);
+    }
+
+    // --- 3. DRAW Y-AXIS LABELS (Left Edge) ---
+    for (double y = lower_bounds[1]; y <= upper_bounds[1] + 1e-5; y += step_size) {
+        visualization_msgs::msg::Marker text_marker;
+        text_marker.header.frame_id = frame_id;
+        text_marker.header.stamp = rclcpp::Time();
+        text_marker.ns = "axis_labels_y";
+        text_marker.id = marker_id++;
+        text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+        text_marker.action = visualization_msgs::msg::Marker::ADD;
+        text_marker.pose.orientation.w = 1.0;
+        
+        text_marker.pose.position.x = lower_bounds[0] - offset; 
+        text_marker.pose.position.y = y;
+        text_marker.pose.position.z = 0.1;
+
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(0) << y;
+        text_marker.text = ss.str();
+        text_marker.scale.z = text_height;
+        text_marker.color.r = 0.0; text_marker.color.g = 0.0; text_marker.color.b = 0.0; text_marker.color.a = 1.0;
+
+        axis_array.markers.push_back(text_marker);
+    }
+
+    // Publish the entire array instantly
+    marker_array_pub_->publish(axis_array);
+}
+
+
+void RVizVisualization::visualizeTimeToGoal(double t_robot, double x, double y) 
+{
+    visualization_msgs::msg::Marker text_marker;
+    text_marker.header.frame_id = "map"; 
+    text_marker.header.stamp = rclcpp::Time();
+    text_marker.ns = "time_tracker";
+    text_marker.id = 9999; 
+    text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    text_marker.action = visualization_msgs::msg::Marker::ADD;
+    
+    text_marker.pose.orientation.w = 1.0;
+
+    text_marker.pose.position.x = x;
+    text_marker.pose.position.y = y;
+    text_marker.pose.position.z = 1.0; 
+
+    // Completely removed the long text, just showing the number and 's'
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(2) << t_robot << " s";
+    text_marker.text = ss.str();
+
+    text_marker.scale.z = 4.0; 
+
+    // Changed to Pure Blue
+    text_marker.color.r = 0.0; 
+    text_marker.color.g = 0.0; 
+    text_marker.color.b = 1.0; 
+    text_marker.color.a = 1.0;
+
+    // marker_pub_->publish(text_marker);
+    marker_buffer_.markers.push_back(text_marker);
+}
+
+
+void RVizVisualization::takeScreenshot(double t_robot, bool is_final) 
+{
+    std::string home_dir = std::getenv("HOME");
+    std::string save_path = home_dir + "/Desktop/"; 
+
+    std::stringstream ss;
+    if (is_final) {
+        ss << save_path << "rviz_sim_FINAL_arrive_at_" << std::fixed << std::setprecision(2) << t_robot << ".png";
+    } else {
+        ss << save_path << "rviz_sim_" << std::fixed << std::setprecision(0) << t_robot << ".png";
+    }
+    std::string filename = ss.str();
+
+    // The size of the final square image in pixels. 
+    // You can tweak this (e.g., 800, 1000, 1200) to perfectly fit your -55 to 55 bounds!
+    int crop_size = 950; 
+
+    std::stringstream cmd_ss;
+    cmd_ss << "gnome-screenshot -w -B -f " << filename 
+           // 1. Chop off the 35px top menu bar
+           << " && mogrify -chop 0x35 " << filename 
+           // 2. Go to the exact center and crop a perfect square, discarding the rest (+repage resets the canvas)
+           << " && mogrify -gravity center -crop " << crop_size << "x" << crop_size << "+0+0 +repage " << filename;
+    
+    int result = system(cmd_ss.str().c_str());
+    if (result == 0) {
+        RCLCPP_INFO(node_->get_logger(), "Saved, Chopped, and Center-Cropped: %s", filename.c_str());
+    }
+}
+
 void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id) {
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = frame_id;
@@ -48,8 +197,11 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
         point.z = (node.size() > 2) ? node.z() : 0.0; // <--- MODIFIED: Use Z if available, else 0
         marker.points.push_back(point);
     }
-    marker_pub_->publish(marker);
+    // marker_pub_->publish(marker);
+    marker_buffer_.markers.push_back(marker);
 }
+
+
 
 void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id, const std::vector<float>& color, const std::string& ns) {
     visualization_msgs::msg::Marker marker;
@@ -86,7 +238,8 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
     }
 
     // Publish the marker
-    marker_pub_->publish(marker);
+    // marker_pub_->publish(marker);
+    marker_buffer_.markers.push_back(marker);
 }
 
 void RVizVisualization::visualizeSingleEdge(const Eigen::VectorXd& start_point, const Eigen::VectorXd& end_point, int edge_id, const std::string& frame_id) {
@@ -115,7 +268,8 @@ void RVizVisualization::visualizeSingleEdge(const Eigen::VectorXd& start_point, 
     marker.points.push_back(start);
     marker.points.push_back(end);
 
-    marker_pub_->publish(marker);
+    // marker_pub_->publish(marker);
+    marker_buffer_.markers.push_back(marker);
 }
 
 
@@ -127,31 +281,32 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
         marker.id = 1;
         marker.type = visualization_msgs::msg::Marker::LINE_LIST;
         marker.action = visualization_msgs::msg::Marker::ADD;
-        marker.scale.x = 0.05; // Line width
-        marker.color.r = 1.0;  // Red
-        marker.color.g = 1.0;  // Green
-        marker.color.b = 1.0;  // Blue
-        marker.color.a = 0.5;  // Fully opaque
+        marker.scale.x = 0.15; // Line width
+        marker.color.r = 0.5;  // Red
+        marker.color.g = 0.5;  // Green
+        marker.color.b = 0.5;  // Blue
+        marker.color.a = 1.0;
 
         // Add edges to the marker
         for (const auto& edge : edges) {
             geometry_msgs::msg::Point start, end;
             start.x = edge.first.x();
             start.y = edge.first.y();
-            start.z = 0.0; // Assuming 2D
-            // start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0; // <--- MODIFIED: Use Z if available, else 0
+            start.z = -0.05; // Assuming 2D
+            // start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0;
 
             end.x = edge.second.x();
             end.y = edge.second.y();
-            end.z = 0.0; // Assuming 2D
-            // end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0; // <--- MODIFIED: Use Z if available, else 0
+            end.z = -0.05; // Assuming 2D
+            // end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0;
 
             marker.points.push_back(start);
             marker.points.push_back(end);
         }
 
         // Publish the marker
-        marker_pub_->publish(marker);
+        // marker_pub_->publish(marker);
+        marker_buffer_.markers.push_back(marker);
 }
 void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::string& frame_id, const std::string& color_str) {
     visualization_msgs::msg::Marker marker;
@@ -191,19 +346,20 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
         start.x = edge.first.x();
         start.y = edge.first.y();
         start.z = 0.0; // Assuming 2D
-        // start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0; // <--- MODIFIED
+        // start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0;
 
         end.x = edge.second.x();
         end.y = edge.second.y();
         end.z = 0.0; // Assuming 2D
-        // end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0; // <--- MODIFIED
+        // end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0;
 
         marker.points.push_back(start);
         marker.points.push_back(end);
     }
 
     // Publish the marker
-    marker_pub_->publish(marker);
+    // marker_pub_->publish(marker);
+    marker_buffer_.markers.push_back(marker);
 }
 
 
@@ -215,7 +371,7 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
     marker.id = 10;
     marker.type = visualization_msgs::msg::Marker::LINE_LIST;
     marker.action = visualization_msgs::msg::Marker::ADD;
-    marker.scale.x = 0.2; // Line width
+    marker.scale.x = 0.45; // Line width
 
     // Parse the color string
     std::stringstream ss(color_str);
@@ -245,19 +401,20 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
         start.x = edge.first.x();
         start.y = edge.first.y();
         start.z = 0.0; // Assuming 2D
-        // start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0; // <--- MODIFIED
+        // start.z = (edge.first.size() > 2) ? edge.first.z() : 0.0;
 
         end.x = edge.second.x();
         end.y = edge.second.y();
         end.z = 0.0; // Assuming 2D
-        // end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0; // <--- MODIFIED
+        // end.z = (edge.second.size() > 2) ? edge.second.z() : 0.0;
 
         marker.points.push_back(start);
         marker.points.push_back(end);
     }
 
     // Publish the marker
-    marker_pub_3_->publish(marker);
+    // marker_pub_3_->publish(marker);
+    marker_buffer_.markers.push_back(marker);
 }
 
 
@@ -296,8 +453,8 @@ void RVizVisualization::visualizeEdges(
 
         if (!dashed || len <= 2.0 * dash_length) {
             geometry_msgs::msg::Point s, t;
-            s.x = p0.x(); s.y = p0.y(); s.z = (e.first.size() > 2 ? e.first.z() : 0.0);
-            t.x = p1.x(); t.y = p1.y(); t.z = (e.second.size() > 2 ? e.second.z() : 0.0);
+            s.x = p0.x(); s.y = p0.y(); s.z = (e.first.size() > 2 ? e.first.z() : -0.05);
+            t.x = p1.x(); t.y = p1.y(); t.z = (e.second.size() > 2 ? e.second.z() : -0.05);
             marker.points.push_back(s);
             marker.points.push_back(t);
             continue;
@@ -329,7 +486,8 @@ void RVizVisualization::visualizeEdges(
     // marker.lifetime = rclcpp::Duration::from_seconds(0.0);
 
     // publish; use one publisher (or the one you already use)
-    marker_pub_->publish(marker);
+    // marker_pub_->publish(marker);
+    marker_buffer_.markers.push_back(marker);
 }
 
 
@@ -349,14 +507,12 @@ void RVizVisualization::visualizeCylinder(
 
     visualization_msgs::msg::MarkerArray marker_array;
 
-    // ---> ADD THIS BLOCK TO CLEAR OLD MARKERS <---
     visualization_msgs::msg::Marker clear_marker;
     clear_marker.header.frame_id = frame_id;
     clear_marker.header.stamp = node_->now();
     clear_marker.ns = ns;
     clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
     marker_array.markers.push_back(clear_marker);
-    // ---> END OF FIX <---
 
 
     int id = 0;
@@ -1413,27 +1569,305 @@ void RVizVisualization::visualizeDottedLineToNearest(
     marker_pub_2_->publish(marker_array);
 }
 
-
 void RVizVisualization::clearMarkers(const std::string& ns) {
+    visualization_msgs::msg::MarkerArray clear_array;
     visualization_msgs::msg::Marker marker;
+    
     marker.header.frame_id = "map";
-    marker.header.stamp = rclcpp::Clock().now();
+    marker.header.stamp = node_->now(); // Use node_->now() instead of Clock().now()
     marker.action = visualization_msgs::msg::Marker::DELETEALL;
     
+    // if ns is empty, DELETEALL wipes everything. 
+    // If ns is provided, it wipes just that namespace.
     if (!ns.empty()) {
         marker.ns = ns;
     }
     
-    // Publish enough times or on a specific ID to ensure clearing
-    // Note: DELETEALL ignores ID, but specific NS requires strict matching
+    clear_array.markers.push_back(marker);
+    
+    // Publish to the ARRAY publisher!
+    marker_array_pub_->publish(clear_array);
+    
+    // Wipe the internal buffer so old frame data doesn't come back to life
+    marker_buffer_.markers.clear(); 
+}
+
+
+void RVizVisualization::visualizePathGradient(
+    const std::vector<Eigen::VectorXd>& path_waypoints,
+    const std::vector<double>& waypoint_costs, // <--- TRUE COSTS
+    const std::string& frame_id,
+    double global_max_cost) 
+{
+    if (path_waypoints.empty() || path_waypoints.size() != waypoint_costs.size()) return;
+    if (global_max_cost < 1e-6) global_max_cost = 1.0; 
+    
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = frame_id;
+    marker.header.stamp = node_->now();
+    marker.ns = "path_gradient";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::LINE_STRIP; 
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 1.5; 
+    
+    for (size_t i = 0; i < path_waypoints.size(); ++i) {
+        geometry_msgs::msg::Point pt;
+        pt.x = path_waypoints[i].x();
+        pt.y = path_waypoints[i].y();
+        pt.z = -0.02; 
+        marker.points.push_back(pt);
+        
+        std_msgs::msg::ColorRGBA color;
+        color.a = 1.0; 
+        
+        // NO EUCLIDEAN NORM! Use the exact topological cost.
+        double ratio = 1.0 - std::clamp(waypoint_costs[i] / global_max_cost, 0.0, 1.0); 
+        
+        // Corrected Flawless HSV Gradient (Red -> Yellow -> Green -> Cyan -> Blue)
+        if (ratio < 0.25) { 
+            color.r = 1.0; 
+            color.g = ratio * 4.0; 
+            color.b = 0.0; 
+        } else if (ratio < 0.5) { 
+            color.r = 1.0 - (ratio - 0.25) * 4.0; 
+            color.g = 1.0; 
+            color.b = 0.0; 
+        } else if (ratio < 0.75) { 
+            color.r = 0.0; 
+            color.g = 1.0; 
+            color.b = (ratio - 0.5) * 4.0; 
+        } else { 
+            color.r = 0.0; 
+            color.g = 1.0 - (ratio - 0.75) * 4.0; 
+            color.b = 1.0; 
+        }
+        
+        marker.colors.push_back(color);
+    }
+    
+    // marker_pub_->publish(marker);
+    marker_buffer_.markers.push_back(marker);
+}
+void RVizVisualization::visualizeTreeGradient(
+    const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges,
+    const std::vector<double>& costs,
+    const std::string& frame_id) 
+{
+    if (edges.empty() || edges.size() != costs.size()) return;
+
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = frame_id;
+    marker.header.stamp = node_->now();
+    marker.ns = "tree_gradient";
+    marker.id = 1;
+    marker.type = visualization_msgs::msg::Marker::LINE_LIST;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.05; // Thin lines for the tree so it doesn't look cluttered
+
+    for (size_t i = 0; i < edges.size(); ++i) {
+        geometry_msgs::msg::Point start, end;
+        start.x = edges[i].first.x();  start.y = edges[i].first.y();  start.z = -0.1; 
+        end.x = edges[i].second.x();   end.y = edges[i].second.y();   end.z = -0.1; 
+        
+        marker.points.push_back(start);
+        marker.points.push_back(end);
+
+        // Generate color based on the cost (Blue = Low Cost, Red = High Cost)
+        std_msgs::msg::ColorRGBA color;
+        color.a = 1.0; // Slightly transparent looks beautiful for dense trees
+        double ratio = std::clamp(costs[i], 0.0, 1.0); 
+        
+        // Simple Blue to Red Gradient
+        color.r = ratio;
+        color.g = 0.0;
+        color.b = 1.0 - ratio;
+
+        // Line lists require one color per point (start and end of the segment)
+        marker.colors.push_back(color);
+        marker.colors.push_back(color);
+    }
+    
+    marker_pub_->publish(marker);
+}
+
+void RVizVisualization::visualizeContinuousMesh(
+    const std::vector<Eigen::VectorXd>& points,
+    const std::vector<double>& costs,
+    double global_max_cost,
+    double neighborhood_radius,
+    const Eigen::VectorXd& lower_bounds,
+    const Eigen::VectorXd& upper_bounds,
+    const std::string& frame_id) 
+{
+    if (points.empty()) return;
+    if (global_max_cost < 1e-6) global_max_cost = 1.0;
+
+    double res = 2.0; // Fast, coarse grid
+    int nx = std::max(1, (int)std::ceil((upper_bounds[0] - lower_bounds[0]) / res)) + 1;
+    int ny = std::max(1, (int)std::ceil((upper_bounds[1] - lower_bounds[1]) / res)) + 1;
+    int grid_size = nx * ny;
+
+    int min_gx = nx, max_gx = 0, min_gy = ny, max_gy = 0;
+    
+    std::vector<double> cell_min_cost(grid_size, std::numeric_limits<double>::infinity());
+    std::vector<bool> cell_has_node(grid_size, false);
+
+    for (size_t i = 0; i < points.size(); ++i) {
+        int cx = std::round((points[i].x() - lower_bounds[0]) / res);
+        int cy = std::round((points[i].y() - lower_bounds[1]) / res);
+        if (cx >= 0 && cx < nx && cy >= 0 && cy < ny) {
+            int idx = cx + cy * nx;
+            
+            if (!cell_has_node[idx] || costs[i] < cell_min_cost[idx]) {
+                cell_min_cost[idx] = costs[i];
+                cell_has_node[idx] = true;
+            }
+            
+            if (cx < min_gx) min_gx = cx;
+            if (cx > max_gx) max_gx = cx;
+            if (cy < min_gy) min_gy = cy;
+            if (cy > max_gy) max_gy = cy;
+        }
+    }
+
+    // Because res is so large (2.5), we MUST enforce a minimum brush radius 
+    // so the corners of the massive grid spaces can connect and blend colors!
+    double effective_radius = std::max(neighborhood_radius, res * 1.5); 
+    int brush_radius = std::max(1, (int)std::ceil(effective_radius / res)); 
+    int brush_size = 2 * brush_radius + 1;
+    std::vector<double> brush(brush_size * brush_size, 0.0);
+    
+    for (int dx = -brush_radius; dx <= brush_radius; ++dx) {
+        for (int dy = -brush_radius; dy <= brush_radius; ++dy) {
+            double dist = std::sqrt(dx*dx + dy*dy) * res;
+            if (dist <= effective_radius) {
+                double weight = std::max(0.0, 1.0 - (dist / effective_radius));
+                brush[(dx + brush_radius) + (dy + brush_radius) * brush_size] = weight * weight;
+            }
+        }
+    }
+
+    std::vector<double> weight_grid(grid_size, 0.0);
+    std::vector<double> cost_grid(grid_size, 0.0);
+
+    for (int cx = min_gx; cx <= max_gx; ++cx) {
+        for (int cy = min_gy; cy <= max_gy; ++cy) {
+            int src_idx = cx + cy * nx;
+            if (cell_has_node[src_idx]) {
+                
+                double best_cost = cell_min_cost[src_idx];
+                
+                for (int dx = -brush_radius; dx <= brush_radius; ++dx) {
+                    for (int dy = -brush_radius; dy <= brush_radius; ++dy) {
+                        int gx = cx + dx;
+                        int gy = cy + dy;
+                        if (gx >= 0 && gx < nx && gy >= 0 && gy < ny) {
+                            double w = brush[(dx + brush_radius) + (dy + brush_radius) * brush_size];
+                            if (w > 0.0) {
+                                int tgt_idx = gx + gy * nx;
+                                weight_grid[tgt_idx] += w;
+                                cost_grid[tgt_idx] += w * best_cost;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = frame_id;
+    marker.header.stamp = node_->now();
+    marker.ns = "continuous_background";
+    marker.id = 0; 
+    
+    // BACK TO TRIANGLES: This tells the GPU to blend the colors smoothly!
+    marker.type = visualization_msgs::msg::Marker::TRIANGLE_LIST; 
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.orientation.w = 1.0;
+    
+
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.b = 1.0;
+    marker.color.a = 1.0; 
+    // Triangles require scale to be exactly 1.0
+    marker.scale.x = 1.0; 
+    marker.scale.y = 1.0; 
+    marker.scale.z = 1.0; 
+
+    auto getColor = [&](double true_cost) {
+        std_msgs::msg::ColorRGBA c;
+        c.a = 0.5; // Fully opaque
+        double ratio = 1.0 - std::clamp(true_cost / global_max_cost, 0.0, 1.0);
+
+        if (ratio < 0.25) { 
+            c.r = 1.0; c.g = ratio * 4.0; c.b = 0.0; 
+        } else if (ratio < 0.5) { 
+            c.r = 1.0 - (ratio - 0.25) * 4.0; c.g = 1.0; c.b = 0.0; 
+        } else if (ratio < 0.75) { 
+            c.r = 0.0; c.g = 1.0; c.b = (ratio - 0.5) * 4.0; 
+        } else { 
+            c.r = 0.0; c.g = 1.0 - (ratio - 0.75) * 4.0; c.b = 1.0; 
+        }
+        return c;
+    };
+
+    int start_x = std::max(0, min_gx - brush_radius);
+    int end_x = std::min(nx - 2, max_gx + brush_radius); // -2 ensures bounds safety
+    int start_y = std::max(0, min_gy - brush_radius);
+    int end_y = std::min(ny - 2, max_gy + brush_radius);
+
+    for (int x = start_x; x <= end_x; x++) {
+        for (int y = start_y; y <= end_y; y++) {
+            
+            // Get the 4 corners of the current 2.5m grid space
+            int i00 = x + y * nx;
+            int i10 = (x + 1) + y * nx;
+            int i01 = x + (y + 1) * nx;
+            int i11 = (x + 1) + (y + 1) * nx;
+
+            double w00 = weight_grid[i00], w10 = weight_grid[i10];
+            double w01 = weight_grid[i01], w11 = weight_grid[i11];
+
+            // If all 4 corners have valid data, draw the seamlessly blended square (2 triangles)
+            if (w00 > 1e-6 && w10 > 1e-6 && w01 > 1e-6 && w11 > 1e-6) {
+                double c00 = cost_grid[i00] / w00;
+                double c10 = cost_grid[i10] / w10;
+                double c01 = cost_grid[i01] / w01;
+                double c11 = cost_grid[i11] / w11;
+
+                geometry_msgs::msg::Point p00, p10, p01, p11;
+                p00.x = lower_bounds[0] + x * res;       p00.y = lower_bounds[1] + y * res;       p00.z = -0.1;
+                p10.x = lower_bounds[0] + (x + 1) * res; p10.y = lower_bounds[1] + y * res;       p10.z = -0.1;
+                p01.x = lower_bounds[0] + x * res;       p01.y = lower_bounds[1] + (y + 1) * res; p01.z = -0.1;
+                p11.x = lower_bounds[0] + (x + 1) * res; p11.y = lower_bounds[1] + (y + 1) * res; p11.z = -0.1;
+
+                std_msgs::msg::ColorRGBA col00 = getColor(c00);
+                std_msgs::msg::ColorRGBA col10 = getColor(c10);
+                std_msgs::msg::ColorRGBA col01 = getColor(c01);
+                std_msgs::msg::ColorRGBA col11 = getColor(c11);
+
+                // Triangle 1
+                marker.points.push_back(p00); marker.colors.push_back(col00);
+                marker.points.push_back(p10); marker.colors.push_back(col10);
+                marker.points.push_back(p01); marker.colors.push_back(col01);
+
+                // Triangle 2
+                marker.points.push_back(p10); marker.colors.push_back(col10);
+                marker.points.push_back(p11); marker.colors.push_back(col11);
+                marker.points.push_back(p01); marker.colors.push_back(col01);
+            }
+        }
+    }
+    
     marker_pub_->publish(marker);
 }
 
 
-
-// -----------------------------------------------------------------------------
-// MASTER BATCH VISUALIZER - ZERO LAG IMPLEMENTATION
-// -----------------------------------------------------------------------------
 void RVizVisualization::publishObstacleFrame(
     const std::vector<Eigen::VectorXd>& safe_cyls, const std::vector<double>& safe_radii,
     const std::vector<Eigen::VectorXd>& threat_cyls, const std::vector<double>& threat_radii,
@@ -1454,7 +1888,6 @@ void RVizVisualization::publishObstacleFrame(
     visualization_msgs::msg::MarkerArray frame_array;
     auto now_stamp = node_->now();
 
-    // 1. ADD CLEAR COMMANDS
     std::vector<std::string> namespaces = {
         "obs_cyl_safe", "obs_cyl_threat", 
         "obs_box_safe", "obs_box_threat", 
@@ -1471,7 +1904,6 @@ void RVizVisualization::publishObstacleFrame(
         frame_array.markers.push_back(clear_m);
     }
 
-    // 2. DEFINE HELPER LAMBDAS (These were missing)
     auto add_cylinders = [&](const std::vector<Eigen::VectorXd>& pos, const std::vector<double>& rad, 
                              const std::vector<float>& col, const std::string& ns) {
         for (size_t i = 0; i < pos.size(); ++i) {
@@ -1516,20 +1948,19 @@ void RVizVisualization::publishObstacleFrame(
             end.x = pos[i].x() + vel[i].x(); end.y = pos[i].y() + vel[i].y(); end.z = 0.5;
             m.points.push_back(start); m.points.push_back(end);
             
-            m.scale.x = 0.2; m.scale.y = 0.4; m.scale.z = 0.4;
+            m.scale.x = 0.4; m.scale.y = 1.2; m.scale.z = 1.2;
             m.color.r = col[0]; m.color.g = col[1]; m.color.b = col[2]; m.color.a = 1.0;
             frame_array.markers.push_back(m);
         }
     };
 
-    // 3. BUILD OBSTACLES (Using the helpers)
-    add_cylinders(safe_cyls, safe_radii, {0.0f, 0.4f, 1.0f, 1.0f}, "obs_cyl_safe");
+    add_cylinders(safe_cyls, safe_radii, {0.89f, 0.26f, 0.2f, 1.0f}, "obs_cyl_safe");
     add_cylinders(threat_cyls, threat_radii, {1.0f, 0.0f, 0.0f, 0.8f}, "obs_cyl_threat");
 
-    add_boxes(safe_boxes, {0.0f, 0.6f, 0.8f, 1.0f}, "obs_box_safe");
+    add_boxes(safe_boxes, {0.89f, 0.26f, 0.2f, 1.0f}, "obs_box_safe");
     add_boxes(threat_boxes, {1.0f, 0.0f, 0.0f, 0.8f}, "obs_box_threat");
 
-    add_arrows(safe_vel_pos, safe_vel_val, {1.0f, 0.5f, 0.0f}, "obs_vel_safe"); 
+    add_arrows(safe_vel_pos, safe_vel_val, {0.65f, 0.15f, 0.1f}, "obs_vel_safe"); 
     add_arrows(threat_vel_pos, threat_vel_val, {1.0f, 0.0f, 0.0f}, "obs_vel_threat"); 
 
     // 4. BUILD ROBOT TRACE
@@ -1541,8 +1972,8 @@ void RVizVisualization::publishObstacleFrame(
         trace_m.id = 0;
         trace_m.type = visualization_msgs::msg::Marker::LINE_LIST;
         trace_m.action = visualization_msgs::msg::Marker::ADD;
-        trace_m.scale.x = 0.1; 
-        trace_m.color.r = 1.0f; trace_m.color.g = 1.0f; trace_m.color.b = 0.0f; trace_m.color.a = 1.0f;
+        trace_m.scale.x = 0.45; 
+        trace_m.color.r = 0.95f; trace_m.color.g = 0.6f; trace_m.color.b = 0.0f; trace_m.color.a = 1.0f;
 
         for (const auto& edge : robot_trace_edges) {
             geometry_msgs::msg::Point p1, p2;
@@ -1554,11 +1985,8 @@ void RVizVisualization::publishObstacleFrame(
         frame_array.markers.push_back(trace_m);
     }
 
-    // -------------------------------------------------------------------------
-    // 5. BUILD ROBOT MARKERS (ARROW + CYLINDER)
-    // -------------------------------------------------------------------------
     
-    // A. Robot Arrow
+    // Robot Arrow
     {
         visualization_msgs::msg::Marker arrow_m;
         arrow_m.header.frame_id = frame_id;
@@ -1583,13 +2011,13 @@ void RVizVisualization::publishObstacleFrame(
 
         arrow_m.color.r = 0;//robot_color[0];
         arrow_m.color.g = 0;//robot_color[1];
-        arrow_m.color.b = robot_color[2];
+        arrow_m.color.b = 0.6;
         arrow_m.color.a = 1.0;
 
         frame_array.markers.push_back(arrow_m);
     }
 
-    // B. Robot Inflation Cylinder
+    // Robot Inflation Cylinder
     if (robot_inflation > 0.0) {
         visualization_msgs::msg::Marker cyl_m;
         cyl_m.header.frame_id = frame_id;
@@ -1616,6 +2044,13 @@ void RVizVisualization::publishObstacleFrame(
         frame_array.markers.push_back(cyl_m);
     }
 
-    // 6. PUBLISH EVERYTHING AT ONCE
+    // PUBLISH EVERYTHING AT ONCE
     marker_pub_2_->publish(frame_array);
+}
+
+void RVizVisualization::triggerPublish() {
+    if (!marker_buffer_.markers.empty()) {
+        marker_array_pub_->publish(marker_buffer_);
+        marker_buffer_.markers.clear(); // Empty the buffer for the next control loop
+    }
 }

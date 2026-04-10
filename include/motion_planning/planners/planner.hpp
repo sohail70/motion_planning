@@ -69,53 +69,40 @@ struct TupleComparator {
 
 struct ReplanMetrics {
     int       obstacle_checks     = 0;   // collision queries — dominant cost
-    int       nodes_updated       = 0;   // nodes whose cost/LMC/rhs actually changed
     long long queue_operations    = 0;   // push/pop/update/remove on open/inconsistency queue
-    int       orphaned_nodes      = 0;   // nodes that lost valid path to goal
     double    path_cost           = 0.0; // final solution quality after repair
 };
 
 class Planner {
- public:
-    Planner() = default;
-    virtual ~Planner() = default;
+    public:
+        Planner() = default;
+        virtual ~Planner() = default;
+        virtual void setStart(const Eigen::VectorXd& start) = 0;
+        virtual void setGoal(const Eigen::VectorXd& goal) = 0;
+        virtual void setup(const Params& params , std::shared_ptr<Visualization> visualization) = 0;
+        virtual void plan() = 0;
+        virtual void setClock(std::shared_ptr<rclcpp::Clock> clock) { }
+        virtual void setRobotState(const Eigen::VectorXd& state) { }
+        virtual std::vector<Eigen::VectorXd> getPathPositions() const { return {}; } 
+        virtual void updateObstacles(const ObstacleVector& obstacles) { }
+        virtual void visualizeTree() {};
+        virtual void visualizeTreeGradient() {};
+        virtual void visualizeTreeReal() {};
+        virtual void visualizePath(const std::vector<Eigen::VectorXd>& path) {}
+        virtual void visualizePathGradient(const std::vector<Eigen::VectorXd>& path) {}
+        virtual void visualizeSearchArea() {};
+        virtual const ReplanMetrics& getLastReplanMetrics() const { 
+            static ReplanMetrics empty_metrics; 
+            return empty_metrics; 
+        }
+        virtual double getNeighborhoodRadius() {return 0;};
+        virtual int getTreeSize() = 0;
+        virtual void logGraphState(std::ofstream& out_file, int cycle_number) const {};
+        virtual double getAvgOutDegree() const { return 0.0; }
+        virtual double getAvgInDegree() const { return 0.0; }
+        virtual void resetMetrics() {}
 
-    virtual void setStart(const Eigen::VectorXd& start) = 0;
-    virtual void setGoal(const Eigen::VectorXd& goal) = 0;
-    
-    virtual void setup(const Params& params , std::shared_ptr<Visualization> visualization) = 0;
-    virtual void plan() = 0;
-
-    // --- New methods required by main.cpp ---
-    // Default implementations are provided where possible to avoid breaking existing geometric planners
-    virtual void setClock(std::shared_ptr<rclcpp::Clock> clock) { }
-    
-    virtual void setRobotState(const Eigen::VectorXd& state) { }
-    
-    virtual std::vector<Eigen::VectorXd> getPathPositions() const { return {}; } 
-
-    virtual void updateObstacleSamples(const ObstacleVector& obstacles) { }
-
-    virtual void visualizePath(const std::vector<Eigen::VectorXd>& path) {}
-
-    virtual int getTreeSize() = 0;
-
-    virtual void visualizeTree() {};
-    virtual void visualizeTreeReal() {};
-
-    virtual const ReplanMetrics& getLastReplanMetrics() const { 
-        static ReplanMetrics empty_metrics; 
-        return empty_metrics; 
-    }
-
-    virtual double getNeighborhoodRadius() {return 0;};
-
-    virtual double getAvgOutDegree() const { return 0.0; }
-    virtual double getAvgInDegree() const { return 0.0; }
-    virtual void resetMetrics() {}
-
-
- protected:
+    protected:
 
 
 };

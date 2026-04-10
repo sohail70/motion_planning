@@ -61,6 +61,8 @@ public:
     double getMaxVelocity() const override { return max_velocity_; }
     double getMaxAcceleration() const override { return 0.0; } // Dubins is typically 1st-order velocity
 
+    Trajectory generateEmergencyManeuver(const Eigen::VectorXd& state, double dt) const;
+    std::vector<Trajectory> getEscapePrimitives(const Eigen::VectorXd& state, double dt) const;
 
 
 private:

@@ -260,9 +260,10 @@ private:
                     if (is_threat) threat_boxes.push_back(box_tuple);
                     else safe_boxes.push_back(box_tuple);
                 }
+                Eigen::Vector2d scaled_velocity = obstacle.velocity * 0.2;
                 if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
-                    if (is_threat) { threat_vel_pos.push_back(obstacle.position); threat_vel_val.push_back(obstacle.velocity); }
-                    else { safe_vel_pos.push_back(obstacle.position); safe_vel_val.push_back(obstacle.velocity); }
+                    if (is_threat) { threat_vel_pos.push_back(obstacle.position); threat_vel_val.push_back(scaled_velocity); }
+                    else { safe_vel_pos.push_back(obstacle.position); safe_vel_val.push_back(scaled_velocity); }
                 }
             }
         }
@@ -287,7 +288,7 @@ private:
         }
 
         // --- 3. PUBLISH BATCH ---
-        std::vector<float> robot_color = is_colliding ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.8f, 0.1f, 0.8f};
+        std::vector<float> robot_color = is_colliding ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.0f, 0.45f, 0.74f};
         
         visualizer_->publishObstacleFrame(
             safe_cyl_pos, safe_cyl_radii, threat_cyl_pos, threat_cyl_radii,

@@ -241,3 +241,80 @@ Trajectory DubinsTimeStateSpace::createHoverPath(const Eigen::VectorXd& hover_st
     return hover_traj;
 }
 
+
+Trajectory DubinsTimeStateSpace::generateEmergencyManeuver(const Eigen::VectorXd& state, double dt) const {
+    Trajectory traj;
+    traj.is_valid = true;
+    traj.time_duration = dt;
+    
+    double dist = min_velocity_ * dt;
+    traj.cost = dist;
+    traj.geometric_distance = dist;
+    
+    double x = state(0), y = state(1), theta = state(2), time_to_go = state(3);
+    double r = min_turning_radius_;
+    
+    traj.path_points.push_back(state);
+    
+    // Simulate a maximum-steering left turn for 'dt' seconds
+    int steps = 5;
+    for(int i = 1; i <= steps; ++i) {
+        double step_dt = (dt * i) / steps;
+        double step_dist = min_velocity_ * step_dt;
+        double d_theta = step_dist / r; // arc length formula: s = r * theta
+        
+        Eigen::VectorXd pt(4);
+        pt(0) = x + r * sin(theta + d_theta) - r * sin(theta);
+        pt(1) = y - r * cos(theta + d_theta) + r * cos(theta);
+        pt(2) = normalizeAngle(theta + d_theta);
+        pt(3) = time_to_go - step_dt;
+        
+        traj.path_points.push_back(pt);
+    }
+    return traj;
+}
+
+std::vector<Trajectory> DubinsTimeStateSpace::getEscapePrimitives(const Eigen::VectorXd& state, double dt) const {
+    std::vector<Trajectory> primitives;
+    double x = state(0), y = state(1), theta = state(2), t_go = state(3);
+    
+    double v = max_velocity_; // Escape at maximum speed to cover spatial distance
+    double r = min_turning_radius_;
+    double dist = v * dt;
+    double d_theta_max = dist / r;
+
+    // Angles: Hard Left, Straight, Hard Right
+    std::vector<double> steer_angles = {d_theta_max, 0.0, -d_theta_max};
+
+    for (double d_theta : steer_angles) {
+        Trajectory traj;
+        traj.is_valid = true;
+        traj.time_duration = dt;
+        traj.cost = dist;
+        traj.path_points.push_back(state);
+
+        int steps = 5;
+        for (int i = 1; i <= steps; ++i) {
+            double step_dt = (dt * i) / steps;
+            double step_dist = v * step_dt;
+            double current_d_theta = (d_theta * i) / steps;
+
+            Eigen::VectorXd pt(4);
+            if (std::abs(current_d_theta) < 1e-4) {
+                // Driving Straight
+                pt(0) = x + step_dist * cos(theta);
+                pt(1) = y + step_dist * sin(theta);
+            } else {
+                // Turning
+                double turn_r = step_dist / current_d_theta;
+                pt(0) = x + turn_r * sin(theta + current_d_theta) - turn_r * sin(theta);
+                pt(1) = y - turn_r * cos(theta + current_d_theta) + turn_r * cos(theta);
+            }
+            pt(2) = normalizeAngle(theta + current_d_theta);
+            pt(3) = t_go - step_dt;
+            traj.path_points.push_back(pt);
+        }
+        primitives.push_back(traj);
+    }
+    return primitives;
+}

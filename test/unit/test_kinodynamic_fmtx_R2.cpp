@@ -377,7 +377,7 @@ int main(int argc, char** argv)
 
     //     auto start = std::chrono::steady_clock::now();
 
-    //     kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
+    //     kinodynamic_planner->updateObstacles(snapshot.obstacles);
 
     //     auto end = std::chrono::steady_clock::now();
 
@@ -491,11 +491,11 @@ int main(int argc, char** argv)
         // --- 2. REPAIR GRAPH ---
         if (!all_obs.empty()) {
             auto start_update = std::chrono::steady_clock::now();
-            kinodynamic_planner->updateObstacleSamples(all_obs);
+            kinodynamic_planner->updateObstacles(all_obs);
             auto end_update = std::chrono::steady_clock::now();
             double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
             RCLCPP_INFO(rclcpp::get_logger("FMTx_Timing"), 
-                "updateObstacleSamples took: %.2f ms ", 
+                "updateObstacles took: %.2f ms ", 
                 duration_ms);
 
 

@@ -21,17 +21,52 @@ void KinodynamicPRMStarDStarLite::setStart(const Eigen::VectorXd& start) {
 void KinodynamicPRMStarDStarLite::setGoal(const Eigen::VectorXd& goal) {
     problem_def_->setGoal(goal);
 }
+
+void KinodynamicPRMStarDStarLite::injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes) {
+    // ====================================================================
+    // INJECT TIME PILLAR NODES (ZERO VELOCITIES)
+    // ====================================================================
+    double max_time = upper_bounds_(statespace_->getDimension() - 1); 
+
+    time_pillar_indices_.insert(goal_node_->getIndex());
+    for (int i = 1; i <= num_pillar_nodes; ++i) {
+        Eigen::VectorXd pillar_state = goal_state_val;
+
+        // Set velocities to ZERO so the robot can safely stop at the goal.
+        // Safety check to ensure we only apply this to states with velocity dimensions
+        if (pillar_state.size() >= 4) {
+            pillar_state(2) = 0.0;
+            pillar_state(3) = 0.0;
+        }
+
+        // Distribute evenly across time
+        double t_val = (max_time / num_pillar_nodes) * i; 
+        pillar_state(statespace_->getDimension() - 1) = t_val;
+
+        auto state_ptr = statespace_->addState(pillar_state);
+        auto node = std::make_unique<DStarLiteNode>(state_ptr, nodes_.size());
+        node->setTimeToGoal(t_val);
+        node->rhs = 0;
+        time_pillar_indices_.insert(node->getIndex());
+        nodes_.push_back(std::move(node));
+    }
+}
+
+
 void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
+    std::cout << "------------------------------------------------------------\n";
     auto start_time = std::chrono::high_resolution_clock::now();
     visualization_ = visualization;
     
     num_samples_ = params.getParam<int>("num_of_samples");
     kd_dim_ = params.getParam<int>("kd_dim", 2);
+    partial_update = params.getParam<bool>("partial_update");
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
     use_knn_ = params.getParam<bool>("use_knn", false);
     factor_ = params.getParam<double>("factor", 1.0);
     is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
     bool use_grid_sampling = false;
+    num_pillar_nodes_ = params.getParam<int>("num_pillar_nodes", 50);
 #if USE_GRID_SAMPLING
     use_grid_sampling = true;
 #endif
@@ -190,7 +225,37 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
                   << " at " << start_node_->getStateValue().transpose() << std::endl;
 
     } else {
-        std::cout << "Using UNIFORM random sampling strategy." << std::endl;
+        // std::cout << "Using UNIFORM random sampling strategy." << std::endl;
+        // use_grid_sampling_ = false;
+        
+        // const Eigen::VectorXd& start_state_val = problem_def_->getGoal(); 
+        // const Eigen::VectorXd& goal_state_val = problem_def_->getStart();
+
+        // auto goal_state_ptr = statespace_->addState(goal_state_val);
+        // auto goal_node = std::make_unique<DStarLiteNode>(goal_state_ptr, 0);
+        // goal_node_ = goal_node.get(); 
+        // goal_node->setTimeToGoal(0);
+        // nodes_.push_back(std::move(goal_node));
+
+        // auto start_state_ptr = statespace_->addState(start_state_val);
+        // auto start_node = std::make_unique<DStarLiteNode>(start_state_ptr, 1);
+        // start_node_ = start_node.get(); 
+        // start_node->setTimeToGoal(0);
+        // nodes_.push_back(std::move(start_node));
+
+        // for (int i = 0; i < num_samples_ - 2; ++i) {
+        //     auto state_ptr = statespace_->sampleUniform(lower_bounds_, upper_bounds_);
+        //     auto node = std::make_unique<DStarLiteNode>(state_ptr, nodes_.size());
+        //     if (!is_geometric_mode_) {
+        //         double absolute_t = node->getStateValue().tail<1>()[0];
+        //         node->setTimeToGoal(absolute_t);
+        //     } else {
+        //         node->setTimeToGoal(0.0);
+        //     }
+        //     nodes_.push_back(std::move(node));
+        // }
+
+        std::cout << "Using UNIFORM random sampling strategy with Goal Time Pillar." << std::endl;
         use_grid_sampling_ = false;
         
         const Eigen::VectorXd& start_state_val = problem_def_->getGoal(); 
@@ -205,10 +270,14 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
         auto start_state_ptr = statespace_->addState(start_state_val);
         auto start_node = std::make_unique<DStarLiteNode>(start_state_ptr, 1);
         start_node_ = start_node.get(); 
-        start_node->setTimeToGoal(0);
+        start_node->setTimeToGoal(std::numeric_limits<double>::infinity());
         nodes_.push_back(std::move(start_node));
 
-        for (int i = 0; i < num_samples_ - 2; ++i) {
+        injectTimePillarNodes(goal_state_val, num_pillar_nodes_);
+
+        // Generate the remaining uniform samples normally
+        int remaining_samples = num_samples_ - 2 - num_pillar_nodes_;
+        for (int i = 0; i < remaining_samples; ++i) {
             auto state_ptr = statespace_->sampleUniform(lower_bounds_, upper_bounds_);
             auto node = std::make_unique<DStarLiteNode>(state_ptr, nodes_.size());
             if (!is_geometric_mode_) {
@@ -219,7 +288,32 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
             }
             nodes_.push_back(std::move(node));
         }
+
+
+
     }
+
+
+    // ====================================================================
+    // [DEBUG LOG PRM*] Verifying Nodes Before KD-Tree
+    // ====================================================================
+    std::cout << "\n[DEBUG LOG PRM*] Verifying Endpoint, Pillar, and First Random Nodes:\n";
+    int prm_check_limit = std::min((int)nodes_.size(), num_pillar_nodes_ + 3);
+    for (int i = 0; i < prm_check_limit; ++i) {
+        auto node = nodes_[i].get();
+        std::cout << "PRM* Node " << node->getIndex() 
+                  << " | State: [" << node->getStateValue().transpose() 
+                  << "] | TTG: " << node->getTimeToGoal() << "\n";
+    }
+    std::cout << "...\n";
+    for (int i = std::max(0, (int)nodes_.size() - 2); i < nodes_.size(); ++i) {
+        auto node = nodes_[i].get();
+        std::cout << "PRM* Node " << node->getIndex() 
+                  << " | State: [" << node->getStateValue().transpose() 
+                  << "] | TTG: " << node->getTimeToGoal() << "\n";
+    }
+    std::cout << "Total PRM* Nodes: " << nodes_.size() << "\n\n";
+    // ====================================================================
 
 
     std::cout << "PRM Built with " << nodes_.size() << " nodes (including Start/Goal).\n";
@@ -229,6 +323,7 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
     // kdtree_->addPoints(spatial_samples_only);
     kdtree_->addPoints(all_samples);
     kdtree_->buildTree();
+
 
     int d = statespace_->getDimension();
     if (use_knn_) {
@@ -251,11 +346,62 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
     auto cache_duration = std::chrono::duration_cast<std::chrono::milliseconds>(cache_end - cache_start);
     std::cout << "Neighbor caching complete. Time taken: " << cache_duration.count() << " ms." << std::endl;
 
+
+
+    checkIsolatedNodes(); // Since we presample, some nodes might not get to have any neighbors in non geometric tests. This is just a report
+
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_time);
     std::cout << "Time taken by setup: " << duration.count() << " milliseconds\n";
-    std::cout << "====================================\n" << std::endl;
+    std::cout << "------------------------------------------------------------\n";
 
+    // ====================================================================
+    // DIAGNOSTIC LOG: TIME PILLAR CONNECTIVITY CHECK
+    // ====================================================================
+    if (!is_geometric_mode_ && goal_node_) {
+        std::cout << "\n=======================================================\n";
+        std::cout << "[TIME PILLAR CONNECTIVITY CHECK]\n";
+        Eigen::VectorXd goal_spatial = goal_node_->getStateValue().head(2);
+        
+        int isolated_pillars = 0;
+        int connected_pillars = 0;
+
+        for (auto& node_ptr : nodes_) {
+            DStarLiteNode* node = node_ptr.get();
+            if (node == goal_node_) continue;
+            
+            // If this is a Time Pillar node
+            if ((node->getStateValue().head(2) - goal_spatial).norm() < 0.5) {
+                int incoming_physical_edges = 0;
+                bool is_connected_to_root = false;
+                
+                // 1. Check incoming paths from the map
+                for (const auto& pair : node->backward_neighbors_) {
+                    if (pair.first != goal_node_) {
+                        incoming_physical_edges++;
+                    }
+                }
+
+                // 2. PROVE IT CONNECTS TO THE ROOT
+                for (const auto& pair : node->forward_neighbors_) {
+                    if (pair.first == goal_node_) {
+                        is_connected_to_root = true;
+                        break;
+                    }
+                }
+                
+                std::cout << "Pillar Node ID " << node->getIndex() 
+                          << " (T=" << std::fixed << std::setprecision(2) << node->getStateValue()(statespace_->getDimension()-1) << ") "
+                          << "has " << incoming_physical_edges << " incoming physical edges "
+                          << "| Connects to Root: " << (is_connected_to_root ? "YES" : "NO") << "\n";
+                          
+                if (incoming_physical_edges == 0) isolated_pillars++;
+                else connected_pillars++;
+            }
+        }
+        std::cout << "Connected Pillars: " << connected_pillars << " | Isolated Pillars: " << isolated_pillars << "\n";
+        std::cout << "=======================================================\n\n";
+    }
 
 }
 
@@ -399,6 +545,39 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
 }
 
 
+void KinodynamicPRMStarDStarLite::checkIsolatedNodes() const {
+    int isolated_nodes_count = 0;
+    std::vector<int> isolated_indices;
+
+    std::cout << "Checking " << nodes_.size() << " nodes for isolation (zero neighbors)..." << std::endl;
+
+    for (size_t i = 0; i < nodes_.size(); ++i) {
+        const auto* node = nodes_[i].get();
+        
+        if (node->forward_neighbors_.empty() && node->backward_neighbors_.empty()) {
+            isolated_nodes_count++;
+            isolated_indices.push_back(i);
+        }
+    }
+
+    if (isolated_nodes_count > 0) {
+        std::cout << "Found " << isolated_nodes_count 
+                  << " isolated nodes (nodes with 0 neighbors) out of " 
+                  << nodes_.size() << " total nodes." << std::endl;
+        
+        /*
+        std::cout << "Isolated node indices: ";
+        for (int idx : isolated_indices) {
+            std::cout << idx << " ";
+        }
+        std::cout << std::endl;
+        */
+    } else {
+        std::cout << "All nodes are connected to at least one neighbor!" << std::endl;
+    }
+}
+
+
 void KinodynamicPRMStarDStarLite::plan() {
     if (!start_node_ || !goal_node_) return;
     initialize(start_node_, goal_node_);
@@ -411,62 +590,114 @@ void KinodynamicPRMStarDStarLite::plan() {
 }
 
 
+// double KinodynamicPRMStarDStarLite::heuristic(DStarLiteNode* a, DStarLiteNode* b) {
+// #if USE_HEURISTIC
+//     const Eigen::VectorXd& val_a = a->getStateValue();
+//     const Eigen::VectorXd& val_b = b->getStateValue();
+    
+//     // Spatial distance (Common to all state spaces)
+//     // All spaces have x at index 0 and y at index 1.
+//     double dx = val_a(0) - val_b(0);
+//     double dy = val_a(1) - val_b(1);
+//     double spatial_dist_sq = dx * dx + dy * dy;
+
+//     // State Space Switching based on KD-Tree Dimension
+//     if (kd_dim_ == 2) {
+//         // R2 Space: [x, y]
+//         // Pure geometric distance.
+//         return std::sqrt(spatial_dist_sq);
+//     } 
+//     else if (kd_dim_ == 3) {
+//         // R2T Space: [x, y, time]
+//         double dt = val_a(2) - val_b(2);
+//         double c_t = 1.0; 
+        
+//         return std::sqrt(spatial_dist_sq + std::pow(c_t * dt, 2));
+//         // return std::sqrt(spatial_dist_sq);
+//     } 
+//     else if (kd_dim_ == 4) {
+//         // Dubins Time Space: [x, y, theta, time]
+//         // Theta is at index 2, Time is at index 3.
+//         // We intentionally IGNORE theta (index 2) to prevent overestimating!
+//         double dt = val_a(3) - val_b(3);
+//         double c_t = 1.0; 
+        
+//         return std::sqrt(spatial_dist_sq + std::pow(c_t * dt, 2));
+//     } 
+//     else if (kd_dim_ == 5) {
+//         // Thruster Space: [x, y, vx, vy, time]
+//         // Velocities are at indices 2 and 3, Time is at index 4.
+//         double dvx = val_a(2) - val_b(2);
+//         double dvy = val_a(3) - val_b(3);
+//         double dv_dist_sq = dvx * dvx + dvy * dvy;
+//         double dt = val_a(4) - val_b(4);
+//         // Weights MUST match the ones in your ThrusterSteerStateSpace::steer function
+//         double c_x = 1.0;
+//         double c_v = 1.0;
+//         double c_t = 1.0;
+//         return std::sqrt((c_x * c_x * spatial_dist_sq) + 
+//                          (c_v * c_v * dv_dist_sq) + 
+//                          (c_t * c_t * dt * dt));
+//     }
+    
+//     // Fallback
+//     return 0.0;
+// #else
+//     return 0.0;
+// #endif
+// }
+
 double KinodynamicPRMStarDStarLite::heuristic(DStarLiteNode* a, DStarLiteNode* b) {
 #if USE_HEURISTIC
+    if (!a || !b) return 0.0;
+
     const Eigen::VectorXd& val_a = a->getStateValue();
     const Eigen::VectorXd& val_b = b->getStateValue();
     
     // Spatial distance (Common to all state spaces)
-    // All spaces have x at index 0 and y at index 1.
     double dx = val_a(0) - val_b(0);
     double dy = val_a(1) - val_b(1);
     double spatial_dist_sq = dx * dx + dy * dy;
 
+    double h_val = 0.0;
+
     // State Space Switching based on KD-Tree Dimension
     if (kd_dim_ == 2) {
-        // R2 Space: [x, y]
-        // Pure geometric distance.
-        return std::sqrt(spatial_dist_sq);
+        h_val = std::sqrt(spatial_dist_sq);
     } 
-    else if (kd_dim_ == 3) {
-        // R2T Space: [x, y, time]
-        double dt = val_a(2) - val_b(2);
-        double c_t = 1.0; 
-        
-        return std::sqrt(spatial_dist_sq + std::pow(c_t * dt, 2));
-    } 
-    else if (kd_dim_ == 4) {
-        // Dubins Time Space: [x, y, theta, time]
-        // Theta is at index 2, Time is at index 3.
-        // We intentionally IGNORE theta (index 2) to prevent overestimating!
-        double dt = val_a(3) - val_b(3);
-        double c_t = 1.0; 
-        
-        return std::sqrt(spatial_dist_sq + std::pow(c_t * dt, 2));
+    else if (kd_dim_ == 3 || kd_dim_ == 4) {
+        // R2T and Dubins: dt is DROPPED to preserve Triangle Inequality 
+        // with the zero-cost Time Pillar edges!
+        h_val = std::sqrt(spatial_dist_sq);
     } 
     else if (kd_dim_ == 5) {
-        // Thruster Space: [x, y, vx, vy, time]
-        // Velocities are at indices 2 and 3, Time is at index 4.
+        // Thruster Space: dt is DROPPED!
         double dvx = val_a(2) - val_b(2);
         double dvy = val_a(3) - val_b(3);
         double dv_dist_sq = dvx * dvx + dvy * dvy;
-        double dt = val_a(4) - val_b(4);
-        // Weights MUST match the ones in your ThrusterSteerStateSpace::steer function
+        
         double c_x = 1.0;
         double c_v = 1.0;
-        double c_t = 1.0;
-        return std::sqrt((c_x * c_x * spatial_dist_sq) + 
-                         (c_v * c_v * dv_dist_sq) + 
-                         (c_t * c_t * dt * dt));
+        h_val = std::sqrt((c_x * c_x * spatial_dist_sq) + (c_v * c_v * dv_dist_sq));
     }
     
-    // Fallback
-    return 0.0;
+    // // =========================================================
+    // // THE KINODYNAMIC TIE-BREAKER (EARLY ARRIVAL)
+    // // Because wait edges cost 0.0, all Time Pillar nodes are equal.
+    // // We subtract a microscopic amount based on the node's T value 
+    // // to mathematically force D* Lite to pick the highest T (earliest arrival)!
+    // // =========================================================
+    // if (kd_dim_ > 2) {
+    //     double time_a = val_a(kd_dim_ - 1);
+    //     h_val -= (time_a * 1e-5); 
+    // }
+
+    // Ensure the heuristic never drops below 0
+    return std::max(0.0, h_val);
 #else
     return 0.0;
 #endif
 }
-
 
 DStarLiteKey KinodynamicPRMStarDStarLite::calculateKey(DStarLiteNode* u) {
     double min_val = std::min(u->g, u->rhs);
@@ -477,13 +708,22 @@ DStarLiteKey KinodynamicPRMStarDStarLite::calculateKey(DStarLiteNode* u) {
 
 void KinodynamicPRMStarDStarLite::initialize(DStarLiteNode* start, DStarLiteNode* goal) {
     km_ = 0.0;
-    open_queue_.clear();
+    open_queue_.clear(); // It removes the pillars so dont use it!
     start_node_ = start;
     goal_node_ = goal;
     goal->rhs = 0.0;
+
     open_queue_.add(goal, calculateKey(goal));
+    for (int idx : time_pillar_indices_) {
+        DStarLiteNode* node = nodes_[idx].get();
+        node->rhs = 0.0;
+        open_queue_.add(node, calculateKey(node));
+        last_replan_metrics_.queue_operations++;
+    }
+
     last_replan_metrics_.queue_operations++;
 }
+
 
 
 void KinodynamicPRMStarDStarLite::updateVertex(DStarLiteNode* u) {
@@ -510,6 +750,14 @@ void KinodynamicPRMStarDStarLite::updateVertex(DStarLiteNode* u) {
 // returns true if rhs (or best parent) actually changed
 bool KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
     if (s == goal_node_) return false;
+    // SACRED ROOT PROTECTION: 
+    // The main goal and all Time Pillars are mathematical sinks.
+    // They must NEVER recompute their RHS. Their cost is eternally 0.0.
+    if (time_pillar_indices_.find(s->getIndex()) != time_pillar_indices_.end()) {
+        return false; 
+    }
+
+
     double min_rhs = std::numeric_limits<double>::infinity();
     DStarLiteNode* best_parent = nullptr;
     std::shared_ptr<Trajectory> best_traj = nullptr;
@@ -533,24 +781,38 @@ bool KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
 #endif
     }
 
+    // double old_rhs = s->rhs;
+    // // Only change rhs and parent if it actually changed
+    // if (std::isfinite(old_rhs) != std::isfinite(min_rhs) || std::abs(old_rhs - min_rhs) > 1e-9) {
+    //     s->rhs = min_rhs;
+    //     s->setBestParent(best_parent, best_traj);
+
+    //     return true;
+    // }
+    // // nothing changed
+    // return false;
+
+
+    // =========================================================
+    // FIX: ALWAYS update the parent and rhs, regardless of cost!
+    // =========================================================
     double old_rhs = s->rhs;
-    // Only change rhs and parent if it actually changed
+    s->rhs = min_rhs;
+    s->setBestParent(best_parent, best_traj);
+
+    // Only return true (triggering a queue update) if the mathematical cost changed
     if (std::isfinite(old_rhs) != std::isfinite(min_rhs) || std::abs(old_rhs - min_rhs) > 1e-9) {
-        s->rhs = min_rhs;
-        s->setBestParent(best_parent, best_traj);
-        last_replan_metrics_.nodes_updated++;
-        if (std::isfinite(old_rhs) && !std::isfinite(min_rhs)) {
-            last_replan_metrics_.orphaned_nodes++;
-        }
         return true;
     }
-    // nothing changed
+    
     return false;
+
 }
 
 void KinodynamicPRMStarDStarLite::computeShortestPath() {
     if (!start_node_ || !goal_node_) return;
 
+    
     while (!open_queue_.empty()) {
         
         // Recalculate target_key dynamically EVERY iteration
@@ -565,9 +827,13 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
             start_is_consistent = (std::abs(start_node_->g - start_node_->rhs) <= 1e-9);
         }
 
-        // Stop ONLY when the top queue key exceeds our target AND the start node is consistent
-        if (!(open_queue_.topKey() < target_key || !start_is_consistent)) {
-            break; 
+        // If partial_update is TRUE, we use the D* Lite early termination.
+        // If FALSE, we skip the break and force the queue to fully empty.
+        if (partial_update) {
+            // Stop ONLY when the top queue key exceeds our target AND the start node is consistent
+            if (!(open_queue_.topKey() < target_key || !start_is_consistent)) {
+                break; 
+            }
         }
     
         DStarLiteNode* u = open_queue_.top();
@@ -627,6 +893,7 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
                 }
             }
             // Process u itself (the union {u} part)
+            recomputeRHS(u);
             updateVertex(u);
         }
     }
@@ -646,9 +913,21 @@ double KinodynamicPRMStarDStarLite::computeShortestPathDijkstraMode() {
 
     const double EPS = 1e-9;
 
-    pq.push({0.0, goal_node_});
-    local_g_map[goal_node_] = 0.0;
-    local_parent_map[goal_node_] = nullptr;
+    Eigen::VectorXd goal_spatial = problem_def_->getStart().head(2);
+    // Seed Dijkstra with ALL Time Pillars + Main Goal
+    for (auto& node_ptr : nodes_) {
+        DStarLiteNode* node = node_ptr.get();
+        if ((node->getStateValue().head(2) - goal_spatial).norm() < 1e-3) {
+            pq.push({0.0, node});
+            local_g_map[node] = 0.0;
+            local_parent_map[node] = nullptr;
+        }
+    }
+
+
+    // pq.push({0.0, goal_node_});
+    // local_g_map[goal_node_] = 0.0;
+    // local_parent_map[goal_node_] = nullptr;
 
     while (!pq.empty()) {
         auto [cur_cost, u] = pq.top(); pq.pop();
@@ -739,9 +1018,21 @@ void KinodynamicPRMStarDStarLite::debugCompareDijkstraVsDStarLite() {
     auto cmp = [](const NodePair& a, const NodePair& b){ return a.first > b.first; };
     std::priority_queue<NodePair, std::vector<NodePair>, decltype(cmp)> pq(cmp);
     
-    pq.push({0.0, goal_node_});
-    dijkstra_costs[goal_node_] = 0.0;
-    dijkstra_parents[goal_node_] = nullptr;
+
+    Eigen::VectorXd goal_spatial = problem_def_->getStart().head(2);
+    // Seed Dijkstra Comparison with ALL Time Pillars
+    for (auto& node_ptr : nodes_) {
+        DStarLiteNode* node = node_ptr.get();
+        if ((node->getStateValue().head(2) - goal_spatial).norm() < 1e-3) {
+            pq.push({0.0, node});
+            dijkstra_costs[node] = 0.0;
+            dijkstra_parents[node] = nullptr;
+        }
+    }
+
+    // pq.push({0.0, goal_node_});
+    // dijkstra_costs[goal_node_] = 0.0;
+    // dijkstra_parents[goal_node_] = nullptr;
 
     while (!pq.empty()) {
         auto [cur_cost, u] = pq.top(); pq.pop();
@@ -890,13 +1181,10 @@ void KinodynamicPRMStarDStarLite::debugCompareDijkstraVsDStarLite() {
 
 
 
-void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& turned_obstacles) {
+void KinodynamicPRMStarDStarLite::updateObstacles(const ObstacleVector& turned_obstacles) {
     bool graph_changed = false; // Flag to track updates
     if (turned_obstacles.empty()) return;
 
-    // Manage km update (Standard D* Lite logic)
-    // We need the OLD start position before we might have updated it elsewhere
-    DStarLiteNode* old_start = last_start_node;   // preserve previous robot/start
 
     double T_robot = 0.0;
     if (!is_geometric_mode_) {
@@ -922,11 +1210,8 @@ void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& tu
         addNewObstacle(stored_ob);
     }
 
-        if (old_start && start_node_) {
-            km_ += heuristic(old_start, start_node_);
-        }
-        last_start_node = start_node_;
-
+        // start_node_->g = INFINITY; 
+        // open_queue_.update(start_node_, calculateKey(start_node_));
 
         computeShortestPath();
 
@@ -936,9 +1221,63 @@ void KinodynamicPRMStarDStarLite::updateObstacleSamples(const ObstacleVector& tu
             debugCompareDijkstraVsDStarLite();
         #endif
 
+
+
+
+
+    // ==========================================================
+    // PROOF OF TIME PILLAR USAGE: Trace the actual computed path
+    // ==========================================================
+    if (!is_geometric_mode_ && start_node_) {
+        std::cout << "\n========== PLANNED PATH TRACE ==========\n";
+        std::cout << "Robot's Path Cost (rhs): " << start_node_->rhs << "\n";
+        
+        DStarLiteNode* current = start_node_;
+        
+        // In backward search, the problem's 'start' is the physical destination
+        Eigen::VectorXd goal_spatial = problem_def_->getStart().head(2); 
+        
+        if (std::isinf(start_node_->rhs)) {
+            std::cout << "NO PATH FOUND (rhs = inf)\n";
+        } else {
+            while (current != nullptr) {
+                double curr_t = current->getStateValue()(statespace_->getDimension() - 1);
+                double curr_x = current->getStateValue()(0);
+                double curr_y = current->getStateValue()(1);
+                
+                std::cout << "Node " << current->getIndex() 
+                          << " at [" << std::fixed << std::setprecision(1) << curr_x << ", " << curr_y << "]"
+                          << " T=" << std::fixed << std::setprecision(2) << curr_t;
+                
+                DStarLiteNode* next_node = current->getParent();
+                
+                // If there is no parent, we have reached a root of the tree!
+                if (!next_node) {
+                    if (current->rhs == 0.0) {
+                        double dist_to_goal = (current->getStateValue().head(2) - goal_spatial).norm();
+                        
+                        // Time pillars are injected exactly at the goal location
+                        if (dist_to_goal <= 1e-3) {
+                            std::cout << " (MISSION GOAL / TIME PILLAR)\n";
+                            std::cout << "   ==[ SUCCESSFULLY ARRIVED AT T=" << curr_t << " ]==> \n";
+                        } else {
+                            std::cout << " (UNKNOWN ROOT)\n";
+                        }
+                    } else {
+                        std::cout << " -> [BROKEN PATH: No parent but LMC != 0]\n";
+                    }
+                    break;
+                }
+                
+                std::cout << "\n   --[ physical steer ]--> \n";
+                current = next_node;
+            }
+        }
+        std::cout << "========================================\n\n";
+    }
+
+
 }
-
-
 
 
 
@@ -970,7 +1309,7 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
     double cost_of_current_anchor = std::numeric_limits<double>::infinity();
     
     Trajectory bridge;
-    if (start_node_ && start_node_->g != std::numeric_limits<double>::infinity()) {
+    if (start_node_ && start_node_->rhs != std::numeric_limits<double>::infinity()) {
         bridge = statespace_->steer(robot_continuous_state_, start_node_->getStateValue());
         if (bridge.is_valid) {
             bool safe = true;
@@ -984,43 +1323,41 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
             }
 
             if (safe) {
-                cost_of_current_anchor = bridge.cost + start_node_->g;
+                cost_of_current_anchor = bridge.cost + start_node_->rhs;
                 // return;
             }
         }
     }
 
-    DStarLiteNode* best_candidate_node = nullptr;
-    Trajectory best_candidate_bridge;
-    double best_candidate_cost = std::numeric_limits<double>::infinity();
+    // Tracks the best node that ALREADY has a valid path to the goal
+    DStarLiteNode* best_connected_node = nullptr;
+    Trajectory best_connected_bridge;
+    double best_connected_cost = std::numeric_limits<double>::infinity();
+    
+    // Tracks the safest physical node to reach, even if it is currently unexplored (g = infinity)
+    DStarLiteNode* best_fallback_node = nullptr;
+    Trajectory best_fallback_bridge;
+    double best_fallback_cost = std::numeric_limits<double>::infinity();
     
     double current_search_radius = connection_radius_;
     const int max_attempts = 5;
     const double radius_multiplier = 2.0;
 
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
-        std::vector<size_t> candidate_indices;
-        
-        candidate_indices = kdtree_->radiusSearch(query_point, current_search_radius);
+        std::vector<size_t> candidate_indices = kdtree_->radiusSearch(query_point, current_search_radius);
 
         for (size_t idx : candidate_indices) {
             DStarLiteNode* candidate = nodes_[idx].get();
 
-            // Candidate must be reachable from Goal (Finite G)
-            if (candidate->g == std::numeric_limits<double>::infinity()) {
-                continue;
-            }
-
-            // Check Steering & Collision
-            Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
-            if (!bridge.is_valid) continue;
-
+            // Check Steering & Collision FIRST (Do not skip nodes just because g == inf!)
+            Trajectory temp_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+            if (!temp_bridge.is_valid) continue;
 
             bool safe = true;
             const auto& obstacles = obs_checker_->getObstacles();
             for (const auto& ob : obstacles) {
                 last_replan_metrics_.obstacle_checks++;
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, ob)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(temp_bridge, ob)) {
                     safe = false;
                     break; // early exit on collision
                 }
@@ -1028,58 +1365,53 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
 
             if (!safe) continue;
 
-            double total_cost = bridge.cost + candidate->g;
+            // Fallback Tracking: Track the easiest physical node to reach
+            if (temp_bridge.cost < best_fallback_cost) {
+                best_fallback_cost = temp_bridge.cost;
+                best_fallback_node = candidate;
+                best_fallback_bridge = temp_bridge;
+            }
 
-            if (total_cost < best_candidate_cost) {
-                best_candidate_cost = total_cost;
-                best_candidate_node = candidate;
-                best_candidate_bridge = bridge;
-                bridge_cost_ = bridge.cost;
+
+
+            // Connected Tracking: Track the best node that ALREADY has a finite path
+            if (candidate->rhs != std::numeric_limits<double>::infinity()) {
+                double total_cost = temp_bridge.cost + candidate->rhs;
+                if (total_cost < best_connected_cost) {
+                    best_connected_cost = total_cost;
+                    best_connected_node = candidate;
+                    best_connected_bridge = temp_bridge;
+                }
             }
         }
 
-        if (best_candidate_node) break;
+        // Only break early if we found a CONNECTED node. 
+        // If we only found a fallback, keep expanding radius to see if a connected one is slightly further away!
+        if (best_connected_node) break;
         current_search_radius *= radius_multiplier;
     }
 
-    if (best_candidate_node && best_candidate_cost < cost_of_current_anchor * hysteresis_factor) {
+    // DECISION LOGIC
+
+    if (best_connected_node && best_connected_cost < cost_of_current_anchor * hysteresis_factor) {
         // Update km (Key Modifier) for D* Lite if the start node changed
-        if (start_node_ && start_node_ != best_candidate_node) {
-            km_ += heuristic(start_node_, best_candidate_node);
+        if (start_node_ && start_node_ != best_connected_node) {
+            km_ += heuristic(start_node_, best_connected_node);
         }
-        
-        start_node_ = best_candidate_node;
-        bridge_cost_ = best_candidate_bridge.cost;
-        last_replan_metrics_.path_cost = best_candidate_cost;
-        current_bridge_trajectory_ = best_candidate_bridge;
-    } else if (start_node_ && cost_of_current_anchor != std::numeric_limits<double>::infinity()) {
+        // We found a better node that is already fully connected
+        start_node_ = best_connected_node;
+        bridge_cost_ = best_connected_bridge.cost;
+        last_replan_metrics_.path_cost = best_connected_cost;
+        current_bridge_trajectory_ = best_connected_bridge;
+    } 
+    else if (start_node_ && cost_of_current_anchor != std::numeric_limits<double>::infinity()) {
+        // Keep current anchor
         bridge_cost_ = bridge.cost;
         last_replan_metrics_.path_cost = cost_of_current_anchor;
         current_bridge_trajectory_ = bridge;
     } 
     else if (start_node_ && !bridge.is_valid && current_bridge_trajectory_.is_valid) {
-        /* 
-         * ==============================================================================
-         * ARCHITECTURE NOTE: WHY CACHED TRAJECTORIES DON'T CAUSE "JUMPS"
-         * ==============================================================================
-         * When steer() mathematically fails near an anchor, we fallback to recycling 
-         * the 'current_bridge_trajectory_' from a previous control loop. You might worry 
-         * that the 2nd or 3rd points of this old array are "stale" and will cause the 
-         * robot to jump backwards. This will NOT happen due to our time-driven pipeline:
-         * 
-         * 1. setPath(): Overwrites index [0]'s position/velocity to match the robot's 
-         *    ACTUAL current physical state, preventing any theoretical first-frame jump.
-         * 2. stepSimulation(): Interpolation is strictly driven by 'current_sim_time_'. 
-         *    The std::lower_bound function automatically "fast-forwards" through the array. 
-         * 
-         * Because time has passed since the trajectory was cached, std::lower_bound completely 
-         * ignores the stitched index [0] and any other passed points. It skips directly 
-         * to the exact time-segment where the robot belongs chronologically, smoothly 
-         * riding the rest of the valid curve into the anchor.
-         * ==============================================================================
-         */
-         
-        // Verify the cached trajectory is still safe against CURRENT dynamic obstacles
+        // Fallback to current_bridge_trajectory_
         bool cached_is_safe = true;
         const auto& obstacles = obs_checker_->getObstacles();
         for (const auto& ob : obstacles) {
@@ -1092,50 +1424,111 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
 
         if (cached_is_safe) {
             bridge_cost_ = current_bridge_trajectory_.cost;
-            last_replan_metrics_.path_cost = current_bridge_trajectory_.cost + start_node_->g;
-            // current_bridge_trajectory_ remains unchanged, successfully recycled
+            // We must mark the cost as finite so we don't trigger the TRAPPED fallback!
+            cost_of_current_anchor = current_bridge_trajectory_.cost + start_node_->rhs;
+            last_replan_metrics_.path_cost = cost_of_current_anchor;
         } else {
-            // The cached trajectory is blocked by a new dynamic obstacle. We are trapped.
-            start_node_ = nullptr;
-            bridge_cost_ = std::numeric_limits<double>::infinity();
-            current_bridge_trajectory_ = Trajectory();
-            last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
-            // Optional: Print a warning here (e.g., std::cerr << "D* Lite: CACHED BRIDGE BLOCKED!");
+            // The cached trajectory is blocked by a dynamic obstacle. We are trapped.
+            cost_of_current_anchor = std::numeric_limits<double>::infinity();
         }
-
     } 
     else {
-        start_node_ = nullptr;
-        bridge_cost_ = std::numeric_limits<double>::infinity();
-        current_bridge_trajectory_ = Trajectory(); 
-        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+        // Steering truly failed to current anchor
+        cost_of_current_anchor = std::numeric_limits<double>::infinity();
+    }
+
+    // Anchor is completely blocked AND no pre-connected nodes are nearby
+    if (cost_of_current_anchor == std::numeric_limits<double>::infinity() && !best_connected_node) {
+        if (best_fallback_node) {
+            // Grab the nearest safe unexplored node! 
+            // computeShortestPath() will now use the heuristic to pull the tree to this location.
+            start_node_ = best_fallback_node;
+            bridge_cost_ = best_fallback_cost;
+            last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity(); // Unknown until planner runs
+            current_bridge_trajectory_ = best_fallback_bridge;
+        } else {
+            // No safe nodes nearby AT ALL. Robot is completely boxed in.
+            start_node_ = nullptr;
+            bridge_cost_ = std::numeric_limits<double>::infinity();
+            current_bridge_trajectory_ = Trajectory(); 
+            last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
 
 
-        // // If reaching the root of the tree and getting closer to it gives the steering function a hard time maybe we should use the following! but i havent notices it yet!
-        // // If steering failed but we are practically standing on the current start_node_, keep it.
-        // if (start_node_ && (robot_continuous_state_.head<2>() - start_node_->getStateValue().head<2>()).norm() < 1e-3) {
-        //     // Preserve the existing start_node_ and set costs to reflect zero-distance
-        //     bridge_cost_ = 0.0;
-        //     last_replan_metrics_.path_cost = start_node_->g; 
-        // } else {
-        //     // Steering truly failed and we are not near the node
-        //     start_node_ = nullptr;
-        //     bridge_cost_ = std::numeric_limits<double>::infinity();
+        //     // // // No safe nodes nearby AT ALL. Robot is completely boxed in.
+        //     // // // Generate a 1-slice survival maneuver based on native physics!
+        //     // // Trajectory emergency_traj = statespace_->generateEmergencyManeuver(robot_continuous_state_, 0.02); 
+        //     // // std::cout<<"EMERGENCY MANEUVER\n" ;
+        //     // // start_node_ = nullptr; // Planner skips computeShortestPath() this slice
+        //     // // bridge_cost_ = emergency_traj.cost;
+        //     // // current_bridge_trajectory_ = emergency_traj; 
+        //     // // last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+        //    // ==========================================================
+        //     // PURE SURVIVAL ESCAPE FALLBACK (Boxed in, Anchor failed)
+        //     // ==========================================================
+        //     double lookahead_time = 3 * 2.0;
+        //     std::vector<Trajectory> escape_trajs = statespace_->getEscapePrimitives(robot_continuous_state_, lookahead_time);
+            
+        //     Trajectory best_escape;
+        //     double best_score = -std::numeric_limits<double>::infinity();
+
+        //     // Extract previous movement direction to prevent swerving back and forth
+        //     Eigen::VectorXd current_momentum_dir = Eigen::VectorXd::Zero(kd_dim_);
+        //     if (current_bridge_trajectory_.is_valid && current_bridge_trajectory_.path_points.size() >= 2) {
+        //         current_momentum_dir = (current_bridge_trajectory_.path_points.back().head(kd_dim_) - 
+        //                                 current_bridge_trajectory_.path_points.front().head(kd_dim_)).normalized();
+        //     }
+
+        //     for (const auto& traj : escape_trajs) {
+        //         bool safe = true;
+        //         double time_until_collision = lookahead_time;
+
+        //         const auto& obstacles = obs_checker_->getObstacles();
+        //         for (const auto& ob : obstacles) {
+        //             last_replan_metrics_.obstacle_checks++;
+        //             // If your checker can return time of impact, you can use it here.
+        //             // Otherwise, we rely on the boolean check for full safety.
+        //             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(traj, ob)) {
+        //                 safe = false;
+        //                 break; 
+        //             }
+        //         }
+
+        //         // Geometric vector for hysteresis scoring
+        //         Eigen::VectorXd start_pos = traj.path_points.front().head(kd_dim_);
+        //         Eigen::VectorXd end_pos = traj.path_points.back().head(kd_dim_);
+        //         Eigen::VectorXd move_dir = (end_pos - start_pos).normalized();
+
+        //         double score = 0.0;
+                
+        //         // 1. Massive reward for surviving the lookahead time completely
+        //         if (safe) {
+        //             score += 10000.0; 
+        //         }
+
+        //         // 2. Anti-Swerving Hysteresis: Keep moving the way you were already escaping
+        //         if (current_momentum_dir.norm() > 0.1) {
+        //             score += 500.0 * move_dir.dot(current_momentum_dir); 
+        //         }
+
+        //         // Removed goal attraction. The robot will now happily blast backward 
+        //         // or sideways if that direction is safe and maintains momentum.
+
+        //         if (score > best_score) {
+        //             best_score = score;
+        //             best_escape = traj;
+        //         }
+        //     }
+
+        //     // Execute the highest-scoring tentacle. 
+        //     start_node_ = nullptr; 
+        //     bridge_cost_ = best_escape.cost;
+        //     current_bridge_trajectory_ = best_escape; 
         //     last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
-        // }
-
-        
-    }
-
-    if (visualization_) {
-        if (start_node_) {
-            std::vector<Eigen::VectorXd> anchor_pt = { start_node_->getStateValue().head<2>() };
-            visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
         }
+
     }
+
 }
-
-
 
 void KinodynamicPRMStarDStarLite::visualizeTree() {
 std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> dslite_tree_edges;
@@ -1146,20 +1539,32 @@ std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> dslite_tree_edges;
     std::vector<Eigen::VectorXd> dijkstra_nodes_pos;
 
     std::unordered_set<DStarLiteNode*> connected_to_goal;
-    if (goal_node_) {
-        std::queue<DStarLiteNode*> q;
-        connected_to_goal.insert(goal_node_);
-        q.push(goal_node_);
+    std::queue<DStarLiteNode*> q;
 
-        while (!q.empty()) {
-            DStarLiteNode* cur = q.front();
-            q.pop();
+    Eigen::VectorXd goal_spatial = problem_def_->getStart().head(2); // The physical mission goal
 
-            for (const auto& [pred, edge_info] : cur->backward_neighbors_) {
-                if (pred->best_parent_ == cur && edge_info.distance != std::numeric_limits<double>::infinity()) {
-                    if (connected_to_goal.insert(pred).second) {
-                        q.push(pred);
-                    }
+    // 1. Seed the BFS with ALL Time Pillars + the Main Goal
+    for (auto& node_ptr : nodes_) {
+        DStarLiteNode* node = node_ptr.get();
+        
+        // Check if the node is physically located at the goal
+        if ((node->getStateValue().head(2) - goal_spatial).norm() < 1e-3) {
+            if (node->rhs == 0.0) { // Safety check: is it actually a root?
+                connected_to_goal.insert(node);
+                q.push(node);
+            }
+        }
+    }
+
+    // 2. Run the BFS to find all connected branches across all roots
+    while (!q.empty()) {
+        DStarLiteNode* cur = q.front();
+        q.pop();
+
+        for (const auto& [pred, edge_info] : cur->backward_neighbors_) {
+            if (pred->best_parent_ == cur && edge_info.distance != std::numeric_limits<double>::infinity()) {
+                if (connected_to_goal.insert(pred).second) {
+                    q.push(pred);
                 }
             }
         }
@@ -1227,23 +1632,29 @@ std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> dslite_tree_edges;
     //     visualization_->visualizeNodes(dijkstra_nodes_pos, "map",
     //                                    std::vector<float>{0.0f, 0.0f, 1.0f}, "dijkstra_nodes");
 
-    // draw Dijkstra base layer (thick, opaque)
-    visualization_->visualizeEdges(dijkstra_tree_edges, "map",
-        std::array<float,3>{0.0f, 0.0f, 1.0f},   // blue
-        1.0f,                                    // alpha (opaque)
-        0.12f,                                   // thick line
-        "dijkstra_tree",                         // namespace
-        1,                                       // marker id
-        false,                                   // dashed
-        0.5);
 
-    // draw D* Lite overlay (thin, slightly transparent)
+    if (start_node_) {
+        std::vector<Eigen::VectorXd> anchor_pt = { start_node_->getStateValue().head<2>() };
+        visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
+    }
+    
+    // draw D* Lite overlay (dark gray)
     visualization_->visualizeEdges(dslite_tree_edges, "map",
-        std::array<float,3>{1.0f, 1.0f, 1.0f},   // gray
-        0.5f,                                   // alpha (slightly transparent)
-        0.05f,                                   // thin line
+        std::array<float,3>{0.5f, 0.5f, 0.5f},   // dark gray
+        1.0f,                                    // slightly higher alpha so it's visible
+        0.15f,                                   // thin line
         "dslite_tree",                           // namespace
         2,                                       // marker id
+        false,                                   // dashed
+        0.2);
+
+    // draw D* Lite overlay (deep red)
+    visualization_->visualizeEdges(dijkstra_tree_edges, "map",
+        std::array<float,3>{1.0f, 0.0f, 0.0f},   
+        1.0f,                                    // alpha
+        0.05f,                                   // thin line
+        "dijkstra_tree",                           // namespace
+        3,                                       // marker id
         false,                                   // dashed
         0.2);
 
@@ -1254,10 +1665,21 @@ std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> dslite_tree_edges;
 }
 
 std::vector<Eigen::VectorXd> KinodynamicPRMStarDStarLite::getPathPositions() const{
-    // Check if the planner has a valid anchor point for the robot.
-    if (!start_node_ || start_node_->g == std::numeric_limits<double>::infinity()) {
-        DSTARLITE_ERROR("[DSTARLITE_Path_Assembly] Robot has no valid anchor node in the tree. Cannot build path.");
-        return {}; // Return empty path
+   // Check if the planner has a valid anchor point for the robot.
+    // if (!start_node_ || start_node_->g == std::numeric_limits<double>::infinity()) {
+    // // if (!start_node_ ){
+    //     DSTARLITE_ERROR("[DSTARLITE_Path_Assembly] Robot has no valid anchor node in the tree. Cannot build path.");
+    //     return {}; // Return empty path
+    // }
+
+
+    if (!start_node_) {
+        // Fallback: If no anchor exists but we have an emergency trajectory, execute it!
+        if (current_bridge_trajectory_.is_valid && !current_bridge_trajectory_.path_points.empty()) {
+            return current_bridge_trajectory_.path_points;
+        }
+        DSTARLITE_ERROR("[DSTARLITE_Path_Assembly] No anchor node and no safe emergency trajectory.");
+        return {};
     }
 
     // Safety check on the cached bridge computed in setRobotState
@@ -1293,10 +1715,76 @@ std::vector<Eigen::VectorXd> KinodynamicPRMStarDStarLite::getPathPositions() con
         }
         current_node = next_node;
     }
+
+
     
     return path;
 }
 
+
+void KinodynamicPRMStarDStarLite::visualizeTreeGradient() {
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+    std::vector<double> edge_costs;
+
+    if (!nodes_.empty()) {
+        edges.reserve(nodes_.size());
+        edge_costs.reserve(nodes_.size());
+    }
+    
+    // Find max cost in the D* Lite tree to normalize the gradient
+    double max_tree_cost = 0.001; 
+    for (const auto& node_ptr : nodes_) {
+        DStarLiteNode* u = node_ptr.get();
+        // DStarLiteNode directly accesses the 'g' value
+        if (u->g > max_tree_cost && !std::isinf(u->g)) {
+            max_tree_cost = u->g;
+        }
+    }
+
+    for (const auto& node_ptr : nodes_) {
+        DStarLiteNode* u = node_ptr.get();
+        DStarLiteNode* parent_node = u->best_parent_; // The successor node pointing towards the goal
+
+        if (parent_node && !std::isinf(u->g)) {
+            // Draw edge from current node to its best parent
+            edges.emplace_back(u->getStateValue(), parent_node->getStateValue());
+            
+            // Normalize the cost between 0.0 and 1.0
+            edge_costs.push_back(u->g / max_tree_cost); 
+        }
+    }
+    
+    if (start_node_) {
+        std::vector<Eigen::VectorXd> anchor_pt = { start_node_->getStateValue().head<2>() };
+        visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
+    }
+    visualization_->visualizeTreeGradient(edges, edge_costs, "map");
+}
+
+void KinodynamicPRMStarDStarLite::visualizePathGradient(const std::vector<Eigen::VectorXd>& path_waypoints) {
+    // D* Lite uses start_node_ to track the robot's physical location
+    if (path_waypoints.size() < 2 || !visualization_ || start_node_ == nullptr) {
+        return;
+    }
+    
+    double robot_g = start_node_->g;
+    if (std::isinf(robot_g)) return;
+
+    double current_robot_cost = robot_g + bridge_cost_;
+    if (global_max_cost_ < current_robot_cost) {
+        global_max_cost_ = current_robot_cost;
+    }
+    double max_c = (global_max_cost_ > 0.0) ? global_max_cost_ : 1.0;
+    std::vector<double> path_costs(path_waypoints.size(), 0.0);
+    size_t N = path_waypoints.size();
+    
+    for (size_t i = 0; i < N; ++i) {
+        double fraction = (double)(N - 1 - i) / (N - 1);
+        path_costs[i] = fraction * current_robot_cost;
+    }
+
+    visualization_->visualizePathGradient(path_waypoints, path_costs, "map", max_c);
+}
 
 void KinodynamicPRMStarDStarLite::visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints) {
     // A path needs at least two points to have an edge.
@@ -1360,7 +1848,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
                 u_needs_update = true;
 
                 // D* Lite cost increase rule
-                if (node->getParent() == neighbor && node != goal_node_) {
+                if (node->getParent() == neighbor) {
                     recomputeRHS(node);
                 }
             }
@@ -1406,7 +1894,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
                     }
                 }
                 if (rev_changed) {
-                    if (neighbor->getParent() == node && neighbor != goal_node_) {
+                    if (neighbor->getParent() == node) {
                         recomputeRHS(neighbor);
                     }
                 }
@@ -1577,7 +2065,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
                 u_needs_update = true;
 
                 // D* Lite cost increase rule
-                if (node->getParent() == neighbor && node != goal_node_) {
+                if (node->getParent() == neighbor) {
                     recomputeRHS(node);
                 }
             }
@@ -1601,7 +2089,7 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
                 //     updateVertex(neighbor);
                 // }
                 if (rev_changed) {
-                    if (neighbor->getParent() == node && neighbor != goal_node_) {
+                    if (neighbor->getParent() == node) {
                         recomputeRHS(neighbor);
                     }
                 }
@@ -1870,7 +2358,7 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
             edge.distance = c_new;
             u_needs_update = true;
 
-            last_replan_metrics_.nodes_updated++;           // cost improved from INF → finite
+                       // cost improved from INF → finite
             // restore backward mirror if present
             if (v->backward_neighbors_.count(u)) {
                 v->backward_neighbors_.at(u).distance = c_new;

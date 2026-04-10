@@ -200,11 +200,11 @@ def analyze_group(group_name, results, scenario_name):
     has_split = 'update_ms' in results[0]['data'].columns
 
     if has_split:
-        # --- UPDATED HEADER (includes orphaned_nodes) ---
+        # --- UPDATED HEADER ---
         header = (f"{'Planner':<12} | {'Type':<8} | {'Count':<6} | "
                   f"{'Avg Lat':<8} | {'Max Lat':<8} | {'Plan(ms)':<8} | {'Upd(ms)':<8} | "
-                  f"{'Obs Chk':<8} | {'Nodes Upd':<10} | {'Queue Ops':<10} | "
-                  f"{'Orphans':<8} | {'Tree Sz':<8} | {'Deg(Out)':<8} | {'Deg(In)':<8} | {'Path Cost':<9}")
+                  f"{'Obs Chk':<8} | {'Queue Ops':<10} | "
+                  f"{'Tree Sz':<8} | {'Deg(Out)':<8} | {'Deg(In)':<8} | {'Path Cost':<9} | {'Rad(S->E)':<12}")
         print(header)
         print("-" * 160)
 
@@ -212,6 +212,12 @@ def analyze_group(group_name, results, scenario_name):
             df = res['data']
             planner = res['planner']
             
+            # --- Extract Start and End Radius ---
+            start_rad = df['radius'].iloc[0] if 'radius' in df.columns else 0.0
+            end_rad   = df['radius'].iloc[-1] if 'radius' in df.columns else 0.0
+            rad_str   = f"{start_rad:.1f}->{end_rad:.1f}"
+
+
             # --- 1. DYNAMIC EVENT FRAMES (Repair Phase) ---
             df_event = df[df['update_ms'] > 0.001]
             if not df_event.empty:
@@ -221,9 +227,7 @@ def analyze_group(group_name, results, scenario_name):
                 avg_upd  = df_event['update_ms'].mean()
                 
                 avg_obs   = df_event['obstacle_checks'].mean()
-                avg_nodes = df_event['nodes_updated'].mean()
                 avg_queue = df_event['queue_operations'].mean()
-                avg_orph  = df_event['orphaned_nodes'].mean()          # ← NOW SHOWN
                 avg_sz    = df_event['tree_size'].max()
                 avg_deg_out = df_event['avg_deg_out'].max()
                 avg_deg_in  = df_event['avg_deg_in'].max()
@@ -232,8 +236,8 @@ def analyze_group(group_name, results, scenario_name):
                 print(f"{planner:<12} | {'REPAIR':<8} | {len(df_event):<6} | "
                       f"\033[91m{avg_lat:<8.2f}\033[0m | {max_lat:<8.1f} | "
                       f"{avg_plan:<8.2f} | {avg_upd:<8.2f} | "
-                      f"{avg_obs:<8.1f} | {avg_nodes:<10.1f} | {avg_queue:<10.1f} | "
-                      f"{avg_orph:<8.1f} | {avg_sz:<8.0f} | {avg_deg_out:<8.2f} | {avg_deg_in:<8.2f} | {avg_cost:<9.2f}")
+                      f"{avg_obs:<8.1f} |  {avg_queue:<10.1f} | "
+                      f"{avg_sz:<8.0f} | {avg_deg_out:<8.2f} | {avg_deg_in:<8.2f} | {avg_cost:<9.2f}  | {rad_str:<12}")
 
             # --- 2. STEADY STATE FRAMES ---
             df_steady = df[df['update_ms'] <= 0.001]
@@ -244,9 +248,7 @@ def analyze_group(group_name, results, scenario_name):
                 avg_upd  = df_steady['update_ms'].mean()
                 
                 avg_obs   = df_steady['obstacle_checks'].mean()
-                avg_nodes = df_steady['nodes_updated'].mean()
                 avg_queue = df_steady['queue_operations'].mean()
-                avg_orph  = df_steady['orphaned_nodes'].mean()          # ← NOW SHOWN
                 avg_sz    = df_steady['tree_size'].max()
                 avg_deg_out = df_steady['avg_deg_out'].max()
                 avg_deg_in  = df_steady['avg_deg_in'].max()
@@ -255,8 +257,8 @@ def analyze_group(group_name, results, scenario_name):
                 print(f"{planner:<12} | {'STEADY':<8} | {len(df_steady):<6} | "
                       f"\033[92m{avg_lat:<8.2f}\033[0m | {max_lat:<8.1f} | "
                       f"{avg_plan:<8.2f} | {avg_upd:<8.2f} | "
-                      f"{avg_obs:<8.1f} | {avg_nodes:<10.1f} | {avg_queue:<10.1f} | "
-                      f"{avg_orph:<8.1f} | {avg_sz:<8.0f} | {avg_deg_out:<8.2f} | {avg_deg_in:<8.2f} | {init_cost:<9.2f}")
+                      f"{avg_obs:<8.1f} |  {avg_queue:<10.1f} | "
+                      f"{avg_sz:<8.0f} | {avg_deg_out:<8.2f} | {avg_deg_in:<8.2f} | {init_cost:<9.2f}  | {rad_str:<12}")
             
             print("-" * 160)
             

@@ -30,9 +30,12 @@ class KinodynamicANYFMTX : public Planner {
         }
         void setRobotState(const Eigen::VectorXd& robot_state);
         void visualizeTree();
+        void visualizeTreeGradient();
         void visualizeTreeReal();
         void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
-        void updateObstacleSamples(const ObstacleVector& obstacles);
+        void visualizePathGradient(const std::vector<Eigen::VectorXd>& path_waypoints);
+        void visualizeSearchArea();
+        void updateObstacles(const ObstacleVector& obstacles);
         void addNewObstacle(const Obstacle& ob);
         void removeObstacle(const Obstacle& ob);
         void clearPlannerState();
@@ -82,6 +85,21 @@ class KinodynamicANYFMTX : public Planner {
         void analyzeSuboptimality(FMTNode* x, FMTNode* best_parent_for_x, FMTNode* z, SuboptimalityMetrics& metrics);
         void printDebugSummary(const SuboptimalityMetrics& metrics);
 
+        void logGraphState(std::ofstream& out_file, int cycle_number) const override {
+            for (const auto& node : tree_) {
+                if (!node) continue;
+                
+                auto state = node->getStateValue();
+                
+                out_file << cycle_number << ","
+                        << node->getIndex() << ","
+                        << state[0] << "," << state[1] << "," 
+                        << node->getLMC() << ","
+                        << (node->getParent() ? node->getParent()->getIndex() : -1) 
+                        << "\n";
+            }
+        }
+
     private:
         bool updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node);
         void cullNeighbors(FMTNode* v);
@@ -127,7 +145,12 @@ class KinodynamicANYFMTX : public Planner {
 
 
         double epsilon;
+        double gamma_;
         Trajectory current_bridge_trajectory_;
+        double global_max_cost_ = -1;
+        void injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes);
+        int num_pillar_nodes_;
+        std::unordered_set<int> time_pillar_indices_;
 
 };
 

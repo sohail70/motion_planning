@@ -330,7 +330,7 @@ int main(int argc, char **argv) {
         {
             auto snapshot = obstacle_checker->getAtomicSnapshot();
             auto start = std::chrono::steady_clock::now();
-            kinodynamic_planner->updateObstacleSamples(snapshot.obstacles); 
+            kinodynamic_planner->updateObstacles(snapshot.obstacles); 
             auto end = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
             std::cout << "Time taken for update: " << duration.count() << " ms\n";

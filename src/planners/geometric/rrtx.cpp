@@ -944,7 +944,7 @@ std::vector<Eigen::VectorXd> RRTX::smoothPath(const std::vector<Eigen::VectorXd>
 }
 
 // Node Centric update with a map of which conflicting node associates with which obstalce!
-void RRTX::updateObstacleSamples(const ObstacleVector& obstacles) {
+void RRTX::updateObstacles(const ObstacleVector& obstacles) {
     if (mode == 1 || mode == 3) {
         update_obstacle = true;
 

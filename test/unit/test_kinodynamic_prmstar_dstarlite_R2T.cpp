@@ -359,7 +359,7 @@ int main(int argc, char** argv)
     //     const auto& snapshot = obstacle_checker->getAtomicSnapshot();
 
     //     auto start = std::chrono::steady_clock::now();
-    //     kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
+    //     kinodynamic_planner->updateObstacles(snapshot.obstacles);
     //     // if (needs_replan) {
     //         // Get the robot's current state to plan FROM.
     //         // current_sim_state = ros_manager->getCurrentSimulatedState();
@@ -513,7 +513,7 @@ int main(int argc, char** argv)
 
         if (!turned_obs.empty()) {
             auto start_update = std::chrono::steady_clock::now();
-            kinodynamic_planner->updateObstacleSamples(turned_obs);
+            kinodynamic_planner->updateObstacles(turned_obs);
             auto end_update = std::chrono::steady_clock::now();
             double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
             
@@ -524,7 +524,7 @@ int main(int argc, char** argv)
                 if (i < turned_obs.size() - 1) obs_names += ", ";
             }
             RCLCPP_INFO(rclcpp::get_logger("PRM_Timing"), 
-                "updateObstacleSamples took: %.2f ms | Processed: [ %s ]", 
+                "updateObstacles took: %.2f ms | Processed: [ %s ]", 
                 duration_ms, obs_names.c_str());
         }
 

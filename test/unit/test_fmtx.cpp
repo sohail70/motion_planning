@@ -474,7 +474,7 @@ int main(int argc, char **argv) {
 
         dynamic_cast<FMTX*>(planner.get())->setRobotIndex(robot);
         auto start = std::chrono::steady_clock::now();
-        dynamic_cast<FMTX*>(planner.get())->updateObstacleSamples(obstacles);
+        dynamic_cast<FMTX*>(planner.get())->updateObstacles(obstacles);
         planner->plan();
         auto end = std::chrono::steady_clock::now();
 

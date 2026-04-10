@@ -369,7 +369,7 @@ int main(int argc, char** argv)
 
     //     auto start = std::chrono::steady_clock::now();
 
-    //     kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
+    //     kinodynamic_planner->updateObstacles(snapshot.obstacles);
 
     //     auto end = std::chrono::steady_clock::now();
 
@@ -529,7 +529,7 @@ int main(int argc, char** argv)
 
         if (!turned_obs.empty()) {
             auto start_update = std::chrono::steady_clock::now();
-            kinodynamic_planner->updateObstacleSamples(turned_obs);
+            kinodynamic_planner->updateObstacles(turned_obs);
             auto end_update = std::chrono::steady_clock::now();
             double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
             
@@ -540,7 +540,7 @@ int main(int argc, char** argv)
                 if (i < turned_obs.size() - 1) obs_names += ", ";
             }
             RCLCPP_INFO(rclcpp::get_logger("RRTx_Timing"), 
-                "updateObstacleSamples took: %.2f ms | Processed: [ %s ]", 
+                "updateObstacles took: %.2f ms | Processed: [ %s ]", 
                 duration_ms, obs_names.c_str());
 
             // ======================================================
@@ -550,7 +550,7 @@ int main(int argc, char** argv)
             // Time since the start of the simulation
             entry.elapsed_s = std::chrono::duration<double>(slice_start_time - global_start).count();
             
-            // Duration of the calculation (updateObstacleSamples + internal plan)
+            // Duration of the calculation (updateObstacles + internal plan)
             entry.duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count(); 
             
             entry.obstacle_checks = metrics.obstacle_checks;

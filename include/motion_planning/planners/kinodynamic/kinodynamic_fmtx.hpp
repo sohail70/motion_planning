@@ -33,9 +33,11 @@ class KinodynamicFMTX : public Planner {
         void near(int node_index);
 
         void visualizeTree();
+        void visualizeTreeGradient();
         void visualizeTreeReal();
         void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
-        void updateObstacleSamples(const ObstacleVector& obstacles);
+        void visualizePathGradient(const std::vector<Eigen::VectorXd>& path_waypoints);
+        void updateObstacles(const ObstacleVector& obstacles);
         void addNewObstacle(const Obstacle& ob);
         void removeObstacle(const Obstacle& ob);
         // double heuristic(int current_index);
@@ -81,6 +83,38 @@ class KinodynamicFMTX : public Planner {
         void analyzeSuboptimality(FMTNode* x, FMTNode* best_parent_for_x, FMTNode* z, SuboptimalityMetrics& metrics);
         void printDebugSummary(const SuboptimalityMetrics& metrics);
 
+        void checkIsolatedNodes() const;
+
+        void logGraphState(std::ofstream& out_file, int cycle_number) const override {
+            // یک تابع لامبدا برای تبدیل NeighborMap به رشته متنی (فرمت: id:cost|id:cost)
+            auto serializeNeighbors = [](const FMTNode::NeighborMap& nmap) {
+                std::string s = "";
+                for (const auto& pair : nmap) {
+                    s += std::to_string(pair.first->getIndex()) + ":" + std::to_string(pair.second.distance) + "|";
+                }
+                if (!s.empty()) {
+                    s.pop_back(); // حذف آخرین کاراکتر '|'
+                }
+                return s;
+            };
+
+            for (const auto& node : tree_) {
+                if (!node) continue;
+                
+                auto state = node->getStateValue();
+                
+                out_file << cycle_number << ","
+                        << node->getIndex() << ","
+                        << state[0] << "," << state[1] << "," 
+                        << node->getLMC() << ","
+                        << (node->getParent() ? node->getParent()->getIndex() : -1) << ","
+                        << serializeNeighbors(node->forwardNeighbors()) << ","
+                        << serializeNeighbors(node->backwardNeighbors())
+                        << "\n";
+            }
+        }
+
+
 
     private:
         std::vector<std::shared_ptr<FMTNode>> tree_;
@@ -111,5 +145,10 @@ class KinodynamicFMTX : public Planner {
         double bridge_cost_;
         bool is_geometric_mode_;
         Trajectory current_bridge_trajectory_;
+        double global_max_cost_ = -1;
+        void injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes);
+
+        int num_pillar_nodes_;
+        std::unordered_set<int> time_pillar_indices_;
 };
 

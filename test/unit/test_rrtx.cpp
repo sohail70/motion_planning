@@ -312,7 +312,7 @@ int main(int argc, char **argv) {
 
         ////////// PLAN //////////
         auto start = std::chrono::steady_clock::now();
-        dynamic_cast<RRTX*>(planner.get())->updateObstacleSamples(obstacles);
+        dynamic_cast<RRTX*>(planner.get())->updateObstacles(obstacles);
         auto end = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         if (duration.count()>0)

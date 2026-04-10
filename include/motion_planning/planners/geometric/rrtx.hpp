@@ -24,7 +24,7 @@ class RRTX : public Planner {
     void clearPlannerState() ;
 
     // Obstacle management
-    void updateObstacleSamples(const ObstacleVector& obstacles);
+    void updateObstacles(const ObstacleVector& obstacles);
     void updateRobotPosition(const Eigen::VectorXd& new_position);
 
     // Visualization

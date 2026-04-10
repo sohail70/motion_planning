@@ -507,3 +507,23 @@ std::shared_ptr<State> RDTStateSpace::interpolate(const std::shared_ptr<State>& 
      Eigen::VectorXd interpolated_val = state1->getValue() + t * (state2->getValue() - state1->getValue());
      return std::make_shared<EuclideanState>(interpolated_val);
 }
+Trajectory RDTStateSpace::generateEmergencyManeuver(const Eigen::VectorXd& state, double dt) const {
+    Trajectory traj;
+    traj.is_valid = true;
+    traj.cost = dt; // Arbitrary time penalty
+    traj.time_duration = dt;
+    traj.geometric_distance = 0.0;
+    
+    // State remains spatially identical, only time flows forward (time-to-go decreases)
+    Eigen::VectorXd next_state = state;
+    next_state(dimension_ - 1) = state(dimension_ - 1) - dt;
+    
+    traj.path_points.push_back(state);
+    traj.path_points.push_back(next_state);
+    return traj;
+}
+
+
+std::vector<Trajectory> RDTStateSpace::getEscapePrimitives(const Eigen::VectorXd& state, double dt) const {
+   
+}

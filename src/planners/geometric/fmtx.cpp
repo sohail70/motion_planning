@@ -633,7 +633,7 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> FMTX::findSamplesNea
 
 */
 
-void FMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
+void FMTX::updateObstacles(const ObstacleVector& obstacles) {
     in_dynamic = true;
 
     /*

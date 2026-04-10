@@ -28,19 +28,19 @@ class KinodynamicPRMStarDStarLite : public Planner {
         virtual void setStart(const Eigen::VectorXd& start) override;
         virtual void setGoal(const Eigen::VectorXd& goal) override;
 
-        void updateObstacleSamples(const ObstacleVector& turned_obstacles);
+        void updateObstacles(const ObstacleVector& turned_obstacles);
         std::vector<Eigen::VectorXd> getPathPositions() const;
 
         void setRobotState(const Eigen::VectorXd& robot_state);
         void visualizeTree();
+        void visualizeTreeGradient();
+        void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
+        void visualizePathGradient(const std::vector<Eigen::VectorXd>& path_waypoints);
 
-        
         bool recomputeRHS(DStarLiteNode* s);
-
         const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
         void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
 
-        void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
 
         int getTreeSize() { return nodes_.size();}
 
@@ -63,6 +63,40 @@ class KinodynamicPRMStarDStarLite : public Planner {
         }
 
         double getNeighborhoodRadius(){return connection_radius_;}
+        void checkIsolatedNodes() const;
+
+        void logGraphState(std::ofstream& out_file, int cycle_number) const override {
+            // یک تابع لامبدا برای تبدیل NeighborMap به رشته متنی (فرمت: id:cost|id:cost)
+            auto serializeNeighbors = [](const DStarLiteNode::NeighborMap& nmap) {
+                std::string s = "";
+                for (const auto& pair : nmap) {
+                    s += std::to_string(pair.first->getIndex()) + ":" + std::to_string(pair.second.distance) + "|";
+                }
+                if (!s.empty()) {
+                    s.pop_back(); // حذف آخرین کاراکتر '|'
+                }
+                return s;
+            };
+
+            for (const auto& node : nodes_) {
+                if (!node) continue;
+                
+                auto state = node->getStateValue();
+                
+                out_file << cycle_number << ","
+                        << node->getIndex() << ","
+                        << state[0] << "," << state[1] << ","
+                        << node->rhs << ","
+                        << (node->best_parent_ ? node->best_parent_->getIndex() : -1) << ","
+                        << serializeNeighbors(node->forward_neighbors_) << ","
+                        << serializeNeighbors(node->backward_neighbors_) 
+                        << "\n";
+            }
+        }
+
+
+
+
     private:
         // --- D* Lite Core ---
         double heuristic(DStarLiteNode* a, DStarLiteNode* b);
@@ -103,6 +137,7 @@ class KinodynamicPRMStarDStarLite : public Planner {
         DStarLiteNode* start_node_;
         DStarLiteNode* goal_node_;
         double km_;
+        bool partial_update = false;
 
         int num_samples_;
         double connection_radius_;
@@ -141,5 +176,11 @@ class KinodynamicPRMStarDStarLite : public Planner {
         DStarLiteKey calculateKey(DStarLiteNode* u);
         std::unordered_set<DStarLiteNode*> orphans_;
         Trajectory current_bridge_trajectory_;
+        double global_max_cost_ = -1;
 
+        void injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes);
+
+        int num_pillar_nodes_;
+        std::unordered_set<int> time_pillar_indices_;
+        
 };

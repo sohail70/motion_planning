@@ -1,15 +1,9 @@
 // Copyright 2025 Soheil E.nia
 
 #include "motion_planning/planners/kinodynamic/kinodynamic_rrtx.hpp"
-// -----------------------------------------------------------------------------------------
-// STRATEGY SWITCH
-// 1 = Use Set Optimization (Eager Add, Fast Remove). Requires 'invalidating_obstacles' in Edge.
-// 0 = Use Standard RRTx (Lazy Add, Check-All Remove). Matches Julia reference.
-// -----------------------------------------------------------------------------------------
 /*
     The Threat Set (Node-level)
     The Invalidating Set (Edge-level)
-    The Threat Set is the bridge that allows a lazy algorithm to behave with the same spatial intelligence as an eager one
 
 */
 #define USE_INVALIDATING_SET_STRATEGY 0
@@ -113,8 +107,50 @@ void KinodynamicRRTX::clearPlannerState() {
     sample_counter = 0;
 }
 
+void KinodynamicRRTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes) {
+    // ====================================================================
+    // INJECT TIME PILLAR NODES (ZERO VELOCITIES)
+    // ====================================================================
+    double max_time = upper_bounds_(statespace_->getDimension() - 1); 
+
+    // Protect the original main root (T=0)
+    time_pillar_indices_.insert(root_state_index_); 
+
+    for (int i = 1; i <= num_pillar_nodes; ++i) {
+        Eigen::VectorXd pillar_state = goal_state_val;
+
+        // Safely zero velocities ONLY for 5D (x, y, vx, vy, t)
+        if (statespace_->getDimension() == 5) {
+            pillar_state(2) = 0.0; // vx
+            pillar_state(3) = 0.0; // vy
+        }
+
+        // Distribute evenly across time
+        double t_val = (max_time / num_pillar_nodes) * i; 
+        pillar_state(statespace_->getDimension() - 1) = t_val;
+
+        auto state_ptr = statespace_->addState(pillar_state);
+        auto node = std::make_shared<RRTxNode>(state_ptr, tree_.size());
+        
+        node->setTimeToGoal(t_val);
+        
+        // RRTx SPECIFIC: Both G and LMC must be 0.0 for a true root!
+        node->setLMC(0.0);
+        node->setG(0.0);
+        
+        inconsistency_queue_.add(node.get(), 0.0);
+        last_replan_metrics_.queue_operations++;
+
+        // Track index for O(1) obstacle protection
+        time_pillar_indices_.insert(node->getIndex()); 
+
+        tree_.push_back(node);
+    }
+}
+
 
 void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
+    std::cout << "------------------------------------------------------------\n";
     auto start = std::chrono::high_resolution_clock::now();
     clearPlannerState();
 
@@ -133,7 +169,7 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
 
     kd_dim = params.getParam<int>("kd_dim",2);
-
+    num_pillar_nodes_ = params.getParam<int>("num_pillar_nodes");
 
     if (kdtree_type == "NanoFlann"){
         Eigen::VectorXd weights(kd_dim);
@@ -174,8 +210,9 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
     std::cout << "--- \n";
     std::cout << "Taking care of the samples: \n \n";
     setStart(problem_->getStart());
-    std::cout << "--- \n";
     setGoal(problem_->getGoal()); //robots current position
+    // Inject the rest of the Time Pillars (Backward search: start is the destination)
+    injectTimePillarNodes(problem_->getStart(), num_pillar_nodes_);
 
     // KD-TREE
     Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
@@ -207,6 +244,7 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
 
     // One is already added at goal and another at start location
     sample_counter = 2;
+    std::cout << "------------------------------------------------------------\n";
 }
 
 Eigen::VectorXd KinodynamicRRTX::saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta) {
@@ -420,7 +458,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     tree_.push_back(new_node);
     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
     kdtree_->buildTree(); // Build tree is an empty function in DynamicKdtree
-    last_replan_metrics_.nodes_updated++;
+    
 
     for (auto& eval : evaluated_edges) {
         if (!eval.neighbor) continue;
@@ -558,7 +596,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     tree_.push_back(new_node);
     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
     kdtree_->buildTree(); 
-    last_replan_metrics_.nodes_updated++;
+    
 
     for (auto& eval : evaluated_edges) {
         if (!eval.neighbor) continue;
@@ -825,7 +863,7 @@ bool KinodynamicRRTX::extend(Eigen::VectorXd v) {
     tree_.push_back(new_node);
     kdtree_->addPoint(new_node->getStateValue().head(kd_dim));
     kdtree_->buildTree();
-    last_replan_metrics_.nodes_updated++;
+    
 
     for (auto& eval : evaluated_edges) {
         if (!eval.neighbor) continue;
@@ -873,7 +911,7 @@ void KinodynamicRRTX::rewireNeighbors(RRTxNode* v) {
         if (u->getLMC() > candidate_lmc) {
             u->setLMC(candidate_lmc);
             u->setParent(v, edge.cached_trajectory);
-            last_replan_metrics_.nodes_updated++;
+            
             if (u->getG() - candidate_lmc > epsilon_) {
                 verifyQueue(u);
             }
@@ -910,7 +948,7 @@ void KinodynamicRRTX::reduceInconsistency() {
         // Synchronize Cost and LMC 
         if (node->getG() != node->getLMC()) {
             node->setG(node->getLMC());
-            last_replan_metrics_.nodes_updated++;
+            
         }
     }
     // Debugging
@@ -924,6 +962,12 @@ double KinodynamicRRTX::shrinkingBallRadius() const {
 }
 
 void KinodynamicRRTX::updateLMC(RRTxNode* v) {
+    // ROOT PROTECTION
+    // The main goal and all Time Pillars are mathematical sinks.
+    // They must NEVER recalculate their LMC. Their cost is eternally 0.0.
+    if (time_pillar_indices_.find(v->getIndex()) != time_pillar_indices_.end()) {
+        return; 
+    }
     cullNeighbors(v);
     double min_lmc = v->getLMC();
     RRTxNode* best_parent = nullptr;
@@ -943,7 +987,7 @@ void KinodynamicRRTX::updateLMC(RRTxNode* v) {
     if (best_parent) {
         v->setParent(best_parent, best_traj);
         v->setLMC(min_lmc);
-        last_replan_metrics_.nodes_updated++;
+        
     } 
 }
 
@@ -1033,6 +1077,12 @@ void KinodynamicRRTX::verifyQueue(RRTxNode* node) {
 
 
 void KinodynamicRRTX::verifyOrphan(RRTxNode* node) {
+    // ROOT PROTECTION
+    // Pillars are the finish line. They cannot be "orphaned" because they
+    // do not have parents. They must never be added to the invalidation set.
+    if (time_pillar_indices_.find(node->getIndex()) != time_pillar_indices_.end()) {
+        return;
+    }
     if(node->in_queue_==true){
         inconsistency_queue_.remove(node);
         last_replan_metrics_.queue_operations++;
@@ -1129,7 +1179,7 @@ void KinodynamicRRTX::propagateDescendants() {
         auto node = tree_[idx].get();
         node->setG(std::numeric_limits<double>::infinity());
         node->setLMC(std::numeric_limits<double>::infinity());
-        last_replan_metrics_.nodes_updated++;
+        
         /*
             An orphaned node doesn't move in time; it just has no path to the goal. 
             By keeping its time_to_goal at the original sampled value, the collision checker can still accurately check if it is blocked or clear
@@ -1137,7 +1187,6 @@ void KinodynamicRRTX::propagateDescendants() {
         node->setParent(nullptr, std::shared_ptr<Trajectory>{});
     }
 
-    last_replan_metrics_.orphaned_nodes = Vc_T_.size();
 
     // std::cout<<"orphans size"<<Vc_T_.size()<<"\n";
 
@@ -1167,6 +1216,10 @@ void KinodynamicRRTX::visualizeTree() {
         }
     }
     
+    if (vbot_node_) {
+        std::vector<Eigen::VectorXd> anchor_pt = { vbot_node_->getStateValue().head<2>() };
+        visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
+    } 
 
     // visualization_->visualizeNodes(tree_nodes, "map", 
     //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Red for tree
@@ -1217,7 +1270,76 @@ void KinodynamicRRTX::visualizeTreeReal() {
     // Visualization calls
     // visualization_->visualizeNodes(tree_nodes, "map", {0.0f, 1.0f, 0.0f}, "tree_nodes");
     // visualization_->visualizeEdges(edges, "map", "1.0,1.0,1.0", "tree_edges");
+    if (vbot_node_) {
+        std::vector<Eigen::VectorXd> anchor_pt = { vbot_node_->getStateValue().head<2>() };
+        visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
+    } 
     visualization_->visualizeEdges(edges, "map");
+}
+
+
+
+void KinodynamicRRTX::visualizeTreeGradient() {
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
+    std::vector<double> edge_costs;
+
+    if (!tree_.empty()) {
+        edges.reserve(tree_.size());
+        edge_costs.reserve(tree_.size());
+    }
+    
+    // Find max cost in the tree to normalize the gradient
+    double max_tree_cost = 0.001; 
+    for (const auto& node_ptr : tree_) {
+        // RRTX uses getG() instead of getLMC()
+        if (node_ptr->getG() > max_tree_cost && !std::isinf(node_ptr->getG())) {
+            max_tree_cost = node_ptr->getG();
+        }
+    }
+
+    for (const auto& node_ptr : tree_) {
+        RRTxNode* child_node = node_ptr.get();
+        RRTxNode* parent_node = child_node->getParent();
+
+        if (parent_node && !std::isinf(child_node->getG())) {
+            // Use the full states so visualization has access to Z or time if needed
+            edges.emplace_back(parent_node->getStateValue(), child_node->getStateValue());
+            
+            // Normalize the cost between 0.0 and 1.0
+            edge_costs.push_back(child_node->getG() / max_tree_cost); 
+        }
+    }
+    if (vbot_node_) {
+        std::vector<Eigen::VectorXd> anchor_pt = { vbot_node_->getStateValue().head<2>() };
+        visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
+    } 
+    
+    visualization_->visualizeTreeGradient(edges, edge_costs, "map");
+}
+
+void KinodynamicRRTX::visualizePathGradient(const std::vector<Eigen::VectorXd>& path_waypoints) {
+    // RRTX uses vbot_node_ as the anchor
+    if (path_waypoints.size() < 2 || !visualization_ || vbot_node_ == nullptr) {
+        return;
+    }
+    
+    double robot_g = vbot_node_->getG();
+    if (std::isinf(robot_g)) return;
+
+    double current_robot_cost = robot_g + bridge_cost_;
+    if (global_max_cost_ < current_robot_cost) {
+        global_max_cost_ = current_robot_cost;
+    }
+    double max_c = (global_max_cost_ > 0.0) ? global_max_cost_ : 1.0;
+    std::vector<double> path_costs(path_waypoints.size(), 0.0);
+    size_t N = path_waypoints.size();
+    
+    for (size_t i = 0; i < N; ++i) {
+        double fraction = (double)(N - 1 - i) / (N - 1);
+        path_costs[i] = fraction * current_robot_cost;
+    }
+
+    visualization_->visualizePathGradient(path_waypoints, path_costs, "map", max_c);
 }
 
 
@@ -1289,7 +1411,7 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     // Extract actual planner-time (Time-to-Go) from the state (last element)
     double robot_time_to_go = robot_continuous_state_(robot_continuous_state_.size() - 1);
 
-    // --- QUERY POINT CONSTRUCTION ---
+    // QUERY POINT CONSTRUCTION
     Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim);
     if (robot_continuous_state_.size() >= 2) {
         query_point(0) = robot_continuous_state_(0);
@@ -1303,59 +1425,65 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     } else if (kd_dim == 5) {
         query_point = robot_continuous_state_; 
     }
+
     // HYSTERESIS LOGIC
     const double hysteresis_factor = 0.98;
     double cost_of_current_path = std::numeric_limits<double>::infinity();
     Trajectory bridge;
-    if (vbot_node_ && vbot_node_->getG() != std::numeric_limits<double>::infinity()) {
+    if (vbot_node_ && vbot_node_->getLMC() != std::numeric_limits<double>::infinity()) {
         bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
 
         // Use robot_time_to_go so collision check is synced with the world
         if (bridge.is_valid) {
-
             bool safe = true;
             const auto& obstacles = obs_checker_->getObstacles();
 
             for (const auto& ob : obstacles) {
                 last_replan_metrics_.obstacle_checks++;
-
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(
-                        bridge, ob)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, ob)) {
                     safe = false;
                     break;
                 }
             }
 
             if (safe) {
-                cost_of_current_path = bridge.cost + vbot_node_->getG();
+                cost_of_current_path = bridge.cost + vbot_node_->getLMC();
                 robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
-                // return;
             }
         }
     }
+
     RRTxNode* best_candidate_node = nullptr;
     Trajectory best_candidate_bridge;
     double best_candidate_cost = std::numeric_limits<double>::infinity();
     
+    // Radius Expansion fallback tracking (for unexplored nodes)
+    RRTxNode* best_fallback_node = nullptr;
+    Trajectory best_fallback_bridge;
+    double best_fallback_cost = std::numeric_limits<double>::infinity();
+
     // Radius Expansion to handle sparse graphs
     double current_search_radius = neighborhood_radius_; 
     const int max_attempts = 5; 
     const double radius_multiplier = 2.0;
+
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
         auto nearby_indices = kdtree_->radiusSearch(query_point, current_search_radius);
+
         for (auto idx : nearby_indices) {
             RRTxNode* candidate = tree_[idx].get();
-            if (candidate->getG() == std::numeric_limits<double>::infinity()) continue;
-            Trajectory bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+
+            // DO NOT SKIP based on getG() == infinity yet! We need it for the fallback check.
+
+            Trajectory temp_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
             
-            if (!bridge.is_valid) continue;
+            if (!temp_bridge.is_valid) continue;
 
             bool safe = true;
             const auto& obstacles = obs_checker_->getObstacles();
             for (const auto& ob : obstacles) {
                 last_replan_metrics_.obstacle_checks++;
-
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, ob)) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(temp_bridge, ob)) {
                     safe = false;
                     break;  // stop checking remaining obstacles for this bridge
                 }
@@ -1363,48 +1491,45 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
             if (!safe) continue;
 
+            // Fallback Tracking: Easiest safe physical node to reach
+            if (temp_bridge.cost < best_fallback_cost) {
+                best_fallback_node = candidate;
+                best_fallback_bridge = temp_bridge;
+                best_fallback_cost = temp_bridge.cost;
+            }
 
-
-
-            double cost = bridge.cost + candidate->getG();
-            if (cost < best_candidate_cost) {
-                best_candidate_node = candidate;
-                best_candidate_bridge = bridge;
-                best_candidate_cost = cost;
-                bridge_cost_ = bridge.cost;
+            // Connected Tracking: Best node that ALREADY has a finite path
+            if (candidate->getLMC() != std::numeric_limits<double>::infinity()) {
+                double cost = temp_bridge.cost + candidate->getLMC();
+                if (cost < best_candidate_cost) {
+                    best_candidate_node = candidate;
+                    best_candidate_bridge = temp_bridge;
+                    best_candidate_cost = cost;
+                }
             }
         }
+        
+        // Only break early if we found a CONNECTED node.
         if (best_candidate_node) break;
         current_search_radius *= radius_multiplier;
     }
-    // --- ASSIGNMENT ---
+
+    // ASSIGNMENT
     if (best_candidate_node && best_candidate_cost < cost_of_current_path * hysteresis_factor) {
         vbot_node_ = best_candidate_node;
         robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
         last_replan_metrics_.path_cost = best_candidate_cost;
         current_bridge_trajectory_ = best_candidate_bridge;
+        bridge_cost_ = best_candidate_bridge.cost;
     } else if (vbot_node_ && cost_of_current_path != std::numeric_limits<double>::infinity()) {
         Trajectory bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
         robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
         // The cost changes slightly every frame as the robot moves towards the anchor.
         last_replan_metrics_.path_cost = cost_of_current_path;
         current_bridge_trajectory_ = bridge;
+        bridge_cost_ = bridge.cost;
     } 
-    else if (vbot_node_&& !bridge.is_valid && current_bridge_trajectory_.is_valid) {
-        /*
-            When steer() mathematically fails near an anchor, we fallback to recycling 
-            the 'current_bridge_trajectory_' from a previous control loop. One might worry 
-            that the 2nd or 3rd points of this old array are "stale" and will cause the 
-            robot to jump backwards. This will NOT happen due to the time-driven pipeline:
-            1. setPath(): Overwrites index [0]'s position/velocity to match the robot's 
-            ACTUAL current physical state, preventing any theoretical first-frame jump.
-            2. stepSimulation(): Interpolation is strictly driven by 'current_sim_time_'. 
-            The std::lower_bound function automatically "fast-forwards" through the array. 
-            Because time has passed since the trajectory was cached, std::lower_bound 
-            in ros2manager completely ignores the stitched index [0] and any other passed points.
-            It skips directly to the exact time-segment where the robot belongs chronologically, 
-            smoothly riding the rest of the valid curve into the anchor.
-        */
+    else if (vbot_node_ && !bridge.is_valid && current_bridge_trajectory_.is_valid) {
         // Steer failed mathematically, so we try to recycle the previous valid bridge.
         // BUT we must verify it is still safe against current dynamic obstacles!
         
@@ -1420,36 +1545,39 @@ void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
 
         if (cached_is_safe) {
             robot_current_time_to_goal_ = current_bridge_trajectory_.time_duration + vbot_node_->getTimeToGoal();
-            last_replan_metrics_.path_cost = current_bridge_trajectory_.cost + vbot_node_->getG();
+            cost_of_current_path = current_bridge_trajectory_.cost + vbot_node_->getLMC();
+            last_replan_metrics_.path_cost = cost_of_current_path;
             // current_bridge_trajectory_ remains unchanged
+            
         } else {
             // The cached trajectory is blocked by a new dynamic obstacle. We are trapped.
-            vbot_node_= nullptr;
+            cost_of_current_path = std::numeric_limits<double>::infinity();
+        }
+    } 
+    else {
+        // Steering truly failed to current anchor
+        cost_of_current_path = std::numeric_limits<double>::infinity();
+    }
+
+    // Anchor is completely blocked AND no pre-connected nodes are nearby
+    if (cost_of_current_path == std::numeric_limits<double>::infinity() && !best_candidate_node) {
+        if (best_fallback_node) {
+            // Give RRTX the unconnected node! The inconsistency queue will repair towards it.
+            vbot_node_ = best_fallback_node;
+            robot_current_time_to_goal_ = std::numeric_limits<double>::infinity(); // Unknown until planner runs
+            bridge_cost_ = best_fallback_cost;
+            current_bridge_trajectory_ = best_fallback_bridge;
+            last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+        } else {
+            // We are truly trapped. No nodes in radius are safe.
+            vbot_node_ = nullptr;
             robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
             bridge_cost_ = std::numeric_limits<double>::infinity();
             current_bridge_trajectory_ = Trajectory();
             last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
-            RRTX_WARN("Set Robot State: CACHED BRIDGE BLOCKED! LOST SAFE ANCHOR!");
+            RRTX_WARN("[RRTx_Anchor] Status: NULL (Robot is lost or searching...)");
         }
-    } 
-    else {
-        // We are trapped. No nodes in radius are safe.
-        vbot_node_ = nullptr;
-        robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
-        bridge_cost_ = std::numeric_limits<double>::infinity();
-        current_bridge_trajectory_ = bridge;
-        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
-        RRTX_WARN("[RRTx_Anchor] Status: NULL (Robot is lost or searching...)");
     }
-
-    // INTERNAL DEBUG VISUALIZATION
-    if (visualization_) {
-        if (vbot_node_) {
-            std::vector<Eigen::VectorXd> anchor_pt = { vbot_node_->getStateValue().head<2>() };
-            visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
-        } 
-    }
-
 }
 
 bool KinodynamicRRTX::isRobotSafe() {
@@ -1533,7 +1661,7 @@ bool KinodynamicRRTX::runCollisionForensics() {
 }
 
 //////////////////////////////////////EVENT BASED!!!////////////////////////////////////////
-void KinodynamicRRTX::updateObstacleSamples(const ObstacleVector& turned_obstacles) {
+void KinodynamicRRTX::updateObstacles(const ObstacleVector& turned_obstacles) {
     if (turned_obstacles.empty()) return;
 
     // last_replan_metrics_ = ReplanMetrics();

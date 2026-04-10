@@ -29,6 +29,8 @@ public:
     double getMaxVelocity() const override { return max_velocity_; }
     double getMaxAcceleration() const override { return 0.0; } // R2T is 1st-order (constant velocity)
 
+    Trajectory generateEmergencyManeuver(const Eigen::VectorXd& state, double dt) const;
+    std::vector<Trajectory> getEscapePrimitives(const Eigen::VectorXd& state, double dt) const;
 
 private:
     int euclidean_dim_;

@@ -370,12 +370,12 @@ int main(int argc, char **argv) {
         // // --- 4. Update Planner ---
         // // Only burn CPU if something actually changed
         // if (!turned_obs.empty()) {
-        //     kinodynamic_planner->updateObstacleSamples(turned_obs);
+        //     kinodynamic_planner->updateObstacles(turned_obs);
         // }
 
         if (!turned_obs.empty()) {
             auto start_update = std::chrono::steady_clock::now();
-            kinodynamic_planner->updateObstacleSamples(turned_obs);
+            kinodynamic_planner->updateObstacles(turned_obs);
             auto end_update = std::chrono::steady_clock::now();
             double duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
             
@@ -386,7 +386,7 @@ int main(int argc, char **argv) {
                 if (i < turned_obs.size() - 1) obs_names += ", ";
             }
             RCLCPP_INFO(rclcpp::get_logger("RRTx_Timing"), 
-                "updateObstacleSamples took: %.2f ms | Processed: [ %s ]", 
+                "updateObstacles took: %.2f ms | Processed: [ %s ]", 
                 duration_ms, obs_names.c_str());
 
             // ======================================================
@@ -396,7 +396,7 @@ int main(int argc, char **argv) {
             // Time since the start of the simulation
             entry.elapsed_s = std::chrono::duration<double>(slice_start_time - global_start).count();
             
-            // Duration of the calculation (updateObstacleSamples + internal plan)
+            // Duration of the calculation (updateObstacles + internal plan)
             entry.duration_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count(); 
             
             entry.obstacle_checks = metrics.obstacle_checks;
@@ -544,7 +544,7 @@ int main(int argc, char **argv) {
 //         auto start_plan = std::chrono::steady_clock::now();
         
 //         // Update the planner with the latest moving obstacle positions
-//         kinodynamic_planner->updateObstacleSamples(snapshot.obstacles);
+//         kinodynamic_planner->updateObstacles(snapshot.obstacles);
         
 //         // Run FMT* Plan (The ObstacleChecker's isTrajectorySafe calls will fill the cache here)
 //         planner->plan();

@@ -808,7 +808,7 @@ std::pair<std::unordered_set<int>, std::unordered_set<int>> KinodynamicFMTX::fin
 
 */
 
-bool KinodynamicFMTX::updateObstacleSamples(const ObstacleVector& obstacles) {
+bool KinodynamicFMTX::updateObstacles(const ObstacleVector& obstacles) {
     in_dynamic = true;
 
     /*

@@ -1070,3 +1070,109 @@ double ThrusterSteerStateSpace::getGeometricDistance(const NDSteeringResult& res
 
     return total_distance;
 }
+Trajectory ThrusterSteerStateSpace::generateEmergencyManeuver(const Eigen::VectorXd& state, double dt) const {
+    Trajectory traj;
+    traj.is_valid = true;
+    traj.time_duration = dt;
+    traj.cost = dt;
+
+    int D_spatial = (dimension_ - 1) / 2;
+    Eigen::VectorXd pos = getSpatialPosition(state);
+    Eigen::VectorXd vel = getSpatialVelocity(state);
+    double time_to_go = state[dimension_ - 1];
+
+    traj.path_points.push_back(state);
+
+    double vel_mag = vel.norm();
+    Eigen::VectorXd accel = Eigen::VectorXd::Zero(D_spatial);
+    
+    // If we are moving, apply max acceleration in the opposite direction
+    if (vel_mag > 1e-6) {
+        accel = -max_acceleration_ * (vel / vel_mag);
+    }
+
+    int steps = 5;
+    for (int i = 1; i <= steps; ++i) {
+        double step_dt = (dt * i) / steps;
+        
+        // Kinematic equations: v_f = v_i + at,  x_f = x_i + v_i*t + 0.5*a*t^2
+        Eigen::VectorXd current_vel = vel + accel * step_dt;
+        
+        // Prevent reversing direction if we fully stop during this dt slice
+        if (current_vel.dot(vel) < 0) { 
+            current_vel.setZero();
+            accel.setZero(); // Stop applying force once halted
+        }
+        
+        Eigen::VectorXd current_pos = pos + vel * step_dt + 0.5 * accel * step_dt * step_dt;
+        
+        Eigen::VectorXd pt(dimension_);
+        pt.head(D_spatial) = current_pos;
+        pt.segment(D_spatial, D_spatial) = current_vel;
+        pt[dimension_ - 1] = time_to_go - step_dt;
+        
+        traj.path_points.push_back(pt);
+    }
+    
+    return traj;
+}
+std::vector<Trajectory> ThrusterSteerStateSpace::getEscapePrimitives(const Eigen::VectorXd& state, double dt) const {
+    std::vector<Trajectory> primitives;
+    int D_spatial = (dimension_ - 1) / 2;
+    Eigen::VectorXd pos = getSpatialPosition(state);
+    Eigen::VectorXd vel = getSpatialVelocity(state);
+    double t_go = state[dimension_ - 1];
+
+    // Generate 16 aggressive escape acceleration directions
+    for (int i = 0; i < 16; ++i) {
+        double angle = i * (2.0 * M_PI / 16.0);
+        Eigen::VectorXd desired_acc = Eigen::VectorXd::Zero(D_spatial);
+        desired_acc(0) = max_acceleration_ * cos(angle);
+        desired_acc(1) = max_acceleration_ * sin(angle);
+
+        Trajectory traj;
+        traj.is_valid = true;
+        traj.time_duration = dt;
+        traj.cost = dt;
+        traj.path_points.push_back(state);
+
+        Eigen::VectorXd current_vel = vel;
+        Eigen::VectorXd current_pos = pos;
+        
+        int steps = 10; // Increased integration steps for higher accuracy
+        double step_dt = dt / steps;
+        
+        for (int j = 1; j <= steps; ++j) {
+            // Dynamically limit acceleration to respect the velocity cap
+            Eigen::VectorXd applied_acc = desired_acc;
+            double current_speed = current_vel.norm();
+            
+            if (current_speed >= max_velocity_ - 1e-4) {
+                // If at max speed, we can only apply acceleration that does NOT increase speed.
+                // We project the desired acceleration onto the plane orthogonal to velocity.
+                Eigen::VectorXd v_dir = current_vel.normalized();
+                double parallel_acc = applied_acc.dot(v_dir);
+                
+                if (parallel_acc > 0) {
+                    // Strip away the acceleration component that pushes us faster
+                    applied_acc = applied_acc - (parallel_acc * v_dir);
+                }
+            }
+
+            // Standard Double-Integrator Physics (Semi-Implicit Euler)
+            current_vel = current_vel + applied_acc * step_dt;
+            current_pos = current_pos + current_vel * step_dt; // Use updated velocity for position
+
+            Eigen::VectorXd pt(dimension_);
+            pt.head(D_spatial) = current_pos;
+            pt.segment(D_spatial, D_spatial) = current_vel;
+            pt[dimension_ - 1] = t_go - (step_dt * j);
+            traj.path_points.push_back(pt);
+        }
+        
+        // Calculate spatial distance covered as the geometric distance
+        traj.geometric_distance = (current_pos - pos).norm();
+        primitives.push_back(traj);
+    }
+    return primitives;
+}
