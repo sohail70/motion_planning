@@ -95,22 +95,51 @@ class KinodynamicRRTX : public Planner {
         std::vector<EdgeEval> evaluated_edges;
 
         void logGraphState(std::ofstream& out_file, int cycle_number) const override {
+            const int robot_anchor_id =
+                vbot_node_ ? vbot_node_->getIndex() : -1;
+
+            const double robot_g =
+                vbot_node_ ? vbot_node_->getG() : std::numeric_limits<double>::infinity();
+
+            const double robot_lmc =
+                vbot_node_ ? vbot_node_->getLMC() : std::numeric_limits<double>::infinity();
+
+            const double bridge_cost =
+                vbot_node_ ? bridge_cost_ : std::numeric_limits<double>::infinity();
+
+            const double robot_total_cost =
+                (vbot_node_ && std::isfinite(robot_lmc) && std::isfinite(bridge_cost))
+                    ? (robot_lmc + bridge_cost)
+                    : std::numeric_limits<double>::infinity();
+
+            const double robot_time_to_goal =
+                std::numeric_limits<double>::infinity(); // replace if you have a real member for this
+
             for (const auto& node : tree_) {
                 if (!node) continue;
-                
+
                 auto state = node->getStateValue();
-                
+                const bool is_robot_anchor = (vbot_node_ && node->getIndex() == vbot_node_->getIndex());
+
                 out_file << cycle_number << ","
                         << node->getIndex() << ","
-                        << state[0] << "," << state[1] << "," 
+                        << state[0] << "," << state[1] << ","
+                        << node->getG() << ","
                         << node->getLMC() << ","
-                        << (node->getParent() ? node->getParent()->getIndex() : -1) 
+                        << (node->getParent() ? node->getParent()->getIndex() : -1) << ","
+                        << (is_robot_anchor ? 1 : 0) << ","
+                        << robot_anchor_id << ","
+                        << robot_g << ","
+                        << robot_lmc << ","
+                        << bridge_cost << ","
+                        << robot_total_cost << ","
+                        << robot_time_to_goal
                         << "\n";
             }
         }
 
     private:
-        std::vector<std::shared_ptr<RRTxNode>> tree_;
+        std::vector<std::unique_ptr<RRTxNode>> tree_;
         std::shared_ptr<KDTree> kdtree_;
         PriorityQueue<RRTxNode, RRTxComparator> inconsistency_queue_;
         std::shared_ptr<StateSpace> statespace_;

@@ -21,6 +21,7 @@
 #include <valgrind/callgrind.h>
 
 #define SCREEN_SHOT 0
+#define USE_METRIC 1
 
 struct ExperimentConfig {
     std::string name;
@@ -42,6 +43,8 @@ struct ExperimentConfig {
     double min_turning_radius = 2.0;
     double max_acceleration = 5.0;
     std::string sdf_path;
+    int num_pillar_nodes = 50; 
+    double goal_radius = 0.5;
     std::map<std::string, std::string> planner_params_str;
     std::map<std::string, std::string> manager_params_str;
     std::map<std::string, std::string> gazebo_params_str;
@@ -124,6 +127,14 @@ ExperimentConfig loadConfig(const std::string& filepath) {
     if (config["manager_params"]) load_map(config["manager_params"], c.manager_params_str);
     if (config["gazebo_params"]) load_map(config["gazebo_params"], c.gazebo_params_str);
 
+
+    if (c.planner_params_str.count("num_pillar_nodes")) {
+        c.num_pillar_nodes = std::stoi(c.planner_params_str.at("num_pillar_nodes"));
+    }
+    if (c.planner_params_str.count("goal_radius")) {
+        c.goal_radius = std::stod(c.planner_params_str.at("goal_radius"));
+    }
+
     return c;
 }
 
@@ -147,9 +158,11 @@ void populateParams(Params& p, const std::map<std::string, std::string>& map) {
     }
 }
 
+#if USE_METRIC
 struct LogEntry {
     double elapsed_s = 0.0;
     
+    double setup_ms = 0.0; // Time spent in setup()
     double total_latency_ms = 0.0; // The sum (Control Loop Delay)
     double update_ms = 0.0;        // Time spent in updateObstacles
     double plan_ms = 0.0;          // Time spent in plan()
@@ -165,6 +178,7 @@ struct LogEntry {
     double avg_deg_in       = 0.0;
     double neighborhood_radius = 0.0;
 };
+#endif
 
 std::atomic<bool> g_running{true};
 void sigint_handler(int sig) { g_running = false; }
@@ -313,8 +327,13 @@ int main(int argc, char** argv) {
         return 1;
     }
     auto planner = PlannerFactory::getInstance().createPlanner(p_type, statespace, problem_def, obstacle_checker);
+
+    auto setup_start = std::chrono::steady_clock::now();
     planner->setup(planner_params, visualization);
-    
+    auto setup_end = std::chrono::steady_clock::now();
+    double setup_time_ms = std::chrono::duration<double, std::milli>(setup_end - setup_start).count();    
+
+
     auto kinodynamic_planner = std::dynamic_pointer_cast<Planner>(planner); 
     // kinodynamic_planner = std::dynamic_pointer_cast<KinodynamicFMTX>(planner); 
     // if (kinodynamic_planner) kinodynamic_planner->setClock(sim_clock);
@@ -358,6 +377,32 @@ int main(int argc, char** argv) {
         rrtx_planner->dumpTreeToCSV("rrtx_tree_nodes.csv");
     }
 
+#if USE_METRIC
+    // STORE THE INITIAL PLAN METRICS FOR THE CSV
+    std::vector<LogEntry> log_data; // Initialize the vector here first!
+    
+    LogEntry init_entry;
+    const auto& init_metrics = kinodynamic_planner->getLastReplanMetrics();
+    
+    init_entry.elapsed_s = 0.0; // The simulation hasn't technically started moving yet
+    init_entry.setup_ms = setup_time_ms;
+    init_entry.update_ms = 0.0; // No dynamic obstacles were updated
+    init_entry.plan_ms = duration.count(); // The total cold-start time
+    init_entry.total_latency_ms = duration.count();
+    
+    init_entry.time_to_goal = is_geometric_mode ? 0.0 : start_vec(start_vec.size() - 1);
+    init_entry.path_cost = init_metrics.path_cost;
+    init_entry.obstacle_checks = init_metrics.obstacle_checks;
+    init_entry.queue_operations = init_metrics.queue_operations;
+    init_entry.tree_size = kinodynamic_planner->getTreeSize();
+    
+    init_entry.avg_deg_out = kinodynamic_planner->getAvgOutDegree();
+    init_entry.avg_deg_in = kinodynamic_planner->getAvgInDegree();
+    init_entry.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
+    
+    log_data.push_back(init_entry);
+
+
 
     // SAVE GRAPH
     std::ofstream graph_log_file;
@@ -375,7 +420,7 @@ int main(int argc, char** argv) {
         graph_log_file.open(graph_filename);
         
         if (graph_log_file.is_open()) {
-            graph_log_file << "cycle_id,node_id,x,y,cost,parent_id\n";
+            graph_log_file << "cycle_id,node_id,x,y,g,lmc,parent_id,is_robot_anchor,robot_anchor_id,robot_g,robot_lmc,bridge_cost,robot_total_cost,robot_time_to_goal\n";
             
             kinodynamic_planner->logGraphState(graph_log_file, graph_cycle_count);
             graph_cycle_count++;
@@ -386,9 +431,7 @@ int main(int argc, char** argv) {
         }
     }
 
-
-
-
+#endif
 
     // --- 9. Executor Setup ---
     rclcpp::executors::StaticSingleThreadedExecutor executor;
@@ -439,7 +482,6 @@ int main(int argc, char** argv) {
         gazebo_checker->initializeDynamicObstacles(initial_T);
     }
 
-    std::vector<LogEntry> log_data;
     auto global_start = std::chrono::steady_clock::now();
     auto time_limit = std::chrono::seconds(cfg.duration_limit);
     auto start_time = std::chrono::steady_clock::now();
@@ -497,7 +539,7 @@ int main(int argc, char** argv) {
                 // Optional: Log only if significant to avoid spam
                 RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), "plan took: %.2f ms", current_plan_ms);
             }
-
+#if USE_METRIC
             // 3. LOG SEPARATED METRICS
             if (!all_obs.empty() || is_anytime) {
                 LogEntry entry;
@@ -520,7 +562,7 @@ int main(int argc, char** argv) {
                 entry.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
                 log_data.push_back(entry);
             }
-
+#endif
             // --- VISUALIZATION ---
             std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos; 
             std::vector<double> safe_cyl_radii, threat_cyl_radii;
@@ -627,11 +669,12 @@ int main(int argc, char** argv) {
                 RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), 
                     "updateObstacles: %.2f ms", current_update_ms);
 
-
+#if USE_METRIC
                 if (should_log_graph && graph_log_file.is_open()) {
                     kinodynamic_planner->logGraphState(graph_log_file, graph_cycle_count);
                     graph_cycle_count++;
                 }
+#endif
             }
             
             // 2. MEASURE PLAN TIME
@@ -646,6 +689,7 @@ int main(int argc, char** argv) {
                     RCLCPP_INFO(rclcpp::get_logger("Planner_Timing"), "plan took: %.2f ms", current_plan_ms);
             }
 
+#if USE_METRIC 
             // 3. LOG SEPARATED METRICS
             if (!turned_obs.empty() || is_anytime) {
                 LogEntry entry;
@@ -668,6 +712,7 @@ int main(int argc, char** argv) {
                 entry.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
                 log_data.push_back(entry);
             }
+#endif
 
             // // Not used anymore!
             // std::vector<Obstacle> culprits = obstacle_checker->getAndClearCulprits();
@@ -697,7 +742,7 @@ int main(int argc, char** argv) {
                 
                 Eigen::VectorXd updated_state = ros_manager->getCurrentSimulatedState();
                 double dist_to_goal = (updated_state.head<2>() - goal_vec.head<2>()).norm();
-                if (dist_to_goal < 0.5) {
+                if (dist_to_goal < cfg.goal_radius) {
                     RCLCPP_INFO(vis_node->get_logger(), "Goal Reached!");
 
 #if SCREEN_SHOT
@@ -718,8 +763,8 @@ int main(int argc, char** argv) {
     std::cout<<"FINAL TREE SIZE: "<<planner->getTreeSize()<<"\n";
     CALLGRIND_STOP_INSTRUMENTATION;
 
-    
-// --- 10. Save Metrics ---
+#if USE_METRIC 
+    // --- 10. Save Metrics ---
     int final_collision_count = (is_geometric_mode) ? 0 : ros_manager->getCollisionCount();
     for (auto& entry : log_data) entry.collision_count = final_collision_count;
     
@@ -738,12 +783,13 @@ int main(int argc, char** argv) {
     }
     
     // UPDATED HEADER
-    out << "elapsed_s,total_latency_ms,update_ms,plan_ms,time_to_goal,path_cost,"
+    out << "elapsed_s,setup_ms,total_latency_ms,update_ms,plan_ms,time_to_goal,path_cost,"
        "obstacle_checks,queue_operations,"
        "collision_count,tree_size,avg_deg_out,avg_deg_in,radius\n";
 
     for (const auto& entry : log_data) {
         out << entry.elapsed_s << "," 
+            << entry.setup_ms << "," 
             << entry.total_latency_ms << ","
             << entry.update_ms << ","
             << entry.plan_ms << ","
@@ -764,7 +810,7 @@ int main(int argc, char** argv) {
         std::cout << "Graph log file closed successfully. Total cycles saved: " 
                   << graph_cycle_count << std::endl;
     }
-
+#endif
 
     rclcpp::shutdown();
     return 0;

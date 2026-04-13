@@ -6,7 +6,7 @@ import yaml  # Make sure to run: pip install pyyaml
 # 1. EXPERIMENT CONFIGURATION
 # =====================================================================
 
-NUM_SEEDS = 3
+NUM_SEEDS = 30
 START_SEED = 42
 
 # --- PATH CONFIGURATIONS ---
@@ -17,10 +17,10 @@ EXECUTABLE_PATH = "../../../build/main"
 SDF_BASE_DIR = "../../../sims"
 
 # --- SDF FILE CONFIGURATIONS (Change these easily here!) ---
-SDF_FILE_R2       = "dynamic_world_straight_box_circle.sdf"
-SDF_FILE_R2T      = "dynamic_world_straight_box_circle.sdf"
-SDF_FILE_DUBINS   = "dynamic_world_straight_box_circle.sdf"
-SDF_FILE_THRUSTER = "dynamic_world_straight_box_circle_slow.sdf"
+SDF_FILE_R2       = "dynamic_world_straight_box_circle_10.sdf"
+SDF_FILE_R2T      = "dynamic_world_straight_box_circle_10.sdf"
+SDF_FILE_DUBINS   = "dynamic_world_straight_box_circle_10.sdf"
+SDF_FILE_THRUSTER = "dynamic_world_straight_box_circle_10_slow.sdf"
 
 
 # Your non-anytime planners
@@ -42,7 +42,7 @@ STATE_SPACES = {
         "robot_velocity": 10.0,
         
         "num_of_samples": 1000, # Large batch for non-anytime
-        "factor": 3.0,
+        "factor": 2.0,
         "kd_dim": 2,
         "is_geometric_mode": True,
         "partial_update": False,
@@ -65,10 +65,12 @@ STATE_SPACES = {
         "max_velocity": 20.0,
         
         "num_of_samples": 1000,
-        "factor": 3.0,
+        "factor": 2.0,
         "kd_dim": 3,
         "is_geometric_mode": False,
         "partial_update": True,
+        "num_pillar_nodes": 0,
+        "goal_radius": 0.5,
         
         "sdf_file": SDF_FILE_R2T,
         "inflation": 0.75
@@ -77,7 +79,7 @@ STATE_SPACES = {
     "Dubins": {
         "state_space_type": "Dubins",
         "manager_type": "Dubins",
-        "time_budget": 40.0,
+        "time_budget": 25.0,
         "start_state": [48.0, 48.0, -0.785],
         "goal_state": [-48.0, -48.0, -2.356],
         "dimensions": 4,
@@ -92,6 +94,8 @@ STATE_SPACES = {
         "kd_dim": 4,
         "is_geometric_mode": False,
         "partial_update": True,
+        "num_pillar_nodes": 0,
+        "goal_radius": 0.5,
         
         "sdf_file": SDF_FILE_DUBINS,
         "inflation": 0.75
@@ -100,7 +104,7 @@ STATE_SPACES = {
     "Thruster": {
         "state_space_type": "Thruster",
         "manager_type": "Thruster",
-        "time_budget": 40.0,
+        "time_budget": 25.0,
         "start_state": [48.0, 48.0, 0.0, 0.0],
         "goal_state": [-48.0, -48.0, 0.0, 0.0],
         "dimensions": 5,
@@ -115,6 +119,8 @@ STATE_SPACES = {
         "kd_dim": 5,
         "is_geometric_mode": False,
         "partial_update": True,
+        "num_pillar_nodes": 0,
+        "goal_radius": 0.5,
         
         "sdf_file": SDF_FILE_THRUSTER,
         "inflation": 0.75
@@ -158,8 +164,9 @@ def create_yaml(algo_name, space_name, seed, params, filename):
             "kdtree_type": "NanoFlann",
             "partial_update": bool(params["partial_update"]),
             "kd_dim": int(params["kd_dim"]), # FORCE INT
-            "is_geometric_mode": bool(params["is_geometric_mode"])
+            "is_geometric_mode": bool(params["is_geometric_mode"]),
             # Notice delta and epsilon are intentionally excluded here
+
         },
         "manager_params": {
             "vis_frequency_hz": 30
@@ -171,6 +178,12 @@ def create_yaml(algo_name, space_name, seed, params, filename):
     }
 
     # Handle conditional parameters safely and cast correctly
+    if "num_pillar_nodes" in params:
+        config["planner_params"]["num_pillar_nodes"] = int(params["num_pillar_nodes"])
+
+    if "goal_radius" in params:
+        config["planner_params"]["goal_radius"] = float(params["goal_radius"])
+
     if "duration_limit" in params:
         config["simulation"]["duration_limit"] = int(params["duration_limit"]) 
     if "time_budget" in params:

@@ -22,7 +22,7 @@ planner_params:
   num_of_samples: 1500
   factor: 3.0
   kdtree_type: "NanoFlann"
-  partial_update: false
+  partial_update: true
   kd_dim: 3 # 3 for R2T
   is_geometric_mode: false
   num_pillar_nodes: 50

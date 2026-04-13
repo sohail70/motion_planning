@@ -15,8 +15,6 @@ robot:
   dimensions: 2
   bounds_min: [-50.0, -50.0]
   bounds_max: [50.0, 50.0]
-  min_velocity: 0.0
-  max_velocity: 20.0
 
 planner_params:
   num_of_samples: 1000

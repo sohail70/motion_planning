@@ -203,6 +203,44 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
 
 
 
+// void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id, const std::vector<float>& color, const std::string& ns) {
+//     visualization_msgs::msg::Marker marker;
+//     marker.header.frame_id = frame_id;
+//     marker.header.stamp = node_->now();
+//     // marker.ns = "colored_nodes";
+//     marker.ns = ns;
+//     marker.id = 0;
+//     marker.type = visualization_msgs::msg::Marker::POINTS;
+//     marker.action = visualization_msgs::msg::Marker::ADD;
+//     marker.scale.x = 0.8; // Point width
+//     marker.scale.y = 0.8; // Point height
+//     // marker.lifetime = rclcpp::Duration(1, 0);  // 1 second visibility
+//     // marker.lifetime = rclcpp::Duration::from_seconds(0.2);  // Keep for 0.2 seconds
+
+
+
+
+//     // Set the color components
+//         marker.color.r = color[0];
+//         marker.color.g = color[1];
+//         marker.color.b = color[2];
+//         marker.color.a = 1.0;
+
+
+//     // Add nodes to the marker
+//     for (const auto& node : nodes) {
+//         geometry_msgs::msg::Point point;
+//         point.x = node.x();
+//         point.y = node.y();
+//         // point.z = 0.0; // Assuming 2D
+//         point.z = (node.size() > 2) ? node.z() : 0.0; // <--- MODIFIED: Use Z if available, else 0
+//         marker.points.push_back(point);
+//     }
+
+//     // Publish the marker
+//     // marker_pub_->publish(marker);
+//     marker_buffer_.markers.push_back(marker);
+// }
 void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes, const std::string& frame_id, const std::vector<float>& color, const std::string& ns) {
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = frame_id;
@@ -210,22 +248,25 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
     // marker.ns = "colored_nodes";
     marker.ns = ns;
     marker.id = 0;
-    marker.type = visualization_msgs::msg::Marker::POINTS;
+    
+    // CHANGED: Use SPHERE_LIST instead of POINTS
+    marker.type = visualization_msgs::msg::Marker::SPHERE_LIST;
     marker.action = visualization_msgs::msg::Marker::ADD;
-    marker.scale.x = 0.8; // Point width
-    marker.scale.y = 0.8; // Point height
+    
+    // CHANGED: SPHERE_LIST requires X, Y, and Z to be set for a perfectly round sphere.
+    // If you don't set Z, the spheres will be completely flat/invisible!
+    marker.scale.x = 0.5; // Sphere width
+    marker.scale.y = 0.5; // Sphere length
+    marker.scale.z = 0.5; // Sphere height 
+    
     // marker.lifetime = rclcpp::Duration(1, 0);  // 1 second visibility
     // marker.lifetime = rclcpp::Duration::from_seconds(0.2);  // Keep for 0.2 seconds
 
-
-
-
     // Set the color components
-        marker.color.r = color[0];
-        marker.color.g = color[1];
-        marker.color.b = color[2];
-        marker.color.a = 1.0;
-
+    marker.color.r = color[0];
+    marker.color.g = color[1];
+    marker.color.b = color[2];
+    marker.color.a = 1.0;
 
     // Add nodes to the marker
     for (const auto& node : nodes) {
@@ -233,7 +274,7 @@ void RVizVisualization::visualizeNodes(const std::vector<Eigen::VectorXd>& nodes
         point.x = node.x();
         point.y = node.y();
         // point.z = 0.0; // Assuming 2D
-        point.z = (node.size() > 2) ? node.z() : 0.0; // <--- MODIFIED: Use Z if available, else 0
+        point.z = (node.size() > 2) ? node.z() : 0.05;
         marker.points.push_back(point);
     }
 
@@ -1593,62 +1634,139 @@ void RVizVisualization::clearMarkers(const std::string& ns) {
 }
 
 
+// void RVizVisualization::visualizePathGradient(
+//     const std::vector<Eigen::VectorXd>& path_waypoints,
+//     const std::vector<double>& waypoint_costs, // <--- TRUE COSTS
+//     const std::string& frame_id,
+//     double global_max_cost) 
+// {
+//     if (path_waypoints.empty() || path_waypoints.size() != waypoint_costs.size()) return;
+//     if (global_max_cost < 1e-6) global_max_cost = 1.0; 
+    
+//     visualization_msgs::msg::Marker marker;
+//     marker.header.frame_id = frame_id;
+//     marker.header.stamp = node_->now();
+//     marker.ns = "path_gradient";
+//     marker.id = 0;
+//     marker.type = visualization_msgs::msg::Marker::LINE_STRIP; 
+//     marker.action = visualization_msgs::msg::Marker::ADD;
+//     marker.pose.orientation.w = 1.0;
+//     marker.scale.x = 1.5; 
+    
+//     for (size_t i = 0; i < path_waypoints.size(); ++i) {
+//         geometry_msgs::msg::Point pt;
+//         pt.x = path_waypoints[i].x();
+//         pt.y = path_waypoints[i].y();
+//         pt.z = -0.02; 
+//         marker.points.push_back(pt);
+        
+//         std_msgs::msg::ColorRGBA color;
+//         color.a = 1.0; 
+        
+//         // NO EUCLIDEAN NORM! Use the exact topological cost.
+//         double ratio = 1.0 - std::clamp(waypoint_costs[i] / global_max_cost, 0.0, 1.0); 
+        
+//         // Corrected Flawless HSV Gradient (Red -> Yellow -> Green -> Cyan -> Blue)
+//         if (ratio < 0.25) { 
+//             color.r = 1.0; 
+//             color.g = ratio * 4.0; 
+//             color.b = 0.0; 
+//         } else if (ratio < 0.5) { 
+//             color.r = 1.0 - (ratio - 0.25) * 4.0; 
+//             color.g = 1.0; 
+//             color.b = 0.0; 
+//         } else if (ratio < 0.75) { 
+//             color.r = 0.0; 
+//             color.g = 1.0; 
+//             color.b = (ratio - 0.5) * 4.0; 
+//         } else { 
+//             color.r = 0.0; 
+//             color.g = 1.0 - (ratio - 0.75) * 4.0; 
+//             color.b = 1.0; 
+//         }
+        
+//         marker.colors.push_back(color);
+//     }
+    
+//     // marker_pub_->publish(marker);
+//     marker_buffer_.markers.push_back(marker);
+// }
+
 void RVizVisualization::visualizePathGradient(
     const std::vector<Eigen::VectorXd>& path_waypoints,
-    const std::vector<double>& waypoint_costs, // <--- TRUE COSTS
+    const std::vector<double>& waypoint_costs, 
     const std::string& frame_id,
     double global_max_cost) 
 {
     if (path_waypoints.empty() || path_waypoints.size() != waypoint_costs.size()) return;
     if (global_max_cost < 1e-6) global_max_cost = 1.0; 
     
-    visualization_msgs::msg::Marker marker;
-    marker.header.frame_id = frame_id;
-    marker.header.stamp = node_->now();
-    marker.ns = "path_gradient";
-    marker.id = 0;
-    marker.type = visualization_msgs::msg::Marker::LINE_STRIP; 
-    marker.action = visualization_msgs::msg::Marker::ADD;
-    marker.pose.orientation.w = 1.0;
-    marker.scale.x = 1.5; 
-    
-    for (size_t i = 0; i < path_waypoints.size(); ++i) {
-        geometry_msgs::msg::Point pt;
-        pt.x = path_waypoints[i].x();
-        pt.y = path_waypoints[i].y();
-        pt.z = -0.02; 
-        marker.points.push_back(pt);
-        
+    // Helper to get gradient colors
+    auto getColor = [&](double cost) -> std_msgs::msg::ColorRGBA {
         std_msgs::msg::ColorRGBA color;
         color.a = 1.0; 
+        double ratio = 1.0 - std::clamp(cost / global_max_cost, 0.0, 1.0); 
+        if (ratio < 0.25) { color.r = 1.0; color.g = ratio * 4.0; color.b = 0.0; } 
+        else if (ratio < 0.5) { color.r = 1.0 - (ratio - 0.25) * 4.0; color.g = 1.0; color.b = 0.0; } 
+        else if (ratio < 0.75) { color.r = 0.0; color.g = 1.0; color.b = (ratio - 0.5) * 4.0; } 
+        else { color.r = 0.0; color.g = 1.0 - (ratio - 0.75) * 4.0; color.b = 1.0; }
+        return color;
+    };
+
+    // If Waypoint Size == 3, it's R2T (X, Y, T).
+    // R2T has sharp, discontinuous corners that mathematically break LINE_STRIP.
+    if (path_waypoints[0].size() == 3) {
         
-        // NO EUCLIDEAN NORM! Use the exact topological cost.
-        double ratio = 1.0 - std::clamp(waypoint_costs[i] / global_max_cost, 0.0, 1.0); 
-        
-        // Corrected Flawless HSV Gradient (Red -> Yellow -> Green -> Cyan -> Blue)
-        if (ratio < 0.25) { 
-            color.r = 1.0; 
-            color.g = ratio * 4.0; 
-            color.b = 0.0; 
-        } else if (ratio < 0.5) { 
-            color.r = 1.0 - (ratio - 0.25) * 4.0; 
-            color.g = 1.0; 
-            color.b = 0.0; 
-        } else if (ratio < 0.75) { 
-            color.r = 0.0; 
-            color.g = 1.0; 
-            color.b = (ratio - 0.5) * 4.0; 
-        } else { 
-            color.r = 0.0; 
-            color.g = 1.0 - (ratio - 0.75) * 4.0; 
-            color.b = 1.0; 
+        visualization_msgs::msg::Marker lines_marker;
+        lines_marker.header.frame_id = frame_id;
+        lines_marker.header.stamp = node_->now();
+        lines_marker.ns = "path_gradient_lines";
+        lines_marker.id = 0;
+        lines_marker.type = visualization_msgs::msg::Marker::LINE_LIST; // Prevents twisting
+        lines_marker.action = visualization_msgs::msg::Marker::ADD;
+        lines_marker.pose.orientation.w = 1.0;
+        lines_marker.scale.x = 1.5; 
+
+        // R2T lines
+        for (size_t i = 0; i < path_waypoints.size() - 1; ++i) {
+            geometry_msgs::msg::Point pA, pB;
+            pA.x = path_waypoints[i].x();   pA.y = path_waypoints[i].y();   pA.z = -0.02;
+            pB.x = path_waypoints[i+1].x(); pB.y = path_waypoints[i+1].y(); pB.z = -0.02;
+            
+            // Skip zero-length R2T duplicates
+            if (std::hypot(pB.x - pA.x, pB.y - pA.y) < 1e-3) continue;
+
+            lines_marker.points.push_back(pA);
+            lines_marker.points.push_back(pB);
+            lines_marker.colors.push_back(getColor(waypoint_costs[i]));
+            lines_marker.colors.push_back(getColor(waypoint_costs[i+1]));
         }
         
-        marker.colors.push_back(color);
+        marker_buffer_.markers.push_back(lines_marker);
+    } 
+    // Dubins (4D) or Thruster (5D) have smooth C1-continuous corners.
+    // LINE_STRIP works flawlessly for them!
+    else {
+        visualization_msgs::msg::Marker marker;
+        marker.header.frame_id = frame_id;
+        marker.header.stamp = node_->now();
+        marker.ns = "path_gradient";
+        marker.id = 0;
+        marker.type = visualization_msgs::msg::Marker::LINE_STRIP; 
+        marker.action = visualization_msgs::msg::Marker::ADD;
+        marker.pose.orientation.w = 1.0;
+        marker.scale.x = 1.5; 
+        
+        for (size_t i = 0; i < path_waypoints.size(); ++i) {
+            geometry_msgs::msg::Point pt;
+            pt.x = path_waypoints[i].x();
+            pt.y = path_waypoints[i].y();
+            pt.z = -0.02; 
+            marker.points.push_back(pt);
+            marker.colors.push_back(getColor(waypoint_costs[i]));
+        }
+        marker_buffer_.markers.push_back(marker);
     }
-    
-    // marker_pub_->publish(marker);
-    marker_buffer_.markers.push_back(marker);
 }
 void RVizVisualization::visualizeTreeGradient(
     const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges,

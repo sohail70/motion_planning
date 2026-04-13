@@ -1,11 +1,11 @@
 // Copyright 2025 Soheil E.nia
 // TODO : fix the KNN usage because with knn there is not neighborhood radisu constraints (check near function)
 
-//TODO: fix the 0.01 + remove plugin from sdf - change the gazeboobstalcechecker to deterministcobstaclechecker
 #define DEBUG 0
 // The Threat Set is the bridge that allows a lazy algorithm to behave with the same spatial intelligence as an eager one
 #define USE_THREAT_SET_STRATEGY 0
 
+#define USE_RECOVERY 0 // Emergency Fallback
 #include "motion_planning/planners/kinodynamic/kinodynamic_fmtx.hpp"
 
 KinodynamicFMTX::KinodynamicFMTX(std::shared_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(statespace), problem_(problem_def), obs_checker_(obs_checker) {
@@ -26,39 +26,8 @@ void KinodynamicFMTX::clearPlannerState() {
     robot_state_index_ = -1;
 }
 
-// void KinodynamicFMTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes) {
-//     // ====================================================================
-//     // INJECT TIME PILLAR NODES (ZERO VELOCITIES)
-//     // ====================================================================
-//     double max_time = upper_bounds_(statespace_->getDimension() - 1); 
-
-//     for (int i = 1; i <= num_pillar_nodes; ++i) {
-//         Eigen::VectorXd pillar_state = goal_state_val;
-
-//         // Set velocities to ZERO so the robot can safely stop at the goal.
-//         // Safety check to ensure we only apply this to states with velocity dimensions
-//         if (pillar_state.size() >= 4) {
-//             pillar_state(2) = 0.0;
-//             pillar_state(3) = 0.0;
-//         }
-
-//         // Distribute evenly across time
-//         double t_val = (max_time / num_pillar_nodes) * i; 
-//         pillar_state(statespace_->getDimension() - 1) = t_val;
-
-//         auto state_ptr = statespace_->addState(pillar_state);
-        
-//         // FMTX uses std::shared_ptr and tree_ instead of nodes_
-//         auto node = std::make_shared<FMTNode>(state_ptr, tree_.size());
-//         node->setTimeToGoal(t_val);
-//         tree_.push_back(node);
-//     }
-// }
 
 void KinodynamicFMTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes) {
-    // ====================================================================
-    // INJECT TIME PILLAR NODES (ZERO VELOCITIES)
-    // ====================================================================
     double max_time = upper_bounds_(statespace_->getDimension() - 1); 
 
     // Protect the original main root (T=0)
@@ -78,16 +47,16 @@ void KinodynamicFMTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_va
         pillar_state(statespace_->getDimension() - 1) = t_val;
 
         auto state_ptr = statespace_->addState(pillar_state);
-        auto node = std::make_shared<FMTNode>(state_ptr, tree_.size());
+        auto node = std::make_unique<FMTNode>(state_ptr, tree_.size());
         node->setTimeToGoal(t_val);
         
-        // FIX 2: Set them as Zero-Cost Roots so the backward search can start from them!
+        // Set them as Zero-Cost Roots so the backward search can start from them!
         node->setLMC(0.0);
         v_open_heap_.add(node.get(), 0.0);
         last_replan_metrics_.queue_operations++;
 
         time_pillar_indices_.insert(node->getIndex());
-        tree_.push_back(node);
+        tree_.push_back(std::move(node));
     }
 
 }
@@ -96,13 +65,14 @@ void KinodynamicFMTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_va
 void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization> visualization) {
     std::cout << "------------------------------------------------------------\n";
     auto start = std::chrono::high_resolution_clock::now();
-    clearPlannerState();
+    // clearPlannerState();
     visualization_ = visualization;
     num_of_samples_ = params.getParam<int>("num_of_samples");
     partial_update = params.getParam<bool>("partial_update");
 #if DEBUG
     partial_update = false; // Since the runCostForensic and runGlobalCostForensic is not queue-aware. we use this to make sure the propagation is solid in the debug mode
 #endif
+    factor_ = params.getParam<double>("factor", 1.0);
     is_geometric_mode_ = params.getParam<bool>("is_geometric_mode", false);
     lower_bounds_ = problem_->getLowerBound();
     upper_bounds_ = problem_->getUpperBound();
@@ -110,6 +80,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     std::string kdtree_type = params.getParam<std::string>("kdtree_type");
     use_knn = params.getParam<bool>("use_knn", false);
     num_pillar_nodes_ = params.getParam<int>("num_pillar_nodes", 50);
+    if (is_geometric_mode_) num_pillar_nodes_ = 0;
 
     if (kdtree_type == "NanoFlann"){
         Eigen::VectorXd weights(kd_dim);
@@ -139,7 +110,6 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
                 << ", bounds=[" << lower_bounds_ << ", " << upper_bounds_ << "]\n";
 
 
-    std::cout << "Taking care of the samples: \n \n";
     bool use_rrtx_saved_samples_ = false;
     if (use_rrtx_saved_samples_) {
         std::string filepath = "./rrtx_tree_nodes.csv";
@@ -167,7 +137,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
 
             // Create an Eigen vector and then the FMTNode
             Eigen::Map<Eigen::VectorXd> state_vec(state_values.data(), state_values.size());
-            auto node = std::make_shared<FMTNode>(statespace_->addState(state_vec), tree_.size());
+            auto node = std::make_unique<FMTNode>(statespace_->addState(state_vec), tree_.size());
 
 
             if (!is_geometric_mode_) {
@@ -180,7 +150,7 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
             }
 
 
-            tree_.push_back(node);
+            tree_.push_back(std::move(node));
         }
         fin.close();
         std::cout << "Loaded " << tree_.size() << " nodes from file.\n";
@@ -230,50 +200,22 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     else{
         setStart(problem_->getStart());
         setGoal(problem_->getGoal());
-        injectTimePillarNodes(problem_->getStart(), num_pillar_nodes_);
+        if(!is_geometric_mode_) injectTimePillarNodes(problem_->getStart(), num_pillar_nodes_);
         for (int i = 0 ; i < num_of_samples_ - 2 - num_pillar_nodes_; i++) {
-            auto node = std::make_shared<FMTNode>(statespace_->sampleUniform(lower_bounds_ , upper_bounds_),tree_.size());
+            auto node = std::make_unique<FMTNode>(statespace_->sampleUniform(lower_bounds_ , upper_bounds_),tree_.size());
             if (!is_geometric_mode_) {
                 // Kinodynamic: Set time from state vector
-                if (node->getStateValue().size() > 2) {
-                    double absolute_t = node->getStateValue().tail<1>()[0];
-                    node->setTimeToGoal(absolute_t);
-                }
+                double absolute_t = node->getStateValue().tail<1>()[0];
+                node->setTimeToGoal(absolute_t);
             } else {
                 // Geometric: Time is irrelevant, set to 0
                 node->setTimeToGoal(0.0);
             }
-            tree_.push_back(node);
+            tree_.push_back(std::move(node));
         }
     }
 
 
-    // ====================================================================
-    // [DEBUG LOG FMTX] Verifying Nodes Before KD-Tree
-    // ====================================================================
-    std::cout << "\n[DEBUG LOG FMTX] Verifying Endpoint, Pillar, and First Random Nodes:\n";
-    // Check nodes 0 to (num_pillars + 2) which includes Start, Goal, all Pillars, and the 1st Uniform Sample
-    int fmtx_check_limit = std::min((int)tree_.size(), num_pillar_nodes_ + 3);
-    for (int i = 0; i < fmtx_check_limit; ++i) {
-        auto node = tree_[i].get();
-        std::cout << "FMTX Node " << node->getIndex() 
-                  << " | State: [" << node->getStateValue().transpose() 
-                  << "] | TTG: " << node->getTimeToGoal() << "\n";
-    }
-    std::cout << "...\n";
-    // Check the last two uniform samples to ensure the sequence stayed in sync
-    for (int i = std::max(0, (int)tree_.size() - 2); i < tree_.size(); ++i) {
-        auto node = tree_[i].get();
-        std::cout << "FMTX Node " << node->getIndex() 
-                  << " | State: [" << node->getStateValue().transpose() 
-                  << "] | TTG: " << node->getTimeToGoal() << "\n";
-    }
-    std::cout << "Total FMTX Nodes: " << tree_.size() << "\n\n";
-    // ====================================================================
-
-
-
-    std::cout << "KDTree: \n\n";
     Eigen::MatrixXd all_samples = statespace_->getSamplesCopy();
     Eigen::MatrixXd spatial_samples_only = all_samples.leftCols(kd_dim).eval();
     // kdtree_->addPoints(spatial_samples_only);
@@ -286,10 +228,9 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     /////////////////// Neighborhood Radius ////////////////////////////////
     if (use_knn) {
         int d = statespace_->getDimension();
-        factor = params.getParam<double>("factor");
         // Practical k-NN parameter from the FMT* paper's experiments 
         double k0_fmt_star_practical = std::pow(2.0, d) * (M_E / d);
-        k_neighbors_ = static_cast<int>(std::ceil(factor * k0_fmt_star_practical * std::log(statespace_->getNumStates())));
+        k_neighbors_ = static_cast<int>(std::ceil(factor_ * k0_fmt_star_practical * std::log(statespace_->getNumStates())));
         // // // Standard k-NN parameter for RRT*
         // double k0_rrt_star = M_E * (1.0 + 1.0 / d);
         // k_neighbors_ = static_cast<int>(std::ceil(factor * k0_rrt_star * std::log(statespace_->getNumStates())));
@@ -302,10 +243,9 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
         double zetaD = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
         // double gamma = 2 * std::pow(1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d); //Real FMT star gamma which is smaller than rrt star which makes the neighborhood size less than rrt star
         double gamma = std::pow(2, 1.0 / d) * std::pow(1 + 1.0 / d, 1.0 / d) * std::pow(mu / zetaD, 1.0 / d);
-        factor = params.getParam<double>("factor");
-        std::cout<<"factor: "<<factor<<"\n";
-        neighborhood_radius_ = factor * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
+        neighborhood_radius_ = factor_ * gamma * std::pow(std::log(statespace_->getNumStates()) / statespace_->getNumStates(), 1.0 / d);
         // neighborhood_radius_ = factor * gamma * std::pow(std::log(num_of_samples_) / num_of_samples_, 1.0 / d);
+        std::cout<<"factor: "<<factor_<<"\n";
         std::cout << "Computed value of rn: " << neighborhood_radius_ << std::endl;
     }
 
@@ -944,61 +884,119 @@ void KinodynamicFMTX::near(int node_index) {
 
 
 
-// std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
-// {
-//     // Check if the planner has a valid anchor point for the robot (setRobotState should have found one)
-//     if (!robot_node_ || robot_node_->getLMC() == std::numeric_limits<double>::infinity()) {
-//         FMTX_ERROR("FMTX_Path_Assembly: Robot has no valid anchor node. Cannot build path");
-//         return {}; // Return empty path
-//     }
+std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
+{
+    // Check if the planner has a valid anchor point for the robot (setRobotState should have found one)
+    if (!robot_node_ || robot_node_->getLMC() == std::numeric_limits<double>::infinity()) {
+        FMTX_ERROR("FMTX_Path_Assembly: Robot has no valid anchor node. Cannot build path");
+        return {}; // Return empty path
+    }
 
-//     // // Generate the "bridge" trajectory from the robot's continuous state to the anchor node on the fly
-//     // Trajectory bridge_traj = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
+    // // Generate the "bridge" trajectory from the robot's continuous state to the anchor node on the fly
+    // Trajectory bridge_traj = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
 
-//     // if (!bridge_traj.is_valid) {
-//     //     FMTX_ERROR("FMTX_Path_Assembly: Failed to steer from robot's continuous state to the anchor node.");
-//     //     return {};
-//     // }
+    // if (!bridge_traj.is_valid) {
+    //     FMTX_ERROR("FMTX_Path_Assembly: Failed to steer from robot's continuous state to the anchor node.");
+    //     return {};
+    // }
 
-//     // Safety check on the cached bridge
-//     if (!current_bridge_trajectory_.is_valid || current_bridge_trajectory_.path_points.empty()) {
-//         FMTX_ERROR("FMTX_Path_Assembly: Cached bridge trajectory is invalid. Cannot build path");
-//         return {};
-//     }
+    // Safety check on the cached bridge
+    if (!current_bridge_trajectory_.is_valid || current_bridge_trajectory_.path_points.empty()) {
+        FMTX_ERROR("FMTX_Path_Assembly: Cached bridge trajectory is invalid. Cannot build path");
+        return {};
+    }
 
-//     // Start the final path with the CACHED bridge trajectory! (Zero computation time)
-//     std::vector<Eigen::VectorXd> final_executable_path = current_bridge_trajectory_.path_points;
-//     // // Start the final path with this bridge trajectory.
-//     // std::vector<Eigen::VectorXd> final_executable_path = bridge_traj.path_points;
+    // Start the final path with the CACHED bridge trajectory! (Zero computation time)
+    std::vector<Eigen::VectorXd> final_executable_path = current_bridge_trajectory_.path_points;
+    // // Start the final path with this bridge trajectory.
+    // std::vector<Eigen::VectorXd> final_executable_path = bridge_traj.path_points;
 
-//     // Traverse the rest of the tree from the anchor node using parent pointers.
-//     FMTNode* child = robot_node_;
-//     FMTNode* parent = child->getParent();
+    // Traverse the rest of the tree from the anchor node using parent pointers.
+    FMTNode* child = robot_node_;
+    FMTNode* parent = child->getParent();
 
-//     while (parent) {
-//         auto cached_traj = child->getParentTrajectory();
-//         if (cached_traj->is_valid && cached_traj->path_points.size() > 1) {
-//             // Append all points from the segment except the first one to avoid duplicates.
-//             final_executable_path.insert(final_executable_path.end(),
-//                                          cached_traj->path_points.begin() + 1,
-//                                          cached_traj->path_points.end());
-//         } else {
-//             // If a valid cached trajectory doesn't exist, the path is broken.
-//             FMTX_WARN("[FMTX_Path_Assembly] Path reconstruction failed. Invalid cached trajectory between nodes " 
-//                 << child->getIndex() << " and " << parent->getIndex() << ".");
-//             break;
-//         }
-//         child = parent;
-//         parent = child->getParent();
-//     }
+    while (parent) {
+        auto cached_traj = child->getParentTrajectory();
+        if (cached_traj->is_valid && cached_traj->path_points.size() > 1) {
+            // Append all points from the segment except the first one to avoid duplicates.
+            final_executable_path.insert(final_executable_path.end(),
+                                         cached_traj->path_points.begin() + 1,
+                                         cached_traj->path_points.end());
+        } else {
+            // If a valid cached trajectory doesn't exist, the path is broken.
+            FMTX_WARN("[FMTX_Path_Assembly] Path reconstruction failed. Invalid cached trajectory between nodes " 
+                << child->getIndex() << " and " << parent->getIndex() << ".");
+            break;
+        }
+        child = parent;
+        parent = child->getParent();
+    }
 
-//     return final_executable_path;
-// }
+    return final_executable_path;
+}
+
 
 // std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
 // {
 //     // Check if the planner has a valid anchor point for the robot 
 //     if (!robot_node_) {
+//         // Fallback: If no anchor exists but we have an emergency trajectory, execute it!
+//         if (current_bridge_trajectory_.is_valid && !current_bridge_trajectory_.path_points.empty()) {
+//             return current_bridge_trajectory_.path_points;
+//         }
+//         FMTX_ERROR("[FMTX_Path_Assembly] No anchor node and no safe emergency trajectory.");
+//         return {}; 
+//     }
+
+//     // Safety check on the cached bridge
+//     if (!current_bridge_trajectory_.is_valid || current_bridge_trajectory_.path_points.empty()) {
+//         FMTX_ERROR("[FMTX_Path_Assembly] Cached bridge trajectory is invalid. Cannot build path.");
+//         return {};
+//     }
+
+//     // Start the final path with the CACHED bridge trajectory! (Zero computation time)
+//     std::vector<Eigen::VectorXd> path = current_bridge_trajectory_.path_points;
+
+//     // Traverse the rest of the tree from the anchor node using parent pointers.
+//     FMTNode* current_node = robot_node_;
+    
+//     // Cycle Detection: Counter-based approach (faster than unordered_set hashing)
+//     int steps = 0;
+//     const int max_steps = tree_.size();
+
+//     while (current_node) {
+//         if (steps++ > max_steps) {
+//             FMTX_WARN("[FMTX_Path_Assembly] Cycle detected (max steps exceeded). Aborting further reconstruction.");
+//             break;
+//         }
+
+//         FMTNode* next_node = current_node->getParent();
+//         if (!next_node) {
+//             break; // Reached the root/goal of the tree
+//         }
+
+//         auto traj = current_node->getParentTrajectory();
+        
+//         // Check if cached_traj exists and is valid
+//         if (traj && traj->is_valid && traj->path_points.size() > 1) {
+//             // Skip the first point to avoid duplicate overlapping points at the nodes
+//             path.insert(path.end(), traj->path_points.begin() + 1, traj->path_points.end());
+//         } else {
+//             // Fallback: If trajectory details are missing, just push the node's state
+//             path.push_back(next_node->getStateValue());
+//         }
+        
+//         current_node = next_node;
+//     }
+
+//     return path;
+// }
+
+
+// std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
+// {
+//     // Check if the planner has a valid anchor point for the robot
+//     if (!robot_node_) {  // ← ONLY check for null pointer, not LMC!
 //         FMTX_ERROR("FMTX_Path_Assembly: Robot has no valid anchor node. Cannot build path");
 //         return {}; 
 //     }
@@ -1009,36 +1007,22 @@ void KinodynamicFMTX::near(int node_index) {
 //         return {};
 //     }
 
-//     // Start the final path with the CACHED bridge trajectory! (Zero computation time)
+//     // Start the final path with the CACHED bridge trajectory!
 //     std::vector<Eigen::VectorXd> final_executable_path = current_bridge_trajectory_.path_points;
 
 //     // Traverse the rest of the tree from the anchor node using parent pointers.
 //     FMTNode* child = robot_node_;
 //     FMTNode* parent = child->getParent();
-    
-//     // NEW: Cycle Detection
-//     std::unordered_set<int> visited_nodes;
 
 //     while (parent) {
-//         // CYCLE DETECTION
-//         if (visited_nodes.find(child->getIndex()) != visited_nodes.end()) {
-//             FMTX_ERROR("FMTX_Path_Assembly: Cycle detected! Aborting path reconstruction.");
-//             break;
-//         }
-//         visited_nodes.insert(child->getIndex());
-
 //         auto cached_traj = child->getParentTrajectory();
-        
-//         // FIX: Check if cached_traj actually exists (is not nullptr) before dereferencing!
-//         if (cached_traj && cached_traj->is_valid && cached_traj->path_points.size() > 1) {
-//             // Append all points from the segment except the first one to avoid duplicates.
+//         if (cached_traj->is_valid && cached_traj->path_points.size() > 1) {
 //             final_executable_path.insert(final_executable_path.end(),
 //                                          cached_traj->path_points.begin() + 1,
 //                                          cached_traj->path_points.end());
 //         } else {
-//             // If a valid cached trajectory doesn't exist, the path is broken.
-//             FMTX_WARN("[FMTX_Path_Assembly] Path reconstruction failed. Invalid or NULL cached trajectory between nodes " 
-//                 << child->getIndex() << " and " << parent->getIndex() << ". Path truncated.");
+//             // Recovery nodes have no parent chain, so just stop here.
+//             // This is expected behavior!
 //             break;
 //         }
 //         child = parent;
@@ -1049,80 +1033,23 @@ void KinodynamicFMTX::near(int node_index) {
 // }
 
 
-std::vector<Eigen::VectorXd> KinodynamicFMTX::getPathPositions() const
-{
-    // Check if the planner has a valid anchor point for the robot 
-    if (!robot_node_) {
-        // Fallback: If no anchor exists but we have an emergency trajectory, execute it!
-        if (current_bridge_trajectory_.is_valid && !current_bridge_trajectory_.path_points.empty()) {
-            return current_bridge_trajectory_.path_points;
-        }
-        FMTX_ERROR("[FMTX_Path_Assembly] No anchor node and no safe emergency trajectory.");
-        return {}; 
-    }
-
-    // Safety check on the cached bridge
-    if (!current_bridge_trajectory_.is_valid || current_bridge_trajectory_.path_points.empty()) {
-        FMTX_ERROR("[FMTX_Path_Assembly] Cached bridge trajectory is invalid. Cannot build path.");
-        return {};
-    }
-
-    // Start the final path with the CACHED bridge trajectory! (Zero computation time)
-    std::vector<Eigen::VectorXd> path = current_bridge_trajectory_.path_points;
-
-    // Traverse the rest of the tree from the anchor node using parent pointers.
-    FMTNode* current_node = robot_node_;
-    
-    // Cycle Detection: Counter-based approach (faster than unordered_set hashing)
-    int steps = 0;
-    const int max_steps = tree_.size();
-
-    while (current_node) {
-        if (steps++ > max_steps) {
-            FMTX_WARN("[FMTX_Path_Assembly] Cycle detected (max steps exceeded). Aborting further reconstruction.");
-            break;
-        }
-
-        FMTNode* next_node = current_node->getParent();
-        if (!next_node) {
-            break; // Reached the root/goal of the tree
-        }
-
-        auto traj = current_node->getParentTrajectory();
-        
-        // Check if cached_traj exists and is valid
-        if (traj && traj->is_valid && traj->path_points.size() > 1) {
-            // Skip the first point to avoid duplicate overlapping points at the nodes
-            path.insert(path.end(), traj->path_points.begin() + 1, traj->path_points.end());
-        } else {
-            // Fallback: If trajectory details are missing, just push the node's state
-            path.push_back(next_node->getStateValue());
-        }
-        
-        current_node = next_node;
-    }
-
-    return path;
-}
-
-
 
 void KinodynamicFMTX::setStart(const Eigen::VectorXd& start) {
     root_state_index_ = statespace_->getNumStates();
-    auto node = std::make_shared<FMTNode>(statespace_->addState(start),tree_.size());
+    auto node = std::make_unique<FMTNode>(statespace_->addState(start),tree_.size());
     node->setLMC(0);
     node->setTimeToGoal(0);
     v_open_heap_.add(node.get(),0);
     last_replan_metrics_.queue_operations++;
-    tree_.push_back(node);
+    tree_.push_back(std::move(node));
     std::cout << "KinodynamicFMTX: Start node created on Index: " << robot_state_index_ << "\n";
 }
 void KinodynamicFMTX::setGoal(const Eigen::VectorXd& goal) {
     robot_state_index_ = statespace_->getNumStates();
-    auto node = std::make_shared<FMTNode>(statespace_->addState(goal),tree_.size());
+    auto node = std::make_unique<FMTNode>(statespace_->addState(goal),tree_.size());
     node->setTimeToGoal(std::numeric_limits<double>::infinity());
     robot_node_ = node.get();
-    tree_.push_back(node);
+    tree_.push_back(std::move(node));
     std::cout << "KinodynamicFMTX: Goal node created on Index: " << root_state_index_ << "\n";
 }
 
@@ -1566,93 +1493,58 @@ void KinodynamicFMTX::updateObstacles(const ObstacleVector& turned_obstacles) {
 
     plan();
 
-    // // ==========================================================
-    // // DIAGNOSTIC: Check Time Pillar Tree Integration
-    // // ==========================================================
-    // std::cout << "\n========== PILLAR CONNECTIVITY REPORT ==========\n";
-    // Eigen::VectorXd goal_spatial = problem_->getStart().head(2); // Backward search destination
-    // int active_pillars = 0;
-    // int isolated_pillars = 0;
 
-    // for (const auto& node_ptr : tree_) {
-    //     FMTNode* node = node_ptr.get();
-    //     double dist_to_goal = (node->getStateValue().head(2) - goal_spatial).norm();
+
+    // // ==========================================================
+    // // PROOF OF TIME PILLAR USAGE: Trace the actual computed path
+    // // ==========================================================
+    // if (!is_geometric_mode_ && robot_node_) {
+    //     std::cout << "\n========== PLANNED PATH TRACE ==========\n";
+    //     std::cout << "Robot's Path Cost (getLMC()): " << robot_node_->getLMC() << "\n";
         
-    //     // Identify pillars: located exactly at the destination with LMC = 0
-    //     if (dist_to_goal <= 1e-3 && node->getLMC() == 0.0 && !node->getParent()) {
-    //         double t_val = node->getStateValue()(statespace_->getDimension() - 1);
-    //         int child_count = node->children_.size();
-            
-    //         std::cout << "Pillar ID " << node->getIndex() 
-    //                   << " [T=" << std::fixed << std::setprecision(2) << t_val << "] "
-    //                   << " | Direct Children: " << child_count;
-                      
-    //         if (child_count > 0) {
-    //             std::cout << " (ACTIVE)\n";
-    //             active_pillars++;
-    //         } else {
-    //             std::cout << " (ISOLATED)\n";
-    //             isolated_pillars++;
+    //     FMTNode* current = robot_node_;
+        
+    //     // In backward search, the problem's 'start' is the physical destination
+    //     Eigen::VectorXd goal_spatial = problem_->getStart().head(2); 
+        
+    //     if (std::isinf(robot_node_->getLMC())) {
+    //         std::cout << "NO PATH FOUND (getLMC() = inf)\n";
+    //     } else {
+    //         while (current != nullptr) {
+    //             double curr_t = current->getStateValue()(statespace_->getDimension() - 1);
+    //             double curr_x = current->getStateValue()(0);
+    //             double curr_y = current->getStateValue()(1);
+                
+    //             std::cout << "Node " << current->getIndex() 
+    //                       << " at [" << std::fixed << std::setprecision(1) << curr_x << ", " << curr_y << "]"
+    //                       << " T=" << std::fixed << std::setprecision(2) << curr_t;
+                
+    //             FMTNode* next_node = current->getParent();
+                
+    //             // If there is no parent, we have reached a root of the tree!
+    //             if (!next_node) {
+    //                 if (current->getLMC() == 0.0) {
+    //                     double dist_to_goal = (current->getStateValue().head(2) - goal_spatial).norm();
+                        
+    //                     // Time pillars are injected exactly at the goal location
+    //                     if (dist_to_goal <= 1e-3) {
+    //                         std::cout << " (MISSION GOAL / TIME PILLAR)\n";
+    //                         std::cout << "   ==[ SUCCESSFULLY ARRIVED AT T=" << curr_t << " ]==> \n";
+    //                     } else {
+    //                         std::cout << " (UNKNOWN ROOT)\n";
+    //                     }
+    //                 } else {
+    //                     std::cout << " -> [BROKEN PATH: No parent but LMC != 0]\n";
+    //                 }
+    //                 break;
+    //             }
+                
+    //             std::cout << "\n   --[ physical steer ]--> \n";
+    //             current = next_node;
     //         }
     //     }
+    //     std::cout << "========================================\n\n";
     // }
-    // std::cout << "------------------------------------------------\n";
-    // std::cout << "Total Active Pillars: " << active_pillars 
-    //           << " | Isolated: " << isolated_pillars << "\n";
-    // std::cout << "================================================\n\n";
-
-
-
-    // ==========================================================
-    // PROOF OF TIME PILLAR USAGE: Trace the actual computed path
-    // ==========================================================
-    if (!is_geometric_mode_ && robot_node_) {
-        std::cout << "\n========== PLANNED PATH TRACE ==========\n";
-        std::cout << "Robot's Path Cost (getLMC()): " << robot_node_->getLMC() << "\n";
-        
-        FMTNode* current = robot_node_;
-        
-        // In backward search, the problem's 'start' is the physical destination
-        Eigen::VectorXd goal_spatial = problem_->getStart().head(2); 
-        
-        if (std::isinf(robot_node_->getLMC())) {
-            std::cout << "NO PATH FOUND (getLMC() = inf)\n";
-        } else {
-            while (current != nullptr) {
-                double curr_t = current->getStateValue()(statespace_->getDimension() - 1);
-                double curr_x = current->getStateValue()(0);
-                double curr_y = current->getStateValue()(1);
-                
-                std::cout << "Node " << current->getIndex() 
-                          << " at [" << std::fixed << std::setprecision(1) << curr_x << ", " << curr_y << "]"
-                          << " T=" << std::fixed << std::setprecision(2) << curr_t;
-                
-                FMTNode* next_node = current->getParent();
-                
-                // If there is no parent, we have reached a root of the tree!
-                if (!next_node) {
-                    if (current->getLMC() == 0.0) {
-                        double dist_to_goal = (current->getStateValue().head(2) - goal_spatial).norm();
-                        
-                        // Time pillars are injected exactly at the goal location
-                        if (dist_to_goal <= 1e-3) {
-                            std::cout << " (MISSION GOAL / TIME PILLAR)\n";
-                            std::cout << "   ==[ SUCCESSFULLY ARRIVED AT T=" << curr_t << " ]==> \n";
-                        } else {
-                            std::cout << " (UNKNOWN ROOT)\n";
-                        }
-                    } else {
-                        std::cout << " -> [BROKEN PATH: No parent but LMC != 0]\n";
-                    }
-                    break;
-                }
-                
-                std::cout << "\n   --[ physical steer ]--> \n";
-                current = next_node;
-            }
-        }
-        std::cout << "========================================\n\n";
-    }
 
 
 }
@@ -1923,19 +1815,15 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
         last_replan_metrics_.queue_operations++;
     }
 }
-
 void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     robot_continuous_state_ = robot_state;
-    // Extract actual planner-time from the state (last element)
     double robot_sim_time = robot_continuous_state_(robot_continuous_state_.size() - 1);
 
-    // QUERY POINT CONSTRUCTION
     Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim);
     if (robot_continuous_state_.size() >= 2) {
         query_point(0) = robot_continuous_state_(0);
         query_point(1) = robot_continuous_state_(1);
     }
-
     if (kd_dim == 3) {
         query_point(2) = robot_sim_time;
     } else if (kd_dim == 4) {
@@ -1945,14 +1833,15 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         query_point = robot_continuous_state_; 
     }
 
-    // HYSTERESIS LOGIC
     const double hysteresis_factor = 0.98;
     double cost_of_current_path = std::numeric_limits<double>::infinity();
     Trajectory bridge;
+    bool safe = true;
+
+    // Check existing anchor
     if (robot_node_ && robot_node_->getLMC() != std::numeric_limits<double>::infinity()) {
         bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
         if (bridge.is_valid) {
-            bool safe = true;
             const auto& obstacles = obs_checker_->getObstacles();
             for (const auto& ob : obstacles) {
                 last_replan_metrics_.obstacle_checks++;
@@ -1964,7 +1853,6 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
             if (safe) {
                 cost_of_current_path = bridge.cost + robot_node_->getLMC();
                 robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
-                // return;
             }
         }
     }
@@ -1973,26 +1861,19 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     Trajectory best_candidate_bridge;
     double best_candidate_cost = std::numeric_limits<double>::infinity();
     
-    // NEW: Radius Expansion fallback tracking (for unexplored nodes)
     FMTNode* best_fallback_node = nullptr;
     Trajectory best_fallback_bridge;
     double best_fallback_cost = std::numeric_limits<double>::infinity();
 
-    // Radius Expansion to handle sparse graphs
     double current_search_radius = neighborhood_radius_; 
     const int max_attempts = 5; 
     const double radius_multiplier = 2.0;
 
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
         auto nearby_indices = kdtree_->radiusSearch(query_point, current_search_radius);
-
         for (auto idx : nearby_indices) {
             FMTNode* candidate = tree_[idx].get();
-
-            // DO NOT SKIP based on LMC == infinity yet! We need it for the fallback check.
-
             Trajectory temp_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
-
             if (!temp_bridge.is_valid) continue;
 
             bool safe = true;
@@ -2006,14 +1887,14 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
             }
             if (!safe) continue;
 
-            // Fallback Tracking: Easiest safe physical node to reach
+#if USE_RECOVERY
             if (temp_bridge.cost < best_fallback_cost) {
                 best_fallback_node = candidate;
                 best_fallback_bridge = temp_bridge;
                 best_fallback_cost = temp_bridge.cost;
             }
+#endif
 
-            // Connected Tracking: Best node that ALREADY has a finite path
             if (candidate->getLMC() != std::numeric_limits<double>::infinity()) {
                 double cost = temp_bridge.cost + candidate->getLMC();
                 if (cost < best_candidate_cost) {
@@ -2027,84 +1908,75 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         current_search_radius *= radius_multiplier;
     }
 
-    // ASSIGNMENT
-    if (best_candidate_node && best_candidate_cost < cost_of_current_path * hysteresis_factor) {
+    // ASSIGNMENT PRIORITY
+    // 1) Better connected anchor
+    if (best_candidate_node &&
+        best_candidate_cost < cost_of_current_path * hysteresis_factor) {
+
         robot_node_ = best_candidate_node;
-        robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+        robot_current_time_to_goal_ =
+            best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
         last_replan_metrics_.path_cost = best_candidate_cost;
         current_bridge_trajectory_ = best_candidate_bridge;
         bridge_cost_ = best_candidate_bridge.cost;
-    } else if (robot_node_ && cost_of_current_path != std::numeric_limits<double>::infinity()) {
-        Trajectory bridge = statespace_->steer(robot_continuous_state_, robot_node_->getStateValue());
-        robot_current_time_to_goal_ = bridge.time_duration + robot_node_->getTimeToGoal();
-        // The cost changes slightly every frame as the robot moves towards the anchor.
+    }
+
+    // 2) Keep current anchor with fresh bridge
+    else if (safe && robot_node_ &&
+             cost_of_current_path != std::numeric_limits<double>::infinity() &&
+             bridge.is_valid) {
+
+        robot_current_time_to_goal_ =
+            bridge.time_duration + robot_node_->getTimeToGoal();
         last_replan_metrics_.path_cost = cost_of_current_path;
         current_bridge_trajectory_ = bridge;
         bridge_cost_ = bridge.cost;
-    } 
-    else if (robot_node_ && !bridge.is_valid && current_bridge_trajectory_.is_valid) {
-        /*
-            When steer() mathematically fails near an anchor, we fallback to recycling 
-            the 'current_bridge_trajectory_' from a previous control loop. One might worry 
-            that the 2nd or 3rd points of this old array are "stale" and will cause the 
-            robot to jump backwards. This will NOT happen due to the time-driven pipeline:
-            1. setPath(): Overwrites index [0]'s position/velocity to match the robot's 
-            ACTUAL current physical state, preventing any theoretical first-frame jump.
-            2. stepSimulation(): Interpolation is strictly driven by 'current_sim_time_'. 
-            The std::lower_bound function automatically "fast-forwards" through the array. 
-            Because time has passed since the trajectory was cached, std::lower_bound 
-            in ros2manager completely ignores the stitched index [0] and any other passed points.
-            It skips directly to the exact time-segment where the robot belongs chronologically, 
-            smoothly riding the rest of the valid curve into the anchor.
-        */
-        // Steer failed mathematically, so we try to recycle the previous valid bridge.
-        // BUT we must verify it is still safe against current dynamic obstacles!
-        
-        bool cached_is_safe = true;
-        const auto& obstacles = obs_checker_->getObstacles();
-        for (const auto& ob : obstacles) {
-            last_replan_metrics_.obstacle_checks++;
-            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(current_bridge_trajectory_, ob)) {
-                cached_is_safe = false;
-                break;
-            }
-        }
-
-        if (cached_is_safe) {
-            robot_current_time_to_goal_ = current_bridge_trajectory_.time_duration + robot_node_->getTimeToGoal();
-            // We must mark the cost as finite so we don't trigger the TRAPPED fallback!
-            cost_of_current_path = current_bridge_trajectory_.cost + robot_node_->getLMC();
-            last_replan_metrics_.path_cost = cost_of_current_path;
-            // current_bridge_trajectory_ remains unchanged
-            
-        } else {
-            // The cached trajectory is blocked by a new dynamic obstacle. We are trapped.
-            cost_of_current_path = std::numeric_limits<double>::infinity();
-        }
-    } 
-    else {
-        // Steering truly failed and we are not near the node
-        cost_of_current_path = std::numeric_limits<double>::infinity();
     }
 
-    // Anchor is completely blocked AND no pre-connected nodes are nearby
-    if (cost_of_current_path == std::numeric_limits<double>::infinity() && !best_candidate_node) {
-        if (best_fallback_node) {
-            // Give FMTX the unconnected node! The cost wave will sweep towards it.
-            robot_node_ = best_fallback_node;
-            robot_current_time_to_goal_ = std::numeric_limits<double>::infinity(); // Unknown until planner runs
-            bridge_cost_ = best_fallback_cost;
-            current_bridge_trajectory_ = best_fallback_bridge;
-            last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
-        } else {
-            // We are truly trapped. No nodes in radius are safe.
-            robot_node_ = nullptr;
-            robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
-            bridge_cost_= std::numeric_limits<double>::infinity();
-            current_bridge_trajectory_ = Trajectory();
-            last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
-            FMTX_WARN("[Set Robot STate] LOST SAFE ANCHOR. TRULY TRAPPED.");
-        }
+    // 3) Recovery: go to nearest safe tree node
+#if USE_RECOVERY
+    else if (best_fallback_node) {
+        // robot_node_ = best_fallback_node;
+        robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        bridge_cost_ = best_fallback_cost;
+        current_bridge_trajectory_ = best_fallback_bridge;
+        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+
+        FMTX_WARN("[Set Robot STate] No connected anchor found. Falling back to nearest safe tree node.");
+    }
+#endif
+
+    // 4) Keep current anchor, reuse previous cached bridge
+    //    This is the near-root / numerical-steer-failure case.
+    else if (robot_node_ &&
+             current_bridge_trajectory_.is_valid &&
+             !current_bridge_trajectory_.path_points.empty()) {
+
+        robot_current_time_to_goal_ =
+            current_bridge_trajectory_.time_duration + robot_node_->getTimeToGoal();
+
+        // Keep finite so we do NOT enter trapped logic.
+        const double anchor_tail_cost =
+            (robot_node_->getLMC() != std::numeric_limits<double>::infinity())
+                ? robot_node_->getLMC()
+                : 0.0;
+
+        cost_of_current_path = current_bridge_trajectory_.cost + anchor_tail_cost;
+        last_replan_metrics_.path_cost = cost_of_current_path;
+        bridge_cost_ = current_bridge_trajectory_.cost;
+
+        FMTX_WARN("[Set Robot STate] Fresh steer failed near anchor/root. Reusing cached bridge.");
+    }
+
+    // 5) Truly trapped
+    else {
+        robot_node_ = nullptr;
+        robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        bridge_cost_ = std::numeric_limits<double>::infinity();
+        current_bridge_trajectory_ = Trajectory();
+        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+
+        FMTX_WARN("[Set Robot STate] LOST SAFE ANCHOR. TRULY TRAPPED.");
     }
 }
 

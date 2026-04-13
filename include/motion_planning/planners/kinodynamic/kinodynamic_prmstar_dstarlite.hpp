@@ -66,34 +66,47 @@ class KinodynamicPRMStarDStarLite : public Planner {
         void checkIsolatedNodes() const;
 
         void logGraphState(std::ofstream& out_file, int cycle_number) const override {
-            // یک تابع لامبدا برای تبدیل NeighborMap به رشته متنی (فرمت: id:cost|id:cost)
-            auto serializeNeighbors = [](const DStarLiteNode::NeighborMap& nmap) {
-                std::string s = "";
-                for (const auto& pair : nmap) {
-                    s += std::to_string(pair.first->getIndex()) + ":" + std::to_string(pair.second.distance) + "|";
-                }
-                if (!s.empty()) {
-                    s.pop_back(); // حذف آخرین کاراکتر '|'
-                }
-                return s;
-            };
+            const int robot_anchor_id =
+                start_node_ ? start_node_->getIndex() : -1;
+
+            const double robot_g =
+                start_node_ ? start_node_->g : std::numeric_limits<double>::infinity();
+
+            const double robot_lmc =
+                start_node_ ? start_node_->rhs : std::numeric_limits<double>::infinity();
+
+            const double bridge_cost = bridge_cost_;
+
+            const double robot_total_cost =
+                (start_node_ && std::isfinite(robot_lmc) && std::isfinite(bridge_cost))
+                    ? (robot_lmc + bridge_cost)
+                    : std::numeric_limits<double>::infinity();
+
+            const double robot_time_to_goal =
+                std::numeric_limits<double>::infinity(); // unless you store a real time-to-go
 
             for (const auto& node : nodes_) {
                 if (!node) continue;
-                
+
                 auto state = node->getStateValue();
-                
+                const bool is_robot_anchor = (start_node_ && node.get() == start_node_);
+
                 out_file << cycle_number << ","
                         << node->getIndex() << ","
                         << state[0] << "," << state[1] << ","
+                        << node->g << ","
                         << node->rhs << ","
                         << (node->best_parent_ ? node->best_parent_->getIndex() : -1) << ","
-                        << serializeNeighbors(node->forward_neighbors_) << ","
-                        << serializeNeighbors(node->backward_neighbors_) 
+                        << (is_robot_anchor ? 1 : 0) << ","
+                        << robot_anchor_id << ","
+                        << robot_g << ","
+                        << robot_lmc << ","
+                        << bridge_cost << ","
+                        << robot_total_cost << ","
+                        << robot_time_to_goal
                         << "\n";
             }
         }
-
 
 
 

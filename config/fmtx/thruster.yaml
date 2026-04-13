@@ -6,7 +6,7 @@ experiment:
   manager_type: "Thruster"
 
 simulation:
-  time_budget: 30.0
+  time_budget: 25.0
   slice_time: 0.02
   seed: 42
 
@@ -29,7 +29,7 @@ planner_params:
   partial_update: true
   kd_dim: 5 
   is_geometric_mode: false
-  num_pillar_nodes: 50
+  num_pillar_nodes: 0
   goal_radius: 0.5
 
 manager_params:

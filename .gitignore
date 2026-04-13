@@ -1,4 +1,5 @@
 build/
+scripts/journal
 .vscode/
 backup/
 src/obsolete/

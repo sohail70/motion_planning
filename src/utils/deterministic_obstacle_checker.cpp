@@ -171,153 +171,447 @@ bool DeterministicObstacleChecker::isObstacleFree(const std::vector<Eigen::Vecto
 
 
 
-// FOR CHECKING THE WHOLE PATH POINTS IN THE TRAJECTORY!
+// // FOR CHECKING THE WHOLE PATH POINTS IN THE TRAJECTORY!
+
+// bool DeterministicObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
+//     const Trajectory& trajectory,
+//     const Obstacle& ob) const
+// {
+//     // auto logger = rclcpp::get_logger("GazeboChecker");
+//     // 1. Basic Validity Checks
+//     if (!trajectory.is_valid || trajectory.path_points.empty()) return false;
+
+
+//     // --- GEOMETRIC MODE LOGIC ---
+//     if (is_geometric_mode_) {
+//         // In geometric mode, we treat the obstacle as a static circle at its CURRENT position.
+//         // We check the distance from the trajectory segment to this point.
+        
+//         const Eigen::VectorXd& p1 = trajectory.path_points[0];
+//         const Eigen::VectorXd& p2 = trajectory.path_points[1];
+        
+//         Eigen::Vector2d r_start = p1.head<2>();
+//         Eigen::Vector2d r_end   = p2.head<2>();
+        
+//         // Obstacle Position (Static snapshot)
+//         Eigen::Vector2d obs_pos(ob.position.x(), ob.position.y());
+        
+//         double obs_size = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius :
+//                           std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+        
+//         double threshold_dist = robot_radius_ + obs_size + inflation;
+//         double threshold_sq = threshold_dist * threshold_dist;
+
+//         // Use your existing helper function
+//         double dist_sq = distanceSqrdPointToSegment(obs_pos, r_start, r_end);
+        
+//         return (dist_sq >= threshold_sq);
+//     }
+
+
+
+
+
+//     if (ob.predicted_path.empty()) return true;
+
+//     // 2. Setup Thresholds
+//     double obs_size = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius :
+//                       std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+//     double threshold_dist = robot_radius_ + obs_size + inflation;
+//     double threshold_sq = threshold_dist * threshold_dist;
+
+//     // 3. Iterate through Robot Path Segments
+//     // We check every segment defined by consecutive points in trajectory.path_points
+//     for (size_t r_idx = 0; r_idx < trajectory.path_points.size() - 1; ++r_idx) {
+        
+//         // --- Define Robot Segment ---
+//         const Eigen::VectorXd& p1_robot = trajectory.path_points[r_idx];
+//         const Eigen::VectorXd& p2_robot = trajectory.path_points[r_idx+1];
+
+//         // Extract spatial positions (2D or 3D depending on your setup)
+//         Eigen::Vector2d P_r_start = p1_robot.head<2>();
+//         Eigen::Vector2d P_r_end   = p2_robot.head<2>();
+
+//         // Extract times
+//         double t_r_start = p1_robot(p1_robot.size() - 1); // Time-to-go at start of segment
+//         double t_r_end   = p2_robot(p2_robot.size() - 1); // Time-to-go at end of segment
+
+//         // Normalize Robot Time (Early -> Late) for the math logic
+//         Eigen::Vector2d P_early, P_late;
+//         double T_early, T_late;
+//         if (t_r_end < t_r_start) {
+//             P_early = P_r_end;   T_early = t_r_end;
+//             P_late  = P_r_start; T_late  = t_r_start;
+//         } else {
+//             P_early = P_r_start; T_early = t_r_start;
+//             P_late  = P_r_end;   T_late  = t_r_end;
+//         }
+
+//         // --- Iterate through Obstacle Path Segments ---
+//         for (size_t o_idx = 0; o_idx < ob.predicted_path.size() - 1; ++o_idx) {
+//             Eigen::Vector3d obs_pt1 = ob.predicted_path[o_idx];
+//             Eigen::Vector3d obs_pt2 = ob.predicted_path[o_idx+1];
+
+//             // Normalize Obstacle Time (Early -> Late)
+//             Eigen::Vector2d O_early, O_late;
+//             double OT_early, OT_late;
+//             if (obs_pt2.z() < obs_pt1.z()) {
+//                 O_early = obs_pt2.head<2>(); OT_early = obs_pt2.z();
+//                 O_late  = obs_pt1.head<2>(); OT_late  = obs_pt1.z();
+//             } else {
+//                 O_early = obs_pt1.head<2>(); OT_early = obs_pt1.z();
+//                 O_late  = obs_pt2.head<2>(); OT_late  = obs_pt2.z();
+//             }
+
+//             // Check Time Overlap
+//             double overlap_min = std::max(T_early, OT_early);
+//             double overlap_max = std::min(T_late, OT_late);
+//             if (overlap_min > overlap_max) {
+//                 continue; // No temporal overlap for this pair of segments
+//             }
+
+//             // -----------------------------------------------------------------------
+//             // ANALYTICAL MATH (Relative Velocity)
+//             // -----------------------------------------------------------------------
+//             double robot_dt = T_late - T_early;
+//             if (robot_dt < 1e-6) robot_dt = 1e-6;
+//             Eigen::Vector2d V_robot = (P_late - P_early) / robot_dt;
+
+//             double obs_dt = OT_late - OT_early;
+//             if (obs_dt < 1e-6) obs_dt = 1e-6;
+//             Eigen::Vector2d V_obs = (O_late - O_early) / obs_dt;
+
+//             Eigen::Vector2d V_rel = V_robot - V_obs;
+            
+//             // Position of robot relative to obstacle at the start of overlap
+//             Eigen::Vector2d P_robot_at_min = P_early + V_robot * (overlap_min - T_early);
+//             Eigen::Vector2d P_obs_at_min   = O_early + V_obs   * (overlap_min - OT_early);
+//             Eigen::Vector2d P_rel_at_min = P_robot_at_min - P_obs_at_min;
+
+//             // Find time of closest approach within the overlap interval
+//             double A = V_rel.dot(V_rel);
+//             double B = 2.0 * P_rel_at_min.dot(V_rel);
+//             double Tc_offset = (std::abs(A) < 1e-9) ? 0.0 : -B / (2.0 * A);
+//             double Tc = overlap_min + Tc_offset;
+
+//             // Clamp Tc to the overlap interval
+//             if (Tc < overlap_min) Tc = overlap_min;
+//             if (Tc > overlap_max) Tc = overlap_max;
+
+//             // -----------------------------------------------------------------------
+//             // ROBUSTNESS FIX: Check Boundaries
+//             // -----------------------------------------------------------------------
+//             double eps_check = std::max(1e-4, (overlap_max - overlap_min) * 1e-2);
+//             std::vector<double> times_to_check = {Tc, overlap_min, overlap_max, Tc - eps_check, Tc + eps_check};
+
+//             for (double t_current : times_to_check) {
+//                 Eigen::Vector2d pos_robot_at_t = P_early + V_robot * (t_current - T_early);
+//                 Eigen::Vector2d pos_obs_at_t   = O_early + V_obs   * (t_current - OT_early);
+                
+//                 double dist_sq = (pos_robot_at_t - pos_obs_at_t).squaredNorm();
+//                 if (dist_sq < threshold_sq) {
+//                     return false; // Collision detected
+//                 }
+//             }
+//         }
+//     }
+//     return true; // No collision found in any segment
+// }
+
+/*
+ * CONTINUOUS COLLISION DETECTION (CCD) PIPELINE EXPLANATION
+ * This function determines if a robot's trajectory (represented as a series of 
+ * time-parameterized states) collides with a single obstacle's predicted path.
+ * 
+ * The pipeline operates in 4 distinct phases:
+ * 
+ * 1. GEOMETRIC MODE FAST-PATH:
+ *    If the planner is running in purely geometric mode (no time dimension), the obstacle 
+ *    is treated as static. We calculate the squared distance from the obstacle's current 
+ *    center to the robot's spatial line segment. If distance < (Radius + Inflation)^2, 
+ *    it's a collision.
+ * 
+ * 2. BROAD-PHASE REJECTION (AABB / Bounding Sphere):
+ *    Before executing expensive continuous math on dense trajectories, we check the 
+ *    spatial bounding boxes of the entire robot trajectory against the entire obstacle tube. 
+ *    If their bounds do not intersect in space, we instantly return SAFE (O(1) rejection).
+ * 
+ * 3. THE MATH KERNEL (checkSegmentMath):
+ *    For dynamic obstacles, we isolate the continuous collision detection (CCD) physics. 
+ *    Given a robot segment and an obstacle segment, we:
+ *      a) Find their overlapping time window [overlap_min, overlap_max].
+ *      b) Calculate their relative velocity vector (V_rel).
+ *      c) Calculate the time of closest approach (T_c) using the derivative of the 
+ *         distance-squared function.
+ *      d) Check the spatial distance exactly at T_c and at the boundaries of the 
+ *         time window to ensure no tunneling occurred.
+ * 
+ * 4. THE TEMPORAL LOOP ARCHITECTURE:
+ *    To feed the right segments into the Math Kernel, we must traverse the arrays.
+ *    Because both the robot's state and the obstacle's prediction flow monotonically in time, 
+ *    evaluating every pair (O(N*M)) is massively inefficient. 
+ *    Instead, we use either a Temporal Sweep (O(N+M)) or a Binary Search (O(N log M)) 
+ *    to intelligently skip segments that do not overlap in time, passing only the physically 
+ *    relevant segments to the Math Kernel.
+ */
 
 bool DeterministicObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
     const Trajectory& trajectory,
     const Obstacle& ob) const
 {
-    // auto logger = rclcpp::get_logger("GazeboChecker");
-    // 1. Basic Validity Checks
+    // Basic Validity Checks
     if (!trajectory.is_valid || trajectory.path_points.empty()) return false;
 
-
-    // --- GEOMETRIC MODE LOGIC ---
+    // GEOMETRIC MODE LOGIC
     if (is_geometric_mode_) {
-        // In geometric mode, we treat the obstacle as a static circle at its CURRENT position.
-        // We check the distance from the trajectory segment to this point.
-        
         const Eigen::VectorXd& p1 = trajectory.path_points[0];
         const Eigen::VectorXd& p2 = trajectory.path_points[1];
-        
         Eigen::Vector2d r_start = p1.head<2>();
         Eigen::Vector2d r_end   = p2.head<2>();
-        
-        // Obstacle Position (Static snapshot)
         Eigen::Vector2d obs_pos(ob.position.x(), ob.position.y());
         
-        double obs_size = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius :
-                          std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-        
-        double threshold_dist = robot_radius_ + obs_size + inflation;
-        double threshold_sq = threshold_dist * threshold_dist;
-
-        // Use your existing helper function
-        double dist_sq = distanceSqrdPointToSegment(obs_pos, r_start, r_end);
-        
-        return (dist_sq >= threshold_sq);
+        double obs_size = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+        double threshold_sq = std::pow(robot_radius_ + obs_size + inflation, 2);
+        return (distanceSqrdPointToSegment(obs_pos, r_start, r_end) >= threshold_sq);
     }
-
-
-
-
 
     if (ob.predicted_path.empty()) return true;
 
-    // 2. Setup Thresholds
-    double obs_size = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius :
-                      std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-    double threshold_dist = robot_radius_ + obs_size + inflation;
+    // SETUP THRESHOLDS
+    double obs_size = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+    double threshold_dist = robot_radius_ + obs_size + inflation; // robot_radius_ is zero by design. inflation take this into account
     double threshold_sq = threshold_dist * threshold_dist;
 
-    // 3. Iterate through Robot Path Segments
-    // We check every segment defined by consecutive points in trajectory.path_points
-    for (size_t r_idx = 0; r_idx < trajectory.path_points.size() - 1; ++r_idx) {
+
+    // BROAD-PHASE O(1) AABB REJECTION
+    double traj_min_x = std::numeric_limits<double>::max();
+    double traj_max_x = std::numeric_limits<double>::lowest();
+    double traj_min_y = std::numeric_limits<double>::max();
+    double traj_max_y = std::numeric_limits<double>::lowest();
+
+    for (const auto& pt : trajectory.path_points) {
+        if (pt.x() < traj_min_x) traj_min_x = pt.x();
+        if (pt.x() > traj_max_x) traj_max_x = pt.x();
+        if (pt.y() < traj_min_y) traj_min_y = pt.y();
+        if (pt.y() > traj_max_y) traj_max_y = pt.y();
+    }
+
+    bool aabb_would_reject = false;
+    // If the bounding boxes don't intersect, it's physically impossible to collide
+    if (traj_min_x > (ob.max_x + threshold_dist) || 
+        traj_max_x < (ob.min_x - threshold_dist) ||
+        traj_min_y > (ob.max_y + threshold_dist) || 
+        traj_max_y < (ob.min_y - threshold_dist)) {
+        return true; // Skip O(N+M) Sweep Entirely!
+        // aabb_would_reject = true;
+    }
+
+
+    // Extract Robot Segment (Actually Meaning the Trajectory. The robot could later be there!)
+    auto getRobotSegment = [&](size_t idx, Eigen::Vector2d& P_early, Eigen::Vector2d& P_late, double& T_early, double& T_late) {
+        const Eigen::VectorXd& p1 = trajectory.path_points[idx];
+        const Eigen::VectorXd& p2 = trajectory.path_points[idx+1];
+        double t1 = p1(p1.size() - 1);
+        double t2 = p2(p2.size() - 1);
+        if (t2 < t1) { P_early = p2.head<2>(); T_early = t2; P_late = p1.head<2>(); T_late = t1; } 
+        else         { P_early = p1.head<2>(); T_early = t1; P_late = p2.head<2>(); T_late = t2; }
+    };
+
+    // Extract Obstacle Segment
+    auto getObsSegment = [&](size_t idx, Eigen::Vector2d& O_early, Eigen::Vector2d& O_late, double& OT_early, double& OT_late) {
+        const Eigen::Vector3d& obs_pt1 = ob.predicted_path[idx];
+        const Eigen::Vector3d& obs_pt2 = ob.predicted_path[idx+1];
+        if (obs_pt2.z() < obs_pt1.z()) { O_early = obs_pt2.head<2>(); OT_early = obs_pt2.z(); O_late = obs_pt1.head<2>(); OT_late = obs_pt1.z(); } 
+        else                           { O_early = obs_pt1.head<2>(); OT_early = obs_pt1.z(); O_late = obs_pt2.head<2>(); OT_late = obs_pt2.z(); }
+    };
+
+    // CCD Math (Returns true if SAFE, false if COLLISION)
+    // Computes Time-of-Closest-Approach (Tc) for relative motion quadratic, then samples
+    // critical points within the VALID TEMPORAL OVERLAP [overlap_min, overlap_max] ONLY.
+    auto checkSegmentMath = [&](const Eigen::Vector2d& P_early, const Eigen::Vector2d& P_late, double T_early, double T_late,
+                                const Eigen::Vector2d& O_early, const Eigen::Vector2d& O_late, double OT_early, double OT_late) -> bool {
         
-        // --- Define Robot Segment ---
-        const Eigen::VectorXd& p1_robot = trajectory.path_points[r_idx];
-        const Eigen::VectorXd& p2_robot = trajectory.path_points[r_idx+1];
+        double overlap_min = std::max(T_early, OT_early);
+        double overlap_max = std::min(T_late, OT_late);
+        
+        if (overlap_min > overlap_max) return true; // No temporal overlap
 
-        // Extract spatial positions (2D or 3D depending on your setup)
-        Eigen::Vector2d P_r_start = p1_robot.head<2>();
-        Eigen::Vector2d P_r_end   = p2_robot.head<2>();
+        // Linear velocities over segment duration (prevent div-by-zero)
+        double robot_dt = std::max(1e-6, T_late - T_early);
+        Eigen::Vector2d V_robot = (P_late - P_early) / robot_dt;
 
-        // Extract times
-        double t_r_start = p1_robot(p1_robot.size() - 1); // Time-to-go at start of segment
-        double t_r_end   = p2_robot(p2_robot.size() - 1); // Time-to-go at end of segment
+        double obs_dt = std::max(1e-6, OT_late - OT_early);
+        Eigen::Vector2d V_obs = (O_late - O_early) / obs_dt;
 
-        // Normalize Robot Time (Early -> Late) for the math logic
-        Eigen::Vector2d P_early, P_late;
-        double T_early, T_late;
-        if (t_r_end < t_r_start) {
-            P_early = P_r_end;   T_early = t_r_end;
-            P_late  = P_r_start; T_late  = t_r_start;
-        } else {
-            P_early = P_r_start; T_early = t_r_start;
-            P_late  = P_r_end;   T_late  = t_r_end;
+        // Relative motion: Solve quadratic min_t ||P_rel + V_rel*t||^2 = 0
+        Eigen::Vector2d V_rel = V_robot - V_obs;
+        Eigen::Vector2d P_rel_at_min = (P_early + V_robot * (overlap_min - T_early)) - 
+                                    (O_early + V_obs * (overlap_min - OT_early));
+
+        double A = V_rel.dot(V_rel);
+        double B = 2.0 * P_rel_at_min.dot(V_rel);
+        
+        // Time offset to theoretical closest approach (handle parallel motion)
+        double Tc_offset = (std::abs(A) < 1e-9) ? 0.0 : -B / (2.0 * A);
+
+        // Clamp to physical segment overlap (CRITICAL: prevents extrapolation)
+        double Tc = std::clamp(overlap_min + Tc_offset, overlap_min, overlap_max);
+        
+        // Numerical robustness: Sample endpoints + Tc ±ε (ε=1% window or 0.1mm)
+        // BUT ONLY IF those times remain within physical bounds!
+        double eps_check = std::max(1e-4, (overlap_max - overlap_min) * 1e-2);
+
+        std::vector<double> times_to_check = {overlap_min, overlap_max, Tc};
+        
+        // PREVENT EXTRAPOLATION BUG: Only add epsilon samples if physically valid
+        if (Tc - eps_check > overlap_min) times_to_check.push_back(Tc - eps_check);
+        if (Tc + eps_check < overlap_max) times_to_check.push_back(Tc + eps_check);
+
+        // Test exact distance at sampled times (all within valid segment bounds)
+        for (double t_current : times_to_check) {
+            Eigen::Vector2d pos_robot_at_t = P_early + V_robot * (t_current - T_early);
+            Eigen::Vector2d pos_obs_at_t   = O_early + V_obs   * (t_current - OT_early);
+            if ((pos_robot_at_t - pos_obs_at_t).squaredNorm() < threshold_sq) {
+                return false; // Collision detected
+            }
         }
+        return true; // Safe
+    };
 
-        // --- Iterate through Obstacle Path Segments ---
-        for (size_t o_idx = 0; o_idx < ob.predicted_path.size() - 1; ++o_idx) {
-            Eigen::Vector3d obs_pt1 = ob.predicted_path[o_idx];
-            Eigen::Vector3d obs_pt2 = ob.predicted_path[o_idx+1];
 
-            // Normalize Obstacle Time (Early -> Late)
-            Eigen::Vector2d O_early, O_late;
-            double OT_early, OT_late;
-            if (obs_pt2.z() < obs_pt1.z()) {
-                O_early = obs_pt2.head<2>(); OT_early = obs_pt2.z();
-                O_late  = obs_pt1.head<2>(); OT_late  = obs_pt1.z();
-            } else {
-                O_early = obs_pt1.head<2>(); OT_early = obs_pt1.z();
-                O_late  = obs_pt2.head<2>(); OT_late  = obs_pt2.z();
+    /*
+    * CONTINUOUS COLLISION DETECTION (CCD) COMPLEXITY ANALYSIS
+    * Notes for the methodology section of the paper justifying the algorithmic choice 
+    * for collision checking. We specifically avoid naive O(N*M) nested loops and optimize 
+    * beyond standard O(N log M) binary search approaches (like those used in RRTx).
+    * 
+    * 1. THE MATH & CROSSOVER THRESHOLD:
+    *    - Let N = Robot trajectory segments, M = Obstacle predicted segments.
+    *    - Binary Search Approach: Searches the obstacle array for *every* robot segment.
+    *      Total cost: O(N * log2(M)). 
+    *    - Two-Pointer Sweep: Steps through both timelines concurrently in a single pass.
+    *      Total cost: O(N + M).
+    *    - Crossover point: Binary search is only faster when N is extremely small: 
+    *      N < M / (log2(M) - 1).
+    * 
+    * 2. STATE-SPACE DEPENDENCY:
+    *    - Sparse Spaces (Geometric R2 / Simple Dubins): Robot paths have very few segments 
+    *      (e.g., N=1). Here, binary search wins because 1 * log2(16) < 1 + 16.
+    *    - Dense Spaces (Kinodynamic / Thruster): Numerical integration creates highly dense 
+    *      trajectories (e.g., N=100). Even if obstacle predictions are kept short due to 
+    *      dynamic uncertainty (e.g., M=16), the temporal sweep scales much better 
+    *      (100 + 16 = 116 ops) compared to repeated binary searches (100 * log2(16) = 400 ops).
+    * 
+    * 3. HARDWARE & MEMORY LOCALITY:
+    *    - The sweep method accesses array memory strictly sequentially (idx++). Modern CPUs 
+    *      heavily optimize this via L1 cache prefetching, resulting in minimal cache misses.
+    *    - std::lower_bound jumps non-sequentially, frequently stalling the CPU pipeline with 
+    *      cache misses, adding hidden hardware overhead not captured by pure Big-O notation.
+    * 
+    * "The efficiency of continuous collision detection depends heavily on the trajectory density 
+    * of the state space. For simple geometric spaces where robot trajectories consist of a single 
+    * segment (N=1), querying the obstacle's trajectory via temporal binary search O(N log M) is 
+    * optimal. However, for complex kinodynamic models like the Thruster, numerical integration 
+    * results in dense trajectories (N >> M). In these spaces, binary search overhead multiplies 
+    * iteratively, making a synchronized two-pointer temporal sweep O(N+M) vastly superior both 
+    * in algorithmic complexity and CPU cache locality."
+    */
+
+    size_t R_SIZE = trajectory.path_points.size();
+    size_t O_SIZE = ob.predicted_path.size();
+    size_t N = R_SIZE - 1; // Robot segments
+    size_t M = O_SIZE - 1; // Obstacle segments
+    // Compute algorithmic cost. We add a 1.5x multiplier to Binary Search to account 
+    // for CPU cache misses caused by non-sequential memory access (std::lower_bound).
+    double sweep_cost = static_cast<double>(N + M);
+    double binary_cost = static_cast<double>(N) * std::log2(M > 1 ? M : 2) * 1.5;
+
+    // Auto-Select: Method 3 (Binary) for R2/R2T. Method 2 (Sweep) for Dubins/Thruster.
+    // (1 = Nested, 2 = Sweep, 3 = Binary Search)
+    int CHECK_METHOD = (binary_cost < sweep_cost) ? 3 : 2;
+
+    if (CHECK_METHOD == 1) {
+        // O(N*M) Nested Loop (Baseline)
+        for (size_t r_idx = 0; r_idx < R_SIZE - 1; ++r_idx) {
+            Eigen::Vector2d P_early, P_late; double T_early, T_late;
+            getRobotSegment(r_idx, P_early, P_late, T_early, T_late);
+
+            for (size_t o_idx = 0; o_idx < O_SIZE - 1; ++o_idx) {
+                Eigen::Vector2d O_early, O_late; double OT_early, OT_late;
+                getObsSegment(o_idx, O_early, O_late, OT_early, OT_late);
+
+                if (!checkSegmentMath(P_early, P_late, T_early, T_late, O_early, O_late, OT_early, OT_late)) {
+                    return false; 
+                }
             }
+        }
+    } 
+    else if (CHECK_METHOD == 2) {
+        // O(N+M) Temporal Sweep (DOWNWARD TIME)
+        size_t r_idx = 0;
+        size_t o_idx = 0;
 
-            // Check Time Overlap
-            double overlap_min = std::max(T_early, OT_early);
-            double overlap_max = std::min(T_late, OT_late);
-            if (overlap_min > overlap_max) {
-                continue; // No temporal overlap for this pair of segments
-            }
-
-            // -----------------------------------------------------------------------
-            // ANALYTICAL MATH (Relative Velocity)
-            // -----------------------------------------------------------------------
-            double robot_dt = T_late - T_early;
-            if (robot_dt < 1e-6) robot_dt = 1e-6;
-            Eigen::Vector2d V_robot = (P_late - P_early) / robot_dt;
-
-            double obs_dt = OT_late - OT_early;
-            if (obs_dt < 1e-6) obs_dt = 1e-6;
-            Eigen::Vector2d V_obs = (O_late - O_early) / obs_dt;
-
-            Eigen::Vector2d V_rel = V_robot - V_obs;
+        while (r_idx < R_SIZE - 1 && o_idx < O_SIZE - 1) {
+            Eigen::Vector2d P_early, P_late, O_early, O_late; 
+            double T_early, T_late, OT_early, OT_late;
             
-            // Position of robot relative to obstacle at the start of overlap
-            Eigen::Vector2d P_robot_at_min = P_early + V_robot * (overlap_min - T_early);
-            Eigen::Vector2d P_obs_at_min   = O_early + V_obs   * (overlap_min - OT_early);
-            Eigen::Vector2d P_rel_at_min = P_robot_at_min - P_obs_at_min;
+            getRobotSegment(r_idx, P_early, P_late, T_early, T_late);
+            getObsSegment(o_idx, O_early, O_late, OT_early, OT_late);
 
-            // Find time of closest approach within the overlap interval
-            double A = V_rel.dot(V_rel);
-            double B = 2.0 * P_rel_at_min.dot(V_rel);
-            double Tc_offset = (std::abs(A) < 1e-9) ? 0.0 : -B / (2.0 * A);
-            double Tc = overlap_min + Tc_offset;
+            if (!checkSegmentMath(P_early, P_late, T_early, T_late, O_early, O_late, OT_early, OT_late)) {
+                // if (aabb_would_reject) std::cout << "\n[FATAL FLAW] AABB said SAFE, but continuous check found COLLISION! (Method 2)\n" << std::endl;
+                return false; 
+            }
 
-            // Clamp Tc to the overlap interval
-            if (Tc < overlap_min) Tc = overlap_min;
-            if (Tc > overlap_max) Tc = overlap_max;
+            // ADVANCE POINTER LOGIC (Descending Time)
+            // The segment that has the HIGHER bottom bound (early time) finishes its downward sweep first.
+            if (T_early > OT_early) {
+                r_idx++; 
+            } else if (OT_early > T_early) {
+                o_idx++; 
+            } else {
+                r_idx++; o_idx++; 
+            }
+        }
+    }
+    else if (CHECK_METHOD == 3) {
+        // O(N log M) Binary Search (DESCENDING TIME)
+        for (size_t r_idx = 0; r_idx < R_SIZE - 1; ++r_idx) {
+            Eigen::Vector2d P_early, P_late; double T_early, T_late;
+            getRobotSegment(r_idx, P_early, P_late, T_early, T_late);
 
-            // -----------------------------------------------------------------------
-            // ROBUSTNESS FIX: Check Boundaries
-            // -----------------------------------------------------------------------
-            double eps_check = std::max(1e-4, (overlap_max - overlap_min) * 1e-2);
-            std::vector<double> times_to_check = {Tc, overlap_min, overlap_max, Tc - eps_check, Tc + eps_check};
+            // 1. Binary Search for the start index
+            // Because the array is descending, we look for the first point where pt.z() <= T_late
+            // We use greater-than (>) as the comparator for descending arrays in lower_bound.
+            auto it_start = std::lower_bound(ob.predicted_path.begin(), ob.predicted_path.end(), T_late,
+                [](const Eigen::Vector3d& pt, double val) { return pt.z() > val; });
+            
+            size_t firstObsInd = (it_start == ob.predicted_path.end()) ? O_SIZE - 1 : std::distance(ob.predicted_path.begin(), it_start);
+            
+            // Step back one index to capture the segment that crosses the T_late boundary
+            if (firstObsInd > 0) firstObsInd--; 
 
-            for (double t_current : times_to_check) {
-                Eigen::Vector2d pos_robot_at_t = P_early + V_robot * (t_current - T_early);
-                Eigen::Vector2d pos_obs_at_t   = O_early + V_obs   * (t_current - OT_early);
-                
-                double dist_sq = (pos_robot_at_t - pos_obs_at_t).squaredNorm();
-                if (dist_sq < threshold_sq) {
-                    return false; // Collision detected
+            // 2. Loop over the overlapping temporal window
+            for (size_t o_idx = firstObsInd; o_idx < O_SIZE - 1; ++o_idx) {
+                Eigen::Vector2d O_early, O_late; double OT_early, OT_late;
+                getObsSegment(o_idx, O_early, O_late, OT_early, OT_late);
+
+                // Early Break: If the obstacle segment time drops below the robot's window, break immediately!
+                if (OT_late < T_early) {
+                    break; 
+                }
+
+                if (!checkSegmentMath(P_early, P_late, T_early, T_late, O_early, O_late, OT_early, OT_late)) {
+                    // if (aabb_would_reject) std::cout << "\n[FATAL FLAW] AABB said SAFE, but continuous check found COLLISION! (Method 3)\n" << std::endl;
+                    return false; 
                 }
             }
         }
     }
-    return true; // No collision found in any segment
-}
 
+    return true; 
+
+}
 
 
 bool DeterministicObstacleChecker::isTrajectorySafe(
@@ -765,6 +1059,7 @@ std::vector<Eigen::Vector3d> DeterministicObstacleChecker::generatePrediction(
         if (p.y() < ob.min_y) ob.min_y = p.y();
         if (p.y() > ob.max_y) ob.max_y = p.y();
     }
+
 
 
     return path;

@@ -162,8 +162,8 @@ private:
     //     return std::find(children.begin(), children.end(), node) != children.end();
     // }
 
-    Eigen::VectorXd final_velocity_; // For min-snap
-    Eigen::VectorXd final_acceleration_; // For min-snap
+    // Eigen::VectorXd final_velocity_; // For min-snap
+    // Eigen::VectorXd final_acceleration_; // For min-snap
 
 
 };

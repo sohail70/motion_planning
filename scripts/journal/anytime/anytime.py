@@ -73,6 +73,8 @@ STATE_SPACES = {
         "kd_dim": 3,
         "is_geometric_mode": False,
         "partial_update": True,
+        "num_pillar_nodes": 50,
+        "goal_radius": 0.5,
         
         "sdf_file": SDF_FILE_R2T,
         "inflation": 0.75
@@ -81,7 +83,7 @@ STATE_SPACES = {
     "Dubins": {
         "state_space_type": "Dubins",
         "manager_type": "Dubins",
-        "time_budget": 30.0,
+        "time_budget": 40.0,
         "start_state": [48.0, 48.0, -0.785],
         "goal_state": [-48.0, -48.0, -2.356],
         "dimensions": 4,
@@ -98,6 +100,8 @@ STATE_SPACES = {
         "kd_dim": 4,
         "is_geometric_mode": False,
         "partial_update": True,
+        "num_pillar_nodes": 50,
+        "goal_radius": 0.5,
         
         "sdf_file": SDF_FILE_DUBINS,
         "inflation": 0.75
@@ -123,6 +127,8 @@ STATE_SPACES = {
         "kd_dim": 5,
         "is_geometric_mode": False,
         "partial_update": True,
+        "num_pillar_nodes": 50,
+        "goal_radius": 0.5,
         
         "sdf_file": SDF_FILE_THRUSTER,
         "inflation": 0.75
@@ -167,7 +173,9 @@ def create_yaml(algo_name, space_name, seed, params, filename):
             "kdtree_type": "NanoFlann",
             "partial_update": bool(params["partial_update"]),
             "kd_dim": int(params["kd_dim"]), # FORCE INT
-            "is_geometric_mode": bool(params["is_geometric_mode"])
+            "is_geometric_mode": bool(params["is_geometric_mode"]),
+            "num_pillar_nodes": int(params["num_pillar_nodes"]),
+            "goal_radius": float(params["goal_radius"])
         },
         "manager_params": {
             "vis_frequency_hz": 30
@@ -179,6 +187,10 @@ def create_yaml(algo_name, space_name, seed, params, filename):
     }
 
     # Handle conditional parameters safely and cast correctly
+    if "num_pillar_nodes" in params:
+        config["planner_params"]["num_pillar_nodes"] = int(params["num_pillar_nodes"])
+    if "goal_radius" in params:
+        config["planner_params"]["goal_radius"] = float(params["goal_radius"])
     if "duration_limit" in params:
         config["simulation"]["duration_limit"] = int(params["duration_limit"]) 
     if "time_budget" in params:

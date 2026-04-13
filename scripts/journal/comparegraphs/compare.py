@@ -217,173 +217,411 @@
 #     compare_graphs()
 
 
+# ##############################################################################################################
+# import warnings
+# warnings.filterwarnings('ignore')
+
+# import os
+# import glob
+# import math
+# import pandas as pd
+# import numpy as np
+
+# BUILD_DIR = "../../../build/"
+# COST_TOLERANCE = 1e-4
+
+# def parse_filename(filepath):
+#     filename = os.path.basename(filepath)
+#     base_name = filename[6:-4] # Remove 'graph_' and '.csv'
+#     parts = base_name.split('_')
+#     if len(parts) >= 3 and parts[-2].isdigit() and parts[-1].isdigit():
+#         timestamp = f"{parts[-2]}_{parts[-1]}"
+#         planner_name = parts[0]
+#         environment_name = "_".join(parts[1:-2])
+#         return planner_name, environment_name, timestamp
+#     return None, None, None
+
+# def load_and_prep_all_data(filepath):
+#     """
+#     Returns the whole dataframe so we can compare all cycles together.
+#     """
+#     try:
+#         df = pd.read_csv(filepath, skipinitialspace=True, index_col=False)
+#     except Exception as e:
+#         print(f"[ERROR] Failed to read {filepath}. Error: {e}")
+#         return pd.DataFrame(), None
+
+#     df.columns = [str(c).strip().lower() for c in df.columns]
+
+#     cycle_col = next((c for c in df.columns if c in ['cycle_id', 'cycle', 'iteration']), None)
+#     if not cycle_col:
+#         return pd.DataFrame(), None
+
+#     df[cycle_col] = pd.to_numeric(df[cycle_col], errors='coerce').fillna(-1).astype(int)
+    
+#     # Standardization
+#     g_col = next((c for c in df.columns if c in ['g', 'g_value', 'cost']), None)
+#     lmc_col = next((c for c in df.columns if c in ['lmc', 'rhs', 'v_value', 'v']), None)
+    
+#     df['g_val'] = pd.to_numeric(df[g_col], errors='coerce') if g_col else np.nan
+#     df['lmc_val'] = pd.to_numeric(df[lmc_col], errors='coerce') if lmc_col else np.nan
+
+#     if 'node_id' not in df.columns and 'id' in df.columns:
+#         df['node_id'] = df['id']
+
+#     df['node_id'] = pd.to_numeric(df['node_id'], errors='coerce').fillna(-1).astype(int)
+    
+#     return df, cycle_col
+
+# def is_finite(val):
+#     return not (pd.isna(val) or val == float('inf') or val > 1e10)
+
+# def compare_graphs():
+#     search_pattern = os.path.join(BUILD_DIR, "graph_*.csv")
+#     all_files = glob.glob(search_pattern)
+    
+#     # Group by Environment -> Planner -> File details
+#     env_latest_files = {}
+#     env_max_timestamps = {}
+
+#     # 1. Find the latest files for EACH planner within EACH environment
+#     for filepath in all_files:
+#         planner, env, timestamp = parse_filename(filepath)
+#         if not planner or not env:
+#             continue
+            
+#         if env not in env_max_timestamps:
+#             env_max_timestamps[env] = {}
+#             env_latest_files[env] = {}
+
+#         if planner not in env_max_timestamps[env] or timestamp > env_max_timestamps[env][planner]:
+#             env_max_timestamps[env][planner] = timestamp
+#             env_latest_files[env][planner] = filepath
+
+#     if not env_latest_files:
+#         print("[INFO] No graph files found.")
+#         return
+
+#     # 2. Evaluate dynamically for every environment discovered
+#     for env, latest_files in env_latest_files.items():
+#         print(f"\n{'*'*90}")
+#         print(f"{' ENVIRONMENT: ' + env + ' ':-^90}")
+#         print(f"{'*'*90}")
+
+#         if len(latest_files) < 2:
+#             print(f"[INFO] Not enough planners found to compare in {env} (Found: {list(latest_files.keys())}).")
+#             continue
+
+#         planners_data = {}
+#         common_cycles = set()
+        
+#         for planner, filepath in latest_files.items():
+#             df, cycle_col = load_and_prep_all_data(filepath)
+#             if not df.empty:
+#                 planners_data[planner] = df
+#                 cycles_in_df = set(df[cycle_col].unique())
+#                 cycles_in_df.discard(-1)
+                
+#                 if not common_cycles:
+#                     common_cycles = cycles_in_df
+#                 else:
+#                     common_cycles = common_cycles.intersection(cycles_in_df)
+
+#         planners_list = list(planners_data.keys())
+#         if len(planners_list) < 2:
+#             print(f"[WARN] Not enough valid data to compare in {env}.")
+#             continue
+
+#         # Assuming pairwise comparison for the first two planners found
+#         base_planner = planners_list[0]
+#         target_planner = planners_list[1] 
+
+#         print(f"\n{'='*90}")
+#         print(f"{' DETAILED PERFORMANCE SUMMARY BY CYCLE ':-^90}")
+#         print(f" BASE: {base_planner} | TARGET: {target_planner}")
+#         print(f"{'='*90}")
+
+#         if not common_cycles:
+#             print("[WARN] No common cycles found between the algorithms.")
+#             continue
+
+#         # 3. Cycle-by-cycle Evaluation
+#         for cycle in sorted(list(common_cycles)):
+#             base_df = planners_data[base_planner]
+#             target_df = planners_data[target_planner]
+            
+#             cycle_col_b = next((c for c in base_df.columns if c in ['cycle_id', 'cycle', 'iteration']), None)
+#             cycle_col_t = next((c for c in target_df.columns if c in ['cycle_id', 'cycle', 'iteration']), None)
+
+#             b_cycle_df = base_df[base_df[cycle_col_b] == cycle].set_index('node_id')
+#             t_cycle_df = target_df[target_df[cycle_col_t] == cycle].set_index('node_id')
+
+#             common_nodes = sorted(list(set(b_cycle_df.index).intersection(set(t_cycle_df.index))))
+#             common_nodes = [n for n in common_nodes if n >= 0]
+
+#             # --- Metrics Computations ---
+#             b_finite_count = sum(is_finite(b_cycle_df.loc[n, 'g_val']) for n in b_cycle_df.index)
+#             t_finite_count = sum(is_finite(t_cycle_df.loc[n, 'g_val']) for n in t_cycle_df.index)
+
+#             b_consistent = sum(abs(b_cycle_df.loc[n, 'g_val'] - b_cycle_df.loc[n, 'lmc_val']) < COST_TOLERANCE for n in b_cycle_df.index if is_finite(b_cycle_df.loc[n, 'g_val']))
+#             t_consistent = sum(abs(t_cycle_df.loc[n, 'g_val'] - t_cycle_df.loc[n, 'lmc_val']) < COST_TOLERANCE for n in t_cycle_df.index if is_finite(t_cycle_df.loc[n, 'g_val']))
+
+#             base_wins = 0
+#             target_wins = 0
+#             ties = 0
+#             cost_diffs = [] 
+
+#             for n in common_nodes:
+#                 bg = b_cycle_df.loc[n, 'g_val']
+#                 tg = t_cycle_df.loc[n, 'g_val']
+                
+#                 b_fin = is_finite(bg)
+#                 t_fin = is_finite(tg)
+
+#                 if not b_fin and not t_fin:
+#                     continue # Both blocked
+#                 elif b_fin and not t_fin:
+#                     base_wins += 1 
+#                 elif not b_fin and t_fin:
+#                     target_wins += 1 
+#                 else:
+#                     if abs(bg - tg) <= COST_TOLERANCE:
+#                         ties += 1
+#                     elif bg < tg:
+#                         base_wins += 1
+#                     else:
+#                         target_wins += 1
+                        
+#                     cost_diffs.append(bg - tg)
+
+#             avg_diff = sum(cost_diffs) / len(cost_diffs) if cost_diffs else 0.0
+
+#             # --- Determine Verdict ---
+#             if base_wins > target_wins:
+#                 verdict = f"{base_planner} is DOMINATING (Found better paths for {base_wins} nodes)"
+#             elif target_wins > base_wins:
+#                 verdict = f"{target_planner} is DOMINATING (Found better paths for {target_wins} nodes)"
+#             else:
+#                 verdict = "Both algorithms performed EQUALLY in cost optimization."
+
+#             # --- Formatted Output ---
+#             print(f"\n[ CYCLE {cycle} ] ".ljust(90, '-'))
+            
+#             print("\n 1. Reachability (Nodes with finite G-cost):")
+#             print(f"    - {base_planner:<20}: {b_finite_count} nodes")
+#             print(f"    - {target_planner:<20}: {t_finite_count} nodes")
+
+#             print("\n 2. Cost Optimality (Comparison on shared nodes):")
+#             print(f"    - {base_planner} wins on : {base_wins} nodes")
+#             print(f"    - {target_planner} wins on : {target_wins} nodes")
+#             print(f"    - Tied on                  : {ties} nodes")
+#             print(f"    - Mean Cost Difference     : {avg_diff:+.4f} (Positive means {target_planner} is cheaper)")
+
+#             print("\n 3. Consistency Status (Nodes where G == RHS):")
+#             b_pct = (b_consistent / b_finite_count * 100) if b_finite_count else 0
+#             t_pct = (t_consistent / t_finite_count * 100) if t_finite_count else 0
+#             print(f"    - {base_planner:<20}: {b_consistent} / {b_finite_count} ({b_pct:.1f}%)")
+#             print(f"    - {target_planner:<20}: {t_consistent} / {t_finite_count} ({t_pct:.1f}%)")
+
+#             print("\n 🎯 VERDICT:")
+#             print(f"    >> {verdict}")
+
+#         print(f"\n{'='*90}")
+#         print(f" SUMMARY FOR {env} COMPLETE ".center(90, '='))
+
+# if __name__ == "__main__":
+#     compare_graphs()
+
+
 
 import warnings
 warnings.filterwarnings('ignore')
 
 import os
 import glob
-import math
 import pandas as pd
 import numpy as np
 
-BUILD_DIR = "../../../build/"
+BUILD_DIR = '../../../build/'
 COST_TOLERANCE = 1e-4
+BASE_PLANNER = 'FMTX'
+TARGET_PLANNER = 'PRMSTARDSTARLITE'
+
 
 def parse_filename(filepath):
     filename = os.path.basename(filepath)
-    base_name = filename[6:-4] # Remove 'graph_' and '.csv'
+    if not (filename.startswith('graph_') and filename.endswith('.csv')):
+        return None, None, None
+    base_name = filename[6:-4]
     parts = base_name.split('_')
     if len(parts) >= 3 and parts[-2].isdigit() and parts[-1].isdigit():
         timestamp = f"{parts[-2]}_{parts[-1]}"
         planner_name = parts[0]
-        environment_name = "_".join(parts[1:-2])
+        environment_name = '_'.join(parts[1:-2])
         return planner_name, environment_name, timestamp
     return None, None, None
 
+
+def is_finite(val):
+    return pd.notna(val) and np.isfinite(val) and val <= 1e10
+
+
 def load_and_prep_all_data(filepath):
-    """
-    Returns the whole dataframe so we can compare all cycles together.
-    """
     try:
         df = pd.read_csv(filepath, skipinitialspace=True, index_col=False)
-    except Exception as e:
-        print(f"[ERROR] Failed to read {filepath}. Error: {e}")
+    except Exception:
         return pd.DataFrame(), None
 
     df.columns = [str(c).strip().lower() for c in df.columns]
-
     cycle_col = next((c for c in df.columns if c in ['cycle_id', 'cycle', 'iteration']), None)
     if not cycle_col:
         return pd.DataFrame(), None
 
     df[cycle_col] = pd.to_numeric(df[cycle_col], errors='coerce').fillna(-1).astype(int)
-    
-    # Standardization
-    g_col = next((c for c in df.columns if c in ['g', 'g_value', 'cost']), None)
-    lmc_col = next((c for c in df.columns if c in ['lmc', 'rhs', 'v_value', 'v']), None)
-    
-    df['g_val'] = pd.to_numeric(df[g_col], errors='coerce') if g_col else np.nan
-    df['lmc_val'] = pd.to_numeric(df[lmc_col], errors='coerce') if lmc_col else np.nan
 
     if 'node_id' not in df.columns and 'id' in df.columns:
         df['node_id'] = df['id']
-
+    if 'node_id' not in df.columns:
+        return pd.DataFrame(), None
     df['node_id'] = pd.to_numeric(df['node_id'], errors='coerce').fillna(-1).astype(int)
-    
+
+    for col in ['g', 'lmc', 'robot_g', 'robot_lmc', 'robot_total_cost', 'robot_time_to_goal']:
+        if col not in df.columns:
+            df[col] = np.nan
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    if 'is_robot_anchor' not in df.columns:
+        df['is_robot_anchor'] = 0
+    df['is_robot_anchor'] = pd.to_numeric(df['is_robot_anchor'], errors='coerce').fillna(0).astype(int)
+
+    df['g_val'] = df['g']
+    df['lmc_val'] = df['lmc']
     return df, cycle_col
 
-def is_finite(val):
-    return not (pd.isna(val) or val == float('inf') or val > 1e10)
+
+def get_robot_cycle_stats(cycle_df):
+    anchor_rows = cycle_df[cycle_df['is_robot_anchor'] == 1]
+    row = anchor_rows.iloc[0] if not anchor_rows.empty else cycle_df.iloc[0]
+    return {
+        'anchor_id': int(row['node_id']) if pd.notna(row['node_id']) else -1,
+        'robot_g': float(row['robot_g']) if pd.notna(row['robot_g']) else np.nan,
+        'robot_lmc': float(row['robot_lmc']) if pd.notna(row['robot_lmc']) else np.nan,
+        'robot_total_cost': float(row['robot_total_cost']) if pd.notna(row['robot_total_cost']) else np.nan,
+        'robot_time_to_goal': float(row['robot_time_to_goal']) if pd.notna(row['robot_time_to_goal']) else np.nan,
+    }
+
+
+def consistency_gap(df):
+    return (df['g_val'] - df['lmc_val']).abs()
+
 
 def compare_graphs():
-    search_pattern = os.path.join(BUILD_DIR, "graph_*.csv")
+    search_pattern = os.path.join(BUILD_DIR, 'graph_*.csv')
     all_files = glob.glob(search_pattern)
-    
-    # Group by Environment -> Planner -> File details
+
     env_latest_files = {}
     env_max_timestamps = {}
 
-    # 1. Find the latest files for EACH planner within EACH environment
     for filepath in all_files:
         planner, env, timestamp = parse_filename(filepath)
         if not planner or not env:
             continue
-            
-        if env not in env_max_timestamps:
-            env_max_timestamps[env] = {}
-            env_latest_files[env] = {}
-
+        if planner not in [BASE_PLANNER, TARGET_PLANNER]:
+            continue
+        env_latest_files.setdefault(env, {})
+        env_max_timestamps.setdefault(env, {})
         if planner not in env_max_timestamps[env] or timestamp > env_max_timestamps[env][planner]:
             env_max_timestamps[env][planner] = timestamp
             env_latest_files[env][planner] = filepath
 
     if not env_latest_files:
-        print("[INFO] No graph files found.")
+        print('[INFO] No matching graph files found.')
         return
 
-    # 2. Evaluate dynamically for every environment discovered
     for env, latest_files in env_latest_files.items():
-        print(f"\n{'*'*90}")
-        print(f"{' ENVIRONMENT: ' + env + ' ':-^90}")
-        print(f"{'*'*90}")
-
-        if len(latest_files) < 2:
-            print(f"[INFO] Not enough planners found to compare in {env} (Found: {list(latest_files.keys())}).")
+        if BASE_PLANNER not in latest_files or TARGET_PLANNER not in latest_files:
             continue
 
-        planners_data = {}
-        common_cycles = set()
-        
-        for planner, filepath in latest_files.items():
-            df, cycle_col = load_and_prep_all_data(filepath)
-            if not df.empty:
-                planners_data[planner] = df
-                cycles_in_df = set(df[cycle_col].unique())
-                cycles_in_df.discard(-1)
-                
-                if not common_cycles:
-                    common_cycles = cycles_in_df
-                else:
-                    common_cycles = common_cycles.intersection(cycles_in_df)
-
-        planners_list = list(planners_data.keys())
-        if len(planners_list) < 2:
-            print(f"[WARN] Not enough valid data to compare in {env}.")
+        base_df, cycle_col_b = load_and_prep_all_data(latest_files[BASE_PLANNER])
+        target_df, cycle_col_t = load_and_prep_all_data(latest_files[TARGET_PLANNER])
+        if base_df.empty or target_df.empty:
             continue
 
-        # Assuming pairwise comparison for the first two planners found
-        base_planner = planners_list[0]
-        target_planner = planners_list[1] 
+        common_cycles = set(base_df[cycle_col_b].unique()).intersection(set(target_df[cycle_col_t].unique()))
+        common_cycles.discard(-1)
 
-        print(f"\n{'='*90}")
-        print(f"{' DETAILED PERFORMANCE SUMMARY BY CYCLE ':-^90}")
-        print(f" BASE: {base_planner} | TARGET: {target_planner}")
-        print(f"{'='*90}")
+        print(f"\n{'='*100}")
+        print(f"{' FAIR NON-ANYTIME GRAPH COMPARISON BY CYCLE ':-^100}")
+        print(f" ENVIRONMENT: {env}")
+        print(f" BASE: {BASE_PLANNER} | TARGET: {TARGET_PLANNER}")
+        print(f"{'='*100}")
 
-        if not common_cycles:
-            print("[WARN] No common cycles found between the algorithms.")
-            continue
+        for cycle in sorted(common_cycles):
+            b_cycle_df = base_df[base_df[cycle_col_b] == cycle].copy().set_index('node_id')
+            t_cycle_df = target_df[target_df[cycle_col_t] == cycle].copy().set_index('node_id')
 
-        # 3. Cycle-by-cycle Evaluation
-        for cycle in sorted(list(common_cycles)):
-            base_df = planners_data[base_planner]
-            target_df = planners_data[target_planner]
-            
-            cycle_col_b = next((c for c in base_df.columns if c in ['cycle_id', 'cycle', 'iteration']), None)
-            cycle_col_t = next((c for c in target_df.columns if c in ['cycle_id', 'cycle', 'iteration']), None)
+            common_nodes = sorted(n for n in set(b_cycle_df.index).intersection(set(t_cycle_df.index)) if n >= 0)
+            if not common_nodes:
+                continue
 
-            b_cycle_df = base_df[base_df[cycle_col_b] == cycle].set_index('node_id')
-            t_cycle_df = target_df[target_df[cycle_col_t] == cycle].set_index('node_id')
+            b_stats = get_robot_cycle_stats(base_df[base_df[cycle_col_b] == cycle])
+            t_stats = get_robot_cycle_stats(target_df[target_df[cycle_col_t] == cycle])
 
-            common_nodes = sorted(list(set(b_cycle_df.index).intersection(set(t_cycle_df.index))))
-            common_nodes = [n for n in common_nodes if n >= 0]
+            b_anchor_cost = b_stats['robot_lmc'] if is_finite(b_stats['robot_lmc']) else np.nan
+            t_anchor_cost = t_stats['robot_lmc'] if is_finite(t_stats['robot_lmc']) else np.nan
+            if is_finite(b_anchor_cost) and is_finite(t_anchor_cost):
+                fair_threshold = min(b_anchor_cost, t_anchor_cost)
+            else:
+                fair_threshold = np.nan
 
-            # --- Metrics Computations ---
-            b_finite_count = sum(is_finite(b_cycle_df.loc[n, 'g_val']) for n in b_cycle_df.index)
-            t_finite_count = sum(is_finite(t_cycle_df.loc[n, 'g_val']) for n in t_cycle_df.index)
 
-            b_consistent = sum(abs(b_cycle_df.loc[n, 'g_val'] - b_cycle_df.loc[n, 'lmc_val']) < COST_TOLERANCE for n in b_cycle_df.index if is_finite(b_cycle_df.loc[n, 'g_val']))
-            t_consistent = sum(abs(t_cycle_df.loc[n, 'g_val'] - t_cycle_df.loc[n, 'lmc_val']) < COST_TOLERANCE for n in t_cycle_df.index if is_finite(t_cycle_df.loc[n, 'g_val']))
+            partial_comparable = True
+            partial_reason = ""
 
-            base_wins = 0
-            target_wins = 0
-            ties = 0
-            cost_diffs = [] 
+            if not is_finite(b_stats['robot_lmc']) or not is_finite(t_stats['robot_lmc']):
+                partial_comparable = False
+                partial_reason = "One planner has infinite robot_lmc, so the settled horizon is not fully comparable."
+            elif abs(b_stats['anchor_id'] - t_stats['anchor_id']) > 0:
+                partial_reason = "Anchor ids differ, but comparison is still allowed because the fair horizon is cost-based."
+            elif len(common_nodes) < min(len(b_cycle_df), len(t_cycle_df)):
+                partial_reason = "Graphs are not identical in support, but overlap is sufficient for snapshot comparison."
+            else:
+                partial_reason = "Fully comparable cycle."
+
+            base_wins = target_wins = ties = 0
+            cost_diffs = []
+            fair_nodes_evaluated = 0
+            b_consistency_viol = 0
+            t_consistency_viol = 0
 
             for n in common_nodes:
                 bg = b_cycle_df.loc[n, 'g_val']
                 tg = t_cycle_df.loc[n, 'g_val']
-                
+                bl = b_cycle_df.loc[n, 'lmc_val']
+                tl = t_cycle_df.loc[n, 'lmc_val']
+
+                if is_finite(bl) and is_finite(bg) and abs(bg - bl) > COST_TOLERANCE:
+                    b_consistency_viol += 1
+                if is_finite(tl) and is_finite(tg) and abs(tg - tl) > COST_TOLERANCE:
+                    t_consistency_viol += 1
+
                 b_fin = is_finite(bg)
                 t_fin = is_finite(tg)
 
+                if is_finite(fair_threshold):
+                    if b_fin and bg > fair_threshold + COST_TOLERANCE:
+                        continue
+                    if t_fin and tg > fair_threshold + COST_TOLERANCE:
+                        continue
+
+                fair_nodes_evaluated += 1
+
                 if not b_fin and not t_fin:
-                    continue # Both blocked
+                    continue
                 elif b_fin and not t_fin:
-                    base_wins += 1 
+                    base_wins += 1
                 elif not b_fin and t_fin:
-                    target_wins += 1 
+                    target_wins += 1
                 else:
                     if abs(bg - tg) <= COST_TOLERANCE:
                         ties += 1
@@ -391,43 +629,48 @@ def compare_graphs():
                         base_wins += 1
                     else:
                         target_wins += 1
-                        
                     cost_diffs.append(bg - tg)
 
             avg_diff = sum(cost_diffs) / len(cost_diffs) if cost_diffs else 0.0
+            overlap_ratio = len(common_nodes) / max(1, min(len(b_cycle_df), len(t_cycle_df)))
 
-            # --- Determine Verdict ---
             if base_wins > target_wins:
-                verdict = f"{base_planner} is DOMINATING (Found better paths for {base_wins} nodes)"
+                verdict = f'{BASE_PLANNER} DOMINATES inside the fair anchor horizon.'
             elif target_wins > base_wins:
-                verdict = f"{target_planner} is DOMINATING (Found better paths for {target_wins} nodes)"
+                verdict = f'{TARGET_PLANNER} DOMINATES inside the fair anchor horizon.'
             else:
-                verdict = "Both algorithms performed EQUALLY in cost optimization."
+                verdict = 'Both algorithms are equally optimal inside the fair anchor horizon.'
 
-            # --- Formatted Output ---
-            print(f"\n[ CYCLE {cycle} ] ".ljust(90, '-'))
-            
-            print("\n 1. Reachability (Nodes with finite G-cost):")
-            print(f"    - {base_planner:<20}: {b_finite_count} nodes")
-            print(f"    - {target_planner:<20}: {t_finite_count} nodes")
+            print(f"\n[ CYCLE {cycle} ] ".ljust(100, '-'))
+            print('\n 0. Anchor / Robot Costs:')
+            print(f"    - {BASE_PLANNER} anchor id        : {b_stats['anchor_id']}")
+            print(f"    - {TARGET_PLANNER} anchor id      : {t_stats['anchor_id']}")
+            print(f"    - {BASE_PLANNER} robot_lmc        : {b_stats['robot_lmc']:.4f}")
+            print(f"    - {TARGET_PLANNER} robot_lmc      : {t_stats['robot_lmc']:.4f}")
+            print(f"    - {BASE_PLANNER} total cost       : {b_stats['robot_total_cost']:.4f}")
+            print(f"    - {TARGET_PLANNER} total cost     : {t_stats['robot_total_cost']:.4f}")
+            print(f"    - Fair Common Threshold           : {fair_threshold:.4f}")
 
-            print("\n 2. Cost Optimality (Comparison on shared nodes):")
-            print(f"    - {base_planner} wins on : {base_wins} nodes")
-            print(f"    - {target_planner} wins on : {target_wins} nodes")
-            print(f"    - Tied on                  : {ties} nodes")
-            print(f"    - Mean Cost Difference     : {avg_diff:+.4f} (Positive means {target_planner} is cheaper)")
+            print('\n 1. Comparability:')
+            print(f"    - {BASE_PLANNER} nodes this cycle : {len(b_cycle_df)}")
+            print(f"    - {TARGET_PLANNER} nodes this cycle: {len(t_cycle_df)}")
+            print(f"    - Common nodes                    : {len(common_nodes)}")
+            print(f"    - Overlap ratio                   : {overlap_ratio:.3f}")
+            print(f"    - Nodes evaluated fairly          : {fair_nodes_evaluated}")
 
-            print("\n 3. Consistency Status (Nodes where G == RHS):")
-            b_pct = (b_consistent / b_finite_count * 100) if b_finite_count else 0
-            t_pct = (t_consistent / t_finite_count * 100) if t_finite_count else 0
-            print(f"    - {base_planner:<20}: {b_consistent} / {b_finite_count} ({b_pct:.1f}%)")
-            print(f"    - {target_planner:<20}: {t_consistent} / {t_finite_count} ({t_pct:.1f}%)")
+            print('\n 2. Consistency Check:')
+            print(f"    - {BASE_PLANNER} |g-lmc| violations : {b_consistency_viol}")
+            print(f"    - {TARGET_PLANNER} |g-lmc| violations: {t_consistency_viol}")
 
-            print("\n 🎯 VERDICT:")
+            print('\n 3. Cost Optimality (Inside Fair Anchor Horizon):')
+            print(f"    - {BASE_PLANNER} wins on          : {base_wins} nodes")
+            print(f"    - {TARGET_PLANNER} wins on        : {target_wins} nodes")
+            print(f"    - Tied on                         : {ties} nodes")
+            print(f"    - Mean Cost Difference            : {avg_diff:+.4f} (Positive means {TARGET_PLANNER} is cheaper)")
+
+            print('\n 🎯 VERDICT:')
             print(f"    >> {verdict}")
 
-        print(f"\n{'='*90}")
-        print(f" SUMMARY FOR {env} COMPLETE ".center(90, '='))
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     compare_graphs()
