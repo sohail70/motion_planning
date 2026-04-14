@@ -96,7 +96,7 @@
         <link_name>moving_link</link_name>
         <direction>1 0 0</direction>  <!-- Move along x-axis -->
         <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
-        <speed>10.0</speed>            <!-- 2 rad/s -->
+        <speed>7.0</speed>            <!-- 2 rad/s -->
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -123,7 +123,7 @@
         <link_name>moving_link</link_name>
         <direction>1 0 0</direction>  <!-- Move along x-axis -->
         <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
-        <speed>14.0</speed>            <!-- 2 rad/s -->
+        <speed>15.0</speed>            <!-- 2 rad/s -->
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -152,7 +152,7 @@
         <link_name>moving_link</link_name>
         <direction>1 0 0</direction>  <!-- Move along x-axis -->
         <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
-        <speed>18.0</speed>            <!-- 2 rad/s -->
+        <speed>9.0</speed>            <!-- 2 rad/s -->
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -181,7 +181,7 @@
         <link_name>moving_link</link_name>
         <direction>1 0 0</direction>  <!-- Move along x-axis -->
         <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
-        <speed>15.0</speed>            <!-- 2 rad/s -->
+        <speed>10.0</speed>            <!-- 2 rad/s -->
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -208,7 +208,7 @@
         <link_name>moving_link</link_name>
         <direction>0 1 0</direction>  <!-- Move along x-axis -->
         <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
-        <speed>17.0</speed>            <!-- 2 rad/s -->
+        <speed>10.0</speed>            <!-- 2 rad/s -->
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -234,7 +234,7 @@
         <link_name>moving_link</link_name>
         <direction>0 1 0</direction>  <!-- Move along x-axis -->
         <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
-        <speed>12.0</speed>            <!-- 2 rad/s -->
+        <speed>8.5</speed>            <!-- 2 rad/s -->
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -258,7 +258,7 @@
         <link_name>moving_link</link_name>
         <direction>0 1 0</direction>  <!-- Move along x-axis -->
         <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
-        <speed>14.0</speed>            <!-- 2 rad/s -->
+        <speed>15.0</speed>            <!-- 2 rad/s -->
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -284,7 +284,7 @@
         <link_name>moving_link</link_name>
         <direction>0 1 0</direction>  <!-- Move along x-axis -->
         <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
-        <speed>18.0</speed>            <!-- 2 rad/s -->
+        <speed>12.0</speed>            <!-- 2 rad/s -->
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -310,7 +310,7 @@
         <link_name>moving_link</link_name>
         <direction>0 1 0</direction>  <!-- Move along x-axis -->
         <amplitude>110.0</amplitude>    <!-- 0.5 meters -->
-        <speed>16.0</speed>            <!-- 2 rad/s -->
+        <speed>13.0</speed>            <!-- 2 rad/s -->
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>

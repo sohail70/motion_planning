@@ -265,9 +265,8 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     std::cout << "------------------------------------------------------------\n";
 }
 
-void KinodynamicFMTX::checkIsolatedNodes() const {
-    int isolated_nodes_count = 0;
-    std::vector<int> isolated_indices;
+void KinodynamicFMTX::checkIsolatedNodes() {
+    // std::vector<int> isolated_indices;
 
     std::cout << "Checking " << tree_.size() << " nodes for isolation (zero neighbors)..." << std::endl;
 
@@ -275,13 +274,13 @@ void KinodynamicFMTX::checkIsolatedNodes() const {
         const auto* node = tree_[i].get();
         
         if (node->forwardNeighbors().empty() && node->backwardNeighbors().empty()) {
-            isolated_nodes_count++;
-            isolated_indices.push_back(i);
+            isolated_nodes_count_++;
+            // isolated_indices.push_back(i);
         }
     }
 
-    if (isolated_nodes_count > 0) {
-        std::cout << "Found " << isolated_nodes_count 
+    if (isolated_nodes_count_ > 0) {
+        std::cout << "Found " << isolated_nodes_count_ 
                   << " isolated nodes (nodes with 0 neighbors) out of " 
                   << tree_.size() << " total nodes." << std::endl;
         

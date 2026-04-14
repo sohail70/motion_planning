@@ -6,7 +6,7 @@ import yaml  # Make sure to run: pip install pyyaml
 # 1. EXPERIMENT CONFIGURATION
 # =====================================================================
 
-NUM_SEEDS = 30
+NUM_SEEDS = 3
 START_SEED = 42
 
 # --- PATH CONFIGURATIONS ---
@@ -55,7 +55,7 @@ STATE_SPACES = {
     "R2T": {
         "state_space_type": "RDT",
         "manager_type": "R2T",
-        "time_budget": 20.0,
+        "time_budget": 25.0,
         "start_state": [48.0, 48.0],
         "goal_state": [-48.0, -48.0],
         "dimensions": 3,

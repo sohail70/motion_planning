@@ -100,6 +100,7 @@ class Planner {
         virtual void logGraphState(std::ofstream& out_file, int cycle_number) const {};
         virtual double getAvgOutDegree() const { return 0.0; }
         virtual double getAvgInDegree() const { return 0.0; }
+        virtual int getIsolatedNodeCount() const { return 0; }
         virtual void resetMetrics() {}
 
     protected:

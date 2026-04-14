@@ -83,7 +83,7 @@ class KinodynamicFMTX : public Planner {
         void analyzeSuboptimality(FMTNode* x, FMTNode* best_parent_for_x, FMTNode* z, SuboptimalityMetrics& metrics);
         void printDebugSummary(const SuboptimalityMetrics& metrics);
 
-        void checkIsolatedNodes() const;
+        void checkIsolatedNodes();
 
 
         void logGraphState(std::ofstream& out_file, int cycle_number) const override {
@@ -131,6 +131,7 @@ class KinodynamicFMTX : public Planner {
         }
 
 
+        int getIsolatedNodeCount() const override { return isolated_nodes_count_; } 
 
     private:
         std::vector<std::unique_ptr<FMTNode>> tree_;
@@ -166,5 +167,6 @@ class KinodynamicFMTX : public Planner {
 
         int num_pillar_nodes_;
         std::unordered_set<int> time_pillar_indices_;
+        int isolated_nodes_count_ = 0;
 };
 

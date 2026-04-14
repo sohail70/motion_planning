@@ -4,7 +4,7 @@
 #define USE_INVALIDATING_SET_STRATEGY 0
 #define USE_THREAT_SET_STRATEGY 0
 #define USE_GRID_SAMPLING 0
-#define USE_HEURISTIC 0
+#define USE_HEURISTIC 1
 #define USE_RECOVERY 0 // Emergency Fallback
 // Constructor
 KinodynamicPRMStarDStarLite::KinodynamicPRMStarDStarLite(
@@ -437,9 +437,8 @@ void KinodynamicPRMStarDStarLite::near(int node_index) {
 }
 
 
-void KinodynamicPRMStarDStarLite::checkIsolatedNodes() const {
-    int isolated_nodes_count = 0;
-    std::vector<int> isolated_indices;
+void KinodynamicPRMStarDStarLite::checkIsolatedNodes() {
+    // std::vector<int> isolated_indices;
 
     std::cout << "Checking " << nodes_.size() << " nodes for isolation (zero neighbors)..." << std::endl;
 
@@ -447,13 +446,13 @@ void KinodynamicPRMStarDStarLite::checkIsolatedNodes() const {
         const auto* node = nodes_[i].get();
         
         if (node->forward_neighbors_.empty() && node->backward_neighbors_.empty()) {
-            isolated_nodes_count++;
-            isolated_indices.push_back(i);
+            isolated_nodes_count_++;
+            // isolated_indices.push_back(i);
         }
     }
 
-    if (isolated_nodes_count > 0) {
-        std::cout << "Found " << isolated_nodes_count 
+    if (isolated_nodes_count_ > 0) {
+        std::cout << "Found " << isolated_nodes_count_ 
                   << " isolated nodes (nodes with 0 neighbors) out of " 
                   << nodes_.size() << " total nodes." << std::endl;
         

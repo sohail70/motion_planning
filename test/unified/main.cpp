@@ -174,6 +174,7 @@ struct LogEntry {
     long long queue_operations = 0;
     int collision_count     = 0;
     int tree_size           = 0;
+    int isolated_nodes      = 0;
     double avg_deg_out      = 0.0;
     double avg_deg_in       = 0.0;
     double neighborhood_radius = 0.0;
@@ -395,7 +396,7 @@ int main(int argc, char** argv) {
     init_entry.obstacle_checks = init_metrics.obstacle_checks;
     init_entry.queue_operations = init_metrics.queue_operations;
     init_entry.tree_size = kinodynamic_planner->getTreeSize();
-    
+    init_entry.isolated_nodes = kinodynamic_planner->getIsolatedNodeCount(); 
     init_entry.avg_deg_out = kinodynamic_planner->getAvgOutDegree();
     init_entry.avg_deg_in = kinodynamic_planner->getAvgInDegree();
     init_entry.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
@@ -707,6 +708,7 @@ int main(int argc, char** argv) {
                 entry.path_cost = metrics.path_cost;
                 entry.time_to_goal = T_robot;
                 entry.tree_size = kinodynamic_planner->getTreeSize();
+                entry.isolated_nodes = kinodynamic_planner->getIsolatedNodeCount(); // Just for convenience later when analyzing! otherwise we already have the number in initializationc
                 entry.avg_deg_out = kinodynamic_planner->getAvgOutDegree();
                 entry.avg_deg_in = kinodynamic_planner->getAvgInDegree();
                 entry.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
@@ -785,7 +787,7 @@ int main(int argc, char** argv) {
     // UPDATED HEADER
     out << "elapsed_s,setup_ms,total_latency_ms,update_ms,plan_ms,time_to_goal,path_cost,"
        "obstacle_checks,queue_operations,"
-       "collision_count,tree_size,avg_deg_out,avg_deg_in,radius\n";
+       "collision_count,tree_size,isolated_nodes,avg_deg_out,avg_deg_in,radius\n";
 
     for (const auto& entry : log_data) {
         out << entry.elapsed_s << "," 
@@ -799,6 +801,7 @@ int main(int argc, char** argv) {
             << entry.queue_operations << ","
             << entry.collision_count << ","
             << entry.tree_size << ","
+            << entry.isolated_nodes << ","
             << entry.avg_deg_out << ","
             << entry.avg_deg_in << ","
             << entry.neighborhood_radius << "\n";

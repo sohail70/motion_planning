@@ -8,7 +8,7 @@ experiment:
 simulation:
   time_budget: 25.0
   slice_time: 0.02
-  seed: 42
+  seed: 57
 
 robot:
   # Start: x, y, vx, vy, time_budget
@@ -20,7 +20,7 @@ robot:
   bounds_max: [ 50.0,  50.0,  15.0,  15.0]
   min_velocity: 0.0
   max_velocity: 15.0
-  max_acceleration: 5.0
+  max_acceleration: 6.0
 
 planner_params:
   num_of_samples: 1000

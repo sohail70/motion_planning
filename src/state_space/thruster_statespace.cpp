@@ -297,7 +297,73 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
         }
     }
 
-    // --- Final assignment of accelerations and return value ---
+    // // --- Final assignment of accelerations and return value ---
+    // // a_1 is acceleration from t_start to t_1
+    // // a_2 is acceleration from t_2 to t_end
+    // // (acceleration from t_1 to t_2 is 0)
+    // // v_coast is the velocity we coast at from t_1 to t_2
+    // double dt1 = t1;
+    // double dt2 = delta_t - t2;
+
+    // ///////////////////////////////////////////////////////////
+    // ///// EITHER THIS section
+
+    // // if (std::abs(dt1) < EPS) dt1 = EPS; // Avoid division by zero
+    // // if (std::abs(dt2) < EPS) dt2 = EPS;
+    // // a1 = (v_coast - v_start) / dt1;
+    // // a2 = (v_end - v_coast) / dt2;
+    // ////// OR this section! //////////////// I added this later as max velocity constraint for each velocity component because steering1D steers for each dim separately
+
+    // // NEW: Enforce Max Velocity Limit
+    // // Define your max velocity here (or pass it as an argument)
+    // double v_limit = max_velocity_; 
+    
+    // if (std::abs(v_coast) > v_limit) {
+    //     // If the coasting velocity exceeds the limit, clamp it.
+    //     // Note: This changes the physics. The robot will accelerate to v_limit,
+    //     // coast, and then decelerate. It might take longer or require more distance.
+    //     v_coast = (v_coast > 0) ? v_limit : -v_limit;
+        
+    //     // Recalculate accelerations a1 and a2 based on this clamped velocity
+    //     // a = (v_final - v_initial) / t
+    //     if (dt1 > 1e-9) a1 = (v_coast - v_start) / dt1;
+    //     if (dt2 > 1e-9) a2 = (v_end - v_coast) / dt2;
+        
+    //     // IMPORTANT: You must check if these new a1/a2 exceed max_acceleration!
+    //     // If they do, this trajectory is physically impossible with these constraints.
+    //     if (std::abs(a1) > a_max + EPS || std::abs(a2) > a_max + EPS) {
+    //          // std::cout << "  Cannot reach target distance while respecting max velocity limit.\n";
+    //          return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
+    //     }
+    // } else {
+    //     // Original logic
+    //     if (std::abs(dt1) < EPS) dt1 = EPS;
+    //     if (std::abs(dt2) < EPS) dt2 = EPS;
+    //     a1 = (v_coast - v_start) / dt1;
+    //     a2 = (v_end - v_coast) / dt2;
+    // }
+    // ////////////////////////////////////////////////////////////////////
+
+
+    // // Clamp accelerations to their max value
+    // a1 = std::max(-a_max, std::min(a_max, a1));
+    // a2 = std::max(-a_max, std::min(a_max, a2));
+
+    // // Final checks before assigning result
+    // if (t1 < -EPS || t1 > delta_t + EPS || t2 < -EPS || t2 > delta_t + EPS || t1 > t2 + EPS) {
+    //     // std::cout << "  DEBUG: Final time check failed *before* adding t_start: t1=" << t1 << ", t2=" << t2 << ", dt=" << delta_t << std::endl;
+    //     return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN()); 
+    // }
+    
+    // Eigen::VectorXd result = Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
+    // result << t1 + t_start, t2 + t_start, (flip_flag ? -a1 : a1), (flip_flag ? -a2 : a2), (flip_flag ? -v_coast : v_coast);
+    // // std::cout << "  DEBUG: Final returned result (global times): t1=" << result[0] << ", t2=" << result[1] << ", a1=" << result[2] << ", a2=" << result[3] << ", vc=" << result[4] << std::endl;
+
+    // return result;
+
+
+
+    //  Final assignment of accelerations and return value
     // a_1 is acceleration from t_start to t_1
     // a_2 is acceleration from t_2 to t_end
     // (acceleration from t_1 to t_2 is 0)
@@ -305,61 +371,38 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
     double dt1 = t1;
     double dt2 = delta_t - t2;
 
-    ///////////////////////////////////////////////////////////
-    ///// EITHER THIS section
-
-    // if (std::abs(dt1) < EPS) dt1 = EPS; // Avoid division by zero
-    // if (std::abs(dt2) < EPS) dt2 = EPS;
-    // a1 = (v_coast - v_start) / dt1;
-    // a2 = (v_end - v_coast) / dt2;
-    ////// OR this section! //////////////// I added this later as max velocity constraint for each velocity component because steering1D steers for each dim separately
-
-    // NEW: Enforce Max Velocity Limit
-    // Define your max velocity here (or pass it as an argument)
-    double v_limit = max_velocity_; 
+    // Enforce Max Velocity Constraint Strictly
     
-    if (std::abs(v_coast) > v_limit) {
-        // If the coasting velocity exceeds the limit, clamp it.
-        // Note: This changes the physics. The robot will accelerate to v_limit,
-        // coast, and then decelerate. It might take longer or require more distance.
-        v_coast = (v_coast > 0) ? v_limit : -v_limit;
-        
-        // Recalculate accelerations a1 and a2 based on this clamped velocity
-        // a = (v_final - v_initial) / t
-        if (dt1 > 1e-9) a1 = (v_coast - v_start) / dt1;
-        if (dt2 > 1e-9) a2 = (v_end - v_coast) / dt2;
-        
-        // IMPORTANT: You must check if these new a1/a2 exceed max_acceleration!
-        // If they do, this trajectory is physically impossible with these constraints.
-        if (std::abs(a1) > a_max + EPS || std::abs(a2) > a_max + EPS) {
-             // std::cout << "  Cannot reach target distance while respecting max velocity limit.\n";
-             return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
-        }
-    } else {
-        // Original logic
-        if (std::abs(dt1) < EPS) dt1 = EPS;
-        if (std::abs(dt2) < EPS) dt2 = EPS;
-        a1 = (v_coast - v_start) / dt1;
-        a2 = (v_end - v_coast) / dt2;
+    // Check if the required coasting velocity exceeds the system limit.
+    // If true, the target state is physically unreachable within delta_t.
+    if (std::abs(v_coast) > max_velocity_ + EPS) {
+        return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
     }
-    ////////////////////////////////////////////////////////////////////
+
+    // If velocity is within limits, proceed with original valid logic
+    if (std::abs(dt1) < EPS) dt1 = EPS; // Avoid division by zero
+    if (std::abs(dt2) < EPS) dt2 = EPS;
+    
+    a1 = (v_coast - v_start) / dt1;
+    a2 = (v_end - v_coast) / dt2;
 
 
-    // Clamp accelerations to their max value
+    // Clamp accelerations to their max value (mostly to handle minor float errors)
     a1 = std::max(-a_max, std::min(a_max, a1));
     a2 = std::max(-a_max, std::min(a_max, a2));
 
     // Final checks before assigning result
     if (t1 < -EPS || t1 > delta_t + EPS || t2 < -EPS || t2 > delta_t + EPS || t1 > t2 + EPS) {
-        // std::cout << "  DEBUG: Final time check failed *before* adding t_start: t1=" << t1 << ", t2=" << t2 << ", dt=" << delta_t << std::endl;
+        // std::cout << "  DEBUG: Final time check failed *before* adding t_start..." << std::endl;
         return Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN()); 
     }
     
     Eigen::VectorXd result = Eigen::VectorXd::Constant(5, std::numeric_limits<double>::quiet_NaN());
     result << t1 + t_start, t2 + t_start, (flip_flag ? -a1 : a1), (flip_flag ? -a2 : a2), (flip_flag ? -v_coast : v_coast);
-    // std::cout << "  DEBUG: Final returned result (global times): t1=" << result[0] << ", t2=" << result[1] << ", a1=" << result[2] << ", a2=" << result[3] << ", vc=" << result[4] << std::endl;
 
     return result;
+
+
 }
 
 // // optimized
@@ -1174,5 +1217,146 @@ std::vector<Trajectory> ThrusterSteerStateSpace::getEscapePrimitives(const Eigen
         traj.geometric_distance = (current_pos - pos).norm();
         primitives.push_back(traj);
     }
+    return primitives;
+}
+
+
+std::vector<Trajectory> ThrusterSteerStateSpace::generateRecoveryPrimitives(
+    const Eigen::VectorXd& state,
+    double dt,
+    int num_uniform_dirs,
+    int integration_steps) const
+{
+    std::vector<Trajectory> primitives;
+    const double EPS = 1e-9;
+
+    int D_spatial = (dimension_ - 1) / 2;
+    if (D_spatial != 2) {
+        // Current implementation is specialized for 2D thruster dynamics
+        return primitives;
+    }
+
+    Eigen::VectorXd pos = getSpatialPosition(state);
+    Eigen::VectorXd vel = getSpatialVelocity(state);
+    double t_go = state[dimension_ - 1];
+
+    std::vector<Eigen::Vector2d> dir_bank;
+
+    // 0) Coast primitive
+    dir_bank.emplace_back(0.0, 0.0);
+
+    // 1) Velocity-biased directions
+    Eigen::Vector2d v(vel(0), vel(1));
+    double vnorm = v.norm();
+
+    if (vnorm > 1e-6) {
+        Eigen::Vector2d vhat = v / vnorm;
+        Eigen::Vector2d left(-vhat.y(), vhat.x());
+        Eigen::Vector2d right(vhat.y(), -vhat.x());
+
+        dir_bank.push_back(-vhat);                         // full reverse
+        dir_bank.push_back((-vhat + 0.5 * left).normalized());
+        dir_bank.push_back((-vhat + 0.5 * right).normalized());
+        dir_bank.push_back(left);                          // pure lateral
+        dir_bank.push_back(right);
+        dir_bank.push_back((0.5 * vhat + left).normalized());
+        dir_bank.push_back((0.5 * vhat + right).normalized());
+    }
+
+    // 2) Uniform directions for coverage
+    for (int i = 0; i < num_uniform_dirs; ++i) {
+        double angle = i * (2.0 * M_PI / static_cast<double>(num_uniform_dirs));
+        dir_bank.emplace_back(std::cos(angle), std::sin(angle));
+    }
+
+    // 3) Remove near-duplicate directions
+    std::vector<Eigen::Vector2d> unique_dirs;
+    const double duplicate_thresh = 0.98; // cosine similarity
+    for (const auto& d : dir_bank) {
+        if (d.norm() < EPS) {
+            bool already_have_zero = false;
+            for (const auto& u : unique_dirs) {
+                if (u.norm() < EPS) {
+                    already_have_zero = true;
+                    break;
+                }
+            }
+            if (!already_have_zero) unique_dirs.push_back(d);
+            continue;
+        }
+
+        Eigen::Vector2d dn = d.normalized();
+        bool duplicate = false;
+        for (const auto& u : unique_dirs) {
+            if (u.norm() < EPS) continue;
+            if (dn.dot(u.normalized()) > duplicate_thresh) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) unique_dirs.push_back(dn);
+    }
+
+    // 4) Use two thrust magnitudes: aggressive and moderate
+    std::vector<double> thrust_scales = {1.0, 0.6};
+
+    for (double scale : thrust_scales) {
+        for (const auto& dir : unique_dirs) {
+            Trajectory traj;
+            traj.is_valid = true;
+            traj.time_duration = dt;
+            traj.cost = dt;
+            traj.path_points.clear();
+            traj.path_points.push_back(state);
+
+            Eigen::VectorXd current_pos = pos;
+            Eigen::VectorXd current_vel = vel;
+
+            double step_dt = dt / static_cast<double>(integration_steps);
+            double path_len = 0.0;
+
+            for (int j = 1; j <= integration_steps; ++j) {
+                Eigen::VectorXd applied_acc = Eigen::VectorXd::Zero(D_spatial);
+
+                if (dir.norm() > EPS) {
+                    applied_acc(0) = scale * max_acceleration_ * dir.x();
+                    applied_acc(1) = scale * max_acceleration_ * dir.y();
+                }
+
+                double current_speed = current_vel.norm();
+                if (current_speed >= max_velocity_ - 1e-4 && current_speed > 1e-8) {
+                    Eigen::VectorXd v_dir = current_vel.normalized();
+                    double parallel_acc = applied_acc.dot(v_dir);
+                    if (parallel_acc > 0.0) {
+                        applied_acc = applied_acc - parallel_acc * v_dir;
+                    }
+                }
+
+                Eigen::VectorXd prev_pos = current_pos;
+
+                // Semi-implicit Euler
+                current_vel = current_vel + applied_acc * step_dt;
+
+                double new_speed = current_vel.norm();
+                if (new_speed > max_velocity_ && new_speed > 1e-8) {
+                    current_vel = (max_velocity_ / new_speed) * current_vel;
+                }
+
+                current_pos = current_pos + current_vel * step_dt;
+
+                path_len += (current_pos - prev_pos).norm();
+
+                Eigen::VectorXd pt(dimension_);
+                pt.head(D_spatial) = current_pos;
+                pt.segment(D_spatial, D_spatial) = current_vel;
+                pt[dimension_ - 1] = t_go - j * step_dt;
+                traj.path_points.push_back(pt);
+            }
+
+            traj.geometric_distance = path_len;
+            primitives.push_back(traj);
+        }
+    }
+
     return primitives;
 }

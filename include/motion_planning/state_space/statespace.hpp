@@ -51,6 +51,7 @@ class StateSpace {
     virtual Trajectory generateEmergencyManeuver(const Eigen::VectorXd& state, double dt) const = 0;
     // Generates multiple dynamically feasible escape trajectories for 'dt' seconds
     virtual std::vector<Trajectory> getEscapePrimitives(const Eigen::VectorXd& state, double dt) const = 0;
+    virtual std::vector<Trajectory> generateRecoveryPrimitives( const Eigen::VectorXd& state, double dt, int num_uniform_dirs = 16, int integration_steps = 12) const {};
 
     virtual bool prefersLazyNear() const { return false; } // Default to proactive (i.e., caching and not lazy)
 

@@ -63,7 +63,7 @@ class KinodynamicPRMStarDStarLite : public Planner {
         }
 
         double getNeighborhoodRadius(){return connection_radius_;}
-        void checkIsolatedNodes() const;
+        void checkIsolatedNodes();
 
         void logGraphState(std::ofstream& out_file, int cycle_number) const override {
             const int robot_anchor_id =
@@ -109,6 +109,7 @@ class KinodynamicPRMStarDStarLite : public Planner {
         }
 
 
+        int getIsolatedNodeCount() const override { return isolated_nodes_count_; } 
 
     private:
         // --- D* Lite Core ---
@@ -195,5 +196,6 @@ class KinodynamicPRMStarDStarLite : public Planner {
 
         int num_pillar_nodes_;
         std::unordered_set<int> time_pillar_indices_;
+        int isolated_nodes_count_ = 0;
         
 };

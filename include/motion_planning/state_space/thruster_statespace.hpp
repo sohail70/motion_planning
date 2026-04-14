@@ -63,6 +63,7 @@ public:
 
     Trajectory generateEmergencyManeuver(const Eigen::VectorXd& state, double dt) const;
     std::vector<Trajectory> getEscapePrimitives(const Eigen::VectorXd& state, double dt) const;
+    std::vector<Trajectory> generateRecoveryPrimitives( const Eigen::VectorXd& state, double dt, int num_uniform_dirs = 16, int integration_steps = 12) const;
 
 private:
     double max_acceleration_; // Maximum absolute acceleration per dimension

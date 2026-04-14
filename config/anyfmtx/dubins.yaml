@@ -5,7 +5,7 @@ experiment:
   manager_type: "Dubins"
 
 simulation:
-  time_budget: 30.0
+  time_budget: 25.0
   slice_time: 0.02
   seed: 42
 
@@ -20,15 +20,15 @@ robot:
   min_turning_radius: 2.0
 
 planner_params:
-  num_of_samples: 2
-  factor: 2.5
+  num_of_samples: 1
+  factor: 3.0
   delta: 20.0
   epsilon: 0.1
   kdtree_type: "NanoFlann"
   partial_update: true
   kd_dim: 4 # Important for Dubins
   is_geometric_mode: false
-  num_pillar_nodes: 50
+  num_pillar_nodes: 0
   goal_radius: 0.5
 
 manager_params:
