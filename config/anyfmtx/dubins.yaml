@@ -5,7 +5,7 @@ experiment:
   manager_type: "Dubins"
 
 simulation:
-  time_budget: 25.0
+  time_budget: 35.0
   slice_time: 0.02
   seed: 42
 
@@ -20,9 +20,9 @@ robot:
   min_turning_radius: 2.0
 
 planner_params:
-  num_of_samples: 1
+  num_of_samples: 3
   factor: 3.0
-  delta: 20.0
+  delta: 30.0
   epsilon: 0.1
   kdtree_type: "NanoFlann"
   partial_update: true
@@ -35,5 +35,5 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_10.sdf"
-  inflation: 0.75
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20.sdf"
+  inflation: 1.0

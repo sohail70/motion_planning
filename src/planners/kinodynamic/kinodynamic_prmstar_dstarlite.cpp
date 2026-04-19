@@ -684,9 +684,7 @@ bool KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
     // return false;
 
 
-    // =========================================================
-    // FIX: ALWAYS update the parent and rhs, regardless of cost!
-    // =========================================================
+    // ALWAYS update the parent and rhs, regardless of cost!
     double old_rhs = s->rhs;
     s->rhs = min_rhs;
     s->setBestParent(best_parent, best_traj);
@@ -1233,11 +1231,14 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
     double current_search_radius = connection_radius_;
     const int max_attempts = 5;
     const double radius_multiplier = 2.0;
-
+    std::unordered_set<size_t> tested_indices;
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
         std::vector<size_t> candidate_indices = kdtree_->radiusSearch(query_point, current_search_radius);
 
         for (size_t idx : candidate_indices) {
+            if (!tested_indices.insert(idx).second) {
+                continue;
+            }
             DStarLiteNode* candidate = nodes_[idx].get();
 
             // Check Steering & Collision FIRST (Do not skip nodes just because g == inf!)

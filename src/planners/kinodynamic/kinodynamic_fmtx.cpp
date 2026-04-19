@@ -1867,10 +1867,13 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     double current_search_radius = neighborhood_radius_; 
     const int max_attempts = 5; 
     const double radius_multiplier = 2.0;
-
+    std::unordered_set<size_t> tested_indices;
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
         auto nearby_indices = kdtree_->radiusSearch(query_point, current_search_radius);
         for (auto idx : nearby_indices) {
+            if (!tested_indices.insert(idx).second) {
+                continue;
+            }
             FMTNode* candidate = tree_[idx].get();
             Trajectory temp_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
             if (!temp_bridge.is_valid) continue;

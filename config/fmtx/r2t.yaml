@@ -5,9 +5,9 @@ experiment:
   manager_type: "R2T"
 
 simulation:
-  time_budget: 25.0
+  time_budget: 15.0
   slice_time: 0.02
-  seed: 48
+  seed: 50
 
 robot:
   start_state: [48.0, 48.0] # x, y, time_budget (Must match dim)

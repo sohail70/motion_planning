@@ -5,7 +5,7 @@ experiment:
   manager_type: "Thruster"
 
 simulation:
-  time_budget: 25.0
+  time_budget: 35.0
   slice_time: 0.02
   seed: 42
 
@@ -20,7 +20,7 @@ robot:
   max_acceleration: 5.0
 
 planner_params:
-  num_of_samples: 1
+  num_of_samples: 2
   factor: 3.0
   delta: 40.0
   epsilon: 0.1
@@ -35,5 +35,5 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_10_slow.sdf"
-  inflation: 0.75
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20_slow.sdf"
+  inflation: 1.0

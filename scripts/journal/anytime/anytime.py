@@ -7,7 +7,7 @@ import yaml  # Make sure to run: pip install pyyaml
 # Modify these variables to change the parameters for all algorithms at once!
 # =====================================================================
 
-NUM_SEEDS = 5
+NUM_SEEDS = 45
 START_SEED = 42
 
 # --- PATH CONFIGURATIONS ---
@@ -57,7 +57,7 @@ STATE_SPACES = {
     "R2T": {
         "state_space_type": "RDT",
         "manager_type": "R2T",
-        "time_budget": 25.0,
+        "time_budget": 15.0,
         "start_state": [48.0, 48.0],
         "goal_state": [-48.0, -48.0],
         "dimensions": 3,
@@ -68,7 +68,7 @@ STATE_SPACES = {
         
         "num_of_samples": 1,
         "factor": 2.0,
-        "delta": 20.0,
+        "delta": 15.0,
         "epsilon": 0.1,
         "kd_dim": 3,
         "is_geometric_mode": False,
@@ -77,7 +77,7 @@ STATE_SPACES = {
         "goal_radius": 0.5,
         
         "sdf_file": SDF_FILE_R2T,
-        "inflation": 0.75
+        "inflation": 1.0
     },
     
     "Dubins": {
@@ -95,7 +95,7 @@ STATE_SPACES = {
         
         "num_of_samples": 1,
         "factor": 3.0,
-        "delta": 20.0,
+        "delta": 30.0,
         "epsilon": 0.1,
         "kd_dim": 4,
         "is_geometric_mode": False,
@@ -104,7 +104,7 @@ STATE_SPACES = {
         "goal_radius": 0.5,
         
         "sdf_file": SDF_FILE_DUBINS,
-        "inflation": 0.75
+        "inflation": 1.0
     },
     
     "Thruster": {
@@ -122,7 +122,7 @@ STATE_SPACES = {
         
         "num_of_samples": 1,
         "factor": 3.0,
-        "delta": 40.0,
+        "delta": 45.0,
         "epsilon": 0.1,
         "kd_dim": 5,
         "is_geometric_mode": False,
@@ -131,7 +131,7 @@ STATE_SPACES = {
         "goal_radius": 0.5,
         
         "sdf_file": SDF_FILE_THRUSTER,
-        "inflation": 0.75
+        "inflation": 1.0
     }
 }
 

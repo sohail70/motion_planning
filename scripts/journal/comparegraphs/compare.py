@@ -432,7 +432,249 @@
 # if __name__ == "__main__":
 #     compare_graphs()
 
+###############################################################################################################################
 
+# import warnings
+# warnings.filterwarnings('ignore')
+
+# import os
+# import glob
+# import pandas as pd
+# import numpy as np
+
+# BUILD_DIR = '../../../build/'
+# COST_TOLERANCE = 1e-4
+# BASE_PLANNER = 'FMTX'
+# TARGET_PLANNER = 'PRMSTARDSTARLITE'
+
+
+# def parse_filename(filepath):
+#     filename = os.path.basename(filepath)
+#     if not (filename.startswith('graph_') and filename.endswith('.csv')):
+#         return None, None, None
+#     base_name = filename[6:-4]
+#     parts = base_name.split('_')
+#     if len(parts) >= 3 and parts[-2].isdigit() and parts[-1].isdigit():
+#         timestamp = f"{parts[-2]}_{parts[-1]}"
+#         planner_name = parts[0]
+#         environment_name = '_'.join(parts[1:-2])
+#         return planner_name, environment_name, timestamp
+#     return None, None, None
+
+
+# def is_finite(val):
+#     return pd.notna(val) and np.isfinite(val) and val <= 1e10
+
+
+# def load_and_prep_all_data(filepath):
+#     try:
+#         df = pd.read_csv(filepath, skipinitialspace=True, index_col=False)
+#     except Exception:
+#         return pd.DataFrame(), None
+
+#     df.columns = [str(c).strip().lower() for c in df.columns]
+#     cycle_col = next((c for c in df.columns if c in ['cycle_id', 'cycle', 'iteration']), None)
+#     if not cycle_col:
+#         return pd.DataFrame(), None
+
+#     df[cycle_col] = pd.to_numeric(df[cycle_col], errors='coerce').fillna(-1).astype(int)
+
+#     if 'node_id' not in df.columns and 'id' in df.columns:
+#         df['node_id'] = df['id']
+#     if 'node_id' not in df.columns:
+#         return pd.DataFrame(), None
+#     df['node_id'] = pd.to_numeric(df['node_id'], errors='coerce').fillna(-1).astype(int)
+
+#     for col in ['g', 'lmc', 'robot_g', 'robot_lmc', 'robot_total_cost', 'robot_time_to_goal']:
+#         if col not in df.columns:
+#             df[col] = np.nan
+#         df[col] = pd.to_numeric(df[col], errors='coerce')
+
+#     if 'is_robot_anchor' not in df.columns:
+#         df['is_robot_anchor'] = 0
+#     df['is_robot_anchor'] = pd.to_numeric(df['is_robot_anchor'], errors='coerce').fillna(0).astype(int)
+
+#     df['g_val'] = df['g']
+#     df['lmc_val'] = df['lmc']
+#     return df, cycle_col
+
+
+# def get_robot_cycle_stats(cycle_df):
+#     anchor_rows = cycle_df[cycle_df['is_robot_anchor'] == 1]
+#     row = anchor_rows.iloc[0] if not anchor_rows.empty else cycle_df.iloc[0]
+#     return {
+#         'anchor_id': int(row['node_id']) if pd.notna(row['node_id']) else -1,
+#         'robot_g': float(row['robot_g']) if pd.notna(row['robot_g']) else np.nan,
+#         'robot_lmc': float(row['robot_lmc']) if pd.notna(row['robot_lmc']) else np.nan,
+#         'robot_total_cost': float(row['robot_total_cost']) if pd.notna(row['robot_total_cost']) else np.nan,
+#         'robot_time_to_goal': float(row['robot_time_to_goal']) if pd.notna(row['robot_time_to_goal']) else np.nan,
+#     }
+
+
+# def consistency_gap(df):
+#     return (df['g_val'] - df['lmc_val']).abs()
+
+
+# def compare_graphs():
+#     search_pattern = os.path.join(BUILD_DIR, 'graph_*.csv')
+#     all_files = glob.glob(search_pattern)
+
+#     env_latest_files = {}
+#     env_max_timestamps = {}
+
+#     for filepath in all_files:
+#         planner, env, timestamp = parse_filename(filepath)
+#         if not planner or not env:
+#             continue
+#         if planner not in [BASE_PLANNER, TARGET_PLANNER]:
+#             continue
+#         env_latest_files.setdefault(env, {})
+#         env_max_timestamps.setdefault(env, {})
+#         if planner not in env_max_timestamps[env] or timestamp > env_max_timestamps[env][planner]:
+#             env_max_timestamps[env][planner] = timestamp
+#             env_latest_files[env][planner] = filepath
+
+#     if not env_latest_files:
+#         print('[INFO] No matching graph files found.')
+#         return
+
+#     for env, latest_files in env_latest_files.items():
+#         if BASE_PLANNER not in latest_files or TARGET_PLANNER not in latest_files:
+#             continue
+
+#         base_df, cycle_col_b = load_and_prep_all_data(latest_files[BASE_PLANNER])
+#         target_df, cycle_col_t = load_and_prep_all_data(latest_files[TARGET_PLANNER])
+#         if base_df.empty or target_df.empty:
+#             continue
+
+#         common_cycles = set(base_df[cycle_col_b].unique()).intersection(set(target_df[cycle_col_t].unique()))
+#         common_cycles.discard(-1)
+
+#         print(f"\n{'='*100}")
+#         print(f"{' FAIR NON-ANYTIME GRAPH COMPARISON BY CYCLE ':-^100}")
+#         print(f" ENVIRONMENT: {env}")
+#         print(f" BASE: {BASE_PLANNER} | TARGET: {TARGET_PLANNER}")
+#         print(f"{'='*100}")
+
+#         for cycle in sorted(common_cycles):
+#             b_cycle_df = base_df[base_df[cycle_col_b] == cycle].copy().set_index('node_id')
+#             t_cycle_df = target_df[target_df[cycle_col_t] == cycle].copy().set_index('node_id')
+
+#             common_nodes = sorted(n for n in set(b_cycle_df.index).intersection(set(t_cycle_df.index)) if n >= 0)
+#             if not common_nodes:
+#                 continue
+
+#             b_stats = get_robot_cycle_stats(base_df[base_df[cycle_col_b] == cycle])
+#             t_stats = get_robot_cycle_stats(target_df[target_df[cycle_col_t] == cycle])
+
+#             b_anchor_cost = b_stats['robot_lmc'] if is_finite(b_stats['robot_lmc']) else np.nan
+#             t_anchor_cost = t_stats['robot_lmc'] if is_finite(t_stats['robot_lmc']) else np.nan
+#             if is_finite(b_anchor_cost) and is_finite(t_anchor_cost):
+#                 fair_threshold = min(b_anchor_cost, t_anchor_cost)
+#             else:
+#                 fair_threshold = np.nan
+
+
+#             partial_comparable = True
+#             partial_reason = ""
+
+#             if not is_finite(b_stats['robot_lmc']) or not is_finite(t_stats['robot_lmc']):
+#                 partial_comparable = False
+#                 partial_reason = "One planner has infinite robot_lmc, so the settled horizon is not fully comparable."
+#             elif abs(b_stats['anchor_id'] - t_stats['anchor_id']) > 0:
+#                 partial_reason = "Anchor ids differ, but comparison is still allowed because the fair horizon is cost-based."
+#             elif len(common_nodes) < min(len(b_cycle_df), len(t_cycle_df)):
+#                 partial_reason = "Graphs are not identical in support, but overlap is sufficient for snapshot comparison."
+#             else:
+#                 partial_reason = "Fully comparable cycle."
+
+#             base_wins = target_wins = ties = 0
+#             cost_diffs = []
+#             fair_nodes_evaluated = 0
+#             b_consistency_viol = 0
+#             t_consistency_viol = 0
+
+#             for n in common_nodes:
+#                 bg = b_cycle_df.loc[n, 'g_val']
+#                 tg = t_cycle_df.loc[n, 'g_val']
+#                 bl = b_cycle_df.loc[n, 'lmc_val']
+#                 tl = t_cycle_df.loc[n, 'lmc_val']
+
+#                 if is_finite(bl) and is_finite(bg) and abs(bg - bl) > COST_TOLERANCE:
+#                     b_consistency_viol += 1
+#                 if is_finite(tl) and is_finite(tg) and abs(tg - tl) > COST_TOLERANCE:
+#                     t_consistency_viol += 1
+
+#                 b_fin = is_finite(bg)
+#                 t_fin = is_finite(tg)
+
+#                 if is_finite(fair_threshold):
+#                     if b_fin and bg > fair_threshold + COST_TOLERANCE:
+#                         continue
+#                     if t_fin and tg > fair_threshold + COST_TOLERANCE:
+#                         continue
+
+#                 fair_nodes_evaluated += 1
+
+#                 if not b_fin and not t_fin:
+#                     continue
+#                 elif b_fin and not t_fin:
+#                     base_wins += 1
+#                 elif not b_fin and t_fin:
+#                     target_wins += 1
+#                 else:
+#                     if abs(bg - tg) <= COST_TOLERANCE:
+#                         ties += 1
+#                     elif bg < tg:
+#                         base_wins += 1
+#                     else:
+#                         target_wins += 1
+#                     cost_diffs.append(bg - tg)
+
+#             avg_diff = sum(cost_diffs) / len(cost_diffs) if cost_diffs else 0.0
+#             overlap_ratio = len(common_nodes) / max(1, min(len(b_cycle_df), len(t_cycle_df)))
+
+#             if base_wins > target_wins:
+#                 verdict = f'{BASE_PLANNER} DOMINATES inside the fair anchor horizon.'
+#             elif target_wins > base_wins:
+#                 verdict = f'{TARGET_PLANNER} DOMINATES inside the fair anchor horizon.'
+#             else:
+#                 verdict = 'Both algorithms are equally optimal inside the fair anchor horizon.'
+
+#             print(f"\n[ CYCLE {cycle} ] ".ljust(100, '-'))
+#             print('\n 0. Anchor / Robot Costs:')
+#             print(f"    - {BASE_PLANNER} anchor id        : {b_stats['anchor_id']}")
+#             print(f"    - {TARGET_PLANNER} anchor id      : {t_stats['anchor_id']}")
+#             print(f"    - {BASE_PLANNER} robot_lmc        : {b_stats['robot_lmc']:.4f}")
+#             print(f"    - {TARGET_PLANNER} robot_lmc      : {t_stats['robot_lmc']:.4f}")
+#             print(f"    - {BASE_PLANNER} total cost       : {b_stats['robot_total_cost']:.4f}")
+#             print(f"    - {TARGET_PLANNER} total cost     : {t_stats['robot_total_cost']:.4f}")
+#             print(f"    - Fair Common Threshold           : {fair_threshold:.4f}")
+
+#             print('\n 1. Comparability:')
+#             print(f"    - {BASE_PLANNER} nodes this cycle : {len(b_cycle_df)}")
+#             print(f"    - {TARGET_PLANNER} nodes this cycle: {len(t_cycle_df)}")
+#             print(f"    - Common nodes                    : {len(common_nodes)}")
+#             print(f"    - Overlap ratio                   : {overlap_ratio:.3f}")
+#             print(f"    - Nodes evaluated fairly          : {fair_nodes_evaluated}")
+
+#             print('\n 2. Consistency Check:')
+#             print(f"    - {BASE_PLANNER} |g-lmc| violations : {b_consistency_viol}")
+#             print(f"    - {TARGET_PLANNER} |g-lmc| violations: {t_consistency_viol}")
+
+#             print('\n 3. Cost Optimality (Inside Fair Anchor Horizon):')
+#             print(f"    - {BASE_PLANNER} wins on          : {base_wins} nodes")
+#             print(f"    - {TARGET_PLANNER} wins on        : {target_wins} nodes")
+#             print(f"    - Tied on                         : {ties} nodes")
+#             print(f"    - Mean Cost Difference            : {avg_diff:+.4f} (Positive means {TARGET_PLANNER} is cheaper)")
+
+#             print('\n 🎯 VERDICT:')
+#             print(f"    >> {verdict}")
+
+
+# if __name__ == '__main__':
+#     compare_graphs()
+###############################################################################################################################
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -441,30 +683,37 @@ import os
 import glob
 import pandas as pd
 import numpy as np
+import re
 
-BUILD_DIR = '../../../build/'
+BUILD_DIR = '.'  # Set to your directory containing the graph_*.csv files
 COST_TOLERANCE = 1e-4
 BASE_PLANNER = 'FMTX'
 TARGET_PLANNER = 'PRMSTARDSTARLITE'
-
 
 def parse_filename(filepath):
     filename = os.path.basename(filepath)
     if not (filename.startswith('graph_') and filename.endswith('.csv')):
         return None, None, None
-    base_name = filename[6:-4]
-    parts = base_name.split('_')
-    if len(parts) >= 3 and parts[-2].isdigit() and parts[-1].isdigit():
-        timestamp = f"{parts[-2]}_{parts[-1]}"
-        planner_name = parts[0]
-        environment_name = '_'.join(parts[1:-2])
-        return planner_name, environment_name, timestamp
+        
+    # Example: graph_KinodynamicFMTX_Thruster_seed_92_20260416_214133.csv
+    match = re.search(r"graph_(.*?)_([A-Za-z0-9]+)_seed_(\d+)_(\d{8}_\d{6})\.csv", filename)
+    if match:
+        planner_raw = match.group(1).upper()
+        env = match.group(2)
+        seed = int(match.group(3))
+        
+        # Clean up planner name for easy matching
+        planner = None
+        if "FMTX" in planner_raw: 
+            planner = "FMTX"
+        elif "PRM" in planner_raw or "DSTAR" in planner_raw or "DLITE" in planner_raw: 
+            planner = "PRMSTARDSTARLITE"
+            
+        return planner, env, seed
     return None, None, None
-
 
 def is_finite(val):
     return pd.notna(val) and np.isfinite(val) and val <= 1e10
-
 
 def load_and_prep_all_data(filepath):
     try:
@@ -498,7 +747,6 @@ def load_and_prep_all_data(filepath):
     df['lmc_val'] = df['lmc']
     return df, cycle_col
 
-
 def get_robot_cycle_stats(cycle_df):
     anchor_rows = cycle_df[cycle_df['is_robot_anchor'] == 1]
     row = anchor_rows.iloc[0] if not anchor_rows.empty else cycle_df.iloc[0]
@@ -510,167 +758,152 @@ def get_robot_cycle_stats(cycle_df):
         'robot_time_to_goal': float(row['robot_time_to_goal']) if pd.notna(row['robot_time_to_goal']) else np.nan,
     }
 
-
-def consistency_gap(df):
-    return (df['g_val'] - df['lmc_val']).abs()
-
-
 def compare_graphs():
     search_pattern = os.path.join(BUILD_DIR, 'graph_*.csv')
     all_files = glob.glob(search_pattern)
 
-    env_latest_files = {}
-    env_max_timestamps = {}
+    # env -> seed -> planner -> filepath
+    scenarios = {}
 
     for filepath in all_files:
-        planner, env, timestamp = parse_filename(filepath)
+        planner, env, seed = parse_filename(filepath)
         if not planner or not env:
             continue
         if planner not in [BASE_PLANNER, TARGET_PLANNER]:
             continue
-        env_latest_files.setdefault(env, {})
-        env_max_timestamps.setdefault(env, {})
-        if planner not in env_max_timestamps[env] or timestamp > env_max_timestamps[env][planner]:
-            env_max_timestamps[env][planner] = timestamp
-            env_latest_files[env][planner] = filepath
+            
+        if env not in scenarios: scenarios[env] = {}
+        if seed not in scenarios[env]: scenarios[env][seed] = {}
+        
+        # In case of duplicates, latest will overwrite
+        scenarios[env][seed][planner] = filepath
 
-    if not env_latest_files:
+    if not scenarios:
         print('[INFO] No matching graph files found.')
         return
 
-    for env, latest_files in env_latest_files.items():
-        if BASE_PLANNER not in latest_files or TARGET_PLANNER not in latest_files:
-            continue
-
-        base_df, cycle_col_b = load_and_prep_all_data(latest_files[BASE_PLANNER])
-        target_df, cycle_col_t = load_and_prep_all_data(latest_files[TARGET_PLANNER])
-        if base_df.empty or target_df.empty:
-            continue
-
-        common_cycles = set(base_df[cycle_col_b].unique()).intersection(set(target_df[cycle_col_t].unique()))
-        common_cycles.discard(-1)
-
+    for env, seeds_dict in scenarios.items():
         print(f"\n{'='*100}")
-        print(f"{' FAIR NON-ANYTIME GRAPH COMPARISON BY CYCLE ':-^100}")
-        print(f" ENVIRONMENT: {env}")
+        print(f"{f' AGGREGATE GRAPH COMPARISON: {env} ':-^100}")
         print(f" BASE: {BASE_PLANNER} | TARGET: {TARGET_PLANNER}")
         print(f"{'='*100}")
 
-        for cycle in sorted(common_cycles):
-            b_cycle_df = base_df[base_df[cycle_col_b] == cycle].copy().set_index('node_id')
-            t_cycle_df = target_df[target_df[cycle_col_t] == cycle].copy().set_index('node_id')
+        env_base_wins = 0
+        env_target_wins = 0
+        env_ties = 0
+        env_fair_nodes = 0
+        env_b_viol = 0
+        env_t_viol = 0
+        env_cost_diffs = []
+        
+        valid_seeds = 0
 
-            common_nodes = sorted(n for n in set(b_cycle_df.index).intersection(set(t_cycle_df.index)) if n >= 0)
-            if not common_nodes:
+        # Process each seed
+        for seed, planners_dict in sorted(seeds_dict.items()):
+            if BASE_PLANNER not in planners_dict or TARGET_PLANNER not in planners_dict:
                 continue
 
-            b_stats = get_robot_cycle_stats(base_df[base_df[cycle_col_b] == cycle])
-            t_stats = get_robot_cycle_stats(target_df[target_df[cycle_col_t] == cycle])
+            base_df, cycle_col_b = load_and_prep_all_data(planners_dict[BASE_PLANNER])
+            target_df, cycle_col_t = load_and_prep_all_data(planners_dict[TARGET_PLANNER])
+            
+            if base_df.empty or target_df.empty:
+                continue
 
-            b_anchor_cost = b_stats['robot_lmc'] if is_finite(b_stats['robot_lmc']) else np.nan
-            t_anchor_cost = t_stats['robot_lmc'] if is_finite(t_stats['robot_lmc']) else np.nan
-            if is_finite(b_anchor_cost) and is_finite(t_anchor_cost):
-                fair_threshold = min(b_anchor_cost, t_anchor_cost)
-            else:
-                fair_threshold = np.nan
+            common_cycles = set(base_df[cycle_col_b].unique()).intersection(set(target_df[cycle_col_t].unique()))
+            common_cycles.discard(-1)
+            
+            if not common_cycles: 
+                continue
+            
+            valid_seeds += 1
+            seed_base_wins = seed_target_wins = seed_ties = 0
+            
+            for cycle in sorted(common_cycles):
+                b_cycle_df = base_df[base_df[cycle_col_b] == cycle].copy().set_index('node_id')
+                t_cycle_df = target_df[target_df[cycle_col_t] == cycle].copy().set_index('node_id')
 
-
-            partial_comparable = True
-            partial_reason = ""
-
-            if not is_finite(b_stats['robot_lmc']) or not is_finite(t_stats['robot_lmc']):
-                partial_comparable = False
-                partial_reason = "One planner has infinite robot_lmc, so the settled horizon is not fully comparable."
-            elif abs(b_stats['anchor_id'] - t_stats['anchor_id']) > 0:
-                partial_reason = "Anchor ids differ, but comparison is still allowed because the fair horizon is cost-based."
-            elif len(common_nodes) < min(len(b_cycle_df), len(t_cycle_df)):
-                partial_reason = "Graphs are not identical in support, but overlap is sufficient for snapshot comparison."
-            else:
-                partial_reason = "Fully comparable cycle."
-
-            base_wins = target_wins = ties = 0
-            cost_diffs = []
-            fair_nodes_evaluated = 0
-            b_consistency_viol = 0
-            t_consistency_viol = 0
-
-            for n in common_nodes:
-                bg = b_cycle_df.loc[n, 'g_val']
-                tg = t_cycle_df.loc[n, 'g_val']
-                bl = b_cycle_df.loc[n, 'lmc_val']
-                tl = t_cycle_df.loc[n, 'lmc_val']
-
-                if is_finite(bl) and is_finite(bg) and abs(bg - bl) > COST_TOLERANCE:
-                    b_consistency_viol += 1
-                if is_finite(tl) and is_finite(tg) and abs(tg - tl) > COST_TOLERANCE:
-                    t_consistency_viol += 1
-
-                b_fin = is_finite(bg)
-                t_fin = is_finite(tg)
-
-                if is_finite(fair_threshold):
-                    if b_fin and bg > fair_threshold + COST_TOLERANCE:
-                        continue
-                    if t_fin and tg > fair_threshold + COST_TOLERANCE:
-                        continue
-
-                fair_nodes_evaluated += 1
-
-                if not b_fin and not t_fin:
+                common_nodes = sorted(n for n in set(b_cycle_df.index).intersection(set(t_cycle_df.index)) if n >= 0)
+                if not common_nodes:
                     continue
-                elif b_fin and not t_fin:
-                    base_wins += 1
-                elif not b_fin and t_fin:
-                    target_wins += 1
+
+                b_stats = get_robot_cycle_stats(base_df[base_df[cycle_col_b] == cycle])
+                t_stats = get_robot_cycle_stats(target_df[target_df[cycle_col_t] == cycle])
+
+                b_anchor_cost = b_stats['robot_lmc'] if is_finite(b_stats['robot_lmc']) else np.nan
+                t_anchor_cost = t_stats['robot_lmc'] if is_finite(t_stats['robot_lmc']) else np.nan
+                
+                if is_finite(b_anchor_cost) and is_finite(t_anchor_cost):
+                    fair_threshold = min(b_anchor_cost, t_anchor_cost)
                 else:
-                    if abs(bg - tg) <= COST_TOLERANCE:
-                        ties += 1
-                    elif bg < tg:
-                        base_wins += 1
+                    fair_threshold = np.nan
+
+                for n in common_nodes:
+                    bg = b_cycle_df.loc[n, 'g_val']
+                    tg = t_cycle_df.loc[n, 'g_val']
+                    bl = b_cycle_df.loc[n, 'lmc_val']
+                    tl = t_cycle_df.loc[n, 'lmc_val']
+
+                    if is_finite(bl) and is_finite(bg) and abs(bg - bl) > COST_TOLERANCE:
+                        env_b_viol += 1
+                    if is_finite(tl) and is_finite(tg) and abs(tg - tl) > COST_TOLERANCE:
+                        env_t_viol += 1
+
+                    b_fin = is_finite(bg)
+                    t_fin = is_finite(tg)
+
+                    if is_finite(fair_threshold):
+                        if b_fin and bg > fair_threshold + COST_TOLERANCE: continue
+                        if t_fin and tg > fair_threshold + COST_TOLERANCE: continue
+
+                    env_fair_nodes += 1
+
+                    if not b_fin and not t_fin:
+                        continue
+                    elif b_fin and not t_fin:
+                        seed_base_wins += 1
+                    elif not b_fin and t_fin:
+                        seed_target_wins += 1
                     else:
-                        target_wins += 1
-                    cost_diffs.append(bg - tg)
+                        if abs(bg - tg) <= COST_TOLERANCE:
+                            seed_ties += 1
+                        elif bg < tg:
+                            seed_base_wins += 1
+                        else:
+                            seed_target_wins += 1
+                        env_cost_diffs.append(bg - tg)
+                        
+            # Aggregate to environment totals
+            env_base_wins += seed_base_wins
+            env_target_wins += seed_target_wins
+            env_ties += seed_ties
+            
+            # Print quick progress summary for this seed
+            print(f"  [Seed {seed:02d}] Cycles: {len(common_cycles):02d} | Base Wins: {seed_base_wins:<5} | Target Wins: {seed_target_wins:<5} | Ties: {seed_ties:<5}")
+            
+        if valid_seeds == 0:
+            print("  No valid paired seeds found for this environment.")
+            continue
+            
+        avg_diff = sum(env_cost_diffs) / len(env_cost_diffs) if env_cost_diffs else 0.0
+        
+        if env_base_wins > env_target_wins:
+            verdict = f'{BASE_PLANNER} DOMINATES across all seeds inside the fair horizon.'
+        elif env_target_wins > env_base_wins:
+            verdict = f'{TARGET_PLANNER} DOMINATES across all seeds inside the fair horizon.'
+        else:
+            verdict = 'Both algorithms are equally optimal inside the fair horizon.'
 
-            avg_diff = sum(cost_diffs) / len(cost_diffs) if cost_diffs else 0.0
-            overlap_ratio = len(common_nodes) / max(1, min(len(b_cycle_df), len(t_cycle_df)))
-
-            if base_wins > target_wins:
-                verdict = f'{BASE_PLANNER} DOMINATES inside the fair anchor horizon.'
-            elif target_wins > base_wins:
-                verdict = f'{TARGET_PLANNER} DOMINATES inside the fair anchor horizon.'
-            else:
-                verdict = 'Both algorithms are equally optimal inside the fair anchor horizon.'
-
-            print(f"\n[ CYCLE {cycle} ] ".ljust(100, '-'))
-            print('\n 0. Anchor / Robot Costs:')
-            print(f"    - {BASE_PLANNER} anchor id        : {b_stats['anchor_id']}")
-            print(f"    - {TARGET_PLANNER} anchor id      : {t_stats['anchor_id']}")
-            print(f"    - {BASE_PLANNER} robot_lmc        : {b_stats['robot_lmc']:.4f}")
-            print(f"    - {TARGET_PLANNER} robot_lmc      : {t_stats['robot_lmc']:.4f}")
-            print(f"    - {BASE_PLANNER} total cost       : {b_stats['robot_total_cost']:.4f}")
-            print(f"    - {TARGET_PLANNER} total cost     : {t_stats['robot_total_cost']:.4f}")
-            print(f"    - Fair Common Threshold           : {fair_threshold:.4f}")
-
-            print('\n 1. Comparability:')
-            print(f"    - {BASE_PLANNER} nodes this cycle : {len(b_cycle_df)}")
-            print(f"    - {TARGET_PLANNER} nodes this cycle: {len(t_cycle_df)}")
-            print(f"    - Common nodes                    : {len(common_nodes)}")
-            print(f"    - Overlap ratio                   : {overlap_ratio:.3f}")
-            print(f"    - Nodes evaluated fairly          : {fair_nodes_evaluated}")
-
-            print('\n 2. Consistency Check:')
-            print(f"    - {BASE_PLANNER} |g-lmc| violations : {b_consistency_viol}")
-            print(f"    - {TARGET_PLANNER} |g-lmc| violations: {t_consistency_viol}")
-
-            print('\n 3. Cost Optimality (Inside Fair Anchor Horizon):')
-            print(f"    - {BASE_PLANNER} wins on          : {base_wins} nodes")
-            print(f"    - {TARGET_PLANNER} wins on        : {target_wins} nodes")
-            print(f"    - Tied on                         : {ties} nodes")
-            print(f"    - Mean Cost Difference            : {avg_diff:+.4f} (Positive means {TARGET_PLANNER} is cheaper)")
-
-            print('\n 🎯 VERDICT:')
-            print(f"    >> {verdict}")
-
+        print(f"\n{'-'*100}")
+        print(f" TOTAL AGGREGATE RESULTS ({valid_seeds} Paired Seeds)")
+        print(f"{'-'*100}")
+        print(f"    - Total Fair Nodes Evaluated      : {env_fair_nodes}")
+        print(f"    - Total {BASE_PLANNER} Wins       : {env_base_wins}")
+        print(f"    - Total {TARGET_PLANNER} Wins     : {env_target_wins}")
+        print(f"    - Total Ties                      : {env_ties}")
+        print(f"    - Mean Cost Difference            : {avg_diff:+.4f} (Positive means {TARGET_PLANNER} is cheaper)")
+        print(f"    - {BASE_PLANNER} |g-lmc| violations : {env_b_viol}")
+        print(f"    - {TARGET_PLANNER} |g-lmc| violations: {env_t_viol}")
+        print(f"\n 🎯 FINAL VERDICT: {verdict}\n")
 
 if __name__ == '__main__':
     compare_graphs()

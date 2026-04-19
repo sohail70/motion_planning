@@ -21,7 +21,7 @@
 #include <valgrind/callgrind.h>
 
 #define SCREEN_SHOT 0
-#define USE_METRIC 1
+#define USE_METRIC 0
 
 struct ExperimentConfig {
     std::string name;
@@ -635,7 +635,13 @@ int main(int argc, char** argv) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 continue;
             }
+            auto tt1 = std::chrono::steady_clock::now();
             kinodynamic_planner->setRobotState(current_sim_state);
+            auto tt2 = std::chrono::steady_clock::now();
+            auto current_plan_mss = std::chrono::duration<double, std::milli>(tt2 - tt1).count();
+            RCLCPP_INFO(rclcpp::get_logger("setrobotstate"), "setrobotstate took: %.2f ms", current_plan_mss);
+
+
             double T_robot = current_sim_state(current_sim_state.size()-1);
             double sim_time = cfg.time_budget - T_robot;
             visualization->visualizeTimeToGoal(T_robot, -42.5, 45.0); 
@@ -692,7 +698,7 @@ int main(int argc, char** argv) {
 
 #if USE_METRIC 
             // 3. LOG SEPARATED METRICS
-            if (!turned_obs.empty() || is_anytime) {
+            // if (!turned_obs.empty() || is_anytime) {
                 LogEntry entry;
                 const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
                 
@@ -713,7 +719,7 @@ int main(int argc, char** argv) {
                 entry.avg_deg_in = kinodynamic_planner->getAvgInDegree();
                 entry.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
                 log_data.push_back(entry);
-            }
+            // }
 #endif
 
             // // Not used anymore!
@@ -753,6 +759,31 @@ int main(int argc, char** argv) {
                     double final_t_robot = updated_state(updated_state.size()-1);
                     visualization->takeScreenshot(final_t_robot, true);
 #endif
+#if USE_METRIC
+                    // FINAL GOAL-REACHED LOG ENTRY
+                    LogEntry final_entry;
+                    const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
+                    
+                    final_entry.elapsed_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - global_start).count();
+                    final_entry.update_ms = 0.0;
+                    final_entry.plan_ms = 0.0;
+                    final_entry.total_latency_ms = 0.0;
+                    
+                    final_entry.time_to_goal = updated_state(updated_state.size()-1);
+                    final_entry.path_cost = metrics.path_cost; // Final executed cost
+                    final_entry.obstacle_checks = 0;
+                    final_entry.queue_operations = 0;
+                    final_entry.tree_size = kinodynamic_planner->getTreeSize();
+                    final_entry.isolated_nodes = kinodynamic_planner->getIsolatedNodeCount();
+                    final_entry.avg_deg_out = kinodynamic_planner->getAvgOutDegree();
+                    final_entry.avg_deg_in = kinodynamic_planner->getAvgInDegree();
+                    final_entry.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
+                    
+                    log_data.push_back(final_entry);
+#endif
+
+
+
 
                     g_running = false;
                 }

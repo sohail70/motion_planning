@@ -8,7 +8,7 @@ experiment:
 simulation:
   time_budget: 25.0
   slice_time: 0.02
-  seed: 57
+  seed: 58
 
 robot:
   # Start: x, y, vx, vy, time_budget
@@ -23,7 +23,7 @@ robot:
   max_acceleration: 6.0
 
 planner_params:
-  num_of_samples: 1000
+  num_of_samples: 2000
   factor: 3.0
   kdtree_type: "NanoFlann"
   partial_update: true
