@@ -635,12 +635,7 @@ int main(int argc, char** argv) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 continue;
             }
-            auto tt1 = std::chrono::steady_clock::now();
             kinodynamic_planner->setRobotState(current_sim_state);
-            auto tt2 = std::chrono::steady_clock::now();
-            auto current_plan_mss = std::chrono::duration<double, std::milli>(tt2 - tt1).count();
-            RCLCPP_INFO(rclcpp::get_logger("setrobotstate"), "setrobotstate took: %.2f ms", current_plan_mss);
-
 
             double T_robot = current_sim_state(current_sim_state.size()-1);
             double sim_time = cfg.time_budget - T_robot;
