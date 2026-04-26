@@ -109,8 +109,6 @@ void KinodynamicRRTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_va
     // ====================================================================
     double max_time = upper_bounds_(statespace_->getDimension() - 1); 
 
-    // Protect the original main root (T=0)
-    time_pillar_indices_.insert(root_state_index_); 
 
     for (int i = 1; i <= num_pillar_nodes; ++i) {
         Eigen::VectorXd pillar_state = goal_state_val;
@@ -208,6 +206,8 @@ void KinodynamicRRTX::setup(const Params& params, std::shared_ptr<Visualization>
     std::cout << "Taking care of the samples: \n \n";
     setStart(problem_->getStart());
     setGoal(problem_->getGoal()); //robots current position
+    // Protect the original main root (T=0)
+    time_pillar_indices_.insert(root_state_index_); 
     // Inject the rest of the Time Pillars (Backward search: start is the destination)
     if(!is_geometric_mode_) injectTimePillarNodes(problem_->getStart(), num_pillar_nodes_);
 
@@ -327,7 +327,7 @@ void KinodynamicRRTX::plan() {
         if (node_added) {
             RRTxNode* new_node = tree_.back().get();
             rewireNeighbors(new_node);
-            new_node->setG(new_node->getLMC()); // RRTx julia implementation puts the new node in the queue instead so that reduce function would set it but that causes redundant rewiring and update lmc again!
+            // new_node->setG(new_node->getLMC()); // RRTx julia implementation puts the new node in the queue instead so that reduce function would set it but that causes redundant rewiring and update lmc again!
             reduceInconsistency();
         }
         // std::this_thread::sleep_for(std::chrono::milliseconds(150));

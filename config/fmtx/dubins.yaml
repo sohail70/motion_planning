@@ -27,7 +27,7 @@ planner_params:
   partial_update: false
   kd_dim: 4
   is_geometric_mode: false
-  num_pillar_nodes: 50
+  num_pillar_nodes: 0
   goal_radius: 0.5
 
 manager_params:

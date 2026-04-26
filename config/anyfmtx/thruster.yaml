@@ -20,10 +20,10 @@ robot:
   max_acceleration: 5.0
 
 planner_params:
-  num_of_samples: 2
+  num_of_samples: 3
   factor: 3.0
-  delta: 40.0
-  epsilon: 0.1
+  delta: 45.0
+  epsilon: 0.0
   kdtree_type: "NanoFlann"
   partial_update: true
   kd_dim: 5

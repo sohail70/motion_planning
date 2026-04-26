@@ -26,7 +26,6 @@ void KinodynamicPRMStarDStarLite::setGoal(const Eigen::VectorXd& goal) {
 void KinodynamicPRMStarDStarLite::injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes) {
     double max_time = upper_bounds_(statespace_->getDimension() - 1); 
 
-    time_pillar_indices_.insert(goal_node_->getIndex());
     for (int i = 1; i <= num_pillar_nodes; ++i) {
         Eigen::VectorXd pillar_state = goal_state_val;
 
@@ -242,6 +241,7 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
         start_node->setTimeToGoal(std::numeric_limits<double>::infinity());
         nodes_.push_back(std::move(start_node));
 
+        time_pillar_indices_.insert(goal_node_->getIndex());
         if (!is_geometric_mode_) injectTimePillarNodes(goal_state_val, num_pillar_nodes_);
 
         // Generate the remaining uniform samples normally

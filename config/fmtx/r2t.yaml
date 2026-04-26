@@ -5,7 +5,7 @@ experiment:
   manager_type: "R2T"
 
 simulation:
-  time_budget: 15.0
+  time_budget: 20.0
   slice_time: 0.02
   seed: 50
 
@@ -33,5 +33,6 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_10.sdf"
+  # sdf_path: "../sims/dynamic_world_straight_box_circle_20.sdf"
+  sdf_path: "../sims/static_world_straight_box_circle_10.sdf"
   inflation: 0.75

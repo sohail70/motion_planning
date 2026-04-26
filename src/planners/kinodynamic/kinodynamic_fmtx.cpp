@@ -1,7 +1,8 @@
 // Copyright 2025 Soheil E.nia
 // TODO : fix the KNN usage because with knn there is not neighborhood radisu constraints (check near function)
 
-#define DEBUG 0
+#define DEBUG 1
+#define VIS 0
 // The Threat Set is the bridge that allows a lazy algorithm to behave with the same spatial intelligence as an eager one
 #define USE_THREAT_SET_STRATEGY 0
 
@@ -30,8 +31,6 @@ void KinodynamicFMTX::clearPlannerState() {
 void KinodynamicFMTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes) {
     double max_time = upper_bounds_(statespace_->getDimension() - 1); 
 
-    // Protect the original main root (T=0)
-    time_pillar_indices_.insert(root_state_index_); 
 
     for (int i = 1; i <= num_pillar_nodes; ++i) {
         Eigen::VectorXd pillar_state = goal_state_val;
@@ -81,6 +80,10 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     use_knn = params.getParam<bool>("use_knn", false);
     num_pillar_nodes_ = params.getParam<int>("num_pillar_nodes", 50);
     if (is_geometric_mode_) num_pillar_nodes_ = 0;
+
+#if DEBUG
+    num_pillar_nodes_ = 0;
+#endif
 
     if (kdtree_type == "NanoFlann"){
         Eigen::VectorXd weights(kd_dim);
@@ -200,6 +203,8 @@ void KinodynamicFMTX::setup(const Params& params, std::shared_ptr<Visualization>
     else{
         setStart(problem_->getStart());
         setGoal(problem_->getGoal());
+        // Protect the original main root (T=0)
+        time_pillar_indices_.insert(root_state_index_); 
         if(!is_geometric_mode_) injectTimePillarNodes(problem_->getStart(), num_pillar_nodes_);
         for (int i = 0 ; i < num_of_samples_ - 2 - num_pillar_nodes_; i++) {
             auto node = std::make_unique<FMTNode>(statespace_->sampleUniform(lower_bounds_ , upper_bounds_),tree_.size());
@@ -481,11 +486,378 @@ bool KinodynamicFMTX::runCostForensics() {
 }
 
 
+
+
+void KinodynamicFMTX::runFMT(SuboptimalityMetrics& metrics, std::vector<HeapEvent>& shadow_log) {
+
+    shadow_log.clear();
+    int shadow_step = 0;
+
+    struct FMTShadow {
+        double cost = std::numeric_limits<double>::infinity();
+        bool in_unvisited = true;
+        bool in_queue = false;
+        int parent_idx = -1;
+        std::shared_ptr<Trajectory> parent_traj;
+    };
+
+    const int N = static_cast<int>(tree_.size());
+    if (N == 0) return;
+
+    std::vector<FMTShadow> shadow(N);
+
+    if (root_state_index_ < 0 || root_state_index_ >= N) {
+        FMTX_WARN("[runFMT] root_state_index_ invalid");
+        return;
+    }
+
+    // ---------------------------------------------------------------
+    // Proxy wrapper for shadow nodes (compatible with PriorityQueue)
+    // ---------------------------------------------------------------
+    struct ShadowProxy {
+        int idx;
+        std::vector<FMTShadow>* shadow;
+        mutable bool in_queue_;   // must match shadow->in_queue
+        size_t heap_index_;
+
+        ShadowProxy(int i, std::vector<FMTShadow>* s)
+            : idx(i), shadow(s), in_queue_(false), heap_index_(0) {}
+    };
+
+    struct ShadowProxyCompare {
+        bool operator()(const std::pair<double, ShadowProxy*>& a,
+                        const std::pair<double, ShadowProxy*>& b) const {
+            if (std::abs(a.first - b.first) > 1e-9) return a.first < b.first;
+            return a.second->idx < b.second->idx;
+        }
+    };
+
+    PriorityQueue<ShadowProxy, ShadowProxyCompare> fmt_queue;
+    std::vector<std::unique_ptr<ShadowProxy>> proxies; // automatic cleanup
+
+auto addProxy = [&](int idx, double cost) {
+    shadow_step++;
+    shadow_log.push_back({HeapEvent::ADD, idx, cost, shadow_step});
+
+    auto p = std::make_unique<ShadowProxy>(idx, &shadow);
+    // p->in_queue_ is false initially
+    fmt_queue.add(p.get(), cost);          // this will set p->in_queue_ = true
+    shadow[idx].in_queue = p->in_queue_;   // sync the shadow flag
+    proxies.push_back(std::move(p));
+};
+
+    // Seed root
+    shadow[root_state_index_].cost = 0.0;
+    shadow[root_state_index_].in_unvisited = false;
+    // shadow[root_state_index_].in_queue = true;
+    addProxy(root_state_index_, 0.0);
+    // for (int idx : time_pillar_indices_) {
+    //     if (idx < 0 || idx >= N) continue;
+    //     shadow[idx].cost = 0.0;
+    //     shadow[idx].in_unvisited = false;
+    //     addProxy(idx, 0.0);
+    // }
+
+
+    int checks = 0;
+    const double fmt_radius = neighborhood_radius_;
+
+    // ---------------------------------------------------------------
+    // FMT* wavefront using live neighbor maps
+    // ---------------------------------------------------------------
+    while (!fmt_queue.empty()) {
+        auto top_pair = fmt_queue.top();
+        double z_cost = top_pair.first;
+        ShadowProxy* z_proxy = top_pair.second;
+        int z_idx = z_proxy->idx;
+
+        // (Optional consistency check)
+        if (!shadow[z_idx].in_queue) {
+            fmt_queue.pop();
+            continue;
+        }
+
+        FMTNode* z_node = tree_[z_idx].get();
+        if (!z_node) {
+            fmt_queue.pop();
+            continue;
+        }
+
+
+// // #if VIS  // Assuming you use a macro to toggle heavy visualization
+//         if (visualization_) {
+//             // 1. Visualize the current expanding 'z' node (e.g., in bright green)
+//             visualization_->visualizeNodes(
+//                 {z_node->getStateValue()}, 
+//                 "map", 
+//                 std::vector<float>{0.0f, 1.0f, 0.0f}, // Green
+//                 "current_z_node"
+//             );
+
+//             // 2. Visualize the rest of the V_open queue (e.g., in red)
+//             std::vector<Eigen::VectorXd> open_set_nodes;
+//             const auto& heap_data = fmt_queue.getHeap();
+//             open_set_nodes.reserve(heap_data.size()); // minor optimization
+            
+//             for (const auto& element : heap_data) {
+//                 // element.second is a ShadowProxy* in this custom queue
+//                 int open_idx = element.second->idx;
+//                 if (tree_[open_idx]) {
+//                     open_set_nodes.push_back(tree_[open_idx]->getStateValue());
+//                 }
+//             }
+
+//             if (!open_set_nodes.empty()) {
+//                 visualization_->visualizeNodes(
+//                     open_set_nodes, 
+//                     "map", 
+//                     std::vector<float>{1.0f, 0.0f, 0.0f}, // Red
+//                     "v_open_heap_nodes"
+//                 );
+//             }
+            
+//             // Publish the markers to RViz
+//             visualization_->triggerPublish();
+            
+//             // Short delay so you can actually watch the wavefront expand in RViz
+//             std::this_thread::sleep_for(std::chrono::milliseconds(5000)); 
+//         }
+// // #endif
+
+
+        std::vector<int> newly_open;
+
+        // Iterate over backward neighbors of z (nodes x that can reach z)
+        for (const auto& [x_node, edge_info] : z_node->backwardNeighbors()) {
+            // if (edge_info.distance > fmt_radius) continue;
+            int x_idx = x_node->getIndex();
+            if (x_idx < 0 || x_idx >= N) continue;
+            FMTShadow& x_shadow = shadow[x_idx];
+            if (!x_shadow.in_unvisited) continue;
+
+            ++checks;
+
+            // Find best parent for x among its forward neighbors that are in V_open
+            double best_cost = std::numeric_limits<double>::infinity();
+            int best_parent_idx = -1;
+            std::shared_ptr<Trajectory> best_traj;
+
+            for (const auto& [y_node, edge_info_xy] : x_node->forwardNeighbors()) {
+                // if (edge_info_xy.distance > fmt_radius) continue;
+                int y_idx = y_node->getIndex();
+                if (y_idx < 0 || y_idx >= N) continue;
+                const FMTShadow& y_shadow = shadow[y_idx];
+                if (!y_shadow.in_queue) continue; // y must be in V_open
+
+                double cost_via_y = y_shadow.cost + edge_info_xy.distance;
+                if (cost_via_y < best_cost) {
+                    best_cost = cost_via_y;
+                    best_parent_idx = y_idx;
+                    best_traj = edge_info_xy.cached_trajectory;
+                }
+            }
+
+            if (best_parent_idx < 0) continue;
+
+            // Lazy collision check
+            bool obstacle_free = true;
+            for (const auto& [name, ob] : previous_obstacles_) {
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*best_traj, ob)) {
+                    obstacle_free = false;
+                    break;
+                }
+            }
+            if (obstacle_free) {
+                x_shadow.cost = best_cost;
+                x_shadow.parent_idx = best_parent_idx;
+                x_shadow.parent_traj = best_traj;
+                x_shadow.in_unvisited = false;
+                newly_open.push_back(x_idx);
+            }
+        }
+
+        // Add newly connected nodes to the queue
+        for (int x_idx : newly_open) {
+            addProxy(x_idx, shadow[x_idx].cost);
+        }
+
+        // Remove current z from queue
+        fmt_queue.pop();
+        shadow[z_idx].in_queue = false;
+
+        shadow_step++;
+        shadow_log.push_back({HeapEvent::POP, z_idx, z_cost, shadow_step});
+
+    }
+
+    FMTX_INFO("[runFMT] FMT* expansion complete. checks=" << checks << "  radius=" << fmt_radius);
+
+    // Store shadow results for later visualization
+    fmt_shadow_cost_.assign(N, std::numeric_limits<double>::infinity());
+    fmt_shadow_parent_.assign(N, -1);
+    for (int i = 0; i < N; ++i) {
+        fmt_shadow_cost_[i] = shadow[i].cost;
+        fmt_shadow_parent_[i] = shadow[i].parent_idx;
+    }
+    fmt_shadow_valid_ = true;
+
+
+    // ---------------------------------------------------------------
+    // 5. COMPARISON & PARENT DIAGNOSTIC
+    // ---------------------------------------------------------------
+    FMTX_INFO("[runFMT] ===== FMT* vs FMTX LMC Comparison =====");
+
+    int    total_nodes          = 0;
+    int    reachable_by_fmt     = 0;
+    int    reachable_by_fmtx    = 0;
+    int    both_reachable       = 0;
+    int    fmt_strictly_better  = 0;
+    int    fmtx_strictly_better = 0;
+    int    cost_matches         = 0;
+    double max_gap_fmt_better   = 0.0;
+    double max_gap_fmtx_better  = 0.0;
+
+    for (const auto& node_ptr : tree_) {
+        if (!node_ptr) continue;
+        int idx = node_ptr->getIndex();
+        if (idx < 0 || idx >= N) continue;
+
+        ++total_nodes;
+
+        double fmt_cost  = shadow[idx].cost;
+        double fmtx_lmc  = node_ptr->getLMC();
+
+        bool fmt_reached  = std::isfinite(fmt_cost);
+        bool fmtx_reached = std::isfinite(fmtx_lmc);
+
+        if (fmt_reached)                     ++reachable_by_fmt;
+        if (fmtx_reached)                    ++reachable_by_fmtx;
+        if (fmt_reached && fmtx_reached)     ++both_reachable;
+
+        if (!fmt_reached && !fmtx_reached) continue;
+
+        if (fmt_reached && fmtx_reached) {
+            double gap = std::abs(fmt_cost - fmtx_lmc);
+            if (gap <= std::numeric_limits<double>::epsilon()) {
+                ++cost_matches;
+            } else if (fmt_cost < fmtx_lmc) {
+                ++fmt_strictly_better;
+                max_gap_fmt_better = std::max(max_gap_fmt_better, gap);
+
+                // --- PARENT DIAGNOSTIC ---
+                int best_fmt_parent_idx = shadow[idx].parent_idx;
+                double parent_fmtx_lmc = -1.0;
+                bool is_parent_in_queue = false;
+                bool is_edge_in_fmtx_map = false;
+                bool is_edge_collision_free = false;
+
+                if (best_fmt_parent_idx >= 0) {
+                    FMTNode* fmt_parent = tree_[best_fmt_parent_idx].get();
+                    parent_fmtx_lmc = fmt_parent->getLMC();
+                    is_parent_in_queue = fmt_parent->in_queue_;
+                    
+                    // Check if FMTX knows about this edge (Note: child -> parent is backward)
+                    auto it = node_ptr->forwardNeighbors().find(fmt_parent);
+                    if (it != node_ptr->forwardNeighbors().end()) {
+                        is_edge_in_fmtx_map = true;
+                        
+                        // Check if FMTX thinks the edge is collision-free
+                        is_edge_collision_free = true;
+                        for (const auto& [name, ob] : previous_obstacles_) {
+                            if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(it->second.cached_trajectory), ob)) {
+                                is_edge_collision_free = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                int fmtx_parent_idx = -1;
+                if (node_ptr->getParent() != nullptr) {
+                    fmtx_parent_idx = node_ptr->getParent()->getIndex();
+                }
+
+                FMTX_WARN("[runFMT] Node " << idx <<" state: "<<tree_[idx]->getStateValue()<<","
+                    << " | FMT*=" << fmt_cost << " < FMTX=" << fmtx_lmc << " | Gap=" << gap
+                    << "\n      -> FMT* used Parent " << best_fmt_parent_idx <<" with lmc of: "<<shadow[best_fmt_parent_idx].cost<<", "
+                    << " (Parent's FMTX LMC=" << parent_fmtx_lmc << ", in_queue=" << is_parent_in_queue << ")"
+                    << "\n      -> FMTX used Parent " << fmtx_parent_idx
+                    << "\n      -> Edge in FMTX map? " << (is_edge_in_fmtx_map ? "YES" : "NO")
+                    << " | Collision-free? " << (is_edge_collision_free ? "YES" : "NO"));
+                // ---------------------------
+
+                ++metrics.nodes_with_cost_gap;
+                metrics.total_cost_gap += gap;
+                metrics.max_cost_gap = std::max(metrics.max_cost_gap, gap);
+            } else {
+                ++fmtx_strictly_better;
+                max_gap_fmtx_better = std::max(max_gap_fmtx_better, fmt_cost - fmtx_lmc); // note: fmt_cost > fmtx_lmc
+
+                // // --- PARENT DIAGNOSTIC FOR FMTX BETTER ---
+                // int best_fmt_parent_idx = shadow[idx].parent_idx;
+                // double parent_fmtx_lmc = -1.0;
+                // bool is_parent_in_queue = false;
+                // bool is_edge_in_fmtx_map = false;
+                // bool is_edge_collision_free = false;
+
+                // // Get FMT* parent info (if any)
+                // if (best_fmt_parent_idx >= 0) {
+                //     FMTNode* fmt_parent = tree_[best_fmt_parent_idx].get();
+                //     parent_fmtx_lmc = fmt_parent->getLMC(); // cost of that parent in dynamic tree
+                //     is_parent_in_queue = fmt_parent->in_queue_;
+
+                //     // Check if FMTX knows about this edge (child -> parent)
+                //     auto it = node_ptr->forwardNeighbors().find(fmt_parent);
+                //     if (it != node_ptr->forwardNeighbors().end()) {
+                //         is_edge_in_fmtx_map = true;
+                //         is_edge_collision_free = true;
+                //         for (const auto& [name, ob] : previous_obstacles_) {
+                //             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(it->second.cached_trajectory), ob)) {
+                //                 is_edge_collision_free = false;
+                //                 break;
+                //             }
+                //         }
+                //     }
+                // }
+
+                // int fmtx_parent_idx = -1;
+                // if (node_ptr->getParent() != nullptr) {
+                //     fmtx_parent_idx = node_ptr->getParent()->getIndex();
+                // }
+
+                // // Log the improvement
+                // FMTX_INFO("[runFMT] Node " << idx << " state: " << tree_[idx]->getStateValue().transpose()
+                //     << " | FMTX=" << fmtx_lmc << " < FMT*=" << fmt_cost << " | Gap=" << (fmt_cost - fmtx_lmc)
+                //     << "\n      -> FMTX used Parent " << fmtx_parent_idx
+                //     << "\n      -> FMT* would have used Parent " << best_fmt_parent_idx
+                //     << " (FMT* parent cost in FMTX tree = " << parent_fmtx_lmc << ", in_queue=" << is_parent_in_queue << ")"
+                //     << "\n      -> Edge (FMT* parent) in FMTX map? " << (is_edge_in_fmtx_map ? "YES" : "NO")
+                //     << " | Collision‑free? " << (is_edge_collision_free ? "YES" : "NO"));
+            }
+        } else if (fmt_reached && !fmtx_reached) {
+            ++fmt_strictly_better;
+            FMTX_WARN("[runFMT] Node " << idx << " Reached by FMT* but INF in FMTX!");
+        } else {
+            ++fmtx_strictly_better;
+        }
+    }
+
+    FMTX_INFO("[runFMT] FMT* strictly better : " << fmt_strictly_better << " max_gap=" << max_gap_fmt_better);
+    FMTX_INFO("[runFMT] FMTX strictly better : " << fmtx_strictly_better << " max_gap=" << max_gap_fmtx_better);
+
+
+
+}
+
+
 void KinodynamicFMTX::plan() {
   
 #if DEBUG
     SuboptimalityMetrics dbg_metrics;
 #endif
+
+    fmtx_heap_log_.clear();
+    int heap_step = 0;
 
     // while (!v_open_heap_.empty() &&
     //        (partial_update ? (robot_node_== nullptr || v_open_heap_.top().first < robot_node_->getLMC() + bridge_cost_||
@@ -506,7 +878,23 @@ void KinodynamicFMTX::plan() {
         double cost = top_element.first;
         FMTNode* z = top_element.second;
         int zIndex = z->getIndex();
-
+        // VISUALIZATION: Visualize all nodes currently in the Open Set (V_open)
+#if VIS
+        if (visualization_) {
+            std::vector<Eigen::VectorXd> open_set_nodes;
+            // const auto& heap_data = v_open_heap_.getHeap();
+            // for (const auto& element : heap_data) {
+            //     FMTNode* node = element.second;
+            //     if (node) {
+            //         open_set_nodes.push_back(node->getStateValue());
+            //     }
+            // }
+            open_set_nodes.push_back(z->getStateValue());
+            if (!open_set_nodes.empty()) {
+                visualization_->visualizeNodes(open_set_nodes, "map", std::vector<float>{1.0f, 0.0f, 0.0f}, "v_open_heap_nodes");
+            }
+        }
+#endif
         /*
             NOTE ON THE 'g' VALUE IN NON-ANYTIME FMTX:
             In standard dynamic algorithms (like D* Lite or RRTx), the 'g' variable acts as a 
@@ -596,9 +984,17 @@ void KinodynamicFMTX::plan() {
                 if (child->in_queue_) {
                     v_open_heap_.update(child, cost_via_z);
                     last_replan_metrics_.queue_operations++;
+
+                    heap_step++;
+                    fmtx_heap_log_.push_back({HeapEvent::UPDATE, child->getIndex(), cost_via_z, heap_step});
+
                 } else {
                     v_open_heap_.add(child, cost_via_z); 
                     last_replan_metrics_.queue_operations++;
+
+                    heap_step++;
+                    fmtx_heap_log_.push_back({HeapEvent::ADD, child->getIndex(), cost_via_z, heap_step});
+
                 }
             }
         }
@@ -609,14 +1005,12 @@ void KinodynamicFMTX::plan() {
         for (auto& [x, edge_info_x_to_z] : z->backwardNeighbors()) { // Backward means incoming . Forward is outgoing
             // if (!neighbor_precache)
             //     near(x->getIndex());
-
             const Trajectory& traj_xz = *(edge_info_x_to_z.cached_trajectory);
             if (!traj_xz.is_valid) {
                 continue;
             }
        
             double cost_via_z = z->getG() + edge_info_x_to_z.distance;
-
             /*
                 This condition is the core of FMTX. It serves two purposes:
                 If x has not been connected yet (cost is INF), this is always true, triggering its initial connection.
@@ -629,6 +1023,8 @@ void KinodynamicFMTX::plan() {
                 Hey! The cost landscape around node x has dropped! x is currently overpriced!
             */
             if (x->getLMC() > cost_via_z) {
+
+
 #if DEBUG
                 // Check if we've already updated this node in this plan() cycle
                 if (dbg_metrics.costUpdated.find(x) != dbg_metrics.costUpdated.end()) {
@@ -689,7 +1085,7 @@ void KinodynamicFMTX::plan() {
 #endif
                     }
 
-                    
+
  
                     if (obstacle_free) {
                         
@@ -705,25 +1101,130 @@ void KinodynamicFMTX::plan() {
                         if (x->in_queue_) {
                             v_open_heap_.update(x, priorityCost);
                             last_replan_metrics_.queue_operations++;
+
+                            heap_step++;
+                            fmtx_heap_log_.push_back({HeapEvent::UPDATE, x->getIndex(), priorityCost, heap_step});
+
                         } else {
                             v_open_heap_.add(x, priorityCost); // add() also sets in_queue_ = true
                             last_replan_metrics_.queue_operations++;
+
+                            heap_step++;
+                            fmtx_heap_log_.push_back({HeapEvent::ADD, x->getIndex(), priorityCost, heap_step});
                         }
                     }
                 }
             }
         }
+
+
         v_open_heap_.pop();
         last_replan_metrics_.queue_operations++;
         // visualizeTree();
         // std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
+        heap_step++;
+        fmtx_heap_log_.push_back({HeapEvent::POP, z->getIndex(), cost, heap_step});
+
     } 
 
 
+auto compareHeapLogs = [&](const std::vector<HeapEvent>& shadow_log) {
+    std::cout << "\n=== Heap event comparison (FMTX vs Shadow FMT*) ===\n";
+    std::cout << "FMTX total events: " << fmtx_heap_log_.size() << "\n";
+    std::cout << "Shadow total events: " << shadow_log.size() << "\n\n";
+
+    // Helper to compute relative index (0..1) of an event
+    auto relativePos = [](size_t idx, size_t total) -> double {
+        if (total == 0) return 0.0;
+        return static_cast<double>(idx) / total;
+    };
+
+    for (int node : {471, 562, 17, 640}) {
+        std::cout << "Node " << node << ":\n";
+
+        // Collect events from FMTX
+        std::vector<std::pair<size_t, const HeapEvent*>> fmtx_events;
+        for (size_t i = 0; i < fmtx_heap_log_.size(); ++i) {
+            if (fmtx_heap_log_[i].node_idx == node) {
+                fmtx_events.emplace_back(i, &fmtx_heap_log_[i]);
+            }
+        }
+
+        // Collect events from Shadow
+        std::vector<std::pair<size_t, const HeapEvent*>> shadow_events;
+        for (size_t i = 0; i < shadow_log.size(); ++i) {
+            if (shadow_log[i].node_idx == node) {
+                shadow_events.emplace_back(i, &shadow_log[i]);
+            }
+        }
+
+        // Print FMTX events
+        std::cout << "  FMTX events:\n";
+        if (fmtx_events.empty()) {
+            std::cout << "    (none)\n";
+        } else {
+            for (const auto& [pos, ev] : fmtx_events) {
+                std::string type = (ev->type == HeapEvent::ADD ? "ADD" :
+                                   (ev->type == HeapEvent::UPDATE ? "UPDATE" : "POP"));
+                double rel = relativePos(pos, fmtx_heap_log_.size());
+                std::cout << "    [" << pos << "/" << fmtx_heap_log_.size() << "] ("
+                          << std::fixed << std::setprecision(2) << rel * 100 << "%) "
+                          << type << " cost=" << ev->cost << "\n";
+            }
+        }
+
+        // Print Shadow events
+        std::cout << "  Shadow events:\n";
+        if (shadow_events.empty()) {
+            std::cout << "    (none)\n";
+        } else {
+            for (const auto& [pos, ev] : shadow_events) {
+                std::string type = (ev->type == HeapEvent::ADD ? "ADD" :
+                                   (ev->type == HeapEvent::UPDATE ? "UPDATE" : "POP"));
+                double rel = relativePos(pos, shadow_log.size());
+                std::cout << "    [" << pos << "/" << shadow_log.size() << "] ("
+                          << std::fixed << std::setprecision(2) << rel * 100 << "%) "
+                          << type << " cost=" << ev->cost << "\n";
+            }
+        }
+
+        // Optional: compare order of ADD and POP
+        if (fmtx_events.size() >= 2 && shadow_events.size() >= 2) {
+            // Find first ADD and first POP in each
+            auto fmtx_add = std::find_if(fmtx_events.begin(), fmtx_events.end(),
+                                         [](auto& p) { return p.second->type == HeapEvent::ADD; });
+            auto fmtx_pop = std::find_if(fmtx_events.begin(), fmtx_events.end(),
+                                         [](auto& p) { return p.second->type == HeapEvent::POP; });
+            auto shadow_add = std::find_if(shadow_events.begin(), shadow_events.end(),
+                                           [](auto& p) { return p.second->type == HeapEvent::ADD; });
+            auto shadow_pop = std::find_if(shadow_events.begin(), shadow_events.end(),
+                                           [](auto& p) { return p.second->type == HeapEvent::POP; });
+
+            if (fmtx_add != fmtx_events.end() && fmtx_pop != fmtx_events.end() &&
+                shadow_add != shadow_events.end() && shadow_pop != shadow_events.end()) {
+                bool fmtx_add_before_pop = fmtx_add->first < fmtx_pop->first;
+                bool shadow_add_before_pop = shadow_add->first < shadow_pop->first;
+                if (fmtx_add_before_pop != shadow_add_before_pop) {
+                    std::cout << "  ** ORDER MISMATCH: In FMTX, ADD comes "
+                              << (fmtx_add_before_pop ? "before" : "after") << " POP, "
+                              << "but in Shadow, ADD comes "
+                              << (shadow_add_before_pop ? "before" : "after") << " POP.\n";
+                }
+            }
+        }
+        std::cout << "\n";
+    }
+    std::cout << "========================================\n";
+};
+
 #if DEBUG
+    std::vector<HeapEvent> shadow_log;
+    runFMT(dbg_metrics, shadow_log);
+    // compareHeapLogs(shadow_log);
+
     printDebugSummary(dbg_metrics); // Experimental proof that increasing sample counts would reduce the average suboptimality cost which happens in FMTX (Inherited from FMT*)
-    runCollisionForensics(); // To Recheck All the trajectories again with all the obstacles to validify our repair!
+    // runCollisionForensics(); // To Recheck All the trajectories again with all the obstacles to validify our repair!
     runCostForensics();
     runGlobalCostForensics();
 #endif
@@ -1092,6 +1593,103 @@ void KinodynamicFMTX::visualizeTreeGradient() {
 }
 
 
+void KinodynamicFMTX::visualizeFMTtree() {
+    if (!visualization_ || !fmt_shadow_valid_) return;
+
+    const int N = static_cast<int>(tree_.size());
+
+    // --- Full FMT* tree (green) ---
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> fmt_tree_edges;
+    for (int idx = 0; idx < N; ++idx) {
+        if (!tree_[idx]) continue;
+        double cost = fmt_shadow_cost_[idx];
+        if (!std::isfinite(cost)) continue;
+        int parent = fmt_shadow_parent_[idx];
+        if (parent >= 0 && parent < N && tree_[parent]) {
+            fmt_tree_edges.emplace_back(
+                tree_[parent]->getStateValue().head(2),
+                tree_[idx]->getStateValue().head(2)
+            );
+        }
+    }
+    visualization_->visualizeEdges(
+        fmt_tree_edges, "map",
+        std::array<float,3>{0.0f, 1.0f, 0.0f}, 1.0f, 0.15f,
+        "fmt_full_tree", 300, true, 0.5
+    );
+
+    // --- Disagreement edges ---
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> fmt_better_edges_red;
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> fmtx_worse_edges_blue;
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> fmtx_better_edges_magenta;
+
+    for (int idx = 0; idx < N; ++idx) {
+        auto node = tree_[idx].get();
+        if (!node) continue;
+
+        double fmt_cost = fmt_shadow_cost_[idx];
+        double fmtx_lmc = node->getLMC();
+        bool fmt_reached = std::isfinite(fmt_cost);
+        bool fmtx_reached = std::isfinite(fmtx_lmc);
+        if (!(fmt_reached && fmtx_reached)) continue;
+
+        const double eps = std::numeric_limits<double>::epsilon();
+        if (fmt_cost + eps < fmtx_lmc) {
+            // FMT* strictly better
+            int fmt_parent = fmt_shadow_parent_[idx];
+            if (fmt_parent >= 0 && fmt_parent < N && tree_[fmt_parent]) {
+                fmt_better_edges_red.emplace_back(
+                    tree_[fmt_parent]->getStateValue().head(2),
+                    node->getStateValue().head(2)
+                );
+            }
+            if (node->getParent()) {
+                fmtx_worse_edges_blue.emplace_back(
+                    node->getParent()->getStateValue().head(2),
+                    node->getStateValue().head(2)
+                );
+            }
+        } else if (fmtx_lmc + eps < fmt_cost) {
+            // FMTX strictly better
+            if (node->getParent()) {
+                fmtx_better_edges_magenta.emplace_back(
+                    node->getParent()->getStateValue().head(2),
+                    node->getStateValue().head(2)
+                );
+            }
+        }
+    }
+
+    // Publish red edges (FMT* better)
+    visualization_->visualizeEdges(
+        fmt_better_edges_red, "map",
+        std::array<float,3>{1.0f, 0.0f, 0.0f}, 1.0f, 0.25f,
+        "fmt_better_edges", 301, true, 0.5
+    );
+
+    // Publish blue edges (FMTX suboptimal when FMT* is better)
+    visualization_->visualizeEdges(
+        fmtx_worse_edges_blue, "map",
+        std::array<float,3>{0.0f, 0.35f, 1.0f}, 1.0f, 0.25f,
+        "fmtx_worse_edges", 302, true, 0.5
+    );
+
+    // Publish magenta edges (FMTX better)
+    visualization_->visualizeEdges(
+        fmtx_better_edges_magenta, "map",
+        std::array<float,3>{1.0f, 0.0f, 1.0f}, 1.0f, 0.25f,
+        "fmtx_better_edges", 303, true, 0.5
+    );
+
+
+    // --- Sleep only if there is at least one red edge (FMT* strictly better) ---
+    if (!fmt_better_edges_red.empty()) {
+        visualization_->triggerPublish();
+        FMTX_ERROR("[visualizeFMTtree] FMT* strictly better detected — sleeping 5 seconds for RViz inspection.");
+        // std::this_thread::sleep_for(std::chrono::seconds(5));
+    }
+}
+
 // straight lines for all the statespaces
 void KinodynamicFMTX::visualizeTree() {
     std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> edges;
@@ -1125,6 +1723,11 @@ void KinodynamicFMTX::visualizeTree() {
         visualization_->visualizeNodes(anchor_pt, "map", {0.0f, 1.0f, 1.0f}, "debug_anchor_point");
     } 
     visualization_->visualizeEdges(edges, "map");
+
+#if DEBUG
+    visualizeFMTtree();
+#endif
+
 }
 
 // Curvy!
@@ -1473,7 +2076,10 @@ void KinodynamicFMTX::updateObstacles(const ObstacleVector& turned_obstacles) {
         
         // Retrieve stored obstacle
         Obstacle& stored_ob = previous_obstacles_[incoming_ob.name];
-        
+        // for (auto p: stored_ob.predicted_path){
+        //     std::cout<<"old: " <<p<<"\n";
+        // }
+
         // REMOVE OLD TUBE (Wake up neighbors in the freed region)
         // We do this BEFORE updating the object so we use the OLD path.
         if (!stored_ob.predicted_path.empty()) {
@@ -1485,6 +2091,9 @@ void KinodynamicFMTX::updateObstacles(const ObstacleVector& turned_obstacles) {
 
         // GENERATE NEW DENSE TUBE
         stored_ob.predicted_path = obs_checker_->generatePrediction(stored_ob, T_robot);
+        // for (auto p: stored_ob.predicted_path){
+        //     std::cout<<"new: "<<p<<"\n";
+        // }
 
         // ADD NEW TUBE (Invalidate nodes in the blocked region)
         addNewObstacle(stored_ob);
@@ -1617,6 +2226,7 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
     std::vector<int> filtered_orphan_indices;
     for (int idx : orphan_indices) {
         FMTNode* node = tree_[idx].get();
+        // node->setG(INFINITY);
 #if USE_THREAT_SET_STRATEGY
         // Mark this node as being under threat, avoiding duplicates
         if (std::find(node->threats.begin(), node->threats.end(), &ob) == node->threats.end()) {
@@ -1624,6 +2234,7 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
         }
 
 #endif
+
         // Skip root or nodes with no parent
         if (node->getParent() == nullptr) continue; 
         last_replan_metrics_.obstacle_checks++;        
@@ -1671,7 +2282,7 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
         // Invalidate Cost (but keep Root valid)
         if (node->getIndex() != root_state_index_) {
             node->setLMC(std::numeric_limits<double>::infinity()); 
-            
+            node->setG(std::numeric_limits<double>::infinity());
         }
         
         // Sever Parent Connection
@@ -1697,6 +2308,7 @@ void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
             last_replan_metrics_.queue_operations++;
         }
     }
+
 
     // // VISUALIZATION: ORPHANS (RED) & BOUNDARY (MAGENTA)
     // if (visualization_) {
@@ -1790,10 +2402,15 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
 
 #endif
 
-        if (node->getLMC()!= std::numeric_limits<double>::infinity()) {
-            continue; // If the node already is on the graph then its already free!
-        }
+        // if (node->getLMC()!= std::numeric_limits<double>::infinity()) {
+        //     continue; // If the node already is on the graph then its already free!
+        // }
         // if (!neighbor_precache) near(node_index);
+
+        if (node->getLMC()!= std::numeric_limits<double>::infinity() && !node->in_queue_) {
+            // continue; // If the node already is on the graph then its already free!  // THIS IS INCORRECT! what if all the nodes have finite lmc but obstalce removal opens a cheap edge between these socalled finite lmc nodes! so we shouldnt filter based on finite lmc!
+            // neighbors_to_requeue.insert(node);
+        }
 
         auto check_neighbors = [&](const auto& neighbors) {
             for (const auto& [neighbor_ptr, edge_data] : neighbors) {
@@ -1807,6 +2424,7 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
         check_neighbors(node->forwardNeighbors());
         // check_neighbors(node->backwardNeighbors());
     }
+    
 
     // Add to Open Heap
     for (FMTNode* neighbor : neighbors_to_requeue) {
@@ -1814,6 +2432,383 @@ void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
         last_replan_metrics_.queue_operations++;
     }
 }
+
+
+
+
+
+
+
+
+// void KinodynamicFMTX::addNewObstacle(const Obstacle& ob) {
+//     if (ob.predicted_path.empty()) return;
+
+//     // Calculate Search Radius (as before)
+//     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
+//                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+    
+
+//     /*
+//         We want the search circle around Center 1 to reach the midpoint (R,R). 
+//         because the dt calculation in generateprediction creates gaps in between obstalces!
+//         so to fix this we need to use  Gap Coverage Inflation
+//         If circles center points are spaced by diameter (2*R_eff), we need sqrt(2) * R_eff to cover the corners.
+//         If you used the adaptive DT from the previous step, points are spaced by 2*R_eff.
+//         so we add (sqrt(2)-1)*R because the base radius is already R. 
+//         Total = R + 0.414R = 1.414R.
+//     */
+
+
+//     double search_radius;
+//     if (is_geometric_mode_) {
+//         // In geometric mode, we just need to cover the obstacle size + robot size + delta
+//         search_radius = obs_r + ob.inflation + neighborhood_radius_;
+//     } else {
+//         // Kinodynamic mode: Add gap coverage for the "tube" samples
+//         double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0); 
+//         search_radius = obs_r + ob.inflation + neighborhood_radius_ + gap_coverage_inflation;
+//     }
+
+
+//     std::unordered_set<int> orphan_indices;
+
+//     // Tube Search: Find all nodes inside the new obstacle tube
+//     for (const auto& point_3d : ob.predicted_path) {
+//         Eigen::VectorXd query(kd_dim);
+        
+//         if (kd_dim == 3) {
+//             query << point_3d.x(), point_3d.y(), point_3d.z();  // z is time
+//         } else if (kd_dim == 2) {
+//             query << point_3d.x(), point_3d.y();
+//         } else if (kd_dim == 4) {
+//             query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+//         } else if (kd_dim == 5) {
+//             query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z(); 
+//         }
+
+//         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
+//         for (size_t idx : indices) {
+//             // Protect all Time Pillars and the orignal root
+//             if (time_pillar_indices_.find(static_cast<int>(idx)) != time_pillar_indices_.end()) {
+//                 continue; 
+//             }
+
+//             orphan_indices.insert(static_cast<int>(idx));
+//         }
+//     }
+//     // if (kd_dim == 4)
+//     //     search_radius += M_PI;
+
+//     /*
+//         Filter Orphan Indices using isTrajectorySafeAgainstSingleObstacle
+//         we keep the tree edges that are not in collision. This procedure
+//         doesn't violate the order of complexity of the collision check inherited from FMT*
+//         Its just good filter to not invalidate blindly
+//     */ 
+//    ////////////////////////////////////////////////
+
+//     /////////////////////////GURANTEEING nodes in  O(rn) to obstalces ARE invalidated COMPLETELY to make fmt* explicitly realizable even thought in AO it doesnt matter//////////////////////
+//     std::vector<int> filtered_orphan_indices;
+//     // Inside addNewObstacle, after retrieving candidate indices:
+//     for (int idx : orphan_indices) {
+//         FMTNode* node = tree_[idx].get();
+//         if (time_pillar_indices_.count(idx) || idx == root_state_index_) continue;
+
+//         // -----------------------------------------------------------------
+//         // Inline distance to obstacle (inflated)
+//         // -----------------------------------------------------------------
+//         // Simplified distance to inflated obstacle (using the effective radius)
+//         Eigen::Vector2d p = node->getStateValue().head<2>();
+//         double min_dist_to_path = std::numeric_limits<double>::max();
+//         for (const auto& pt : ob.predicted_path) {
+//             double d = (p - Eigen::Vector2d(pt.x(), pt.y())).norm();
+//             if (d < min_dist_to_path) min_dist_to_path = d;
+//         }
+//         double dist_to_obs = std::max(0.0, min_dist_to_path - obs_r);
+
+//         // Short‑circuit: if already inside the forbidden zone, mark orphan immediately
+//         if (dist_to_obs <= neighborhood_radius_) {
+//             filtered_orphan_indices.push_back(idx);
+//             continue;   // skip the expensive collision check
+//         }
+
+//         // Only reach this point if node is *outside* the r_n tube
+//         if (node->getParent() && 
+//             !obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(node->getParentTrajectory()), ob)) {
+//             std::cout<<"SOHEIL\n";
+//             filtered_orphan_indices.push_back(idx);
+//         }
+
+//     }
+//     /////////////////////////////////////////////
+
+
+//     orphan_indices.clear(); 
+//     for (int idx : filtered_orphan_indices) {
+//         orphan_indices.insert(idx);
+//     }
+
+//     // Propagate Orphanhood to Descendants
+//     std::vector<int> initial_hit_list(orphan_indices.begin(), orphan_indices.end());
+//     std::queue<FMTNode*> propagation_queue;
+
+//     for (int idx : initial_hit_list) {
+//         propagation_queue.push(tree_[idx].get());
+//     }
+
+//     while (!propagation_queue.empty()) {
+//         FMTNode* current = propagation_queue.front();
+//         propagation_queue.pop();
+
+//         for (FMTNode* child : current->getChildren()) {
+//             if (orphan_indices.insert(child->getIndex()).second) {
+//                 propagation_queue.push(child);
+//             }
+//         }
+//     }
+
+
+//     // Invalidate Nodes & Queue Boundary Parents
+//     std::unordered_set<FMTNode*> boundary_nodes_to_requeue;
+//     for (int node_index : orphan_indices) {
+//         auto node = tree_[node_index].get();
+//         if (node->getIndex() == 17) {
+//             RCLCPP_INFO(rclcpp::get_logger("FMTX"),
+//                 "[addNewObstacle] Node 17 is in orphan set. Removing from heap (in_queue=%d)", 
+//                 node->in_queue_);
+//         }
+//         // Remove from Open Set (it's invalid now)
+//         if (node->in_queue_ && node->getIndex() != root_state_index_) {
+//             v_open_heap_.remove(node);
+//             last_replan_metrics_.queue_operations++;
+//         }
+
+//         // Invalidate Cost (but keep Root valid)
+//         if (node->getIndex() != root_state_index_) {
+//             node->setLMC(std::numeric_limits<double>::infinity()); 
+//             node->setG(std::numeric_limits<double>::infinity());
+//         }
+        
+//         // Sever Parent Connection
+//         node->setParent(nullptr, std::shared_ptr<Trajectory>{});
+
+//         // Find Boundary (Valid Parents). We look at neighbors. If a neighbor is NOT an orphan, it's a valid candidate parent
+//         auto check_boundary = [&](const auto& neighbors) {
+//             for (const auto& [neighbor_ptr, edge_data] : neighbors) {
+//                 if (orphan_indices.find(neighbor_ptr->getIndex()) == orphan_indices.end()) {
+//                     boundary_nodes_to_requeue.insert(neighbor_ptr);
+//                 }
+//             }
+//         };
+
+//         check_boundary(node->forwardNeighbors());
+//         // check_boundary(node->backwardNeighbors());
+//     }
+
+
+
+
+
+// auto isNodeInForbiddenZone = [&](int node_idx, const Eigen::Vector2d& pos) -> bool {
+//     // Pillars are always allowed – they are never in the forbidden zone
+//     if (time_pillar_indices_.find(node_idx) != time_pillar_indices_.end())
+//         return false;
+
+//     const auto& all_obstacles = obs_checker_->getObstacles();
+//     for (const auto& obs : all_obstacles) {
+//         double min_dist_to_path = std::numeric_limits<double>::max();
+//         for (const auto& pt : obs.predicted_path) {
+//             double d = (pos - Eigen::Vector2d(pt.x(), pt.y())).norm();
+//             if (d < min_dist_to_path) min_dist_to_path = d;
+//         }
+//         double obs_r = (obs.type == Obstacle::CIRCLE) ? obs.dimensions.radius
+//                       : std::hypot(obs.dimensions.width/2.0, obs.dimensions.height/2.0);
+//         double dist_to_obs = std::max(0.0, min_dist_to_path - obs_r);
+//         if (dist_to_obs <= neighborhood_radius_)
+//             return true;
+//     }
+//     return false;
+// };
+
+// for (FMTNode* valid_node : boundary_nodes_to_requeue) {
+//     Eigen::Vector2d pos = valid_node->getStateValue().head<2>();
+//     if (!isNodeInForbiddenZone(valid_node->getIndex(), pos) &&
+//         valid_node->getLMC() != std::numeric_limits<double>::infinity() &&
+//         !valid_node->in_queue_) {
+//         v_open_heap_.add(valid_node, valid_node->getLMC());
+//         last_replan_metrics_.queue_operations++;
+//     }
+// }
+
+
+
+
+
+
+
+
+//     // At the end of addNewObstacle, add:
+// if (17 < static_cast<int>(tree_.size()) && tree_[17]) {
+//     if (tree_[17]->in_queue_) {
+//         RCLCPP_INFO(rclcpp::get_logger("FMTX"), 
+//             "[addNewObstacle] Node 17 IS STILL in the open heap (LMC=%.3f)", 
+//             tree_[17]->getLMC());
+//     } else {
+//         RCLCPP_INFO(rclcpp::get_logger("FMTX"), 
+//             "[addNewObstacle] Node 17 IS NOT in the open heap (LMC=%.3f, in_queue=%d)", 
+//             tree_[17]->getLMC(), tree_[17]->in_queue_);
+//     }
+// } else {
+//     RCLCPP_WARN(rclcpp::get_logger("FMTX"), 
+//         "[addNewObstacle] Node 17 does not exist in tree!");
+// }
+
+  
+
+// }
+
+
+
+// void KinodynamicFMTX::removeObstacle(const Obstacle& ob) {
+//     if (ob.predicted_path.empty()) return;
+
+//     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius 
+//                    : std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+
+//     double search_radius;
+//     if (is_geometric_mode_) {
+//         search_radius = obs_r + ob.inflation + neighborhood_radius_;
+//     } else {
+//         double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0);
+//         search_radius = obs_r + ob.inflation + neighborhood_radius_ + gap_coverage_inflation;
+//     }
+
+//     // -------- 1. Find all nodes that lie near the obstacle's predicted path ----------
+//     std::unordered_set<int> candidates;
+//     for (const auto& point_3d : ob.predicted_path) {
+//         Eigen::VectorXd query(kd_dim);
+//         if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
+//         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
+//         else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
+//         else if (kd_dim == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
+
+//         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
+//         for (size_t idx : indices) {
+//             if (time_pillar_indices_.count(static_cast<int>(idx)) || idx == root_state_index_)
+//                 continue;
+//             candidates.insert(static_cast<int>(idx));
+//         }
+//     }
+
+//     // -------- 2. Helper: minimum distance from a 2D point to this obstacle's tube ----------
+//     auto distToThisObstacleTube = [&](const Eigen::Vector2d& pos) -> double {
+//         double min_dist = std::numeric_limits<double>::max();
+//         for (const auto& pt : ob.predicted_path) {
+//             double d = (pos - Eigen::Vector2d(pt.x(), pt.y())).norm();
+//             if (d < min_dist) min_dist = d;
+//         }
+//         return std::max(0.0, min_dist - obs_r);
+//     };
+
+//     // -------- 3. Determine which nodes are strictly inside the r_n tube of the removed obstacle ----------
+//     std::unordered_set<int> orphan_indices;
+//     for (int idx : candidates) {
+//         FMTNode* node = tree_.at(idx).get();
+//         Eigen::Vector2d pos = node->getStateValue().head<2>();
+//         double dist = distToThisObstacleTube(pos);
+//         if (dist <= neighborhood_radius_) {
+//             orphan_indices.insert(idx);
+//         }
+//     }
+
+//     // -------- 4. Propagate orphanhood to all descendants ----------
+//     std::queue<FMTNode*> q;
+//     for (int idx : orphan_indices) q.push(tree_.at(idx).get());
+//     while (!q.empty()) {
+//         FMTNode* cur = q.front(); q.pop();
+//         for (FMTNode* child : cur->getChildren()) {
+//             if (orphan_indices.insert(child->getIndex()).second) {
+//                 q.push(child);
+//             }
+//         }
+//     }
+
+//     // -------- 5. Helper: check if a node is in forbidden zone of any *other* (still present) obstacle ----------
+//     auto isInAnyOtherForbiddenZone = [&](int node_idx, const Eigen::Vector2d& pos) -> bool {
+//         if (time_pillar_indices_.count(node_idx)) return false;
+//         const auto& all_obs = obs_checker_->getObstacles();
+//         for (const auto& other : all_obs) {
+//             if (other.name == ob.name) continue;
+//             double min_d = std::numeric_limits<double>::max();
+//             for (const auto& pt : other.predicted_path) {
+//                 double d = (pos - Eigen::Vector2d(pt.x(), pt.y())).norm();
+//                 if (d < min_d) min_d = d;
+//             }
+//             double r_eff = (other.type == Obstacle::CIRCLE) ? other.dimensions.radius
+//                            : std::hypot(other.dimensions.width/2.0, other.dimensions.height/2.0);
+//             if (std::max(0.0, min_d - r_eff) <= neighborhood_radius_)
+//                 return true;
+//         }
+//         return false;
+//     };
+
+//     // -------- 6. Invalidate orphans: set INF cost, remove from heap, sever parent, clean children lists ----------
+//     std::unordered_set<FMTNode*> boundary_nodes;
+//     for (int idx : orphan_indices) {
+//         FMTNode* node = tree_.at(idx).get();
+//         // Remove from open heap
+//         if (node->in_queue_) {
+//             v_open_heap_.remove(node);
+//             last_replan_metrics_.queue_operations++;
+//         }
+//         // Reset costs
+//         node->setLMC(INFINITY);
+//         node->setG(INFINITY);
+//         // Sever parent link and remove from old parent's children list
+//         if (node->getParent() != nullptr) {
+//             auto& parentChildren = node->getParent()->children_;
+//             parentChildren.erase(std::remove(parentChildren.begin(), parentChildren.end(), node),
+//                                  parentChildren.end());
+//             node->setParent(nullptr, nullptr);
+//         }
+//         // Find boundary neighbors (not orphans) that are safe w.r.t. other obstacles
+//         for (const auto& [neighbor, edge] : node->forwardNeighbors()) {
+//             if (orphan_indices.find(neighbor->getIndex()) == orphan_indices.end()) {
+//                 Eigen::Vector2d nb_pos = neighbor->getStateValue().head<2>();
+//                 if (!isInAnyOtherForbiddenZone(neighbor->getIndex(), nb_pos) &&
+//                     neighbor->getLMC() != INFINITY && !neighbor->in_queue_) {
+//                     boundary_nodes.insert(neighbor);
+//                 }
+//             }
+//         }
+//     }
+
+//     // -------- 7. Add boundary nodes to open heap ----------
+//     for (FMTNode* b : boundary_nodes) {
+//         v_open_heap_.add(b, b->getLMC());
+//         last_replan_metrics_.queue_operations++;
+//     }
+
+// #if USE_THREAT_SET_STRATEGY
+//     // (Optional) Remove this obstacle from all nodes' threat lists – you can do this lazily or loop over all affected nodes
+//     for (int idx : orphan_indices) {
+//         FMTNode* node = tree_.at(idx).get();
+//         auto it = std::find(node->threats.begin(), node->threats.end(), &ob);
+//         if (it != node->threats.end()) {
+//             *it = node->threats.back();
+//             node->threats.pop_back();
+//         }
+//     }
+// #endif
+// }
+
+
+
+
+
+
+
+
 void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     robot_continuous_state_ = robot_state;
     double robot_sim_time = robot_continuous_state_(robot_continuous_state_.size() - 1);

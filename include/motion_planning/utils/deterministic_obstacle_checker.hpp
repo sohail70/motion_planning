@@ -123,6 +123,11 @@ public:
 
     Eigen::Vector2d getObstacleAnalyticalPosition(const Obstacle& ob, double t_robot) const;
     
+    void clearActiveObstacles()
+    {
+        obstacle_positions_.clear();
+    }
+
 
 private:
 

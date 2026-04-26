@@ -133,6 +133,32 @@ class KinodynamicFMTX : public Planner {
 
         int getIsolatedNodeCount() const override { return isolated_nodes_count_; } 
 
+
+        int getRootStateIndex() const { return root_state_index_; }
+        double getCostByIndex(int idx) const {
+            return (idx >= 0 && idx < (int)tree_.size()) ? tree_[idx]->getLMC() : std::numeric_limits<double>::infinity();
+        }
+        double getFMTShadowCostByIndex(int idx) const {
+            return (idx >= 0 && idx < (int)fmt_shadow_cost_.size()) ? fmt_shadow_cost_[idx] : std::numeric_limits<double>::infinity();
+        }
+        int getNodeIndexByState(const Eigen::VectorXd& state, double tol=1e-6) const {
+            for (const auto& node : tree_) {
+                if (node && node->getStateValue().head(state.size()).isApprox(state, tol))
+                    return node->getIndex();
+            }
+            return -1;
+        }
+
+        // For heap behaviour debugging!
+        struct HeapEvent {
+            enum Type { ADD, UPDATE, POP };
+            Type type;
+            int node_idx;
+            double cost;
+            int step;
+        };
+        void runFMT(SuboptimalityMetrics& metrics, std::vector<HeapEvent>& shadow_log);
+
     private:
         std::vector<std::unique_ptr<FMTNode>> tree_;
         std::shared_ptr<KDTree> kdtree_;
@@ -168,5 +194,19 @@ class KinodynamicFMTX : public Planner {
         int num_pillar_nodes_;
         std::unordered_set<int> time_pillar_indices_;
         int isolated_nodes_count_ = 0;
+
+
+        // FMT* specific value for tree visualization
+        mutable std::vector<double> fmt_shadow_cost_;
+        mutable std::vector<int> fmt_shadow_parent_;
+        mutable bool fmt_shadow_valid_ = false;
+        void visualizeFMTtree();
+
+
+
+
+        // For heap behaviour debugging!
+        std::vector<HeapEvent> fmtx_heap_log_;
+        std::vector<HeapEvent> shadow_heap_log_;
 };
 

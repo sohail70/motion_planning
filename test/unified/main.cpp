@@ -21,7 +21,9 @@
 #include <valgrind/callgrind.h>
 
 #define SCREEN_SHOT 0
-#define USE_METRIC 0
+#define USE_METRIC 1
+
+
 
 struct ExperimentConfig {
     std::string name;
@@ -56,6 +58,7 @@ struct ExperimentConfig {
             std::string val = planner_params_str.at("is_geometric_mode");
             return val == "true";
         }
+        return false;
     }
 
     double time_extent() const {              // single source for time dimension
@@ -184,6 +187,380 @@ struct LogEntry {
 std::atomic<bool> g_running{true};
 void sigint_handler(int sig) { g_running = false; }
 
+
+
+
+std::shared_ptr<StateSpace> createStateSpace(const ExperimentConfig& cfg) {
+    if (cfg.state_space_type == "RDT") {
+        return std::make_shared<RDTStateSpace>(cfg.dimensions, cfg.min_velocity,
+                                                cfg.max_velocity, cfg.seed,
+                                                cfg.is_geometric_mode());
+    } else if (cfg.state_space_type == "Dubins") {
+        return std::make_shared<DubinsTimeStateSpace>(cfg.min_turning_radius,
+                                                       cfg.min_velocity,
+                                                       cfg.max_velocity, cfg.seed);
+    } else if (cfg.state_space_type == "Thruster") {
+        return std::make_shared<ThrusterSteerStateSpace>(cfg.dimensions,
+                                                          cfg.max_acceleration,
+                                                          cfg.max_velocity, cfg.seed);
+    }
+    throw std::runtime_error("Unknown state space type");
+}
+
+
+#include <fstream>
+#include <iomanip>
+#include <thread>
+
+// Add this helper function to visualize obstacles in geometric mode
+void visualizeObstaclesGeometric(const ObstacleVector& static_obs,
+                                 std::shared_ptr<RVizVisualization>& visualization,
+                                 const std::string& frame_id = "map") {
+    std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos;
+    std::vector<double> safe_cyl_radii, threat_cyl_radii;
+    std::vector<std::tuple<Eigen::Vector2d, double, double, double>> safe_boxes, threat_boxes;
+    std::vector<Eigen::Vector2d> safe_vel_pos, safe_vel_val;
+    std::vector<Eigen::Vector2d> threat_vel_pos, threat_vel_val;
+
+    for (const auto& ob : static_obs) {
+        bool is_threat = false;  // All static for AO test
+        if (ob.type == Obstacle::CIRCLE) {
+            Eigen::VectorXd pos(2);
+            pos << ob.position.x(), ob.position.y();
+            if (is_threat) {
+                threat_cyl_pos.push_back(pos);
+                threat_cyl_radii.push_back(ob.dimensions.radius);
+            } else {
+                safe_cyl_pos.push_back(pos);
+                safe_cyl_radii.push_back(ob.dimensions.radius);
+            }
+        } else if (ob.type == Obstacle::BOX) {
+            auto box_tuple = std::make_tuple(ob.position, ob.dimensions.width,
+                                           ob.dimensions.height, ob.dimensions.rotation);
+            if (is_threat) {
+                threat_boxes.push_back(box_tuple);
+            } else {
+                safe_boxes.push_back(box_tuple);
+            }
+        }
+        // No velocity for static obstacles
+    }
+
+    Eigen::Vector3d robot_pos_zero(0, 0, 0);
+    Eigen::VectorXd quat(4); quat << 0, 0, 0, 1;
+    std::vector<float> robot_color = {0.0f, 0.0f, 1.0f};
+    std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> empty_trace;
+
+    visualization->publishObstacleFrame(safe_cyl_pos, safe_cyl_radii,
+                                      threat_cyl_pos, threat_cyl_radii,
+                                      safe_boxes, threat_boxes,
+                                      safe_vel_pos, safe_vel_val,
+                                      threat_vel_pos, threat_vel_val,
+                                      empty_trace, robot_pos_zero, quat,
+                                      robot_color, 0, frame_id);
+}
+
+
+
+void runAOExperiment(const ExperimentConfig& cfg) {
+    // --------------------------------------------------------------
+    // 1. Parse SDF and FORCE a frozen static snapshot BEFORE checker construction
+    // --------------------------------------------------------------
+    auto obstacle_info = parseSdfObstacles(cfg.sdf_path);
+
+    for (auto& [name, info] : obstacle_info) {
+        info.is_dynamic = false;
+        info.speed = 0.0;
+        info.amplitude = 0.0;
+        info.direction.setZero();
+    }
+
+    Params gazebo_params;
+    populateParams(gazebo_params, cfg.gazebo_params_str);
+    gazebo_params.setParam("is_geometric_mode", cfg.is_geometric_mode());
+    gazebo_params.setParam("initial_budget_time", cfg.is_geometric_mode() ? 0.0 : cfg.time_budget);
+
+    auto dummy_clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
+    auto obstacle_checker = std::make_shared<DeterministicObstacleChecker>(
+        dummy_clock, gazebo_params, obstacle_info);
+
+    // IMPORTANT: no initializeDynamicObstacles()
+    obstacle_checker->processLatestPoseInfo(0.0);
+    ObstacleVector static_obs = obstacle_checker->getObstacles();
+
+    std::cout << "AO Test: Loaded " << static_obs.size() << " frozen obstacles\n";
+    for (const auto& ob : static_obs) {
+        std::cout << "  " << ob.name << " at ("
+                  << ob.position.x() << ", " << ob.position.y() << ")\n";
+    }
+
+    // --------------------------------------------------------------
+    // 2. Build start/goal/bounds exactly like main()
+    // --------------------------------------------------------------
+    const int dim = cfg.dimensions;
+
+    if (cfg.dimensions < static_cast<int>(cfg.start_state.size())) {
+        throw std::runtime_error("dimensions in YAML is smaller than start_state size");
+    }
+    if (cfg.start_state.size() != cfg.goal_state.size() ||
+        cfg.start_state.size() != cfg.bounds_min.size() ||
+        cfg.start_state.size() != cfg.bounds_max.size()) {
+        throw std::runtime_error("start/goal/bounds size mismatch in YAML");
+    }
+
+    Eigen::VectorXd start_spatial(cfg.start_state.size());
+    Eigen::VectorXd goal_spatial(cfg.goal_state.size());
+    Eigen::VectorXd lower_spatial(cfg.bounds_min.size());
+    Eigen::VectorXd upper_spatial(cfg.bounds_max.size());
+
+    for (size_t i = 0; i < cfg.start_state.size(); ++i) start_spatial(i) = cfg.start_state[i];
+    for (size_t i = 0; i < cfg.goal_state.size();  ++i) goal_spatial(i)  = cfg.goal_state[i];
+    for (size_t i = 0; i < cfg.bounds_min.size();  ++i) lower_spatial(i) = cfg.bounds_min[i];
+    for (size_t i = 0; i < cfg.bounds_max.size();  ++i) upper_spatial(i) = cfg.bounds_max[i];
+
+    Eigen::VectorXd start_vec = start_spatial;
+    Eigen::VectorXd goal_vec  = goal_spatial;
+    Eigen::VectorXd lower_vec = lower_spatial;
+    Eigen::VectorXd upper_vec = upper_spatial;
+
+    const bool needs_time_dimension = (cfg.dimensions > static_cast<int>(cfg.start_state.size()));
+    if (needs_time_dimension) {
+        const int time_idx = cfg.dimensions - 1;
+
+        start_vec.conservativeResize(cfg.dimensions);
+        goal_vec.conservativeResize(cfg.dimensions);
+        lower_vec.conservativeResize(cfg.dimensions);
+        upper_vec.conservativeResize(cfg.dimensions);
+
+        start_vec(time_idx) = cfg.time_extent();
+        goal_vec(time_idx)  = 0.0;
+        lower_vec(time_idx) = 0.0;
+        upper_vec(time_idx) = cfg.time_extent();
+    }
+
+    // --------------------------------------------------------------
+    // 3. Visualization: do NOT call rclcpp::init() here
+    // --------------------------------------------------------------
+    const bool visualize = true;
+    rclcpp::Node::SharedPtr vis_node;
+    std::shared_ptr<RVizVisualization> visualization;
+
+    if (visualize) {
+        vis_node = std::make_shared<rclcpp::Node>(
+            cfg.name + "_ao_visualizer",
+            rclcpp::NodeOptions().parameter_overrides(
+                {rclcpp::Parameter("use_sim_time", true)}));
+
+        visualization = std::make_shared<RVizVisualization>(vis_node);
+
+        visualization->clearMarkers("");
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        Eigen::VectorXd axes_lower(2), axes_upper(2);
+        axes_lower << lower_spatial(0), lower_spatial(1);
+        axes_upper << upper_spatial(0), upper_spatial(1);
+        visualization->visualizeAxes(axes_lower, axes_upper, 5.0, "map");
+
+        std::vector<Eigen::VectorXd> safe_cyl_pos, threat_cyl_pos;
+        std::vector<double> safe_cyl_radii, threat_cyl_radii;
+        std::vector<std::tuple<Eigen::Vector2d, double, double, double>> safe_boxes, threat_boxes;
+        std::vector<Eigen::Vector2d> safe_vel_pos, safe_vel_val;
+        std::vector<Eigen::Vector2d> threat_vel_pos, threat_vel_val;
+
+        for (const auto& ob : static_obs) {
+            if (ob.type == Obstacle::CIRCLE) {
+                Eigen::VectorXd pos(2);
+                pos << ob.position.x(), ob.position.y();
+                safe_cyl_pos.push_back(pos);
+                safe_cyl_radii.push_back(ob.dimensions.radius);
+            } else if (ob.type == Obstacle::BOX) {
+                safe_boxes.emplace_back(
+                    ob.position,
+                    ob.dimensions.width,
+                    ob.dimensions.height,
+                    ob.dimensions.rotation
+                );
+            }
+        }
+
+        Eigen::Vector3d robot_pos(start_vec(0), start_vec(1), 0.0);
+        Eigen::VectorXd orientation_quat(4);
+        orientation_quat << 0, 0, 0, 1;
+        std::vector<float> robot_color = {0.0f, 0.0f, 1.0f};
+        std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>> empty_trace;
+
+        visualization->publishObstacleFrame(
+            safe_cyl_pos, safe_cyl_radii,
+            threat_cyl_pos, threat_cyl_radii,
+            safe_boxes, threat_boxes,
+            safe_vel_pos, safe_vel_val,
+            threat_vel_pos, threat_vel_val,
+            empty_trace,
+            robot_pos,
+            orientation_quat,
+            robot_color,
+            0,
+            "map"
+        );
+        visualization->triggerPublish();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    // --------------------------------------------------------------
+    // 5. Main AO loop - fixed snapshot, varying n only
+    // --------------------------------------------------------------
+    std::vector<int> sample_sizes = {100, 200, 500, 1000, 2000, 5000};
+
+    std::ofstream out(
+        "ao_results_" + std::string(cfg.is_geometric_mode() ? "geometric" : "kinodynamic") + ".csv");
+
+    out << "mode,n,fmt_star_cost,fmtx_cost,ratio,"
+        "success_fmt_star,success_fmtx,"
+        "fmtx_time_ms,fmt_star_time_ms,tree_size,"
+        "finite_nodes,nodes_worse,pct_worse,mean_gap,max_gap,max_gap_node\n";
+
+    for (int n : sample_sizes) {
+        if (!g_running || !rclcpp::ok()) break;
+
+        auto statespace = createStateSpace(cfg);
+        auto problem_def = std::make_shared<ProblemDefinition>(dim);
+        problem_def->setStart(goal_vec);   // Backward search
+        problem_def->setGoal(start_vec);
+        problem_def->setBounds(lower_vec, upper_vec);
+
+        auto planner = std::make_shared<KinodynamicFMTX>(statespace, problem_def, obstacle_checker);
+
+        Params planner_params;
+        populateParams(planner_params, cfg.planner_params_str);
+        planner_params.setParam("num_of_samples", n);
+        planner_params.setParam("is_geometric_mode", cfg.is_geometric_mode());
+        planner_params.setParam("partial_update", false);
+        planner_params.setParam("use_knn", false);
+
+        // If your sampler supports a seed, set it here for reproducibility
+        // planner_params.setParam("seed", 12345);
+
+        planner->setup(planner_params, visualization);
+        planner->setRobotState(start_vec);
+
+        // Step 1: empty-environment preplan
+        obstacle_checker->clearActiveObstacles();
+        std::cout << "BEFORE PLAN : " << obstacle_checker->getObstacles().size() << "\n";
+        planner->plan();
+
+        // Step 2: reactivate frozen snapshot for replanning
+        obstacle_checker->processLatestPoseInfo(0.0);
+        std::cout << "AFTER PLAN : " << obstacle_checker->getObstacles().size() << "\n";
+
+        // Step 3: FMTX obstacle update + internal repair
+        planner->resetMetrics();
+        auto fmtx_start = std::chrono::steady_clock::now();
+        planner->updateObstacles(static_obs);   // IMPORTANT: includes internal plan()
+        auto fmtx_end = std::chrono::steady_clock::now();
+        double fmtx_time_ms =
+            std::chrono::duration<double, std::milli>(fmtx_end - fmtx_start).count();
+
+        int start_idx = planner->getNodeIndexByState(start_vec);
+        double fmtx_cost = (start_idx >= 0) ? planner->getCostByIndex(start_idx)
+                                            : std::numeric_limits<double>::infinity();
+        bool fmtx_success = std::isfinite(fmtx_cost);
+
+        // Step 4: from-scratch FMT* on same sampled graph and same snapshot
+        KinodynamicFMTX::SuboptimalityMetrics dummy_metrics;
+        std::vector<KinodynamicFMTX::HeapEvent> dummy_log;
+        auto fmt_star_start = std::chrono::steady_clock::now();
+        planner->runFMT(dummy_metrics, dummy_log);
+        auto fmt_star_end = std::chrono::steady_clock::now();
+        double fmt_star_time_ms =
+            std::chrono::duration<double, std::milli>(fmt_star_end - fmt_star_start).count();
+
+        double fmt_star_cost = (start_idx >= 0) ? planner->getFMTShadowCostByIndex(start_idx)
+                                                : std::numeric_limits<double>::infinity();
+        bool fmt_star_success = std::isfinite(fmt_star_cost);
+
+        // Step 5: root ratio
+        double ratio = (fmt_star_success && fmtx_success && fmt_star_cost > 1e-12)
+            ? fmtx_cost / fmt_star_cost
+            : -1.0;
+
+        // Step 6: node-by-node comparison
+        int tree_size = planner->getTreeSize();
+        int finite_nodes = 0;
+        int nodes_worse = 0;
+        double total_gap = 0.0;
+        double max_gap = 0.0;
+        int max_gap_node = -1;
+
+        for (int i = 0; i < tree_size; ++i) {
+            double gx = planner->getCostByIndex(i);
+            double gs = planner->getFMTShadowCostByIndex(i);
+
+            if (!std::isfinite(gx) || !std::isfinite(gs)) continue;
+            finite_nodes++;
+
+            double gap = gx - gs;
+            if (gap > 1e-8) {
+                nodes_worse++;
+                total_gap += gap;
+                if (gap > max_gap) {
+                    max_gap = gap;
+                    max_gap_node = i;
+                }
+            }
+        }
+
+        double pct_worse = (finite_nodes > 0)
+            ? 100.0 * static_cast<double>(nodes_worse) / static_cast<double>(finite_nodes)
+            : 0.0;
+
+        double mean_gap = (nodes_worse > 0)
+            ? total_gap / static_cast<double>(nodes_worse)
+            : 0.0;
+
+        out << (cfg.is_geometric_mode() ? "geometric" : "kinodynamic") << ","
+            << n << ","
+            << (fmt_star_success ? fmt_star_cost : -1) << ","
+            << (fmtx_success ? fmtx_cost : -1) << ","
+            << ratio << ","
+            << fmt_star_success << "," << fmtx_success << ","
+            << fmtx_time_ms << "," << fmt_star_time_ms << ","
+            << tree_size << ","
+            << finite_nodes << "," << nodes_worse << ","
+            << pct_worse << "," << mean_gap << ","
+            << max_gap << "," << max_gap_node << "\n";
+
+        std::cout << "[AO] n=" << n
+                << " fmt*=" << fmt_star_cost
+                << " fmtx=" << fmtx_cost
+                << " ratio=" << std::fixed << std::setprecision(4) << ratio
+                << " worse=" << nodes_worse << "/" << finite_nodes
+                << " (" << std::setprecision(2) << pct_worse << "%)"
+                << " mean_gap=" << mean_gap
+                << " max_gap=" << max_gap
+                << " fmtx_t=" << std::setprecision(3) << fmtx_time_ms << "ms"
+                << " tree=" << tree_size << "\n";
+
+        if (visualize) {
+            planner->visualizeTree();
+            visualization->triggerPublish();
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+    }
+
+    out.close();
+    std::cout << "AO test complete. Results in ao_results_"
+            << (cfg.is_geometric_mode() ? "geometric" : "kinodynamic")
+            << ".csv\n";
+
+}
+
+
+
+
+
+
+
+
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
     signal(SIGINT, sigint_handler);
@@ -194,6 +571,14 @@ int main(int argc, char** argv) {
     std::string config_path = argv[1];
     std::cout << "[CONFIG] Loading: " << config_path << std::endl;
     ExperimentConfig cfg = loadConfig(config_path);
+
+
+    if (cfg.name == "AO_test") {
+        runAOExperiment(cfg);
+        return 0;
+    }
+
+
 
     // --- 1. Parameters ---
     Params manager_params, gazebo_params, planner_params;
@@ -487,6 +872,7 @@ int main(int argc, char** argv) {
     auto time_limit = std::chrono::seconds(cfg.duration_limit);
     auto start_time = std::chrono::steady_clock::now();
     
+    int soheil = 0;
     CALLGRIND_START_INSTRUMENTATION;
     // BRANCHING LOGIC
     if (is_geometric_mode) {
@@ -498,6 +884,10 @@ int main(int argc, char** argv) {
         double sim_time = 0.0; 
         
         while (g_running && rclcpp::ok()) {
+            if (soheil==74){
+                std::cout<<"STOP\n";
+            }
+            std::cout<<soheil++<<"\n";
             auto loop_start_time = std::chrono::steady_clock::now();
             executor.spin_some();
 
@@ -722,17 +1112,7 @@ int main(int argc, char** argv) {
             // ros_manager->updateThreats(culprits);
             
 
-            kinodynamic_planner->visualizeTree();
-            // kinodynamic_planner->visualizeTreeGradient();
-            // kinodynamic_planner->visualizeTreeReal();
-            // kinodynamic_planner->visualizeSearchArea(); 
-            auto new_path = kinodynamic_planner->getPathPositions();
-            if (!new_path.empty()) {
-                ros_manager->setPath(new_path);
-                // kinodynamic_planner->visualizePath(new_path);
-                kinodynamic_planner->visualizePathGradient(new_path);
-            }
-            visualization->triggerPublish();
+
 
             auto now = std::chrono::steady_clock::now();
             double dt_wall = std::chrono::duration<double>(now - slice_start_time).count();
@@ -786,6 +1166,19 @@ int main(int argc, char** argv) {
                 double remaining = cfg.slice_time - time_accumulated_in_slice;
                 if (remaining > 0.0) std::this_thread::sleep_for(std::chrono::duration<double>(remaining));
             }
+            
+            
+            kinodynamic_planner->visualizeTree();
+            // kinodynamic_planner->visualizeTreeGradient();
+            // kinodynamic_planner->visualizeTreeReal();
+            // kinodynamic_planner->visualizeSearchArea(); 
+            auto new_path = kinodynamic_planner->getPathPositions();
+            if (!new_path.empty()) {
+                ros_manager->setPath(new_path);
+                // kinodynamic_planner->visualizePath(new_path);
+                kinodynamic_planner->visualizePathGradient(new_path);
+            }
+            visualization->triggerPublish();
         }
     }
     std::cout<<"FINAL TREE SIZE: "<<planner->getTreeSize()<<"\n";

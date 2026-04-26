@@ -108,8 +108,6 @@ void KinodynamicANYRRTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state
     // ====================================================================
     double max_time = upper_bounds_(statespace_->getDimension() - 1); 
 
-    // Protect the original main root (T=0)
-    time_pillar_indices_.insert(root_state_index_); 
 
     for (int i = 1; i <= num_pillar_nodes; ++i) {
         Eigen::VectorXd pillar_state = goal_state_val;
@@ -196,6 +194,8 @@ void KinodynamicANYRRTX::setup(const Params& params, std::shared_ptr<Visualizati
 
     setStart(problem_->getStart());
     setGoal(problem_->getGoal()); //robots current position
+    // Protect the original main root (T=0)
+    time_pillar_indices_.insert(root_state_index_); 
     // Inject the rest of the Time Pillars (Backward search: start is the destination)
     if(!is_geometric_mode_) injectTimePillarNodes(problem_->getStart(), num_pillar_nodes_);
 
@@ -484,7 +484,14 @@ void KinodynamicANYRRTX::plan() {
             */
             rewireNeighbors(new_node); 
             // verifyQueue(new_node);
-            new_node->setG(new_node->getLMC());
+            /*
+                hmmm?!!
+                I dont think we should setG here because after a new sample is added to the tree the immeidate neighbor
+                should get improved immediately and if we setG then the rewire function wont allow the first line if condtion to pass
+                this is important because its gonna make a difference between AO and epsilon-AO
+                the fact that new nodes can rewire immeidate neighbors is what RRT* is about!
+            */
+            // new_node->setG(new_node->getLMC());
             reduceInconsistency();
         }
     }

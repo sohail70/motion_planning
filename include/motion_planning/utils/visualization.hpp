@@ -22,4 +22,5 @@ public:
     virtual void visualizePathGradient( const std::vector<Eigen::VectorXd>& path_waypoints, const std::vector<double>& waypoint_costs, const std::string& frame_id, double global_max_cost) = 0;
     virtual void visualizeContinuousMesh( const std::vector<Eigen::VectorXd>& points, const std::vector<double>& costs, double global_max_cost, double neighborhood_radius, const Eigen::VectorXd& lower_bounds, const Eigen::VectorXd& upper_bounds, const std::string& frame_id = "map") = 0;
     virtual void visualizeTreeGradient( const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::vector<double>& costs, const std::string& frame_id) = 0;
+    virtual void triggerPublish() = 0;
 };

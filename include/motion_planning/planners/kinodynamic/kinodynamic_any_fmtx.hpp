@@ -132,7 +132,7 @@ class KinodynamicANYFMTX : public Planner {
         bool updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node);
         void cullNeighbors(FMTNode* v);
         void shrinkingBallRadius();
-
+        void runFMT(SuboptimalityMetrics& metrics);
 
 
         std::vector<std::unique_ptr<FMTNode>> tree_;
@@ -179,6 +179,12 @@ class KinodynamicANYFMTX : public Planner {
         void injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes);
         int num_pillar_nodes_;
         std::unordered_set<int> time_pillar_indices_;
+
+        // FMT* specific value for tree visualization
+        mutable std::vector<double> fmt_shadow_cost_;
+        mutable std::vector<int> fmt_shadow_parent_;
+        mutable bool fmt_shadow_valid_ = false;
+        void visualizeFMTtree();
 
 };
 
