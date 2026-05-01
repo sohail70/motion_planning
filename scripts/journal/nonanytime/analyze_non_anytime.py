@@ -1,3 +1,33 @@
+"""
+======================================================================================
+BENCHMARKING METHODOLOGY & METRIC ISOLATION (NON-ANYTIME VERSION)
+======================================================================================
+This script processes high-resolution, event-based timeline metrics from the C++ planner.
+
+Event semantics:
+- initial_plan   : one-time initialization plan (Graph construction & setup)
+- set_state      : robot-state snapshot; path_cost belongs here
+- update         : obstacle update & repair triggered here
+- slice_end      : end of real-time slice
+- goal_reached   : terminal success snapshot
+- time_limit     : terminal timeout snapshot
+
+Metric isolation policy:
+1. T_repair:
+   Per repair event = update_ms
+   Because plan() happens inside updateObstacles() in non-anytime planners.
+
+2. Path cost:
+   Taken from set_state / goal_reached rows only.
+
+3. Obstacle checks:
+   Reported as Obs/Upd directly from the 'update' event.
+
+4. Fixed Graph Stats:
+   Samples, r_n, Setup(ms), and Isolated nodes are parsed from the 'initial_plan' event.
+======================================================================================
+"""
+
 import pandas as pd
 import glob
 import os
@@ -8,316 +38,357 @@ from pandas.errors import EmptyDataError
 
 # Publication-ready plot styling
 plt.rcParams.update({
-    'font.family': 'serif',
-    'font.serif': ['Times New Roman', 'DejaVu Serif', 'serif'],
-    'axes.labelsize': 12,
-    'axes.titlesize': 14,
-    'legend.fontsize': 11,
-    'xtick.labelsize': 11,
-    'ytick.labelsize': 11,
-    'figure.dpi': 300
+    "font.family": "serif",
+    "font.serif": ["Times New Roman", "DejaVu Serif", "serif"],
+    "axes.labelsize": 12,
+    "axes.titlesize": 14,
+    "legend.fontsize": 11,
+    "xtick.labelsize": 11,
+    "ytick.labelsize": 11,
+    "figure.dpi": 300
 })
 
-BUILD_DIR = "."  
+BUILD_DIR = "."
+FILENAME_PATTERN = re.compile(
+    r"sim_([A-Za-z0-9]+)_([A-Za-z0-9_]+)_seed_(\d+)_(\d{8}_\d{6})_metrics\.csv"
+)
 
-FILENAME_PATTERN = re.compile(r"sim_([A-Za-z0-9]+)_([A-Za-z0-9_]+)_seed_(\d+)_(\d{8}_\d{6})_metrics\.csv")
-FALLBACK_PATTERN = re.compile(r"sim_([A-Za-z0-9]+)_([A-Za-z0-9_]+)_(\d{8}_\d{6})_metrics\.csv")
+def safe_numeric(df, cols):
+    for c in cols:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    return df
 
 def load_data(directory):
-    if not os.path.exists(directory): return {}
+    if not os.path.exists(directory):
+        return {}
+
     files = glob.glob(os.path.join(directory, "sim_*_metrics.csv"))
     scenarios = {}
 
     for filepath in files:
         filename = os.path.basename(filepath)
         match = FILENAME_PATTERN.match(filename)
-        scenario = "default"
-        
-        if match:
-            planner_raw = match.group(1)
-            scenario = match.group(2)
-        else:
-            fallback = FALLBACK_PATTERN.match(filename)
-            if fallback:
-                planner_raw = fallback.group(1)
-                scenario = fallback.group(2)
-            else:
-                parts = filename.replace("sim_", "").replace("_metrics.csv", "").split("_")
-                planner_raw = parts[0]
-                if len(parts) > 2: scenario = "_".join(parts[1:-2])
-        
-        # Skip anytime algorithms
-        if "ANY" in planner_raw: 
-            continue 
-        
-        # Clean names for the paper
-        planner_clean = planner_raw.replace("Kinodynamic", "").replace("PRMStarDStarLite", "DLITE").replace("FMTX", "FMTX")
-        
+        if not match:
+            continue
+
+        planner_raw = match.group(1)
+        scenario = match.group(2)
+
+        planner_clean = (
+            planner_raw
+            .replace("Kinodynamic", "")
+            .replace("PRMStarDStarLite", "DLITE")
+            .replace("PRMStar", "")
+            .replace("ANY", "")
+        )
+
         try:
             df = pd.read_csv(filepath)
-            if df.empty: continue
+            if df.empty:
+                continue
+
             df.replace([np.inf, -np.inf], np.nan, inplace=True)
-            
-            if scenario not in scenarios: scenarios[scenario] = {}
-            if planner_clean not in scenarios[scenario]: scenarios[scenario][planner_clean] = []
+
+            numeric_cols = [
+                "row_id", "elapsed_s", "sim_time", "setup_ms", "total_latency_ms",
+                "update_ms", "plan_ms", "time_to_goal", "path_cost", "obstacle_checks",
+                "collision_count", "tree_size", "isolated_nodes", "avg_deg_out",
+                "avg_deg_in", "neighborhood_radius"
+            ]
+            df = safe_numeric(df, numeric_cols)
+
+            sort_cols = [c for c in ["row_id", "elapsed_s"] if c in df.columns]
+            if sort_cols:
+                df = df.sort_values(sort_cols).reset_index(drop=True)
+
+            if scenario not in scenarios:
+                scenarios[scenario] = {}
+            if planner_clean not in scenarios[scenario]:
+                scenarios[scenario][planner_clean] = []
+
             scenarios[scenario][planner_clean].append(df)
-        except EmptyDataError: pass
-        except Exception as e: print(f"Warning: Could not load {filename}: {e}")
-            
+            print(f"Loaded {filename}: {len(df)} rows")
+
+        except EmptyDataError:
+            pass
+        except Exception as e:
+            print(f"Warning: Could not load {filename}: {e}")
+
     return scenarios
 
-# --- NEW FUNCTION: Safely remove the terminal log entry with the Dubins spike ---
-def drop_terminal_goal_row(df):
-    if len(df) > 1 and df['update_ms'].iloc[-1] == 0.0 and df['plan_ms'].iloc[-1] == 0.0 and df['elapsed_s'].iloc[-1] > 0:
-        return df.iloc[:-1].copy()
-    return df.copy()
-# --------------------------------------------------------------------------------
+
+def is_successful_run(df):
+    if df.empty:
+        return False
+
+    if "collision_count" in df.columns:
+        cc = pd.to_numeric(df["collision_count"], errors="coerce").fillna(0)
+        return cc.max() == 0
+
+    if "crashed" in df.columns:
+        cr = pd.to_numeric(df["crashed"], errors="coerce").fillna(0)
+        return (cr == 1).sum() == 0
+
+    return True
+
+
+def extract_runtime_events(df):
+    if df.empty or "event_type" not in df.columns:
+        return pd.DataFrame()
+
+    runtime = df.copy()
+    if "elapsed_s" in runtime.columns:
+        runtime = runtime[runtime["elapsed_s"].fillna(0) > 0.0].copy()
+
+    runtime = runtime.sort_values(
+        [c for c in ["row_id", "elapsed_s"] if c in runtime.columns]
+    ).reset_index(drop=True)
+
+    return runtime
+
+
+def get_state_rows(df):
+    if df.empty:
+        return pd.DataFrame()
+
+    rows = df[df["event_type"].isin(["set_state", "goal_reached"])].copy()
+    rows = safe_numeric(rows, ["path_cost", "sim_time", "elapsed_s", "time_to_goal"])
+    rows = rows[
+        rows["path_cost"].notna() &
+        np.isfinite(rows["path_cost"]) &
+        (rows["path_cost"] > 0)
+    ].copy()
+    return rows
+
+
+def get_update_rows(df):
+    if df.empty:
+        return pd.DataFrame()
+    rows = df[df["event_type"] == "update"].copy()
+    rows = safe_numeric(rows, ["update_ms", "obstacle_checks", "path_cost"])
+    return rows
+
+
+def get_terminal_rows(df):
+    if df.empty:
+        return pd.DataFrame()
+    rows = df[df["event_type"].isin(["goal_reached", "time_limit"])].copy()
+    return rows
+
 
 def save_latency_plot(scenario_name, planners_data):
-    if not planners_data: return
-    planners, init_plan, repair_lat = [], [], []
+    if not planners_data:
+        return
+
+    planners = []
+    repair_update = []
 
     for planner, dfs in planners_data.items():
-        valid_dfs = [df for df in dfs if not df.empty]
-        if not valid_dfs: continue
-        
-        merged_df = pd.concat(valid_dfs, ignore_index=True)
+        valid_dfs = [df for df in dfs if not df.empty and "event_type" in df.columns]
+        if not valid_dfs:
+            continue
+
+        successful_dfs = [df for df in valid_dfs if is_successful_run(df)]
+        if not successful_dfs:
+            continue
+
+        all_runtime = [extract_runtime_events(df) for df in successful_dfs]
+        merged_df = pd.concat(all_runtime, ignore_index=True)
+
+        update_rows = get_update_rows(merged_df)
+
         planners.append(planner)
+        repair_update.append(update_rows["update_ms"].dropna().mean() if not update_rows.empty else 0.0)
 
-        # Initial Plan time (from the cold-start frame)
-        df_init = merged_df[merged_df['elapsed_s'] == 0.0]
-        init_plan.append(df_init['plan_ms'].mean() if not df_init.empty else 0)
+    if not planners:
+        return
 
-        # Repair latency (only when obstacles move)
-        df_event = merged_df[(merged_df['elapsed_s'] > 0.0) & (merged_df['update_ms'] > 0.001)]
-        if not df_event.empty:
-            repair_lat.append(df_event['total_latency_ms'].mean())
-        else:
-            repair_lat.append(0)
-
-    if not planners: return
     x = np.arange(len(planners))
-    width = 0.4
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+    width = 0.5
+    fig, ax = plt.subplots(figsize=(6, 5))
 
-    c_init, c_repair = '#2ca02c', '#d95f02'
+    c_update = "#d95f02"
 
-    # Plot 1: Initial Planning Time
-    bars1 = ax1.bar(x, init_plan, width, color=c_init, edgecolor='black', hatch='\\\\')
-    ax1.set_ylabel('Average Latency (ms)')
-    ax1.set_title('Graph Construction ($T_{init}$)')
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(planners)
-    ax1.grid(axis='y', linestyle=':', alpha=0.7)
-    for bar in bars1:
-        val = bar.get_height()
-        if val > 0: ax1.text(bar.get_x() + bar.get_width()/2., val * 1.05, f"{val:.1f}", ha='center', va='bottom', fontweight='bold')
+    # Repair plot
+    bars = ax.bar(x, repair_update, width, label="$T_{repair}$ (Update + Plan)", color=c_update, edgecolor="black")
+    ax.set_title("Dynamic Replan Event Latency (Non-Anytime)")
+    ax.set_ylabel("Average Latency (ms)")
+    ax.set_xticks(x)
+    ax.set_xticklabels(planners)
+    ax.grid(axis="y", linestyle=":", alpha=0.7)
 
-    # Plot 2: Dynamic Repair Time
-    bars2 = ax2.bar(x, repair_lat, width, color=c_repair, edgecolor='black', hatch='//')
-    ax2.set_title('Dynamic Replan Event ($T_{repair}$)')
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(planners)
-    ax2.grid(axis='y', linestyle=':', alpha=0.7)
-    for bar in bars2:
-        val = bar.get_height()
-        if val > 0: ax2.text(bar.get_x() + bar.get_width()/2., val * 1.05, f"{val:.1f}", ha='center', va='bottom', fontweight='bold')
+    for bar in bars:
+        height = bar.get_height()
+        if height > 0:
+            ax.text(bar.get_x() + bar.get_width()/2., height * 1.05, f"{height:.1f}", ha="center", va="bottom", fontweight="bold")
 
-    plt.suptitle(f"Fixed-Graph Latency Breakdown: {scenario_name}", y=1.05)
+    plt.suptitle(f"Algorithmic Latency: {scenario_name}", y=1.05)
     plt.tight_layout()
-    
-    out_path = os.path.join(BUILD_DIR, f"plot_fixed_latency_{scenario_name}.png")
-    plt.savefig(out_path, bbox_inches='tight')
+
+    out_path = os.path.join(BUILD_DIR, f"plot_latency_breakdown_{scenario_name}_non_anytime.png")
+    plt.savefig(out_path, bbox_inches="tight")
     plt.close()
     print(f"[Saved Plot] {out_path}")
+
+
 def analyze_group_statistics(scenario_name, planners_data):
-    print(f"\n{'='*155}")
-    print(f" FIXED-GRAPH ANALYSIS: {scenario_name} (Successful runs only)")
-    print(f"{'='*155}")
-    
+    print(f"\n{'='*200}")
+    print(f" NON-ANYTIME ANALYSIS: {scenario_name} (Successful runs only)")
+    print(f"{'='*200}")
+
     summary_data = []
 
     for planner, dfs in planners_data.items():
         valid_dfs = [df for df in dfs if not df.empty]
-        if not valid_dfs: continue
-        
-        num_seeds = len(valid_dfs)
-        successful_dfs = []
-        success_count = 0
-        
-        for df in valid_dfs:
-            if 'crashed' in df.columns and not (df['crashed'] == 1).any():
-                success_count += 1; successful_dfs.append(drop_terminal_goal_row(df))
-            elif 'collision_count' in df.columns and df['collision_count'].max() == 0:
-                success_count += 1; successful_dfs.append(drop_terminal_goal_row(df))
-            elif 'crashed' not in df.columns and 'collision_count' not in df.columns:
-                success_count += 1; successful_dfs.append(drop_terminal_goal_row(df))
-                
-        succ_rate = (success_count / num_seeds) * 100 if num_seeds > 0 else 0.0
-        if not successful_dfs:
-            summary_data.append({"Planner": planner, "Succ(%)": f"{succ_rate:.0f}%", "Status": "All runs failed"})
+        if not valid_dfs:
             continue
-            
-        merged_df = pd.concat(successful_dfs, ignore_index=True)
-        if 'update_ms' not in merged_df.columns: continue
 
-        # Initial Phase (Graph Construction)
-        df_init = merged_df[merged_df['elapsed_s'] == 0.0]
-        t_set = df_init['setup_ms'].mean() if 'setup_ms' in df_init.columns else 0.0
-        t_init = df_init['plan_ms'].mean() if not df_init.empty else 0.0
+        num_seeds = len(valid_dfs)
+        successful_dfs = [df for df in valid_dfs if is_successful_run(df)]
+        success_count = len(successful_dfs)
+        succ_rate = (success_count / num_seeds) * 100 if num_seeds > 0 else 0.0
 
-        # Dynamic Repair Phase (No new samples, only graph repair)
-        df_event = merged_df[(merged_df['elapsed_s'] > 0.0) & (merged_df['update_ms'] > 0.001)]
+        if not successful_dfs:
+            summary_data.append({
+                "Planner": planner,
+                "Succ(%)": f"{succ_rate:.0f}%",
+                "Status": "All runs failed"
+            })
+            continue
+
+        merged_df = pd.concat([extract_runtime_events(df) for df in successful_dfs], ignore_index=True)
+        merged_all = pd.concat(successful_dfs, ignore_index=True)
+
+        print(f"{planner}: {success_count}/{num_seeds} successful ({succ_rate:.0f}%)")
+        if "event_type" in merged_all.columns:
+            print(f"  Event types: {merged_all['event_type'].value_counts().to_dict()}")
+
+        # Extract fixed properties directly from the initial_plan row
+        df_init = merged_all[merged_all["event_type"] == "initial_plan"].copy() if "event_type" in merged_all.columns else pd.DataFrame()
         
-        if not df_event.empty:
-            t_repair_avg = df_event['total_latency_ms'].mean()
-            t_repair_p99 = df_event['total_latency_ms'].quantile(0.99)
-            obs_chk   = df_event['obstacle_checks'].mean()
-            queue_ops = df_event['queue_operations'].mean() if 'queue_operations' in df_event.columns else 0.0
-            
-            # --- YOUR ORIGINAL LOGIC IS BACK ---
-            # Averages the path cost across all replanning events
-            avg_cost  = df_event['path_cost'].dropna().mean()
-        else:
-            t_repair_avg = t_repair_p99 = obs_chk = queue_ops = 0.0
-            # Fallback to initial plan cost if no repair events happened
-            avg_cost = df_init['path_cost'].dropna().mean() if not df_init.empty else 0.0
+        setup_ms = df_init["setup_ms"].dropna().mean() if ("setup_ms" in df_init.columns and not df_init.empty) else np.nan
+        t_init_pln = df_init["plan_ms"].dropna().mean() if ("plan_ms" in df_init.columns and not df_init.empty) else np.nan
+        isolated_nodes = df_init["isolated_nodes"].dropna().mean() if ("isolated_nodes" in df_init.columns and not df_init.empty) else np.nan
+        samples = df_init["tree_size"].dropna().mean() if ("tree_size" in df_init.columns and not df_init.empty) else np.nan
 
-        tree_sz = merged_df['tree_size'].max()
+        radius_col = "neighborhood_radius" if "neighborhood_radius" in df_init.columns else ("radius" if "radius" in df_init.columns else None)
+        r_n = df_init[radius_col].dropna().mean() if (radius_col and not df_init.empty) else np.nan
+
+        # Core event partitions
+        update_rows = get_update_rows(merged_df)
+        state_rows = get_state_rows(merged_all)
+        terminal_rows = get_terminal_rows(merged_all)
+
+        # Latencies
+        t_repair_avg = update_rows["update_ms"].dropna().mean() if not update_rows.empty else np.nan
+        t_repair_p99 = update_rows["update_ms"].dropna().quantile(0.99) if not update_rows.empty else np.nan
+
+        # Path cost from set_state / goal_reached only
+        avg_cost = state_rows["path_cost"].mean() if not state_rows.empty else np.nan
+
+        # Obstacle checks
+        obs_per_update = update_rows["obstacle_checks"].dropna().mean() if not update_rows.empty else np.nan
         
-        # Calculate isolated nodes string with percentage
-        if 'isolated_nodes' in merged_df.columns:
-            iso_count = merged_df['isolated_nodes'].max()
-            iso_pct = (iso_count / tree_sz) * 100 if tree_sz > 0 else 0.0
-            iso_str = f"{iso_count:.0f} ({iso_pct:.1f}%)"
-        else:
-            iso_str = "0 (0.0%)"
-
-        deg_in  = merged_df['avg_deg_in'].mean() if 'avg_deg_in' in merged_df.columns else 0.0
-        deg_out = merged_df['avg_deg_out'].mean() if 'avg_deg_out' in merged_df.columns else 0.0
+        # Degree stats from terminal rows
+        deg_in = terminal_rows["avg_deg_in"].dropna().mean() if ("avg_deg_in" in terminal_rows.columns and not terminal_rows.empty) else np.nan
+        deg_out = terminal_rows["avg_deg_out"].dropna().mean() if ("avg_deg_out" in terminal_rows.columns and not terminal_rows.empty) else np.nan
 
         summary_data.append({
             "Planner": planner,
             "Succ(%)": f"{succ_rate:.0f}%",
-            "T_set(ms)": f"{t_set:.1f}",
-            "T_init(ms)": f"{t_init:.1f}",
-            "T_repair(ms)": f"{t_repair_avg:.2f}",
-            "Rep_p99(ms)": f"{t_repair_p99:.1f}",
-            "Obs_Chk": f"{obs_chk:.0f}",
-            "Q_Ops": f"{queue_ops:.0f}",
-            "Path_Cost": f"{avg_cost:.2f}", # EXACTLY how you had it: e.g., 81.45
-            "|V|": f"{tree_sz:.0f}",
-            "Iso_Nodes": iso_str,
-            "Deg(I/O)": f"{deg_in:.1f}/{deg_out:.1f}"
+            "Setup(ms)": f"{setup_ms:.1f}" if pd.notna(setup_ms) else "nan",
+            "T_init(ms)": f"{t_init_pln:.1f}" if pd.notna(t_init_pln) else "nan",
+            "T_repair(ms)": f"{t_repair_avg:.1f}" if pd.notna(t_repair_avg) else "nan",
+            "Rep_p99(ms)": f"{t_repair_p99:.1f}" if pd.notna(t_repair_p99) else "nan",
+            "Obs/Upd": f"{obs_per_update:.0f}" if pd.notna(obs_per_update) else "nan",
+            "Path_Cost": f"{avg_cost:.2f}" if pd.notna(avg_cost) else "nan",
+            "Samples": f"{samples:.0f}" if pd.notna(samples) else "nan",
+            "Isolated": f"{isolated_nodes:.0f}" if pd.notna(isolated_nodes) else "nan",
+            "r_n": f"{r_n:.2f}" if pd.notna(r_n) else "nan",
+            "Deg(I/O)": (
+                f"{deg_in:.1f}/{deg_out:.1f}"
+                if pd.notna(deg_in) and pd.notna(deg_out)
+                else "nan"
+            )
         })
 
     if summary_data:
         df_out = pd.DataFrame(summary_data)
-        
-        # EXACTLY your original table header
-        header = (f"{'Planner':<12} | {'Succ%':<6} | {'T_set(ms)':<9} | {'T_init(ms)':<10} | {'T_repair':<8} | {'Rep_p99':<8} | "
-                  f"{'Obs_Chk':<7} | {'Q_Ops':<7} | {'|V|':<6} | {'Iso_Nodes':<12} | {'Deg(I/O)':<9} | {'Path_Cost':<9}")
-        print(header)
-        print("-" * 155)
-        
-        for row in summary_data:
-            if "Status" in row:
-                print(f"{row['Planner']:<12} | {row['Succ(%)']:>4} | {row['Status']}")
-            else:
-                print(f"{row['Planner']:<12} | {row['Succ(%)']:>4} | \033[93m{row['T_set(ms)']:<9}\033[0m | \033[93m{row['T_init(ms)']:<10}\033[0m | "
-                      f"\033[91m{row['T_repair(ms)']:<8}\033[0m | {row['Rep_p99(ms)']:<8} | "
-                      f"{row['Obs_Chk']:<7} | {row['Q_Ops']:<7} | {row['|V|']:<6} | {row['Iso_Nodes']:<12} | "
-                      f"{row['Deg(I/O)']:<9} | {row['Path_Cost']:<9}")
+        print(df_out.to_string(index=False, justify="center"))
+        print("-" * 200)
 
-        print("-" * 155)
-
-        latex_str = df_out.to_latex(
-            index=False, 
-            caption=f"Fixed-Graph Performance Metrics: {scenario_name}",
-            label=f"tab:fixed_metrics_{scenario_name}",
-            column_format="l" + "c"*(len(df_out.columns)-1),
-            escape=False 
-        )
-        print("\n--- LaTeX Table Snippet ---")
-        print(latex_str)
-        print("---------------------------\n")
 
 def save_comparative_plot(scenario_name, planners_data):
-    if not planners_data: return
+    if not planners_data:
+        return
+
     plt.figure(figsize=(10, 6))
+    plotted_any = False
 
     for planner, dfs in planners_data.items():
-        successful_dfs = []
-        for df in dfs:
-            if df.empty or 'path_cost' not in df.columns: continue
-            if 'crashed' in df.columns and (df['crashed'] == 1).any(): continue
-            if 'collision_count' in df.columns and df['collision_count'].max() > 0: continue
-            successful_dfs.append(drop_terminal_goal_row(df)) # FIX: Drop terminal row here too
-            
-        if not successful_dfs: continue
-        
-        is_geometric = (successful_dfs[0]['time_to_goal'].sum() == 0) if 'time_to_goal' in successful_dfs[0].columns else True
-        
-        all_times, all_costs = [], []
-        goal_reached_times = [] # To track exactly when the robot reached the goal
-        
+        successful_dfs = [df for df in dfs if is_successful_run(df)]
+        if not successful_dfs:
+            continue
+
+        all_times = []
+        all_costs = []
+
         for df in successful_dfs:
-            df_clean = df[df['path_cost'].notna() & (df['path_cost'] != np.inf)].copy()
-            if df_clean.empty: continue
-            
-            if not is_geometric and 'time_to_goal' in df_clean.columns:
-                start_budget = df_clean['time_to_goal'].max()
-                # Sim Time = 0 at start, increasing as the robot drives.
-                df_clean['sim_time'] = start_budget - df_clean['time_to_goal']
-                
-                # The exact time the simulation terminated (robot reached goal)
-                goal_reached_times.append(df_clean['sim_time'].max())
+            state_rows = get_state_rows(df)
+            if state_rows.empty:
+                continue
+
+            if "sim_time" in state_rows.columns and state_rows["sim_time"].notna().any():
+                state_rows["plot_time"] = state_rows["sim_time"]
             else:
-                df_clean['sim_time'] = df_clean['elapsed_s']
-                goal_reached_times.append(df_clean['sim_time'].max())
-                
-            df_clean['sim_time_rounded'] = df_clean['sim_time'].round(1)
-            all_times.extend(df_clean['sim_time_rounded'].tolist())
-            all_costs.extend(df_clean['path_cost'].tolist())
+                state_rows["plot_time"] = state_rows["elapsed_s"]
 
-        if not all_times: continue
-        combined = pd.DataFrame({'time': all_times, 'cost': all_costs})
-        combined.dropna(subset=['cost'], inplace=True)
-        
-        grouped = combined.groupby('time')['cost'].agg(['mean', 'std']).reset_index()
-        
-        # Plot the main curve
-        line, = plt.plot(grouped['time'], grouped['mean'], label=planner, linewidth=2)
-        color = line.get_color()
-        plt.fill_between(grouped['time'], grouped['mean'] - grouped['std'], grouped['mean'] + grouped['std'], alpha=0.2, color=color)
+            state_rows["plot_time_rounded"] = state_rows["plot_time"].round(1)
 
-        # Plot vertical line for Goal Reached Time
-        avg_goal_reached = np.mean(goal_reached_times)
-        plt.axvline(x=avg_goal_reached, color=color, linestyle='--', alpha=0.7, 
-                    label=f'{planner} Goal Reached ({avg_goal_reached:.1f}s)')
-        
-        print(f"[{scenario_name}] {planner} Avg Goal-Reached Time: {avg_goal_reached:.2f} seconds")
+            all_times.extend(state_rows["plot_time_rounded"].tolist())
+            all_costs.extend(state_rows["path_cost"].tolist())
 
-    plt.xlabel("Simulation Time (s)")
-    plt.ylabel("Path Cost")
-    plt.title(f"Average Path Cost over Time (Successful Runs) - {scenario_name}")
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left') # Move legend outside to prevent clutter
-    plt.grid(True, linestyle=':', alpha=0.7)
-    
-    out_path = os.path.join(BUILD_DIR, f"plot_fixed_anytime_{scenario_name}_average.png")
-    plt.savefig(out_path, bbox_inches='tight')
-    plt.close()
-    print(f"[Saved Plot] {out_path}")
+        if not all_times:
+            continue
+
+        combined = pd.DataFrame({"time": all_times, "cost": all_costs})
+        grouped = combined.groupby("time")["cost"].agg(["mean", "std"]).reset_index()
+        grouped["std"] = grouped["std"].fillna(0.0)
+
+        plt.plot(grouped["time"], grouped["mean"], label=planner, linewidth=2)
+        plt.fill_between(
+            grouped["time"],
+            grouped["mean"] - grouped["std"],
+            grouped["mean"] + grouped["std"],
+            alpha=0.2
+        )
+        plotted_any = True
+
+    if plotted_any:
+        plt.xlabel("Simulation Time (s)")
+        plt.ylabel("Path Cost")
+        plt.title(f"Average Path Cost over Time (Successful Runs) - {scenario_name}")
+        plt.legend()
+        plt.grid(True, linestyle=":", alpha=0.7)
+
+        out_path = os.path.join(BUILD_DIR, f"plot_non_anytime_{scenario_name}_average.png")
+        plt.savefig(out_path, bbox_inches="tight")
+        plt.close()
+        print(f"[Saved Plot] {out_path}")
+
 
 def main():
     scenarios = load_data(BUILD_DIR)
+
     if scenarios:
         for scenario_name, planners_data in scenarios.items():
             analyze_group_statistics(scenario_name, planners_data)
             save_latency_plot(scenario_name, planners_data)
             save_comparative_plot(scenario_name, planners_data)
     else:
-        print("No NON-ANYTIME CSV files found.")
+        print("No CSV files found.")
+
 
 if __name__ == "__main__":
     main()

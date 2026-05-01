@@ -427,12 +427,12 @@
 </model>
 
 <model name="moving_box_13">
-  <pose>-15.0 -35.0 0 0 0 0</pose>
+  <pose>-15.0 -45.0 0 0 0 0</pose>
   <link name="moving_link">
     <gravity>false</gravity>
     <visual name="visual">
       <geometry>
-        <box><size>10.0 6.0 1.0</size></box>
+        <box><size>30.0 8ZZ.5 1.0</size></box>
       </geometry>
       <material>
         <ambient>1 0.5 0 1</ambient>
@@ -476,7 +476,7 @@
     <gravity>false</gravity>
     <visual name="visual">
       <geometry>
-        <box><size>8.0 8.0 1.0</size></box>
+        <box><size>8.0 18.0 1.0</size></box>
       </geometry>
       <material>
         <ambient>0 1 0 1</ambient>

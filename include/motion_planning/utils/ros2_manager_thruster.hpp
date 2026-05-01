@@ -57,9 +57,12 @@ public:
         
         // Only start the visualization timer. 
         // Simulation is now driven manually by stepSimulation().
-        vis_timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(1000 / vis_frequency_hz),
-            std::bind(&ThrusterROS2Manager::visualizationLoop, this));
+
+        if (vis_frequency_hz!=0){
+            vis_timer_ = this->create_wall_timer(
+                std::chrono::milliseconds(1000 / vis_frequency_hz),
+                std::bind(&ThrusterROS2Manager::visualizationLoop, this));
+        }
             
         RCLCPP_INFO(this->get_logger(), "Initialized Thruster ROS2Manager (Manual Sim Mode).");
     }
@@ -92,16 +95,16 @@ public:
         // 1. Advance Time
         current_sim_time_ -= dt;
         
-        // 2. Safety Clamps
-        if (!current_path_.empty()) {
-            const int dim = current_path_.front().size();
-            if (current_sim_time_ > current_path_.front()(dim - 1)) {
-                current_sim_time_ = current_path_.front()(dim - 1);
-            }
-            if (current_sim_time_ < current_path_.back()(dim - 1)) {
-                current_sim_time_ = current_path_.back()(dim - 1);
-            }
-        }
+        // // 2. Safety Clamps
+        // if (!current_path_.empty()) {
+        //     const int dim = current_path_.front().size();
+        //     if (current_sim_time_ > current_path_.front()(dim - 1)) {
+        //         current_sim_time_ = current_path_.front()(dim - 1);
+        //     }
+        //     if (current_sim_time_ < current_path_.back()(dim - 1)) {
+        //         current_sim_time_ = current_path_.back()(dim - 1);
+        //     }
+        // }
 
         if (!is_path_set_ || current_path_.size() < 2) return;
 
@@ -194,40 +197,143 @@ public:
         robot_trace_edges_.push_back({start_pt, end_pt});
     }
 
-    void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
-        std::lock_guard<std::mutex> lock(path_mutex_);
-        if (new_path_from_main.size() < 2) {
-            is_path_set_ = false;
-            return;
-        }
+    // void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+    //     std::lock_guard<std::mutex> lock(path_mutex_);
+    //     if (new_path_from_main.size() < 2) {
+    //         is_path_set_ = false;
+    //         return;
+    //     }
         
-        if (!is_path_set_) {
-            // First time setup
-            current_path_ = new_path_from_main;
-            // Sync manager time to the path's start time (Last element)
-            current_sim_time_ = current_path_.front()(current_path_.front().size() - 1); 
-            current_interpolated_state_ = current_path_.front();
-            is_path_set_ = true;
-        } else {
-            // --- THE FIX ---
-            // 1. Create a copy of the new path
-            std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
+    //     if (!is_path_set_) {
+    //         // First time setup
+    //         current_path_ = new_path_from_main;
+    //         // Sync manager time to the path's start time (Last element)
+    //         current_sim_time_ = current_path_.front()(current_path_.front().size() - 1); 
+    //         current_interpolated_state_ = current_path_.front();
+    //         is_path_set_ = true;
+    //     } else {
+    //         // --- THE FIX ---
+    //         // 1. Create a copy of the new path
+    //         std::vector<Eigen::VectorXd> stitched_path = new_path_from_main;
             
-            // 2. Stitch the POSITION (x, y) to where the robot actually is right now
-            stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
+    //         // 2. Stitch the POSITION (x, y) to where the robot actually is right now
+    //         stitched_path.front().head<2>() = current_interpolated_state_.head<2>();
             
-            // 3. Stitch the VELOCITY (vx, vy) to where the robot actually is right now
-            const int D_spatial_dim = (current_interpolated_state_.size() - 1) / 2;
-            stitched_path.front().segment(D_spatial_dim, D_spatial_dim) = current_interpolated_state_.segment(D_spatial_dim, D_spatial_dim);
+    //         // 3. Stitch the VELOCITY (vx, vy) to where the robot actually is right now
+    //         const int D_spatial_dim = (current_interpolated_state_.size() - 1) / 2;
+    //         stitched_path.front().segment(D_spatial_dim, D_spatial_dim) = current_interpolated_state_.segment(D_spatial_dim, D_spatial_dim);
             
-            // 4. CRITICAL: Do NOT overwrite the Time!
-            // Keep the time from the planner (new_path_from_main).
-            // stitched_path.front()(dim - 1) = current_sim_time_; // <--- REMOVE THIS LINE
+    //         // 4. CRITICAL: Do NOT overwrite the Time!
+    //         // Keep the time from the planner (new_path_from_main).
+    //         // stitched_path.front()(dim - 1) = current_sim_time_; // <--- REMOVE THIS LINE
             
-            // 5. Update the path
-            current_path_ = stitched_path;
+    //         // 5. Update the path
+    //         current_path_ = stitched_path;
+    //     }
+    // }
+
+
+void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
+    std::lock_guard<std::mutex> lock(path_mutex_);
+
+    if (new_path_from_main.size() < 2) {
+        is_path_set_ = false;
+        current_path_.clear();
+        return;
+    }
+
+    if (!is_path_set_) {
+        current_path_ = new_path_from_main;
+        current_sim_time_ = current_path_.front()(current_path_.front().size() - 1);
+        current_interpolated_state_ = current_path_.front();
+        is_path_set_ = true;
+        return;
+    }
+
+    const double t_now = current_sim_time_;
+    const int dim = current_interpolated_state_.size();
+    const int D_spatial_dim = (dim - 1) / 2;
+
+    std::vector<Eigen::VectorXd> stitched;
+    stitched.reserve(new_path_from_main.size() + 1);
+
+    // Snap point = actual robot state now
+    Eigen::VectorXd snap = current_interpolated_state_;
+    snap(dim - 1) = t_now;
+    stitched.push_back(snap);
+
+    // Skip planner points in robot's "future"
+    size_t start_idx = 0;
+    while (start_idx < new_path_from_main.size() &&
+           new_path_from_main[start_idx](dim - 1) > t_now) {
+        ++start_idx;
+    }
+
+    // Append suffix with strict decreasing-time enforcement
+    for (size_t i = start_idx; i < new_path_from_main.size(); ++i) {
+        const auto& pt = new_path_from_main[i];
+
+        if (!stitched.empty()) {
+            double dt = std::abs(stitched.back()(dim - 1) - pt(dim - 1));
+            Eigen::VectorXd pos_diff = getSpatialPosition(stitched.back()) - getSpatialPosition(pt);
+            Eigen::VectorXd vel_diff = getSpatialVelocity(stitched.back()) - getSpatialVelocity(pt);
+            double dx = pos_diff.norm();
+            double dv = vel_diff.norm();
+
+            // exact duplicate
+            if (dt < 1e-9 && dx < 1e-9 && dv < 1e-9) {
+                continue;
+            }
+
+            // must be strictly decreasing time
+            if (pt(dim - 1) >= stitched.back()(dim - 1)) {
+                continue;
+            }
+        }
+
+        stitched.push_back(pt);
+    }
+
+    if (stitched.size() < 2) {
+        RCLCPP_WARN(this->get_logger(),
+            "Thruster setPath: stitched path too short at t_now=%.6f", t_now);
+        return;
+    }
+
+    // Sanity check
+    for (size_t i = 1; i < stitched.size(); ++i) {
+        if (!(stitched[i-1](dim - 1) > stitched[i](dim - 1))) {
+            RCLCPP_ERROR(this->get_logger(),
+                "Thruster setPath non-decreasing times at i=%zu: %.6f -> %.6f",
+                i, stitched[i-1](dim - 1), stitched[i](dim - 1));
         }
     }
+
+    // // logging
+    // if (!stitched.empty()) {
+    //     double front_t = stitched[0](dim - 1);
+    //     double second_t = (stitched.size() > 1) ? stitched[1](dim - 1) : -1.0;
+    //     double robot_x = stitched[0](0);
+    //     double robot_y = stitched[0](1);
+        
+    //     RCLCPP_WARN(this->get_logger(),
+    //         "Thruster setPath | manager_t=%.3f | front_t=%.3f | second_t=%.3f | robot_pos=(%.3f, %.3f)",
+    //         current_sim_time_, front_t, second_t, robot_x, robot_y);
+    // } else {
+    //     RCLCPP_WARN(this->get_logger(),
+    //         "Thruster setPath | manager_t=%.3f | stitched.empty() -- no path available",
+    //         current_sim_time_);
+    // }
+
+
+    current_path_ = std::move(stitched);
+    is_path_set_ = true;
+
+
+
+
+}
+
 
     Eigen::VectorXd getCurrentSimulatedState() {
         std::lock_guard<std::mutex> lock(path_mutex_);

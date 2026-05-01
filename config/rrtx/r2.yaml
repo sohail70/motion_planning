@@ -29,5 +29,5 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle.sdf"
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20.sdf"
   inflation: 0.0

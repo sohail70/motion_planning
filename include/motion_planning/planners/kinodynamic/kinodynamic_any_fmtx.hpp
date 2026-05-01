@@ -38,10 +38,16 @@ class KinodynamicANYFMTX : public Planner {
         void updateObstacles(const ObstacleVector& obstacles);
         void addNewObstacle(const Obstacle& ob);
         void removeObstacle(const Obstacle& ob);
+        void addStaticObstacles(const ObstacleVector& obstacles);
+        void removeStaticObstacles(const ObstacleVector& obstacles);
+        void addNewStaticObstacle(const Obstacle& ob);
+        void removeStaticObstacle(const Obstacle& ob);
         void clearPlannerState();
         void dumpTreeToCSV(const std::string& filename) const;
         const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
         void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
+
+
         double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
         bool isRobotSafe();
         int getTreeSize() { return tree_.size();}
@@ -127,16 +133,32 @@ class KinodynamicANYFMTX : public Planner {
             }
         }
 
+        int getRootStateIndex() const { return root_state_index_; }
+        double getCostByIndex(int idx) const {
+            return (idx >= 0 && idx < (int)tree_.size()) ? tree_[idx]->getLMC() : std::numeric_limits<double>::infinity();
+        }
+        double getFMTShadowCostByIndex(int idx) const {
+            return (idx >= 0 && idx < (int)fmt_shadow_cost_.size()) ? fmt_shadow_cost_[idx] : std::numeric_limits<double>::infinity();
+        }
+        int getNodeIndexByState(const Eigen::VectorXd& state, double tol=1e-6) const {
+            for (const auto& node : tree_) {
+                if (node && node->getStateValue().head(state.size()).isApprox(state, tol))
+                    return node->getIndex();
+            }
+            return -1;
+        }
+
+        void runFMT(SuboptimalityMetrics& metrics);
 
     private:
         bool updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node);
         void cullNeighbors(FMTNode* v);
         void shrinkingBallRadius();
-        void runFMT(SuboptimalityMetrics& metrics);
 
 
         std::vector<std::unique_ptr<FMTNode>> tree_;
         std::shared_ptr<KDTree> kdtree_;
+        std::shared_ptr<KDTree> spatial_kdtree_;
         std::shared_ptr<StateSpace> statespace_;
         std::shared_ptr<ProblemDefinition> problem_;
         std::shared_ptr<Visualization> visualization_;

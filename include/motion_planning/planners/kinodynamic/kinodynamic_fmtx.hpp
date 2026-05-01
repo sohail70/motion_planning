@@ -31,7 +31,6 @@ class KinodynamicFMTX : public Planner {
 
         void setRobotState(const Eigen::VectorXd& robot_state);
         void near(int node_index);
-
         void visualizeTree();
         void visualizeTreeGradient();
         void visualizeTreeReal();
@@ -40,6 +39,10 @@ class KinodynamicFMTX : public Planner {
         void updateObstacles(const ObstacleVector& obstacles);
         void addNewObstacle(const Obstacle& ob);
         void removeObstacle(const Obstacle& ob);
+        void addStaticObstacles(const ObstacleVector& obstacles);
+        void removeStaticObstacles(const ObstacleVector& obstacles);
+        void addNewStaticObstacle(const Obstacle& ob);
+        void removeStaticObstacle(const Obstacle& ob);
         // double heuristic(int current_index);
         void clearPlannerState();
         void dumpTreeToCSV(const std::string& filename) const;
@@ -149,19 +152,12 @@ class KinodynamicFMTX : public Planner {
             return -1;
         }
 
-        // For heap behaviour debugging!
-        struct HeapEvent {
-            enum Type { ADD, UPDATE, POP };
-            Type type;
-            int node_idx;
-            double cost;
-            int step;
-        };
-        void runFMT(SuboptimalityMetrics& metrics, std::vector<HeapEvent>& shadow_log);
+        void runFMT(SuboptimalityMetrics& metrics);
 
     private:
         std::vector<std::unique_ptr<FMTNode>> tree_;
         std::shared_ptr<KDTree> kdtree_;
+        std::shared_ptr<KDTree> spatial_kdtree_;
         std::shared_ptr<StateSpace> statespace_;
         std::shared_ptr<ProblemDefinition> problem_;
         std::shared_ptr<Visualization> visualization_;
@@ -203,10 +199,5 @@ class KinodynamicFMTX : public Planner {
         void visualizeFMTtree();
 
 
-
-
-        // For heap behaviour debugging!
-        std::vector<HeapEvent> fmtx_heap_log_;
-        std::vector<HeapEvent> shadow_heap_log_;
 };
 

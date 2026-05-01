@@ -362,18 +362,59 @@ bool DeterministicObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
     // Basic Validity Checks
     if (!trajectory.is_valid || trajectory.path_points.empty()) return false;
 
-    // GEOMETRIC MODE LOGIC
-    if (is_geometric_mode_) {
-        const Eigen::VectorXd& p1 = trajectory.path_points[0];
-        const Eigen::VectorXd& p2 = trajectory.path_points[1];
-        Eigen::Vector2d r_start = p1.head<2>();
-        Eigen::Vector2d r_end   = p2.head<2>();
+    // STATIC OBSTACLE
+    if (!ob.is_dynamic) {
         Eigen::Vector2d obs_pos(ob.position.x(), ob.position.y());
         
-        double obs_size = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-        double threshold_sq = std::pow(robot_radius_ + obs_size + inflation, 2);
-        return (distanceSqrdPointToSegment(obs_pos, r_start, r_end) >= threshold_sq);
+        if (ob.type == Obstacle::CIRCLE) {
+            double threshold_sq = std::pow(robot_radius_ + ob.dimensions.radius + inflation, 2);
+            for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+                Eigen::Vector2d r_start = trajectory.path_points[i].head<2>();
+                Eigen::Vector2d r_end   = trajectory.path_points[i + 1].head<2>();
+                
+                if (distanceSqrdPointToSegment(obs_pos, r_start, r_end) < threshold_sq) {
+                    return false;
+                }
+            }
+        } 
+        else if (ob.type == Obstacle::BOX) {
+            // Inflate box to account for robot radius and inflation
+            double total_margin = robot_radius_ + inflation;
+            double eff_width  = ob.dimensions.width  + 2.0 * total_margin;
+            double eff_height = ob.dimensions.height + 2.0 * total_margin;
+            
+            for (size_t i = 0; i < trajectory.path_points.size() - 1; ++i) {
+                Eigen::Vector2d r_start = trajectory.path_points[i].head<2>();
+                Eigen::Vector2d r_end   = trajectory.path_points[i + 1].head<2>();
+                
+                if (lineIntersectsRectangle(r_start, r_end, obs_pos, eff_width, eff_height, ob.dimensions.rotation)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
+
+    // GEOMETRIC MODE LOGIC
+    if (is_geometric_mode_) {
+        Eigen::Vector2d r_start = trajectory.path_points[0].head<2>();
+        Eigen::Vector2d r_end   = trajectory.path_points[1].head<2>();
+        Eigen::Vector2d obs_pos(ob.position.x(), ob.position.y());
+        
+        if (ob.type == Obstacle::CIRCLE) {
+            double threshold_sq = std::pow(robot_radius_ + ob.dimensions.radius + inflation, 2);
+            return (distanceSqrdPointToSegment(obs_pos, r_start, r_end) >= threshold_sq);
+        } 
+        else if (ob.type == Obstacle::BOX) {
+            double total_margin = robot_radius_ + inflation;
+            double eff_width  = ob.dimensions.width  + 2.0 * total_margin;
+            double eff_height = ob.dimensions.height + 2.0 * total_margin;
+            
+            // Return true if it is SAFE (i.e. does NOT intersect)
+            return !lineIntersectsRectangle(r_start, r_end, obs_pos, eff_width, eff_height, ob.dimensions.rotation);
+        }
+    }
+
 
     if (ob.predicted_path.empty()) return true;
 

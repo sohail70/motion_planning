@@ -69,7 +69,6 @@ struct TupleComparator {
 
 struct ReplanMetrics {
     int       obstacle_checks     = 0;   // collision queries — dominant cost
-    long long queue_operations    = 0;   // push/pop/update/remove on open/inconsistency queue
     double    path_cost           = 0.0; // final solution quality after repair
 };
 

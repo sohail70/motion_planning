@@ -133,7 +133,6 @@ void KinodynamicRRTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_va
         node->setG(0.0);
         
         inconsistency_queue_.add(node.get(), 0.0);
-        last_replan_metrics_.queue_operations++;
 
         // Track index for O(1) obstacle protection
         time_pillar_indices_.insert(node->getIndex()); 
@@ -809,7 +808,6 @@ void KinodynamicRRTX::reduceInconsistency() {
             }
         }
         inconsistency_queue_.pop();
-        last_replan_metrics_.queue_operations++;
         RRTxNode* node = top_element.second;
         // Standard RRTx logic: if Cost > LMC + eps, we need to update
         if (node->getG() > node->getLMC() + epsilon_) {
@@ -938,10 +936,8 @@ void KinodynamicRRTX::verifyQueue(RRTxNode* node) {
     if (node->in_queue_) {
         // Update both the priority and maintains g_value through node pointer
         inconsistency_queue_.update(node, min_key);
-        last_replan_metrics_.queue_operations++;
     } else {
         inconsistency_queue_.add(node, min_key);
-        last_replan_metrics_.queue_operations++;
         // node->in_queue_ = true;
     }
 }
@@ -956,7 +952,6 @@ void KinodynamicRRTX::verifyOrphan(RRTxNode* node) {
     }
     if(node->in_queue_==true){
         inconsistency_queue_.remove(node);
-        last_replan_metrics_.queue_operations++;
         // node->in_queue_=false;
     }
     Vc_T_.insert(node->getIndex());

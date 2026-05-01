@@ -609,10 +609,8 @@ void KinodynamicPRMStarDStarLite::initialize(DStarLiteNode* start, DStarLiteNode
         DStarLiteNode* node = nodes_[idx].get();
         node->rhs = 0.0;
         open_queue_.add(node, calculateKey(node));
-        last_replan_metrics_.queue_operations++;
     }
 
-    last_replan_metrics_.queue_operations++;
 }
 
 
@@ -624,17 +622,14 @@ void KinodynamicPRMStarDStarLite::updateVertex(DStarLiteNode* u) {
     if (!is_consistent && u->in_queue_) {
         // Update priority
         open_queue_.update(u, calculateKey(u));
-        last_replan_metrics_.queue_operations++;
     } 
     else if (!is_consistent && !u->in_queue_) {
         // Insert into queue
         open_queue_.add(u, calculateKey(u));
-        last_replan_metrics_.queue_operations++;
     } 
     else if (is_consistent && u->in_queue_) {
         // Remove from queue
         open_queue_.remove(u);
-        last_replan_metrics_.queue_operations++;
     }
 }
 
@@ -734,13 +729,11 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
         if (k_old < k_new) {
             // update
             open_queue_.update(u, k_new);
-            last_replan_metrics_.queue_operations++;
         } 
         // Overconsistent (Found a shortcut!)
         else if (u->g > u->rhs) {
             u->g = u->rhs;
             open_queue_.remove(u);
-            last_replan_metrics_.queue_operations++;
             
             for (auto& [pred, edge_info] : u->backward_neighbors_) {
                 if (pred != goal_node_) {
@@ -787,7 +780,6 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
         }
     }
 }
-
 
 
 double KinodynamicPRMStarDStarLite::computeShortestPathDijkstraMode() {
@@ -1268,8 +1260,12 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
 #endif
 
 
-            // Connected Tracking: Track the best node that ALREADY has a finite path
-            if (candidate->rhs != std::numeric_limits<double>::infinity()) {
+
+            // Only attach to nodes that are fully consistent and NOT in the queue!
+            if (candidate->rhs != std::numeric_limits<double>::infinity() && 
+                candidate->g == candidate->rhs && 
+                !candidate->in_queue_) {
+                
                 double total_cost = temp_bridge.cost + candidate->rhs;
                 if (total_cost < best_connected_cost) {
                     best_connected_cost = total_cost;
@@ -1277,6 +1273,9 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
                     best_connected_bridge = temp_bridge;
                 }
             }
+
+
+
         }
 
         // Only break early if we found a CONNECTED node. 
@@ -1499,6 +1498,7 @@ std::vector<Eigen::VectorXd> KinodynamicPRMStarDStarLite::getPathPositions() con
         }
         
         DStarLiteNode* next_node = current_node->best_parent_;
+
         if (!next_node) {
             break; // Reached goal or dead end (expected for recovery nodes)
         }

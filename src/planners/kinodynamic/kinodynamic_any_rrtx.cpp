@@ -103,9 +103,6 @@ void KinodynamicANYRRTX::clearPlannerState() {
 
 
 void KinodynamicANYRRTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes) {
-    // ====================================================================
-    // INJECT TIME PILLAR NODES (ZERO VELOCITIES)
-    // ====================================================================
     double max_time = upper_bounds_(statespace_->getDimension() - 1); 
 
 
@@ -127,14 +124,11 @@ void KinodynamicANYRRTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state
         
         node->setTimeToGoal(t_val);
         
-        // RRTx SPECIFIC: Both G and LMC must be 0.0 for a true root!
         node->setLMC(0.0);
         node->setG(0.0);
         
         inconsistency_queue_.add(node.get(), 0.0);
-        last_replan_metrics_.queue_operations++;
 
-        // Track index for O(1) obstacle protection
         time_pillar_indices_.insert(node->getIndex()); 
 
         tree_.push_back(std::move(node));
@@ -478,20 +472,18 @@ void KinodynamicANYRRTX::plan() {
             // Update node costs and neighbors
             /*
                 Is rewireNeighbors Necessary here? isnt reduceInconsistency function has rewire neighbor in it? Its is necessary here for new samples!
-                imagine the robot is near root and we added a new sample to the envrionment far away 
-                from robot then if we dont rewire neighbors then those neighbors wont get into the queue
-                to later be processed by reducinconsistency.
+                So you either do rewireNeighbor or do verifyQueue()
+                mind that you shouldnt use the setG for the new sample node if you use the verify queue! or else you'd lose RRT* subgraph realization
+                but if you do rewireNeighbor then its better to set the new samples G to avoid going to updateLMC and rewire neighbor again in reduceInconsistency
+                becuse we are already updated the lmc of the new sample in extend and we already did a rewireNeighbor call for it here! so its a waste of cycles
+
             */
             rewireNeighbors(new_node); 
+            new_node->setG(new_node->getLMC());
+
+
             // verifyQueue(new_node);
-            /*
-                hmmm?!!
-                I dont think we should setG here because after a new sample is added to the tree the immeidate neighbor
-                should get improved immediately and if we setG then the rewire function wont allow the first line if condtion to pass
-                this is important because its gonna make a difference between AO and epsilon-AO
-                the fact that new nodes can rewire immeidate neighbors is what RRT* is about!
-            */
-            // new_node->setG(new_node->getLMC());
+
             reduceInconsistency();
         }
     }
@@ -964,7 +956,6 @@ void KinodynamicANYRRTX::reduceInconsistency() {
             }
         }
         inconsistency_queue_.pop();
-        last_replan_metrics_.queue_operations++;
         RRTxNode* node = top_element.second;
         // Standard RRTx logic: if Cost > LMC + eps, we need to update
         if (node->getG() > node->getLMC() + epsilon_) {
@@ -1085,10 +1076,8 @@ void KinodynamicANYRRTX::verifyQueue(RRTxNode* node) {
     if (node->in_queue_) {
         // Update both the priority and maintains g_value through node pointer
         inconsistency_queue_.update(node, min_key);
-        last_replan_metrics_.queue_operations++;
     } else {
         inconsistency_queue_.add(node, min_key);
-        last_replan_metrics_.queue_operations++;
         // node->in_queue_ = true;
     }
 }
@@ -1103,7 +1092,6 @@ void KinodynamicANYRRTX::verifyOrphan(RRTxNode* node) {
     }
     if(node->in_queue_==true){
         inconsistency_queue_.remove(node);
-        last_replan_metrics_.queue_operations++;
         // node->in_queue_=false;
     }
     Vc_T_.insert(node->getIndex());
@@ -2161,355 +2149,3 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
 }
 
 #endif
-
-
-// // STRATEGY 3: DEFAULT (Brute-Force)
-// #else
-// void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob) {
-//     if (ob.predicted_path.empty()) return;
-    
-//     // Log entry
-//     std::cout << "[DEBUG] addNewObstacle called for: " << ob.name << std::endl;
-
-//     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius :
-//                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-//     double search_radius;
-//     if (is_geometric_mode_) {
-//         search_radius = obs_r + ob.inflation + delta;
-//     } else {
-//         double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0);
-//         search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
-//     }
-
-//     std::unordered_set<int> unique_node_indices;
-//     for (const auto& point_3d : ob.predicted_path) {
-//         Eigen::VectorXd query(kd_dim);
-//         if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
-//         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
-//         else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
-//         else if (kd_dim == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
-//         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
-//         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
-//     }
-
-// // Debug: check specific indices presence
-// int child_idx = 328;
-// int parent_idx = 259;
-// bool child_found = (unique_node_indices.count(child_idx) > 0);
-// bool parent_found = (unique_node_indices.count(parent_idx) > 0);
-// std::cout << "[DBG] unique_node_indices contains child " << child_idx << "? " << (child_found ? "YES" : "NO") 
-//           << " parent " << parent_idx << "? " << (parent_found ? "YES" : "NO") << "\n";
-
-
-//     std::cout << "[DEBUG] Obstacle " << ob.name << " affects " << unique_node_indices.size() << " nodes." << std::endl;
-
-//     // auto checkAndBlockEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge) {
-//     //     if (edge.distance == std::numeric_limits<double>::infinity()) return;
-
-//     //     last_replan_metrics_.obstacle_checks++;
-        
-//     //     bool is_safe = obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob);
-
-//     //     // --- FORENSIC LOGGING FOR THE PROBLEMATIC EDGE ---
-//     //     // Based on logs, the violation is often Node 233 -> Parent 359 or 63
-//     //     if ((node->getIndex() == 233 && (neighbor->getIndex() == 359 || neighbor->getIndex() == 63)) ||
-//     //         (neighbor->getIndex() == 233 && (node->getIndex() == 359 || node->getIndex() == 63))) {
-            
-//     //         std::cout << "\n[FORENSIC] Checking Edge " << node->getIndex() << " -> " << neighbor->getIndex() 
-//     //                   << " against Obstacle [" << ob.name << "]" << std::endl;
-//     //         std::cout << "   Edge Start TTG: " << edge_start_ttg << std::endl;
-//     //         std::cout << "   Cached Trajectory Valid: " << (edge.cached_trajectory ? "Yes" : "NULL") << std::endl;
-//     //         if (edge.cached_trajectory) {
-//     //             std::cout << "   Cached Traj Cost: " << edge.cached_trajectory->cost << std::endl;
-//     //         }
-//     //         std::cout << "   Collision Check Result: " << (is_safe ? "SAFE" : "COLLISION") << std::endl;
-            
-//     //         if (!is_safe) {
-//     //             std::cout << "   >>> ACTION: Blocking edge (Setting dist to std::numeric_limits<double>::infinity()) <<<" << std::endl;
-//     //         }
-//     //     }
-//     //     // --------------------------------------------------
-
-//     //     if (!is_safe) {
-//     //         edge.distance = std::numeric_limits<double>::infinity();
-//     //         if (neighbor->incomingEdges().count(node)) {
-//     //             neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
-//     //         }
-//     //         if (neighbor->getParent() == node) verifyOrphan(neighbor);
-//     //         if (node->getParent() == neighbor) verifyOrphan(node);
-//     //     }
-//     // };
-
-// auto checkAndBlockEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge) {
-//     // fast path
-//     if (edge.distance == std::numeric_limits<double>::infinity()) return;
-
-//     const double edge_start_ttg = node->getTimeToGoal();
-//     last_replan_metrics_.obstacle_checks++;
-
-//     // FORENSIC: print everything for the pair of interest (or print for all if you want)
-//     bool is_interesting = ( (node->getIndex() == 328 && neighbor->getIndex() == 259)
-//                          || (node->getIndex() == 259 && neighbor->getIndex() == 328) );
-
-//     if (is_interesting) {
-//         std::cout << "[DBG_EDGE] checking edge " << node->getIndex() << " -> " << neighbor->getIndex()
-//                   << " prior_dist=" << edge.distance << " node_ttg=" << edge_start_ttg << "\n";
-//         std::cout << "         edge.cached_trajectory? " << (edge.cached_trajectory ? "YES":"NO");
-//         if (edge.cached_trajectory) {
-//             std::cout << " cost=" << edge.cached_trajectory->cost
-//                       << " pts=" << edge.cached_trajectory->path_points.size()
-//                       << " first_pt_t=" << (edge.cached_trajectory->path_points.front())( (int)edge.cached_trajectory->path_points.front().size() - 1 )
-//                       << " last_pt_t="  << (edge.cached_trajectory->path_points.back())( (int)edge.cached_trajectory->path_points.back().size() - 1 );
-//         }
-//         std::cout << "\n";
-
-//         // If you also store obstacle bounds in Obstacle, print them:
-//         std::cout << "         obstacle bbox x[" << ob.min_x << "," << ob.max_x << "] y[" << ob.min_y << "," << ob.max_y << "]\n";
-//     }
-//     if (is_interesting) {
-//     std::cout << "[DBG_EDGE_PATH] addNewObstacle vs " << ob.name 
-//               << " path_size=" << ob.predicted_path.size()
-//               << " first_t=" << (ob.predicted_path.empty() ? 0 : ob.predicted_path.front().z())
-//               << " last_t=" << (ob.predicted_path.empty() ? 0 : ob.predicted_path.back().z())
-//               << " bbox y[" << ob.min_y << "," << ob.max_y << "]\n";
-//     }
-
-//     bool is_safe = true;
-//     if (!edge.cached_trajectory) {
-//         // defensive: recompute a fresh steer (this matches your forensic re-steer)
-//         Trajectory fresh = statespace_->steer(node->getStateValue(), neighbor->getStateValue());
-//         if (!fresh.is_valid) {
-//             is_safe = false; // or treat invalid as unsafe
-//         } else {
-//             is_safe = obs_checker_->isTrajectorySafeAgainstSingleObstacle(fresh, ob);
-//             if (is_interesting) {
-//                 std::cout << "[DBG_EDGE] fresh steer computed valid=" << fresh.is_valid << " cost=" << fresh.cost
-//                           << " fresh_safe=" << (is_safe ? "YES":"NO") << "\n";
-//             }
-//         }
-//     } else {
-//         is_safe = obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob);
-//     }
-
-//     if (is_interesting) {
-//         std::cout << "[DBG_EDGE] checker returned safe=" << (is_safe ? "YES":"NO") << " for edge "
-//                   << node->getIndex() << "->" << neighbor->getIndex() << "\n";
-//     }
-
-//     if (!is_safe) {
-//         // block the edge
-//         edge.distance = std::numeric_limits<double>::infinity();
-
-
-
-//         if (neighbor->incomingEdges().count(node)) {
-//             neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
-//         } else {
-//             if (is_interesting) {
-//                 std::cout << "[DBG_EDGE] WARNING: neighbor->incomingEdges() does NOT contain node pointer!\n";
-//             }
-//         }
-//         // // after you set edge.distance = std::numeric_limits<double>::infinity();
-//         // if (node->outgoingEdges().count(neighbor)) {
-//         //     std::cout << "[DBG_VERIFY_IMMEDIATE] node->outgoingEdges().at(neighbor).distance = "
-//         //             << node->outgoingEdges().at(neighbor).distance << "\n";
-//         // } else {
-//         //     std::cout << "[DBG_VERIFY_IMMEDIATE] WARNING: node->outgoingEdges() does not contain neighbor pointer!\n";
-//         // }
-//         // if (neighbor->incomingEdges().count(node)) {
-//         //     std::cout << "[DBG_VERIFY_IMMEDIATE] neighbor->incomingEdges().at(node).distance = "
-//         //             << neighbor->incomingEdges().at(node).distance << "\n";
-//         // } else {
-//         //     std::cout << "[DBG_VERIFY_IMMEDIATE] neighbor->incomingEdges() does NOT contain node pointer!\n";
-//         // }
-//         // if this was tree parent, orphan notifications
-//         if (neighbor->getParent() == node) verifyOrphan(neighbor);
-//         if (node->getParent() == neighbor) verifyOrphan(node);
-
-//         if (is_interesting) {
-//             std::cout << "[DBG_EDGE] BLOCKED edge " << node->getIndex() << "->" << neighbor->getIndex() << "\n";
-//         }
-//     }
-// };
-
-
-//     for (int idx : unique_node_indices) {
-//         RRTxNode* node = tree_[idx].get();
-//         for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndBlockEdge(node, neighbor, edge);
-//         for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
-//     }
-
-
-// // right after processing unique_node_indices (end of addNewObstacle)
-// for (int idx : unique_node_indices) {
-//     RRTxNode* n = tree_[idx].get();
-//     RRTxNode* p = n->getParent();
-//     if (!p) continue;
-//     auto it = n->outgoingEdges().find(p);
-//     if (it == n->outgoingEdges().end()) {
-//         std::cout << "[DBG_POST_ADD] Node " << n->getIndex() << " -> parent " << p->getIndex()
-//                   << " : NOT FOUND in outgoingEdges()\n";
-//     } else {
-//         std::cout << "[DBG_POST_ADD] Node " << n->getIndex() << " -> parent " << p->getIndex()
-//                   << " stored dist=" << it->second.distance << " original=" << it->second.distance_original << "\n";
-//     }
-// }
-
-// }
-// void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
-//     if (ob.predicted_path.empty()) return;
-//     // Log entry
-//     std::cout << "[DEBUG] removeObstacle called for: " << ob.name << std::endl;
-//     double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius :
-//                    std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-//     double search_radius;
-//     if (is_geometric_mode_) {
-//         search_radius = obs_r + ob.inflation + delta;
-//     } else {
-//         double gap_coverage_inflation = obs_r * (std::sqrt(2.0) - 1.0);
-//         search_radius = obs_r + ob.inflation + delta + gap_coverage_inflation;
-//     }
-//     std::unordered_set<int> unique_node_indices;
-//     for (const auto& point_3d : ob.predicted_path) {
-//         Eigen::VectorXd query(kd_dim);
-//         if (kd_dim == 3) query << point_3d.x(), point_3d.y(), point_3d.z();
-//         else if (kd_dim == 2) query << point_3d.x(), point_3d.y();
-//         else if (kd_dim == 4) query << point_3d.x(), point_3d.y(), M_PI, point_3d.z();
-//         else if (kd_dim == 5) query << point_3d.x(), point_3d.y(), 0.0, 0.0, point_3d.z();
-//         std::vector<size_t> indices = kdtree_->radiusSearch(query, search_radius);
-//         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
-//     }
-//     const ObstacleVector& all_obstacles = obs_checker_->getObstacles();
-   
-
-// auto checkAndRestoreEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge, bool& neighborsWereBlocked) {
-//         if (edge.distance == std::numeric_limits<double>::infinity()) {
-//             bool should_restore = false;
-            
-//             bool is_target_edge = (node->getIndex() == 328 && neighbor->getIndex() == 259);
-            
-//             if (is_target_edge) {
-//                 std::cout << "\n[FORENSIC] Attempting Restore Edge " << node->getIndex() 
-//                           << " -> " << neighbor->getIndex() 
-//                           << " (Removing Obstacle [" << ob.name << "])" << std::endl;
-//                 std::cout << "   Edge Start TTG: " << ttg << std::endl;
-//                 std::cout << "   Total obstacles in check list: " << all_obstacles.size() << std::endl;
-//             }
-            
-//             // Check if the edge is safe against the REMOVED obstacle
-//             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
-//                 if (is_target_edge) {
-//                     std::cout << "   >>> WARNING: Edge still collides with [" << ob.name << "] despite removal! <<<" << std::endl;
-//                 }
-                
-//                 bool conflicts_with_other = false;
-//                 bool found_moving_box_10 = false;
-
-//                 for (const auto& other_ob : all_obstacles) {
-//                     if (other_ob.name == ob.name) continue;
-                    
-//                     if (is_target_edge && other_ob.name == "moving_box_10") {
-//                         found_moving_box_10 = true;
-//                     }
-
-//                     last_replan_metrics_.obstacle_checks++;
-//                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), other_ob)) {
-//                         conflicts_with_other = true;
-//                         if (is_target_edge) {
-//                             std::cout << "   >>> Conflict found with: " << other_ob.name << std::endl;
-//                             std::cout << "[RESTORE_PATH] CONFLICT with " << other_ob.name 
-//                                       << " during remove of " << ob.name
-//                                       << " path_size=" << other_ob.predicted_path.size()
-//                                       << " first_t=" << (other_ob.predicted_path.empty() ? 0 : other_ob.predicted_path.front().z())
-//                                       << " last_t="  << (other_ob.predicted_path.empty() ? 0 : other_ob.predicted_path.back().z())
-//                                       << "\n";
-//                         }
-//                         break;
-//                     } 
-//                     else if (is_target_edge && other_ob.name == "moving_box_10") {
-//                         std::cout << "[RESTORE_PATH] NO CONFLICT with moving_box_10 (this is the bug!) "
-//                                   << "during remove of " << ob.name
-//                                   << " path_size=" << other_ob.predicted_path.size()
-//                                   << " first_t=" << (other_ob.predicted_path.empty() ? 0 : other_ob.predicted_path.front().z())
-//                                   << " last_t="  << (other_ob.predicted_path.empty() ? 0 : other_ob.predicted_path.back().z())
-//                                   << "\n";
-//                     }
-//                 }
-
-//                 if (is_target_edge && !found_moving_box_10) {
-//                     std::cout << "\033[1;31m   [CRITICAL BUG] 'moving_box_10' was NOT found in all_obstacles list!\033[0m" << std::endl;
-//                 }
-
-//                 if (!conflicts_with_other) {
-//                     should_restore = true;
-//                     if (is_target_edge) std::cout << "   >>> ACTION: Restoring edge (No other conflicts found) <<<" << std::endl;
-//                 }
-//             } 
-//             else {
-//                 // It is safe against the removed obstacle. Check others.
-//                 bool conflicts_with_other = false;
-//                 bool found_moving_box_10 = false;
-
-//                 for (const auto& other_ob : all_obstacles) {
-//                     if (other_ob.name == ob.name) continue;
-
-//                     if (is_target_edge && other_ob.name == "moving_box_10") {
-//                         found_moving_box_10 = true;
-//                     }
-
-//                     last_replan_metrics_.obstacle_checks++;
-//                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), other_ob)) {
-//                         conflicts_with_other = true;
-//                         if (is_target_edge) {
-//                             std::cout << "   >>> Conflict found with: " << other_ob.name << std::endl;
-//                             std::cout << "[RESTORE_PATH] CONFLICT with " << other_ob.name 
-//                                       << " during remove of " << ob.name
-//                                       << " path_size=" << other_ob.predicted_path.size()
-//                                       << " first_t=" << (other_ob.predicted_path.empty() ? 0 : other_ob.predicted_path.front().z())
-//                                       << " last_t="  << (other_ob.predicted_path.empty() ? 0 : other_ob.predicted_path.back().z())
-//                                       << "\n";
-//                         }
-//                         break;
-//                     } 
-//                     else if (is_target_edge && other_ob.name == "moving_box_10") {
-//                         std::cout << "[RESTORE_PATH] NO CONFLICT with moving_box_10 (this is the bug!) "
-//                                   << "during remove of " << ob.name
-//                                   << " path_size=" << other_ob.predicted_path.size()
-//                                   << " first_t=" << (other_ob.predicted_path.empty() ? 0 : other_ob.predicted_path.front().z())
-//                                   << " last_t="  << (other_ob.predicted_path.empty() ? 0 : other_ob.predicted_path.back().z())
-//                                   << "\n";
-//                     }
-//                 }
-
-//                 if (is_target_edge && !found_moving_box_10) {
-//                     std::cout << "\033[1;31m   [CRITICAL BUG] 'moving_box_10' was NOT found in all_obstacles list!\033[0m" << std::endl;
-//                 }
-
-//                 if (!conflicts_with_other) {
-//                     should_restore = true;
-//                     if (is_target_edge) std::cout << "   >>> ACTION: Restoring edge (Safe against all others) <<<" << std::endl;
-//                 }
-//             }
-            
-//             if (should_restore) {
-//                 edge.distance = edge.distance_original;
-//                 if (neighbor->incomingEdges().count(node)) {
-//                     neighbor->incomingEdges().at(node).distance = edge.distance_original;
-//                 }
-//                 neighborsWereBlocked = true;
-//             }
-//         }
-//     };
-    
-//     for (int idx : unique_node_indices) {
-//         RRTxNode* node = tree_[idx].get();
-//         bool neighborsWereBlocked = false;
-//         for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
-//         for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
-//         if (neighborsWereBlocked) {
-//             updateLMC(node);
-//             if (node->getG() != node->getLMC()) verifyQueue(node);
-//         }
-//     }
-// }
-// #endif
