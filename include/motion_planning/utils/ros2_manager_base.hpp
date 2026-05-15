@@ -35,4 +35,6 @@ public:
     
     // Optional: Get current simulation time if needed directly
     virtual double getCurrentSimTime() const = 0;
+
+    virtual void notifyGoalReached() = 0;
 };

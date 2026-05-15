@@ -1,13 +1,15 @@
+# Mind the STATIC macro needs to be enabled
 experiment:
-  name: "PRMSTARDSTARLITE_Dubins_Test"
-  planner_type: "KinodynamicPRMStarDStarLite"
-  state_space_type: "Dubins"
-  manager_type: "Dubins"
+  name: "RTube_test"
+  planner_type: "KinodynamicANYFMTX"
+  state_space_type: "RDT"
+  manager_type: "R2T"
 
 simulation:
-  time_budget: 35.0
+  duration_limit: 100
+  time_budget: 30.0
   slice_time: 0.02
-  seed: 46
+  seed: 42
 
 robot:
   start_state: [48.0, 48.0, -0.785] # x, y, theta, time_budget
@@ -15,25 +17,24 @@ robot:
   dimensions: 4
   bounds_min: [-50.0, -50.0, -3.14159]
   bounds_max: [50.0, 50.0, 3.14159]
-  
   min_velocity: 2.0
   max_velocity: 20.0
   min_turning_radius: 2.0
 
 planner_params:
-  num_of_samples: 3000
-  factor: 2.0
+  num_of_samples: 10
+  factor: 3.0
+  delta: 20.0
+  epsilon: 0.1
   kdtree_type: "NanoFlann"
-  partial_update: true
+  partial_update: false
   kd_dim: 4
   is_geometric_mode: false
-  num_pillar_nodes: 0
-  goal_radius: 0.5
-  heuristic: true
 
 manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_20.sdf"
-  inflation: 1.0
+  sdf_path: "../sims/static_world_spatiotemporal_1.sdf"
+  # sdf_path: "../sims/static_world_spatiotemporal_5.sdf"
+  inflation: 0.0

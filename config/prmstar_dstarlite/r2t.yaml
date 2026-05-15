@@ -7,7 +7,7 @@ experiment:
 simulation:
   time_budget: 25.0
   slice_time: 0.02
-  seed: 10014
+  seed: 46
 
 robot:
   start_state: [48.0, 48.0] # x, y, time_budget (Must match dim)
@@ -27,11 +27,12 @@ planner_params:
   is_geometric_mode: false
   num_pillar_nodes: 0
   goal_radius: 0.5
+  heuristic: true
 
 
 manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_10.sdf"
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20.sdf"
   inflation: 1.0

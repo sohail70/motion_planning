@@ -531,6 +531,15 @@ public:
         
         double segment_duration = state_before(2) - state_after(2);
         
+
+        // Compute speed for this segment
+        double segment_dist = (state_after.head<2>() - state_before.head<2>()).norm();
+        if (segment_duration > 1e-9) {
+            current_speed_ = segment_dist / segment_duration;
+        } else {
+            current_speed_ = 0.0;
+        }
+
         // Store previous state BEFORE updating current_interpolated_state_
         Eigen::VectorXd prev_state = current_interpolated_state_;
 
@@ -767,7 +776,15 @@ public:
     void setExternalSimTime(double t) {
         current_sim_time_ = t;
     }
-
+    void notifyGoalReached() {
+        // Use unique_lock to allow early unlocking
+        std::unique_lock<std::mutex> lock(path_mutex_);
+        goal_reached_ = true;
+        current_speed_ = 0.0;
+        lock.unlock();   // release the mutex now
+        // Safe to call visualizationLoop() – no deadlock
+        visualizationLoop();
+    }
 private:
 std::shared_ptr<ObstacleChecker> obstacle_checker_;
 std::shared_ptr<RVizVisualization> visualizer_;
@@ -787,6 +804,9 @@ std::shared_ptr<RVizVisualization> visualizer_;
     std::set<std::string> current_threat_names_;
     double initial_budget_time_;
     double inflation;
+    double current_speed_ = 0;
+    bool goal_reached_ = false;
+
 
     // // Visualization Loop (Background Thread - Obstacles Only)
     // void visualizationLoop() { 
@@ -865,10 +885,9 @@ std::shared_ptr<RVizVisualization> visualizer_;
                     if (is_threat) threat_boxes.push_back(box_tuple);
                     else safe_boxes.push_back(box_tuple);
                 }
-                Eigen::Vector2d scaled_velocity = obstacle.velocity * 0.2;
                 if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
-                    if (is_threat) { threat_vel_pos.push_back(obstacle.position); threat_vel_val.push_back(scaled_velocity); }
-                    else { safe_vel_pos.push_back(obstacle.position); safe_vel_val.push_back(scaled_velocity); }
+                    if (is_threat) { threat_vel_pos.push_back(obstacle.position); threat_vel_val.push_back(obstacle.velocity); }
+                    else { safe_vel_pos.push_back(obstacle.position); safe_vel_val.push_back(obstacle.velocity); }
                 }
             }
         }
@@ -892,16 +911,19 @@ std::shared_ptr<RVizVisualization> visualizer_;
             is_colliding = is_in_collision_state_;
         }
 
-        // --- 3. PUBLISH BATCH ---
-        // Note: We still use visualizeRobotArrow separately because it's a single marker 
-        // and easier to manage than adding it to the complex obstacle batch logic.
-        // But the Trace is now batched with obstacles!
-        
-        // // Draw Arrow
-        // std::vector<float> arrow_color = is_colliding ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.8f, 0.1f, 0.8f};
-        // visualizer_->visualizeRobotArrow(robot_pos, orientation_quat, "map", arrow_color, "simulated_robot");
 
-        // --- 3. PUBLISH BATCH (UPDATED) ---
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(1) << "v=" << current_speed_ << " m/s";
+        std::string robot_state_text = oss.str();
+        std::vector<double> bar_vals = {current_speed_};
+        std::vector<std::string> bar_names = {"v"};
+
+        if (goal_reached_)
+            bar_vals = {0.0};
+
+
+
+        // PUBLISH BATCH
         std::vector<float> robot_color = is_colliding ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.0f, 0.45f, 0.74f};
         
         // Pass robot data directly to the batch function
@@ -910,6 +932,8 @@ std::shared_ptr<RVizVisualization> visualizer_;
             safe_boxes, threat_boxes, safe_vel_pos, safe_vel_val, threat_vel_pos, threat_vel_val,
             current_trace, 
             robot_pos, orientation_quat, robot_color, inflation,
+            robot_state_text,
+            bar_vals, bar_names,
             "map"
         );
     }

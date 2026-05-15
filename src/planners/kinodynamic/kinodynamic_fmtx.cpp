@@ -1797,7 +1797,7 @@ void KinodynamicFMTX::analyzeSuboptimality(FMTNode* x, FMTNode* best_parent_for_
             if (!is_geometric_mode_) {
                 double missed_dt = x->getTimeToGoal() - y->getTimeToGoal();
                 double missed_dx = (x->getStateValue().head<2>() - y->getStateValue().head<2>()).norm();
-                std::cout << "[R2T_SUBOPT_DEBUG] Node " << x->getIndex()
+                std::cout << "[SUBOPT_DEBUG] Node " << x->getIndex()
                         << " | Missed y=" << y->getIndex() << " | Δcost=" << (chosen_cost - candidate_cost) << "\n";
             }
             if (candidate_cost < best_missed_cost) {

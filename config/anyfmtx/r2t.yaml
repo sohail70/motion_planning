@@ -22,12 +22,12 @@ planner_params:
   num_of_samples: 1
   factor: 2.0
   delta: 20.0
-  epsilon: 0.0
+  epsilon: 0.1
   kdtree_type: "NanoFlann"
   partial_update: true
   kd_dim: 3
   is_geometric_mode: false
-  num_pillar_nodes: 0
+  num_pillar_nodes: 50
   goal_radius: 0.5
 
 
@@ -36,4 +36,4 @@ manager_params:
 
 gazebo_params:
   sdf_path: "../sims/dynamic_world_straight_box_circle_10.sdf"
-  inflation: 0.75
+  inflation: 1.0

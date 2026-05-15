@@ -5,8 +5,8 @@ experiment:
   manager_type: "R2T"
 
 simulation:
-  duration_limit: 10000
-  slice_time: 0.05
+  duration_limit: 10
+  slice_time: 0.02
   seed: 42
 
 robot:
@@ -20,7 +20,7 @@ planner_params:
   num_of_samples: 1
   factor: 2.0
   delta: 10.0
-  epsilon: 1000.0
+  epsilon: 0.0
   kdtree_type: "NanoFlann"
   partial_update: false
   kd_dim: 2

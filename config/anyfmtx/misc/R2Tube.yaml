@@ -1,34 +1,39 @@
+# Mind the STATIC macro needs to be enabled
 experiment:
-  name: "AO_test"
+  name: "RTube_test"
   planner_type: "KinodynamicANYFMTX"
   state_space_type: "RDT"
   manager_type: "R2T"
 
 simulation:
   duration_limit: 100
-  slice_time: 0.3
+  time_budget: 30.0
+  slice_time: 0.02
   seed: 42
 
 robot:
   start_state: [48.0, 48.0] 
   goal_state:  [-48.0, -48.0]
-  dimensions: 2
+  dimensions: 3
   bounds_min: [-50.0, -50.0]
   bounds_max: [50.0, 50.0]
+  min_velocity: 0.0
+  max_velocity: 20.0
 
 planner_params:
-  num_of_samples: 100
+  num_of_samples: 10
   factor: 2.0
   delta: 15.0
-  epsilon: 0.0
+  epsilon: 0.1
   kdtree_type: "NanoFlann"
   partial_update: false
-  kd_dim: 2
-  is_geometric_mode: true
+  kd_dim: 3
+  is_geometric_mode: false
 
 manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/static_world_straight_box_circle_35.sdf"
+  sdf_path: "../sims/static_world_spatiotemporal_1.sdf"
+  # sdf_path: "../sims/static_world_spatiotemporal_5.sdf"
   inflation: 0.0

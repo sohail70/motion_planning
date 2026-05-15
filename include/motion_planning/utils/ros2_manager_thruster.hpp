@@ -148,6 +148,20 @@ public:
             current_interpolated_state_(dim - 1) = current_sim_time_;
         }
 
+
+        // Compute current speed & acceleration for visualization
+        {
+            Eigen::VectorXd vel_now = getSpatialVelocity(current_interpolated_state_);
+            current_speed_ = vel_now.norm();
+            if (segment_duration > 1e-9) {
+                Eigen::VectorXd dv = getSpatialVelocity(state_after) - getSpatialVelocity(state_before);
+                current_accel_mag_ = dv.norm() / segment_duration;
+            } else {
+                current_accel_mag_ = 0.0;
+            }
+        }
+
+
         // 4. Collision Check
         auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
         if (gazebo_checker) {
@@ -353,6 +367,18 @@ void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
         return current_sim_time_;
     }
 
+    void notifyGoalReached() {
+        // Use unique_lock to allow early unlocking
+        std::unique_lock<std::mutex> lock(path_mutex_);
+        goal_reached_ = true;
+        current_speed_ = 0.0;
+        current_accel_mag_ = 0.0;
+        lock.unlock();   // release the mutex now
+        // Safe to call visualizationLoop() – no deadlock
+        visualizationLoop();
+    }
+
+    
 private:
     std::shared_ptr<ObstacleChecker> obstacle_checker_;
     std::shared_ptr<RVizVisualization> visualizer_;
@@ -371,6 +397,10 @@ private:
     std::set<std::string> current_threat_names_;
     double initial_budget_time_;
     double inflation;
+    double current_speed_ = 0;
+    double current_accel_mag_ = 0;
+    bool goal_reached_ = false;
+
 
     void visualizationLoop() { 
         if (!obstacle_checker_ || !visualizer_) return; 
@@ -400,10 +430,9 @@ private:
                     if (is_threat) threat_boxes.push_back(box_tuple);
                     else safe_boxes.push_back(box_tuple);
                 }
-                Eigen::Vector2d scaled_velocity = obstacle.velocity * 0.2;
                 if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
-                    if (is_threat) { threat_vel_pos.push_back(obstacle.position); threat_vel_val.push_back(scaled_velocity); }
-                    else { safe_vel_pos.push_back(obstacle.position); safe_vel_val.push_back(scaled_velocity); }
+                    if (is_threat) { threat_vel_pos.push_back(obstacle.position); threat_vel_val.push_back(obstacle.velocity); }
+                    else { safe_vel_pos.push_back(obstacle.position); safe_vel_val.push_back(obstacle.velocity); }
                 }
             }
         }
@@ -413,6 +442,10 @@ private:
         Eigen::Vector3d robot_pos;
         Eigen::VectorXd orientation_quat(4);
         bool is_colliding = false;
+        std::string robot_state_text;
+        std::vector<double> bar_vals;
+        std::vector<std::string> bar_names = {"v", "a"};
+
         {
             std::lock_guard<std::mutex> lock(path_mutex_);
             
@@ -432,6 +465,18 @@ private:
             Eigen::Quaterniond q(Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()));
             orientation_quat << q.x(), q.y(), q.z(), q.w();
             is_colliding = is_in_collision_state_;
+
+
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(1)
+                << "v=" << current_speed_ << " m/s | a=" << current_accel_mag_ << " m/s²";
+            robot_state_text = oss.str();
+            bar_vals = {current_speed_, current_accel_mag_};
+
+            if (goal_reached_)
+                bar_vals = {0.0, 0.0};
+            
+
         }
 
         // --- 3. PUBLISH BATCH ---
@@ -442,6 +487,8 @@ private:
             safe_boxes, threat_boxes, safe_vel_pos, safe_vel_val, threat_vel_pos, threat_vel_val,
             current_trace, 
             robot_pos, orientation_quat, robot_color, inflation, 
+            robot_state_text ,
+            bar_vals, bar_names,
             "map"
         );
     }

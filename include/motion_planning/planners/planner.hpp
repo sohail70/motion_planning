@@ -70,6 +70,7 @@ struct TupleComparator {
 struct ReplanMetrics {
     int       obstacle_checks     = 0;   // collision queries — dominant cost
     double    path_cost           = 0.0; // final solution quality after repair
+    int revisits = 0; // Specific to FMTX
 };
 
 class Planner {

@@ -6,7 +6,7 @@ experiment:
 
 simulation:
   duration_limit: 10
-  slice_time: 0.05
+  slice_time: 0.02
   seed: 42
 
 robot:
@@ -21,13 +21,14 @@ planner_params:
   factor: 2.0
   partial_plot: "true" 
   kdtree_type: "NanoFlann"
-  partial_update: false
+  partial_update: true
   kd_dim: 2 # 2 for R2
   is_geometric_mode: true 
+  heuristic: true
 
 manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle.sdf"
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20.sdf"
   inflation: 0.0

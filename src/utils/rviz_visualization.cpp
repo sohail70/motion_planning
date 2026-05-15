@@ -326,7 +326,7 @@ void RVizVisualization::visualizeEdges(const std::vector<std::pair<Eigen::Vector
         marker.color.r = 0.5;  // Red
         marker.color.g = 0.5;  // Green
         marker.color.b = 0.5;  // Blue
-        marker.color.a = 1.0;
+        marker.color.a = 0.7;
 
         // Add edges to the marker
         for (const auto& edge : edges) {
@@ -858,6 +858,84 @@ void RVizVisualization::visualizeCube(
     marker_pub_2_->publish(marker_array);
 }
 
+
+void RVizVisualization::visualizeSweptTubes(
+    const ObstacleVector& obstacles,
+    double prediction_horizon,
+    const std::string& frame_id)
+{
+    // 1. Clear previous tubes by adding a DELETEALL marker to the buffer
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id;
+    clear_marker.header.stamp = node_->now();
+    clear_marker.ns = "swept_tubes";
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    marker_buffer_.markers.push_back(clear_marker);
+
+    int id = 0;
+    for (const auto& obstacle : obstacles) {
+        if (!obstacle.is_dynamic || obstacle.velocity.norm() < 0.01) {
+            continue;
+        }
+
+        // Calculate the future position
+        Eigen::Vector2d future_position = obstacle.position + obstacle.velocity * prediction_horizon;
+        
+        // Calculate the midpoint (which is the pivot point for RViz CUBE markers)
+        Eigen::Vector2d midpoint = (obstacle.position + future_position) / 2.0;
+
+        // Calculate the length of the sweep
+        double sweep_length = (future_position - obstacle.position).norm();
+        
+        // Calculate the yaw angle of the velocity vector
+        double yaw = std::atan2(obstacle.velocity.y(), obstacle.velocity.x());
+
+        // Base width of the obstacle (plus inflation)
+        double obs_width;
+        if (obstacle.type == Obstacle::CIRCLE) {
+            obs_width = 2.0 * (obstacle.dimensions.radius + obstacle.inflation);
+        } else {
+            // For a box, we approximate the swept width by its largest dimension
+            obs_width = std::max(obstacle.dimensions.width, obstacle.dimensions.height) + 2.0 * obstacle.inflation;
+        }
+
+        // Create the Tube Marker
+        visualization_msgs::msg::Marker tube;
+        tube.header.frame_id = frame_id;
+        tube.header.stamp = node_->now();
+        tube.ns = "swept_tubes";
+        tube.id = id++;
+        tube.type = visualization_msgs::msg::Marker::CUBE;
+        tube.action = visualization_msgs::msg::Marker::ADD;
+
+        // Position at the midpoint of the sweep
+        tube.pose.position.x = midpoint.x();
+        tube.pose.position.y = midpoint.y();
+        tube.pose.position.z = 0.02; // Keep it low to the ground so tree is visible over it
+
+        // Set orientation using the calculated yaw
+        double cy = std::cos(yaw * 0.5);
+        double sy = std::sin(yaw * 0.5);
+        tube.pose.orientation.x = 0.0;
+        tube.pose.orientation.y = 0.0;
+        tube.pose.orientation.z = sy;
+        tube.pose.orientation.w = cy;
+
+        // Scale: X is the length of the sweep, Y is the width of the obstacle
+        tube.scale.x = sweep_length + obs_width; // Add obs_width to cap the ends smoothly
+        tube.scale.y = obs_width;
+        tube.scale.z = 0.05; // Make it a thin flat plane
+
+        // Color (Semi-transparent Red/Orange for Danger)
+        tube.color.r = 1.0f;
+        tube.color.g = 0.2f;
+        tube.color.b = 0.2f;
+        tube.color.a = 0.2f; // 40% opacity so you can see the graph lines underneath
+
+        // Add to the class's main marker buffer instead of publishing locally
+        marker_buffer_.markers.push_back(tube);
+    }
+}
 
 
 
@@ -2000,7 +2078,9 @@ void RVizVisualization::publishObstacleFrame(
     const Eigen::VectorXd& robot_orientation, // Quaternion
     const std::vector<float>& robot_color,
     double robot_inflation,
-    
+    const std::string& robot_state_text, 
+    const std::vector<double>& robot_bar_values,
+    const std::vector<std::string>& robot_bar_names,
     const std::string& frame_id)
 {
     visualization_msgs::msg::MarkerArray frame_array;
@@ -2010,7 +2090,12 @@ void RVizVisualization::publishObstacleFrame(
         "obs_cyl_safe", "obs_cyl_threat", 
         "obs_box_safe", "obs_box_threat", 
         "obs_vel_safe", "obs_vel_threat",
-        "robot_trace", "simulated_robot", "simulated_robot_inflation"
+        "obs_vel_label_safe", "obs_vel_label_threat",
+        "robot_trace", "simulated_robot", "simulated_robot_inflation",
+        "robot_state_text",
+        "robot_bar_speed", 
+        "robot_bar_second",
+        "robot_dashboard"
     };
 
     for (const auto& ns : namespaces) {
@@ -2072,14 +2157,47 @@ void RVizVisualization::publishObstacleFrame(
         }
     };
 
+    auto add_vel_labels = [&](const std::vector<Eigen::Vector2d>& pos, const std::vector<Eigen::Vector2d>& vel,
+                            const std::array<float, 4>& color, const std::string& ns) {
+        for (size_t i = 0; i < pos.size(); ++i) {
+            visualization_msgs::msg::Marker m;
+            m.header.frame_id = frame_id; m.header.stamp = now_stamp; m.ns = ns; m.id = i;
+            m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+            m.action = visualization_msgs::msg::Marker::ADD;
+            m.pose.position.x = pos[i].x();
+            m.pose.position.y = pos[i].y();
+            m.pose.position.z = 0.9;
+            m.scale.z = 3.0;
+            m.color.r = color[0]; m.color.g = color[1]; m.color.b = color[2]; m.color.a = color[3];
+            std::ostringstream ss;
+            ss << std::fixed << std::setprecision(1) << vel[i].norm();
+            m.text = ss.str();
+            frame_array.markers.push_back(m);
+        }
+    };
+
+
+
     add_cylinders(safe_cyls, safe_radii, {0.89f, 0.26f, 0.2f, 1.0f}, "obs_cyl_safe");
-    add_cylinders(threat_cyls, threat_radii, {1.0f, 0.0f, 0.0f, 0.8f}, "obs_cyl_threat");
+    // add_cylinders(threat_cyls, threat_radii, {1.0f, 0.0f, 0.0f, 0.8f}, "obs_cyl_threat");
 
     add_boxes(safe_boxes, {0.89f, 0.26f, 0.2f, 1.0f}, "obs_box_safe");
-    add_boxes(threat_boxes, {1.0f, 0.0f, 0.0f, 0.8f}, "obs_box_threat");
+    // add_boxes(threat_boxes, {1.0f, 0.0f, 0.0f, 0.8f}, "obs_box_threat");
 
-    add_arrows(safe_vel_pos, safe_vel_val, {0.65f, 0.15f, 0.1f}, "obs_vel_safe"); 
-    add_arrows(threat_vel_pos, threat_vel_val, {1.0f, 0.0f, 0.0f}, "obs_vel_threat"); 
+
+    std::vector<Eigen::Vector2d> safe_vel_val_scaled;
+    safe_vel_val_scaled.reserve(safe_vel_val.size());
+    for (const auto& v : safe_vel_val) {
+        safe_vel_val_scaled.push_back(v * 0.5);   // 0.3 scale factor
+    }
+
+    add_arrows(safe_vel_pos, safe_vel_val_scaled, {0.65f, 0.15f, 0.1f}, "obs_vel_safe"); 
+    // add_arrows(threat_vel_pos, threat_vel_val, {1.0f, 0.0f, 0.0f}, "obs_vel_threat"); 
+
+    add_vel_labels(safe_vel_pos, safe_vel_val, {1.0f, 0.5f, 0.5f, 1.0f}, "obs_vel_label_safe");
+    // add_vel_labels(threat_vel_pos, threat_vel_val, {1.0f, 1.0f, 1.0f, 1.0f}, "obs_vel_label_threat");
+
+
 
     // 4. BUILD ROBOT TRACE
     if (!robot_trace_edges.empty()) {
@@ -2161,6 +2279,180 @@ void RVizVisualization::publishObstacleFrame(
 
         frame_array.markers.push_back(cyl_m);
     }
+
+    // // ADD ROBOT STATE TEXT
+    // {
+    //     visualization_msgs::msg::Marker text_m;
+    //     text_m.header.frame_id = frame_id;
+    //     text_m.header.stamp = now_stamp;
+    //     text_m.ns = "robot_state_text";
+    //     text_m.id = 0;
+    //     text_m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    //     text_m.action = visualization_msgs::msg::Marker::ADD;
+
+    //     // Place the text offset from the robot arrow (e.g., 0.5 m to the side, 1.0 m above)
+    //     text_m.pose.position.x = robot_pos.x();
+    //     text_m.pose.position.y = robot_pos.y() + 0.5;   // shift right
+    //     text_m.pose.position.z = 1.0;                   // above ground
+    //     text_m.scale.z = 0.8;                           // font size (adjust as needed)
+    //     text_m.color.r = 1.0f;
+    //     text_m.color.g = 1.0f;
+    //     text_m.color.b = 1.0f;
+    //     text_m.color.a = 1.0f;
+    //     text_m.text = robot_state_text;
+
+    //     frame_array.markers.push_back(text_m);
+    // }
+
+
+    // CLEAN DASHBOARD BARS
+    if (!robot_bar_values.empty()) {
+        const double dash_y        = 52.0;   // well above your world
+        const double dash_z        = 1.5;    // floating
+        const double bar_length    = 20.0;    // full length in metres
+        const double bar_height    = 3.0;
+        const double bar_gap       = 30.0;    // horizontal spacing between bars
+        const double total_width   = robot_bar_values.size() * bar_length +
+                                    (robot_bar_values.size()-1) * bar_gap;
+        const double start_x       = -total_width / 2.0 + bar_length / 2.0; // first bar centre
+
+        const double max_speed     = 25.0;
+        const double max_secondary = 15.0;
+        auto add_bar = [&](double value, double max_val,
+                        const std::string& title, int idx) {
+            double fraction = std::clamp(value / max_val, 0.0, 1.0);
+            double fill_width = 0.0;                           // will be set if fraction>0
+            double bar_center_x = start_x + idx * (bar_length + bar_gap);
+
+            const double border_thickness = 0.4;
+            const double white_width  = bar_length - 2.0 * border_thickness;
+            const double white_height = bar_height - 2.0 * border_thickness;
+
+            // --- 1. Black background (full size, behind everything) ---
+            {
+                visualization_msgs::msg::Marker black_bg;
+                black_bg.header.frame_id = frame_id;
+                black_bg.header.stamp = now_stamp;
+                black_bg.ns = "robot_dashboard";
+                black_bg.id = idx * 10 + 0;
+                black_bg.type = visualization_msgs::msg::Marker::CUBE;
+                black_bg.action = visualization_msgs::msg::Marker::ADD;
+                black_bg.pose.position.x = bar_center_x;
+                black_bg.pose.position.y = dash_y;
+                black_bg.pose.position.z = dash_z;
+                black_bg.pose.orientation.w = 1.0;
+                black_bg.scale.x = bar_length;
+                black_bg.scale.y = bar_height;
+                black_bg.scale.z = 0.02;
+                black_bg.color.r = 0.0f; black_bg.color.g = 0.0f; black_bg.color.b = 0.0f; black_bg.color.a = 1.0f;
+                frame_array.markers.push_back(black_bg);
+            }
+
+            // --- 2. White interior (on top, slightly smaller) ---
+            {
+                visualization_msgs::msg::Marker white_bg;
+                white_bg.header.frame_id = frame_id;
+                white_bg.header.stamp = now_stamp;
+                white_bg.ns = "robot_dashboard";
+                white_bg.id = idx * 10 + 1;
+                white_bg.type = visualization_msgs::msg::Marker::CUBE;
+                white_bg.action = visualization_msgs::msg::Marker::ADD;
+                white_bg.pose.position.x = bar_center_x;
+                white_bg.pose.position.y = dash_y;
+                white_bg.pose.position.z = dash_z + 0.01;   // just above black
+                white_bg.pose.orientation.w = 1.0;
+                white_bg.scale.x = white_width;
+                white_bg.scale.y = white_height;
+                white_bg.scale.z = 0.02;
+                white_bg.color.r = 1.0f; white_bg.color.g = 1.0f; white_bg.color.b = 1.0f; white_bg.color.a = 1.0f;
+                frame_array.markers.push_back(white_bg);
+            }
+
+            // --- 3. Coloured fill (inside the white area, grows from left) ---
+            if (fraction > 0.0) {
+                fill_width = fraction * white_width;
+                double white_left = bar_center_x - white_width / 2.0;
+                double fill_center_x = white_left + fill_width / 2.0;
+
+                visualization_msgs::msg::Marker fill;
+                fill.header.frame_id = frame_id;
+                fill.header.stamp = now_stamp;
+                fill.ns = "robot_dashboard";
+                fill.id = idx * 10 + 2;
+                fill.type = visualization_msgs::msg::Marker::CUBE;
+                fill.action = visualization_msgs::msg::Marker::ADD;
+                fill.pose.position.x = fill_center_x;
+                fill.pose.position.y = dash_y;
+                fill.pose.position.z = dash_z + 0.02;   // topmost layer
+                fill.pose.orientation.w = 1.0;
+                fill.scale.x = fill_width;
+                fill.scale.y = white_height * 0.9;      // slightly shorter for a small margin
+                fill.scale.z = 0.02;
+                fill.color.r = fraction;
+                fill.color.g = 1.0f - fraction;
+                fill.color.b = 0.0f;
+                fill.color.a = 1.0f;
+                frame_array.markers.push_back(fill);
+            }
+
+            // --- 4. Title text (left side of the bar, black) ---
+            if (!title.empty()) {
+                double left_edge_x = bar_center_x - bar_length / 2.0;   // left border of the whole bar
+                double title_x = left_edge_x - 2.0;                     // 3 metres to the left – adjust as needed
+
+                visualization_msgs::msg::Marker title_m;
+                title_m.header.frame_id = frame_id;
+                title_m.header.stamp = now_stamp;
+                title_m.ns = "robot_dashboard";
+                title_m.id = idx * 10 + 3;
+                title_m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+                title_m.action = visualization_msgs::msg::Marker::ADD;
+                title_m.pose.position.x = title_x;
+                title_m.pose.position.y = dash_y;                      // vertically aligned with the bar
+                title_m.pose.position.z = dash_z + 0.1;
+                title_m.scale.z = 2.5;                                 // font height
+                title_m.color.r = 0.0f; title_m.color.g = 0.0f; title_m.color.b = 0.0f; title_m.color.a = 1.0f;
+                title_m.text = title;
+                frame_array.markers.push_back(title_m);
+            }
+
+            // --- 5. Numeric label (black, fixed at the centre of the bar) ---
+            {
+                double label_x = bar_center_x;          // horizontally centred
+                double label_y = dash_y;                // same vertical position
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(2) << value;
+
+                visualization_msgs::msg::Marker num_m;
+                num_m.header.frame_id = frame_id;
+                num_m.header.stamp = now_stamp;
+                num_m.ns = "robot_dashboard";
+                num_m.id = idx * 10 + 4;
+                num_m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+                num_m.action = visualization_msgs::msg::Marker::ADD;
+                num_m.pose.position.x = label_x;
+                num_m.pose.position.y = label_y;
+                num_m.pose.position.z = dash_z + 0.1;   // slightly above the bar surface
+                num_m.scale.z = 2.0;
+                num_m.color.r = 0.0f; num_m.color.g = 0.0f; num_m.color.b = 0.0f; num_m.color.a = 1.0f;
+                num_m.text = oss.str();
+                frame_array.markers.push_back(num_m);
+            }
+        };
+
+        // First bar (always speed)
+        std::string name0 = (robot_bar_values.size() >= 1 && robot_bar_names.size() >= 1)
+                            ? robot_bar_names[0] : "Speed";
+        add_bar(robot_bar_values[0], max_speed, name0, 0);
+
+        // Second bar (angular vel / acceleration)
+        if (robot_bar_values.size() >= 2) {
+            std::string name1 = (robot_bar_names.size() >= 2) ? robot_bar_names[1] : "Aux";
+            add_bar(robot_bar_values[1], max_secondary, name1, 1);
+        }
+    }
+
+
 
     // PUBLISH EVERYTHING AT ONCE
     marker_pub_2_->publish(frame_array);

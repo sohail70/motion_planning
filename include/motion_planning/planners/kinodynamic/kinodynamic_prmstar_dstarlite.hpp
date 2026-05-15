@@ -111,6 +111,11 @@ class KinodynamicPRMStarDStarLite : public Planner {
 
         int getIsolatedNodeCount() const override { return isolated_nodes_count_; } 
 
+
+        double getLastAnchorRepairMs() const { return last_anchor_repair_ms_; }
+        void resetLastAnchorRepairMs() { last_anchor_repair_ms_ = 0.0; }
+
+
     private:
         // --- D* Lite Core ---
         double heuristic(DStarLiteNode* a, DStarLiteNode* b);
@@ -156,6 +161,7 @@ class KinodynamicPRMStarDStarLite : public Planner {
         int num_samples_;
         double connection_radius_;
         bool use_kdtree_;
+        bool use_heuristic;
         int kd_dim_;
         std::shared_ptr<KDTree> kdtree_;
         bool use_knn_;
@@ -197,5 +203,7 @@ class KinodynamicPRMStarDStarLite : public Planner {
         int num_pillar_nodes_;
         std::unordered_set<int> time_pillar_indices_;
         int isolated_nodes_count_ = 0;
-        
+       
+        double last_anchor_repair_ms_ = 0.0; // computeshortstpath duration in the setRobotState in case heuristic is on!
+
 };

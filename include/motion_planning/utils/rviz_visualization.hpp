@@ -69,6 +69,8 @@ public:
     void visualizeTimeToGoal(double t_robot, double x = -45.0, double y = 45.0);
     void takeScreenshot(double t_robot, bool is_final = false);
     
+    void visualizeSweptTubes( const ObstacleVector& obstacles, double prediction_horizon, const std::string& frame_id);
+
     void visualizeTreeGradient( const std::vector<std::pair<Eigen::VectorXd, Eigen::VectorXd>>& edges, const std::vector<double>& costs, const std::string& frame_id);
     void publishObstacleFrame(
         const std::vector<Eigen::VectorXd>& safe_cyls, const std::vector<double>& safe_radii,
@@ -84,7 +86,9 @@ public:
         const Eigen::VectorXd& robot_orientation, // Quaternion
         const std::vector<float>& robot_color,
         double robot_inflation,
-        
+        const std::string& robot_state_text, 
+        const std::vector<double>& robot_bar_values,
+        const std::vector<std::string>& robot_bar_names,
         const std::string& frame_id);
     
     void triggerPublish();

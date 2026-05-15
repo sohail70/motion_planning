@@ -92,6 +92,9 @@ struct EdgeInfo {
 
 
     
+    // LLPT FLAGS
+    bool is_evaluated = false; 
+
     /**
      * TODO: Maybe utilize this somehow in FMTX instead of using a map and clearing it everytime!
      * A set that stores the unique names or IDs of

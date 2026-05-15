@@ -6,7 +6,7 @@ experiment:
 
 simulation:
   duration_limit: 5
-  slice_time: 0.05
+  slice_time: 0.02
   seed: 42
 
 robot:
@@ -28,6 +28,6 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  # sdf_path: "../sims/dynamic_world_straight_box_circle_20.sdf"
-  sdf_path: "../sims/dynamic_world_1_obs.sdf"
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20.sdf"
+  # sdf_path: "../sims/dynamic_world_1_obs.sdf"
   inflation: 0.0

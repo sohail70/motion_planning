@@ -357,6 +357,8 @@ void clear() {
         return node;
     }
     
+    size_t size() const { return heap_.size(); }
+
     bool empty() const { return heap_.empty(); }
 };
 

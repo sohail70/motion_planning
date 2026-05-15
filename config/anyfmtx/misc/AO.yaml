@@ -1,12 +1,13 @@
+# Mind the STATIC macro needs to be enabled
 experiment:
-  name: "ANYFMTX_R2_Geometric_Test"
+  name: "AO_test"
   planner_type: "KinodynamicANYFMTX"
   state_space_type: "RDT"
   manager_type: "R2T"
 
 simulation:
-  duration_limit: 10
-  slice_time: 0.02
+  duration_limit: 100
+  slice_time: 0.3
   seed: 42
 
 robot:
@@ -17,9 +18,9 @@ robot:
   bounds_max: [50.0, 50.0]
 
 planner_params:
-  num_of_samples: 100
+  num_of_samples: 1
   factor: 2.0
-  delta: 10.0
+  delta: 15.0
   epsilon: 0.0
   kdtree_type: "NanoFlann"
   partial_update: false
@@ -30,6 +31,5 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_10.sdf"
-  # sdf_path: "../sims/dynamic_world_4_obs.sdf"
+  sdf_path: "../sims/static_world_straight_box_circle_35.sdf"
   inflation: 0.0

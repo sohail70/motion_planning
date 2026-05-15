@@ -20,7 +20,7 @@ robot:
   max_acceleration: 5.0
 
 planner_params:
-  num_of_samples: 5
+  num_of_samples: 1
   factor: 3.0
   delta: 45.0
   epsilon: 0.1
@@ -35,5 +35,5 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_10_slow.sdf"
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20_slow.sdf"
   inflation: 1.0

@@ -213,6 +213,21 @@ void stepSimulation(double dt) {
         const double t_after  = state_after(3);
         const double segment_duration = t_before - t_after;
 
+        // Compute speed for this segment
+        double segment_dist = (state_after.head<2>() - state_before.head<2>()).norm();
+        if (segment_duration > TIME_EPS) {
+            current_speed_ = segment_dist / segment_duration;
+        } else {
+            current_speed_ = 0.0;
+        }
+
+        // compute angular velocity from heading change
+        double dtheta = normalizeAngle(state_after(2) - state_before(2));
+        current_angular_speed_ = (segment_duration > TIME_EPS) ? (dtheta / segment_duration) : 0.0;
+
+
+        
+
         if (segment_duration <= TIME_EPS) {
             current_interpolated_state_ =
                 (std::abs(current_sim_time_ - t_before) <= std::abs(current_sim_time_ - t_after))
@@ -398,6 +413,19 @@ void setPath(const std::vector<Eigen::VectorXd>& new_path) {
         return current_sim_time_;
     }
 
+
+    void notifyGoalReached() {
+        // Use unique_lock to allow early unlocking
+        std::unique_lock<std::mutex> lock(path_mutex_);
+        goal_reached_ = true;
+        current_speed_ = 0.0;
+        current_angular_speed_ = 0.0;
+        lock.unlock();   // release the mutex now
+
+        // Safe to call visualizationLoop() – no deadlock
+        visualizationLoop();
+    }
+
 private:
     std::shared_ptr<ObstacleChecker> obstacle_checker_;
     std::shared_ptr<RVizVisualization> visualizer_;
@@ -416,6 +444,11 @@ private:
     std::set<std::string> current_threat_names_;
     double initial_budget_time_;
     double inflation;
+
+    double current_speed_ = 0;
+    double current_angular_speed_ = 0;
+    bool goal_reached_ = false;
+
 
     double normalizeAngle(double angle) {
         angle = fmod(angle + M_PI, 2.0 * M_PI);
@@ -451,10 +484,9 @@ private:
                     if (is_threat) threat_boxes.push_back(box_tuple);
                     else safe_boxes.push_back(box_tuple);
                 }
-                Eigen::Vector2d scaled_velocity = obstacle.velocity * 0.2;
                 if (obstacle.is_dynamic && obstacle.velocity.norm() > 0.01) {
-                    if (is_threat) { threat_vel_pos.push_back(obstacle.position); threat_vel_val.push_back(scaled_velocity); }
-                    else { safe_vel_pos.push_back(obstacle.position); safe_vel_val.push_back(scaled_velocity); }
+                    if (is_threat) { threat_vel_pos.push_back(obstacle.position); threat_vel_val.push_back(obstacle.velocity); }
+                    else { safe_vel_pos.push_back(obstacle.position); safe_vel_val.push_back(obstacle.velocity); }
                 }
             }
         }
@@ -464,6 +496,10 @@ private:
         Eigen::Vector3d robot_pos;
         Eigen::VectorXd orientation_quat(4);
         bool is_colliding = false;
+        std::string robot_state_text;
+        std::vector<double> bar_vals;
+        std::vector<std::string> bar_names = {"v", "w"};
+
         {
             std::lock_guard<std::mutex> lock(path_mutex_);
             
@@ -476,9 +512,20 @@ private:
             Eigen::Quaterniond q(Eigen::AngleAxisd(current_interpolated_state_(2), Eigen::Vector3d::UnitZ()));
             orientation_quat << q.x(), q.y(), q.z(), q.w();
             is_colliding = is_in_collision_state_;
+
+            // Format text using precomputed values
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(1) << "v=" << current_speed_ << " m/s";
+            oss << " | ω=" << current_angular_speed_ << " rad/s";
+            robot_state_text = oss.str();
+            bar_vals = {current_speed_, std::abs(current_angular_speed_)};
+            if (goal_reached_)
+                bar_vals = {0.0, 0.0};
+            
+
         }
 
-        // --- 3. PUBLISH BATCH ---
+        // PUBLISH BATCH
         std::vector<float> robot_color = is_colliding ? std::vector<float>{1.0f, 0.0f, 0.0f} : std::vector<float>{0.0f, 0.45f, 0.74f};
         
         visualizer_->publishObstacleFrame(
@@ -486,6 +533,8 @@ private:
             safe_boxes, threat_boxes, safe_vel_pos, safe_vel_val, threat_vel_pos, threat_vel_val,
             current_trace, 
             robot_pos, orientation_quat, robot_color, inflation, 
+            robot_state_text,
+            bar_vals, bar_names,
             "map"
         );
     }
