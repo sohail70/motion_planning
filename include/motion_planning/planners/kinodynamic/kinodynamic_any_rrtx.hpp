@@ -64,7 +64,7 @@ class KinodynamicANYRRTX : public Planner {
         double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
 
         bool isRobotSafe();
-        int getTreeSize() { return tree_.size();}
+        int getTreeSize() { return tree_.size()-num_pillar_nodes_;}
 
         bool runCollisionForensics();
         bool runCostForensics();
@@ -144,6 +144,12 @@ class KinodynamicANYRRTX : public Planner {
         }
 
 
+        bool isCurrentBridgeSafe(const ObstacleVector& obstacles) const override;
+        bool hasReachedAnchor(const Eigen::VectorXd& current_sim_state) const override;
+        std::vector<Eigen::VectorXd> getLivePathPositions(const Eigen::VectorXd& current_state) const;
+        bool hasShortcut(const Eigen::VectorXd& robot_state, double threshold);
+        void setCurrentRobotTime(double T_robot);
+
     private:
         std::vector<std::unique_ptr<RRTxNode>> tree_;
         std::shared_ptr<KDTree> kdtree_;
@@ -161,6 +167,7 @@ class KinodynamicANYRRTX : public Planner {
         double gamma_;
         double delta = 20.0; 
         double factor;
+        double T_robot;
         int root_state_index_;
         int num_of_samples_;
         int dimension_;

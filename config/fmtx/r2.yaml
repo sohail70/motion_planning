@@ -5,7 +5,7 @@ experiment:
   manager_type: "R2T"
 
 simulation:
-  duration_limit: 5
+  duration_limit: 1
   slice_time: 0.02
   seed: 42
 
@@ -17,8 +17,8 @@ robot:
   bounds_max: [50.0, 50.0]
 
 planner_params:
-  num_of_samples: 1000
-  factor: 2.0
+  num_of_samples: 3000
+  factor: 3.0
   kdtree_type: "NanoFlann"
   partial_update: false
   kd_dim: 2 # 2 for R2
@@ -28,6 +28,6 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_20.sdf"
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20_r2t.sdf"
   # sdf_path: "../sims/dynamic_world_1_obs.sdf"
   inflation: 0.0

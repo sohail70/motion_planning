@@ -1,0 +1,435 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane><normal>0 0 1</normal><size>100 100</size></plane>
+          </geometry>
+          <surface>
+            <contact>
+              <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+            </contact>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane><normal>0 0 1</normal><size>100 100</size></plane>
+          </geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+<model name="moving_cylinder_0">
+  <pose>-6.452755680776001 -14.963200562354935 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>-0.5225247423340349 0.8526241221363318 0</direction>
+    <amplitude>20.0</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_1">
+  <pose>-28.325920550706098 -31.912861048758163 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>-0.6469935380540992 0.7624954830792369 0</direction>
+    <amplitude>20.0</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_2">
+  <pose>2.505584774874979 -18.175661556951965 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.8476888318655906 -0.5304937740731275 0</direction>
+    <amplitude>21.828255745031214</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_3">
+  <pose>4.815013673572983 -18.52622271691256 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.26538659476455634 -0.964142082537254 0</direction>
+    <amplitude>24.907251698170462</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_4">
+  <pose>23.864498986024657 29.053849842885697 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.5763705992367413 -0.8171884313519616 0</direction>
+    <amplitude>20.0</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_5">
+  <pose>19.245938137500033 4.722462889729997 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>-0.30248678480173014 0.953153578926456 0</direction>
+    <amplitude>25.00080547388687</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_6">
+  <pose>18.615244594274028 0.04187506652286821 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.9045614312986643 -0.4263433088567379 0</direction>
+    <amplitude>23.90687699512405</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_7">
+  <pose>-10.613596012710344 -20.8086380299019 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>-0.4798238274233689 0.8773648583324893 0</direction>
+    <amplitude>20.7621605549894</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_8">
+  <pose>-16.115239543582202 -40.17665167002723 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>-0.6717802973138134 0.7407504520018632 0</direction>
+    <amplitude>25.71579735070233</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_9">
+  <pose>31.972217475543495 12.647502597955992 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>-0.9466451836846764 0.3222776694197183 0</direction>
+    <amplitude>24.006035704735766</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_10">
+  <pose>32.79104132123042 6.4060005755104985 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>-0.5179802752058884 0.8553925616333311 0</direction>
+    <amplitude>30.50318374308067</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_11">
+  <pose>-24.508244505643116 -28.153810435511648 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.48087988268912957 -0.8767864839428634 0</direction>
+    <amplitude>20.0</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_12">
+  <pose>22.764944672932383 43.86848556657395 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.7550621785221927 -0.655653190768809 0</direction>
+    <amplitude>26.476843525890366</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_13">
+  <pose>3.2298823213811803 12.801057675700777 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.6759904437646561 -0.7369103879976611 0</direction>
+    <amplitude>20.0</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_14">
+  <pose>5.8479193048696825 -11.834830997765497 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.6521781840252836 -0.7580657071003036 0</direction>
+    <amplitude>20.0</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_15">
+  <pose>-40.22479529541725 -36.19698106223167 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.3494644948148355 -0.9369496074303099 0</direction>
+    <amplitude>20.0</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_16">
+  <pose>32.42488418484014 19.801880350591503 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.7747739417015311 -0.632238356365914 0</direction>
+    <amplitude>20.0</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_17">
+  <pose>-25.591314693616184 -46.76632410783556 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.2704132871377731 -0.9627443347739546 0</direction>
+    <amplitude>27.65898007505796</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_18">
+  <pose>10.819003978435358 13.730043363996108 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>-0.4145259248113059 0.9100375034356175 0</direction>
+    <amplitude>20.0</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="moving_cylinder_19">
+  <pose>-29.491682578237004 -10.74571119616013 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual">
+      <geometry>
+        <cylinder><radius>1.5</radius><length>1.0</length></cylinder>
+      </geometry>
+      <material><ambient>1 0 0 1</ambient></material>
+    </visual>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0.3646273236339034 -0.9311535398953154 0</direction>
+    <amplitude>20.0</amplitude>
+    <speed>35.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+    </include>
+  </world>
+</sdf>

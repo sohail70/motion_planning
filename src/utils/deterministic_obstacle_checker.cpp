@@ -17,6 +17,8 @@ DeterministicObstacleChecker::DeterministicObstacleChecker(rclcpp::Clock::Shared
         Obstacle ob;
         ob.name = name;
         ob.is_dynamic = info.is_dynamic;
+        ob.initially_visible = (ob.name.find("visible") != std::string::npos);
+        ob.is_discovered     = ob.initially_visible;   // if known from start, mark as discovered
         ob.has_ground_truth = true; // We have ground truth from SDF
         
         // Set Geometry
@@ -420,7 +422,16 @@ bool DeterministicObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
 
     // SETUP THRESHOLDS
     double obs_size = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-    double threshold_dist = robot_radius_ + obs_size + inflation; // robot_radius_ is zero by design. inflation take this into account
+
+    // TURNAROUND SLICE-TIME SAFETY MARGIN
+    // To prevent Collisions where the obstacle turns around suddenly (since the planner assumes constant velocity and straight line movement and step simulation moves the robot and obstacle simultaneously)
+    // before the next checkAndRepair cycle catches it, we pad the threshold. --> mind that this threshold can also be considered as inflation but overall it gives a last chance to the planner to find something incase of those rare events!
+    // This also helps to benchmark success rate more accuratly (of course to a certain degree because if an obstalce suddenly turnsaround there is a low chance of escape if obstalce is too near!)
+    // A buffer of 0.4 - 0.5m is enough --> If slice time is 0.02 and velocity is 50 m/s then the turnaround buffer should be 1m
+    const double TURNAROUND_BUFFER = 1.0; // Meters of safety against intra-slice turnarounds
+    
+    double threshold_dist = robot_radius_ + obs_size + inflation + TURNAROUND_BUFFER; // robot_radius_ is zero by design. inflation take this into account
+
     double threshold_sq = threshold_dist * threshold_dist;
 
 
@@ -466,57 +477,142 @@ bool DeterministicObstacleChecker::isTrajectorySafeAgainstSingleObstacle(
         else                           { O_early = obs_pt1.head<2>(); OT_early = obs_pt1.z(); O_late = obs_pt2.head<2>(); OT_late = obs_pt2.z(); }
     };
 
-    // CCD Math (Returns true if SAFE, false if COLLISION)
-    // Computes Time-of-Closest-Approach (Tc) for relative motion quadratic, then samples
-    // critical points within the VALID TEMPORAL OVERLAP [overlap_min, overlap_max] ONLY.
+    // // CCD Math (Returns true if SAFE, false if COLLISION)
+    // // Computes Time-of-Closest-Approach (Tc) for relative motion quadratic, then samples
+    // // critical points within the VALID TEMPORAL OVERLAP [overlap_min, overlap_max] ONLY.
+    // auto checkSegmentMath = [&](const Eigen::Vector2d& P_early, const Eigen::Vector2d& P_late, double T_early, double T_late,
+    //                             const Eigen::Vector2d& O_early, const Eigen::Vector2d& O_late, double OT_early, double OT_late) -> bool {
+        
+    //     double overlap_min = std::max(T_early, OT_early);
+    //     double overlap_max = std::min(T_late, OT_late);
+        
+    //     if (overlap_min > overlap_max) return true; // No temporal overlap
+
+    //     // Linear velocities over segment duration (prevent div-by-zero)
+    //     double robot_dt = std::max(1e-6, T_late - T_early);
+    //     Eigen::Vector2d V_robot = (P_late - P_early) / robot_dt;
+
+    //     double obs_dt = std::max(1e-6, OT_late - OT_early);
+    //     Eigen::Vector2d V_obs = (O_late - O_early) / obs_dt;
+
+    //     // Relative motion: Solve quadratic min_t ||P_rel + V_rel*t||^2 = 0
+    //     Eigen::Vector2d V_rel = V_robot - V_obs;
+    //     Eigen::Vector2d P_rel_at_min = (P_early + V_robot * (overlap_min - T_early)) - 
+    //                                 (O_early + V_obs * (overlap_min - OT_early));
+
+    //     double A = V_rel.dot(V_rel);
+    //     double B = 2.0 * P_rel_at_min.dot(V_rel);
+        
+    //     // Time offset to theoretical closest approach (handle parallel motion)
+    //     double Tc_offset = (std::abs(A) < 1e-9) ? 0.0 : -B / (2.0 * A);
+
+    //     // Clamp to physical segment overlap (CRITICAL: prevents extrapolation)
+    //     double Tc = std::clamp(overlap_min + Tc_offset, overlap_min, overlap_max);
+        
+    //     // Numerical robustness: Sample endpoints + Tc ±ε (ε=1% window or 0.1mm)
+    //     // BUT ONLY IF those times remain within physical bounds!
+    //     double eps_check = std::max(1e-4, (overlap_max - overlap_min) * 1e-2);
+
+    //     std::vector<double> times_to_check = {overlap_min, overlap_max, Tc};
+        
+    //     // PREVENT EXTRAPOLATION BUG: Only add epsilon samples if physically valid
+    //     if (Tc - eps_check > overlap_min) times_to_check.push_back(Tc - eps_check);
+    //     if (Tc + eps_check < overlap_max) times_to_check.push_back(Tc + eps_check);
+
+    //     // Test exact distance at sampled times (all within valid segment bounds)
+    //     for (double t_current : times_to_check) {
+    //         Eigen::Vector2d pos_robot_at_t = P_early + V_robot * (t_current - T_early);
+    //         Eigen::Vector2d pos_obs_at_t   = O_early + V_obs   * (t_current - OT_early);
+    //         if ((pos_robot_at_t - pos_obs_at_t).squaredNorm() < threshold_sq) {
+    //             return false; // Collision detected
+    //         }
+    //     }
+    //     return true; // Safe
+    // };
+
+    // ---------------------------------------------------------
+    // CONTINUOUS COLLISION MATH ---> Compared to Above: added Box collision check explicitly!
+    // --- IF BOX: Use dense swept AABB check ---
+    /*
+        * WHY WE CANNOT USE THE QUADRATIC (CIRCLE) METHOD FOR BOXES:
+        * A moving box creates a large, non-uniform swept volume. If we approximate 
+        * a box as a circle and only check the exact moment of closest center-to-center 
+        * approach (Tc), we will miss the corners! The centers might be far enough 
+        * apart at Tc to be considered "safe", but the long edge or corner of the 
+        * rectangular box could still sweep right through the robot before or after Tc.
+        * Therefore, we MUST slice the temporal overlap (dt_step) and test exact 
+        * Axis-Aligned Bounding Box (AABB) intersections to guarantee the box's 
+        * corners do not hit the robot between time samples.
+        */
+    
+    // ---------------------------------------------------------
+    // double threshold_sq = threshold_dist * threshold_dist;
     auto checkSegmentMath = [&](const Eigen::Vector2d& P_early, const Eigen::Vector2d& P_late, double T_early, double T_late,
                                 const Eigen::Vector2d& O_early, const Eigen::Vector2d& O_late, double OT_early, double OT_late) -> bool {
         
         double overlap_min = std::max(T_early, OT_early);
         double overlap_max = std::min(T_late, OT_late);
-        
         if (overlap_min > overlap_max) return true; // No temporal overlap
 
-        // Linear velocities over segment duration (prevent div-by-zero)
         double robot_dt = std::max(1e-6, T_late - T_early);
         Eigen::Vector2d V_robot = (P_late - P_early) / robot_dt;
 
         double obs_dt = std::max(1e-6, OT_late - OT_early);
         Eigen::Vector2d V_obs = (O_late - O_early) / obs_dt;
 
-        // Relative motion: Solve quadratic min_t ||P_rel + V_rel*t||^2 = 0
-        Eigen::Vector2d V_rel = V_robot - V_obs;
-        Eigen::Vector2d P_rel_at_min = (P_early + V_robot * (overlap_min - T_early)) - 
-                                    (O_early + V_obs * (overlap_min - OT_early));
+        // --- IF CIRCLE: Use fast Euclidean math ---
+        if (ob.type == Obstacle::CIRCLE) {
+            Eigen::Vector2d V_rel = V_robot - V_obs;
+            Eigen::Vector2d P_rel_at_min = (P_early + V_robot * (overlap_min - T_early)) - (O_early + V_obs * (overlap_min - OT_early));
+            double A = V_rel.dot(V_rel);
+            double B = 2.0 * P_rel_at_min.dot(V_rel);
+            double Tc_offset = (std::abs(A) < 1e-9) ? 0.0 : -B / (2.0 * A);
+            double Tc = std::clamp(overlap_min + Tc_offset, overlap_min, overlap_max);
+            double eps_check = std::max(1e-4, (overlap_max - overlap_min) * 1e-2);
+            
+            std::vector<double> times_to_check = {overlap_min, overlap_max, Tc};
+            if (Tc - eps_check > overlap_min) times_to_check.push_back(Tc - eps_check);
+            if (Tc + eps_check < overlap_max) times_to_check.push_back(Tc + eps_check);
 
-        double A = V_rel.dot(V_rel);
-        double B = 2.0 * P_rel_at_min.dot(V_rel);
-        
-        // Time offset to theoretical closest approach (handle parallel motion)
-        double Tc_offset = (std::abs(A) < 1e-9) ? 0.0 : -B / (2.0 * A);
-
-        // Clamp to physical segment overlap (CRITICAL: prevents extrapolation)
-        double Tc = std::clamp(overlap_min + Tc_offset, overlap_min, overlap_max);
-        
-        // Numerical robustness: Sample endpoints + Tc ±ε (ε=1% window or 0.1mm)
-        // BUT ONLY IF those times remain within physical bounds!
-        double eps_check = std::max(1e-4, (overlap_max - overlap_min) * 1e-2);
-
-        std::vector<double> times_to_check = {overlap_min, overlap_max, Tc};
-        
-        // PREVENT EXTRAPOLATION BUG: Only add epsilon samples if physically valid
-        if (Tc - eps_check > overlap_min) times_to_check.push_back(Tc - eps_check);
-        if (Tc + eps_check < overlap_max) times_to_check.push_back(Tc + eps_check);
-
-        // Test exact distance at sampled times (all within valid segment bounds)
-        for (double t_current : times_to_check) {
-            Eigen::Vector2d pos_robot_at_t = P_early + V_robot * (t_current - T_early);
-            Eigen::Vector2d pos_obs_at_t   = O_early + V_obs   * (t_current - OT_early);
-            if ((pos_robot_at_t - pos_obs_at_t).squaredNorm() < threshold_sq) {
-                return false; // Collision detected
+            for (double t_current : times_to_check) {
+                if (((P_early + V_robot * (t_current - T_early)) - (O_early + V_obs * (t_current - OT_early))).squaredNorm() < threshold_sq) return false;
             }
+            return true;
+        } 
+        // --- IF BOX: Use dense swept AABB check ---
+        else if (ob.type == Obstacle::BOX) {
+            double total_margin = robot_radius_ + inflation + TURNAROUND_BUFFER;
+            double eff_width  = ob.dimensions.width  + 2.0 * total_margin;
+            double eff_height = ob.dimensions.height + 2.0 * total_margin;
+            double half_width = eff_width / 2.0;
+            double half_height = eff_height / 2.0;
+            double cos_theta = std::cos(-ob.dimensions.rotation);
+            double sin_theta = std::sin(-ob.dimensions.rotation);
+
+            // Step through overlap at high frequency (e.g. 0.02s) to catch corners
+            double dt_step = 0.02; 
+            for (double t_current = overlap_min; t_current <= overlap_max; t_current += dt_step) {
+                Eigen::Vector2d pos_robot = P_early + V_robot * (t_current - T_early);
+                Eigen::Vector2d pos_obs   = O_early + V_obs   * (t_current - OT_early);
+                
+                double dx = pos_robot.x() - pos_obs.x();
+                double dy = pos_robot.y() - pos_obs.y();
+                double local_x = (dx * cos_theta) - (dy * sin_theta);
+                double local_y = (dx * sin_theta) + (dy * cos_theta);
+
+                if (std::abs(local_x) < half_width && std::abs(local_y) < half_height) return false; 
+            }
+            // Check absolute endpoint
+            Eigen::Vector2d pos_robot = P_early + V_robot * (overlap_max - T_early);
+            Eigen::Vector2d pos_obs   = O_early + V_obs   * (overlap_max - OT_early);
+            double dx = pos_robot.x() - pos_obs.x();
+            double dy = pos_robot.y() - pos_obs.y();
+            if (std::abs((dx * cos_theta) - (dy * sin_theta)) < half_width && 
+                std::abs((dx * sin_theta) + (dy * cos_theta)) < half_height) return false;
+
+            return true;
         }
-        return true; // Safe
+        return true;
     };
 
 
@@ -726,6 +822,15 @@ void DeterministicObstacleChecker::processLatestPoseInfo(double sim_time) {
     obstacle_positions_.clear(); 
     
     for (auto& [name, ob] : obstacle_positions_map_) {
+        // PURGED: visible obstacle the robot already reached. Never collision-check again.
+        if (ob.is_removed) {
+            continue;
+        }
+        // HIDDEN: static obstacle not yet within sensor range. Robot can't see it.
+        if (!ob.is_dynamic && !ob.is_discovered) continue;
+
+
+
         if (ob.is_dynamic) {
             // Calculate time for one leg (forward or backward)
             double time_per_leg = ob.motion_limit / ob.speed_scalar;  // 110/28 = 3.92857s
@@ -753,6 +858,8 @@ void DeterministicObstacleChecker::processLatestPoseInfo(double sim_time) {
             ob.velocity = Eigen::Vector2d::Zero();
         }
         
+
+
         obstacle_positions_.push_back(ob);
     }
 }
@@ -904,6 +1011,53 @@ bool DeterministicObstacleChecker::pointIntersectsRectangle(const Eigen::Vector2
            std::abs(local_point.y()) <= height/2);
 }
 
+// bool DeterministicObstacleChecker::checkRobotCollision(const Eigen::Vector2d& robot_pos, double yaw) const {
+//     // 1. Thread Safety Lock (CRITICAL if running in threaded executor)
+//     // std::lock_guard<std::mutex> lock(obstacles_mutex_); 
+
+//     // 2. DIAGNOSTIC: Check if we even know about obstacles
+//     if (obstacle_positions_.empty()) {
+//         RCLCPP_WARN_THROTTLE(rclcpp::get_logger("CollisionCheck"), *clock_, 1000, 
+//             "[CollisionCheck] SKIPPING: 0 obstacles known! (Is ProcessLatestPoseInfo running?)");
+//         return false;
+//     }
+
+
+//     // Using inflation as robot radius
+//     double robot_r = inflation; 
+
+//     for (const auto& ob : obstacle_positions_) {
+//         // Calculate Distance
+//         double dist = (robot_pos - ob.position).norm();
+        
+//         // Calculate Obstacle Radius (Circle vs Box approximation)
+//         double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
+//                        std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+
+//         double collision_threshold = robot_r + obs_r;
+
+//         // // 4. LOGGING: Print details if we are getting close (within 3 meters of collision)
+//         // if (dist < (collision_threshold + 3.0)) {
+//         //     RCLCPP_INFO_THROTTLE(rclcpp::get_logger("CollisionDebug"), *clock_, 200, 
+//         //         "NEAR MISS: Robot(%.2f, %.2f) vs [%s](%.2f, %.2f) \n"
+//         //         "    -> Dist: %.3f | Threshold: %.3f (Rob:%.1f + Obs:%.1f)",
+//         //         robot_pos.x(), robot_pos.y(), 
+//         //         ob.name.c_str(), ob.position.x(), ob.position.y(), 
+//         //         dist, collision_threshold, robot_r, obs_r);
+//         // }
+
+//         // 5. The Check
+//         if (dist < collision_threshold) {
+//             RCLCPP_ERROR(rclcpp::get_logger("CollisionCheck"), 
+//                 "!!! CRASH DETECTED !!! Robot vs [%s] | Dist: %.3f < %.3f",
+//                 ob.name.c_str(), dist, collision_threshold);
+//             return true;
+//         }
+//     }
+//     return false;
+// }
+
+
 bool DeterministicObstacleChecker::checkRobotCollision(const Eigen::Vector2d& robot_pos, double yaw) const {
     // 1. Thread Safety Lock (CRITICAL if running in threaded executor)
     // std::lock_guard<std::mutex> lock(obstacles_mutex_); 
@@ -915,41 +1069,60 @@ bool DeterministicObstacleChecker::checkRobotCollision(const Eigen::Vector2d& ro
         return false;
     }
 
-
     // Using inflation as robot radius
     double robot_r = inflation; 
 
     for (const auto& ob : obstacle_positions_) {
-        // Calculate Distance
-        double dist = (robot_pos - ob.position).norm();
         
-        // Calculate Obstacle Radius (Circle vs Box approximation)
-        double obs_r = (ob.type == Obstacle::CIRCLE) ? ob.dimensions.radius : 
-                       std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+        // ---------------------------------------------------------
+        // CIRCLE COLLISION CHECK
+        // ---------------------------------------------------------
+        if (ob.type == Obstacle::CIRCLE) {
+            double dist = (robot_pos - ob.position).norm();
+            double collision_threshold = robot_r + ob.dimensions.radius;
+            
+            if (dist < collision_threshold) {
+                RCLCPP_ERROR(rclcpp::get_logger("CollisionCheck"), 
+                    "!!! CRASH DETECTED !!! Robot vs CIRCLE [%s] | Dist: %.3f < %.3f",
+                    ob.name.c_str(), dist, collision_threshold);
+                return true;
+            }
+        }
+        // ---------------------------------------------------------
+        // ORIENTED BOX (OBB) COLLISION CHECK
+        // ---------------------------------------------------------
+        else if (ob.type == Obstacle::BOX) {
+            // 1. Inflate the box dimensions by the robot's radius
+            double eff_width  = ob.dimensions.width  + (2.0 * robot_r);
+            double eff_height = ob.dimensions.height + (2.0 * robot_r);
 
-        double collision_threshold = robot_r + obs_r;
+            // 2. Translate robot relative to the box's center
+            double dx = robot_pos.x() - ob.position.x();
+            double dy = robot_pos.y() - ob.position.y();
 
-        // // 4. LOGGING: Print details if we are getting close (within 3 meters of collision)
-        // if (dist < (collision_threshold + 3.0)) {
-        //     RCLCPP_INFO_THROTTLE(rclcpp::get_logger("CollisionDebug"), *clock_, 200, 
-        //         "NEAR MISS: Robot(%.2f, %.2f) vs [%s](%.2f, %.2f) \n"
-        //         "    -> Dist: %.3f | Threshold: %.3f (Rob:%.1f + Obs:%.1f)",
-        //         robot_pos.x(), robot_pos.y(), 
-        //         ob.name.c_str(), ob.position.x(), ob.position.y(), 
-        //         dist, collision_threshold, robot_r, obs_r);
-        // }
+            // 3. Rotate the robot's relative position by the INVERSE of the box's rotation.
+            // This brings the robot into the local, axis-aligned coordinate frame of the box.
+            double cos_theta = std::cos(-ob.dimensions.rotation);
+            double sin_theta = std::sin(-ob.dimensions.rotation);
+            
+            double local_x = (dx * cos_theta) - (dy * sin_theta);
+            double local_y = (dx * sin_theta) + (dy * cos_theta);
 
-        // 5. The Check
-        if (dist < collision_threshold) {
-            RCLCPP_ERROR(rclcpp::get_logger("CollisionCheck"), 
-                "!!! CRASH DETECTED !!! Robot vs [%s] | Dist: %.3f < %.3f",
-                ob.name.c_str(), dist, collision_threshold);
-            return true;
+            // 4. Axis-Aligned Bounding Box (AABB) check in local frame
+            double half_width = eff_width / 2.0;
+            double half_height = eff_height / 2.0;
+
+            if (std::abs(local_x) < half_width && std::abs(local_y) < half_height) {
+                RCLCPP_ERROR(rclcpp::get_logger("CollisionCheck"), 
+                    "!!! CRASH DETECTED !!! Robot vs BOX [%s] | Local Pos: (%.2f, %.2f)",
+                    ob.name.c_str(), local_x, local_y);
+                return true;
+            }
         }
     }
+    
     return false;
 }
-
 
 
 // Helper for circular checks (no change in logic, just making it private)
@@ -1021,91 +1194,6 @@ void DeterministicObstacleChecker::recordCulprit(const Obstacle& obs) const {
     // }
 }
 
-std::vector<Eigen::Vector3d> DeterministicObstacleChecker::generatePrediction(
-    const Obstacle& ob, 
-    double currentTime) const 
-{
-    std::vector<Eigen::Vector3d> path;
-
-    // --- GEOMETRIC MODE ---
-    // We don't care about time or future movement. 
-    // We just need the obstacle's current position for the collision checker.
-    if (is_geometric_mode_) {
-        // We use Z=0.0 for the time component. 
-        // The collision checker (isTrajectorySafeAgainstSingleObstacle) will ignore this Z value 
-        // and treat the obstacle as a static circle at (X, Y).
-        path.emplace_back(ob.position.x(), ob.position.y(), 0.0);
-
-        // THE FIX: Initialize the AABB bounds for a stationary point
-        ob.min_x = ob.position.x();
-        ob.max_x = ob.position.x();
-        ob.min_y = ob.position.y();
-        ob.max_y = ob.position.y();
-
-
-        return path;
-    }
-
-
-    
-    if (!ob.is_dynamic || !ob.has_ground_truth) return path;
-
-    // 1. Calculate Effective Radius
-    double R_eff = 0.0;
-    if (ob.type == Obstacle::CIRCLE) {
-        R_eff = ob.dimensions.radius;
-    } else {
-        // For Box, use the radius of the circumscribed circle (half diagonal)
-        // This ensures we cover the corners even if it rotates (though yours is linear)
-        R_eff = std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
-    }
-
-    // 2. Get Speed (Scalar magnitude of velocity vector)
-    double speed = ob.velocity.norm();
-
-    // 3. Calculate Adaptive DT
-    // We add a small safety factor (e.g., 0.8) to ensure the circles overlap slightly
-    // rather than just touching. This prevents "edge cases" (pun intended).
-    double dt_step = 0.1; // Default fallback
-    
-    if (speed > 1e-6) {
-        // Formula: dt = (2 * Radius) / Speed
-        // We clamp it to a minimum (e.g., 0.05) to prevent infinite loops if speed is huge,
-        // and a maximum (e.g., 0.5) to prevent too sparse samples for very slow objects.
-        double calculated_dt = (2.0 * R_eff) / speed;
-        // Clamp values to keep sanity
-        dt_step = std::clamp(calculated_dt, 0.05, 1.0);
-    } else {
-        // Static obstacle (or very slow)
-        dt_step = 0.5; // Don't need many samples if it's not moving
-    }
-
-    // 4. Generate Path
-    Eigen::Vector2d predicted_pos = ob.position;
-    Eigen::Vector2d current_v = ob.velocity;
-
-    for (double t = currentTime; t >= -1e-9; t -= dt_step) {
-        path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
-        predicted_pos = predicted_pos + (current_v * dt_step);
-    }
-    
-    ob.min_x = std::numeric_limits<double>::max();
-    ob.max_x = std::numeric_limits<double>::lowest();
-    ob.min_y = std::numeric_limits<double>::max();
-    ob.max_y = std::numeric_limits<double>::lowest();
-
-    for (const auto& p : path) {
-        if (p.x() < ob.min_x) ob.min_x = p.x();
-        if (p.x() > ob.max_x) ob.max_x = p.x();
-        if (p.y() < ob.min_y) ob.min_y = p.y();
-        if (p.y() > ob.max_y) ob.max_y = p.y();
-    }
-
-
-
-    return path;
-}
-
 bool DeterministicObstacleChecker::isNodeInObstacleTube(const Eigen::VectorXd& node_state, 
                                                 const Obstacle& ob, 
                                                 double max_edge_length) const {
@@ -1170,15 +1258,252 @@ void DeterministicObstacleChecker::initializeDynamicObstacles(double currentRobo
     }
 }
 
-ObstacleVector DeterministicObstacleChecker::checkAndRepairObstacles(double T_robot) {
+// std::vector<Eigen::Vector3d> DeterministicObstacleChecker::generatePrediction(
+//     const Obstacle& ob, 
+//     double currentTime) const 
+// {
+//     std::vector<Eigen::Vector3d> path;
+
+//     // --- GEOMETRIC MODE ---
+//     // We don't care about time or future movement. 
+//     // We just need the obstacle's current position for the collision checker.
+//     if (is_geometric_mode_) {
+//         // We use Z=0.0 for the time component. 
+//         // The collision checker (isTrajectorySafeAgainstSingleObstacle) will ignore this Z value 
+//         // and treat the obstacle as a static circle at (X, Y).
+//         path.emplace_back(ob.position.x(), ob.position.y(), 0.0);
+
+//         // THE FIX: Initialize the AABB bounds for a stationary point
+//         ob.min_x = ob.position.x();
+//         ob.max_x = ob.position.x();
+//         ob.min_y = ob.position.y();
+//         ob.max_y = ob.position.y();
+
+
+//         return path;
+//     }
+
+
+    
+//     if (!ob.is_dynamic || !ob.has_ground_truth) return path;
+
+//     // 1. Calculate Effective Radius
+//     double R_eff = 0.0;
+//     if (ob.type == Obstacle::CIRCLE) {
+//         R_eff = ob.dimensions.radius;
+//     } else {
+//         // For Box, use the radius of the circumscribed circle (half diagonal)
+//         // This ensures we cover the corners even if it rotates (though yours is linear)
+//         R_eff = std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+//     }
+
+//     // 2. Get Speed (Scalar magnitude of velocity vector)
+//     double speed = ob.velocity.norm();
+
+//     // 3. Calculate Adaptive DT
+//     // We add a small safety factor (e.g., 0.8) to ensure the circles overlap slightly
+//     // rather than just touching. This prevents "edge cases" (pun intended).
+//     double dt_step = 0.1; // Default fallback
+    
+//     if (speed > 1e-6) {
+//         // Formula: dt = (2 * Radius) / Speed
+//         // We clamp it to a minimum (e.g., 0.05) to prevent infinite loops if speed is huge,
+//         // and a maximum (e.g., 0.5) to prevent too sparse samples for very slow objects.
+//         double calculated_dt = (2.0 * R_eff) / speed;
+//         // Clamp values to keep sanity
+//         dt_step = std::clamp(calculated_dt, 0.05, 1.0);
+//     } else {
+//         // Static obstacle (or very slow)
+//         dt_step = 0.5; // Don't need many samples if it's not moving
+//     }
+
+//     // 4. Generate Path
+//     Eigen::Vector2d predicted_pos = ob.position;
+//     Eigen::Vector2d current_v = ob.velocity;
+
+//     for (double t = currentTime; t >= -1e-9; t -= dt_step) {
+//         path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
+//         predicted_pos = predicted_pos + (current_v * dt_step);
+//     }
+    
+//     ob.min_x = std::numeric_limits<double>::max();
+//     ob.max_x = std::numeric_limits<double>::lowest();
+//     ob.min_y = std::numeric_limits<double>::max();
+//     ob.max_y = std::numeric_limits<double>::lowest();
+
+//     for (const auto& p : path) {
+//         if (p.x() < ob.min_x) ob.min_x = p.x();
+//         if (p.x() > ob.max_x) ob.max_x = p.x();
+//         if (p.y() < ob.min_y) ob.min_y = p.y();
+//         if (p.y() > ob.max_y) ob.max_y = p.y();
+//     }
+
+
+
+//     return path;
+// }
+
+// ObstacleVector DeterministicObstacleChecker::checkAndRepairObstacles(double T_robot) {
+//     ObstacleVector triggered_obs;
+    
+//     for (auto& [name, ob] : obstacle_positions_map_) {
+//         if (!ob.is_dynamic) continue;
+        
+//         if (!ob.is_initialized_in_graph) {
+//             ob.is_initialized_in_graph = true;
+//             // Generate prediction starting from current T_robot
+//             ob.predicted_path = this->generatePrediction(ob, T_robot);
+//             triggered_obs.push_back(ob);
+            
+//             // Schedule the NEXT turnaround
+//             double time_for_one_leg = ob.motion_limit / ob.speed_scalar;
+//             ob.nextDirectionChangeTime = T_robot - time_for_one_leg; 
+            
+//             continue; 
+//         }
+        
+//         // --- FIX: Check for Turnaround ---
+//         // We want to trigger if we have PASSED the scheduled time.
+//         // Since T_robot decreases (e.g., 4.30 -> 4.28), we check if T_robot is less than or equal to the scheduled time.
+//         // However, to avoid triggering multiple times for the same event, we check if we crossed the boundary.
+        
+//         // Simple robust check: If current time is PAST the scheduled time, update.
+//         if (T_robot <= ob.nextDirectionChangeTime) {
+            
+//             // Calculate Sim Time for logging
+//             double sim_time = initial_budget_time_ - T_robot; 
+            
+//             RCLCPP_WARN(rclcpp::get_logger("Obs_Debug"),
+//                 "!!! TURNAROUND [%s] !!! | T_Robot: %.2f | Scheduled: %.2f", 
+//                 name.c_str(), T_robot, ob.nextDirectionChangeTime);
+                
+//             // --- UPDATE SCHEDULE ---
+//             // Schedule the NEXT turnaround (one leg further into the past)
+//             double time_for_one_leg = ob.motion_limit / ob.speed_scalar;
+//             ob.nextDirectionChangeTime -= time_for_one_leg;
+            
+//             // --- UPDATE PREDICTION ---
+//             // CRITICAL: We must regenerate the prediction based on the NEW direction.
+//             // generatePrediction uses ob.velocity. We must update ob.velocity FIRST.
+            
+//             // 1. Update the Obstacle's internal state (Position & Velocity) to match the new leg
+//             // We use the exact same logic as processLatestPoseInfo to find the new velocity
+//             double cycle_time = 2.0 * time_for_one_leg;
+//             double cycle_position = std::fmod(sim_time, cycle_time);
+            
+//             if (cycle_position <= time_for_one_leg) {
+//                 // Forward leg
+//                 ob.velocity = ob.motion_axis * ob.speed_scalar;
+//             } else {
+//                 // Backward leg
+//                 ob.velocity = ob.motion_axis * (-ob.speed_scalar);
+//             }
+            
+//             // 2. Now generate the prediction using this NEW velocity
+//             ob.predicted_path = this->generatePrediction(ob, T_robot);
+            
+//             triggered_obs.push_back(ob);
+//         }
+//     }
+//     return triggered_obs;
+// }
+
+
+/////////////////////////////////////////////////////////////////////
+ObstacleVector DeterministicObstacleChecker::checkAndRepairObstacles(double T_robot, const Eigen::Vector2d& robot_pos) {
     ObstacleVector triggered_obs;
     
+    // Identify if this is the absolute first tick of the simulation
+    bool is_first_slice = (std::abs(T_robot - initial_budget_time_) < 1e-6);
+
     for (auto& [name, ob] : obstacle_positions_map_) {
-        if (!ob.is_dynamic) continue;
         
+        // ==========================================
+        // 1. STATIC OBSTACLE LOGIC
+        // ==========================================
+        // if (!ob.is_dynamic) {
+        //     // ONLY initialize static obstacles on the very first simulation tick
+        //     if (is_first_slice && !ob.is_initialized_in_graph) {
+        //         ob.is_initialized_in_graph = true;
+        //         ob.predicted_path = this->generatePrediction(ob, T_robot);
+        //         triggered_obs.push_back(ob);
+        //     }
+        //     continue; // Skip static obstacles forever after Day 0
+        // }
+
+
+        if (ob.is_removed) continue;            // already purged + signaled
+
+        if (!ob.is_dynamic) {
+            if (ob.initially_visible) {
+                if (!ob.is_initialized_in_graph) {
+                    ob.is_initialized_in_graph = true;
+                    /*
+                        Very important to not get confused! why do we even use generateprediction for static obstalces? dnot we use the spatial
+                        geometry for static obstalces in isTrajecotyrSafe func? 
+                        dont confuse the isgeometricmode with static obstacles! these are different things! for geometric mode we only care about the spatial position of the obstalce
+                        and we explicitly handle this in updateobstalce functions of the the planners (e.g. FMTX) but what if we wanted to use R2T with static obstacles?
+                        we need to have a tube for static obstalces too 
+                        (with all the predicted pose being the same for all the time duration from initial time budget to zero! I still am not sure why use the current T_robot wont work for static obs there must be a bug somewhere else in istrajectory function maybe ?!)
+                        so we fill the tube just for addNewobstalce and removeObstacle KDTREE implmentaiton that uses predicted path!
+                        so Eiter i have to explicitly handle late discovered static obstacles differently in addnewobstalce/removeobstalce or use initial_budget_time_ in generate prediction for static obstalces!
+                        So basically this is the example that will reveal whats what:
+                        If the obstacle is a static wall, you want to orphan every node that sits inside its $(X,Y)$ footprint, 
+                        regardless of its time $T_n$.
+                        If you use a single query point at $T_{robot}$, and a node exists inside the wall at $T_n = 10.0$ (while $T_{robot} = 40.0$), 
+                        the temporal difference $(40.0 - 10.0)^2 = 900$ is added to the distance.
+                        The KD-tree thinks this node is $30$ units away, even though it is physically 
+                        sitting exactly on top of the obstacle in 2D space! It will not orphan the node.
+                        So either do use the intial_budget_time_ for static obs generateprediction or use another KD-TREE that doesnt use time dimension
+                        for static obstalces!
+
+                        SO: 
+
+                        Static Obstacles use initial_budget_time_: 
+                        Because they never move, their physical footprint is permanently deadly. We erase them from the entire timeline 
+                        so the math never gets confused by them.
+
+                        Dynamic Obstacles use T_robot: 
+                        Because they move, their footprint is only deadly at specific times in the future. 
+                        We project their danger forward (from $T_{robot}$ down to $0$) and leave the past alone, because projecting dynamic movement backward into the past is invalid physics and unnecessary for future collision avoidance.
+
+                    */
+                    ob.predicted_path = generatePrediction(ob, initial_budget_time_); //Dont use T robot!
+                    triggered_obs.push_back(ob);                 // Day-0 seed
+                }
+                else {
+                    // double dist = (ob.position - robot_pos).norm();
+                    // if (dist <= sensor_range_) {
+                    //     ob.is_removed = true;                    // purge
+                    //     triggered_obs.push_back(ob);             // FINAL signal, carries Day-0 path
+                    // }
+                }
+            }
+            else {
+                if (!ob.is_discovered) {
+                    double dist = (ob.position - robot_pos).norm();
+                    if (dist <= sensor_range_) {
+                        ob.is_discovered = true;
+                        ob.predicted_path = generatePrediction(ob, initial_budget_time_); // IMPORTANT: a static obstacle is static in space, so its pillar must be static across the entire time axis.
+                        triggered_obs.push_back(ob);
+                    }
+                }
+            }
+            continue;
+        }
+
+
+
+
+
+
+
+        // ==========================================
+        // 2. DYNAMIC OBSTACLE LOGIC
+        // ==========================================
         if (!ob.is_initialized_in_graph) {
             ob.is_initialized_in_graph = true;
-            // Generate prediction starting from current T_robot
+            // Generate full horizon prediction starting from current T_robot
             ob.predicted_path = this->generatePrediction(ob, T_robot);
             triggered_obs.push_back(ob);
             
@@ -1189,49 +1514,354 @@ ObstacleVector DeterministicObstacleChecker::checkAndRepairObstacles(double T_ro
             continue; 
         }
         
-        // --- FIX: Check for Turnaround ---
-        // We want to trigger if we have PASSED the scheduled time.
-        // Since T_robot decreases (e.g., 4.30 -> 4.28), we check if T_robot is less than or equal to the scheduled time.
-        // However, to avoid triggering multiple times for the same event, we check if we crossed the boundary.
-        
-        // Simple robust check: If current time is PAST the scheduled time, update.
+        // --- Check for Turnaround Event ---
         if (T_robot <= ob.nextDirectionChangeTime) {
             
-            // Calculate Sim Time for logging
+            // Calculate Sim Time for logic and logging
             double sim_time = initial_budget_time_ - T_robot; 
             
             RCLCPP_WARN(rclcpp::get_logger("Obs_Debug"),
                 "!!! TURNAROUND [%s] !!! | T_Robot: %.2f | Scheduled: %.2f", 
                 name.c_str(), T_robot, ob.nextDirectionChangeTime);
                 
-            // --- UPDATE SCHEDULE ---
             // Schedule the NEXT turnaround (one leg further into the past)
             double time_for_one_leg = ob.motion_limit / ob.speed_scalar;
             ob.nextDirectionChangeTime -= time_for_one_leg;
             
-            // --- UPDATE PREDICTION ---
-            // CRITICAL: We must regenerate the prediction based on the NEW direction.
-            // generatePrediction uses ob.velocity. We must update ob.velocity FIRST.
-            
-            // 1. Update the Obstacle's internal state (Position & Velocity) to match the new leg
-            // We use the exact same logic as processLatestPoseInfo to find the new velocity
+            // Update the Obstacle's Velocity based on the new leg
             double cycle_time = 2.0 * time_for_one_leg;
             double cycle_position = std::fmod(sim_time, cycle_time);
             
             if (cycle_position <= time_for_one_leg) {
-                // Forward leg
-                ob.velocity = ob.motion_axis * ob.speed_scalar;
+                ob.velocity = ob.motion_axis * ob.speed_scalar; // Forward
             } else {
-                // Backward leg
-                ob.velocity = ob.motion_axis * (-ob.speed_scalar);
+                ob.velocity = ob.motion_axis * (-ob.speed_scalar); // Backward
             }
             
-            // 2. Now generate the prediction using this NEW velocity
+            // Now generate the NEW full horizon prediction using this NEW velocity
             ob.predicted_path = this->generatePrediction(ob, T_robot);
-            
             triggered_obs.push_back(ob);
         }
     }
     return triggered_obs;
 }
 
+
+std::vector<Eigen::Vector3d> DeterministicObstacleChecker::generatePrediction(
+    const Obstacle& ob, 
+    double currentTime) const 
+{
+    std::vector<Eigen::Vector3d> path;
+
+    // --- GEOMETRIC MODE ---
+    if (is_geometric_mode_) {
+        // Geometric mode treats all obstacles as 2D static points in the KD-Tree
+        path.emplace_back(ob.position.x(), ob.position.y(), 0.0);
+        ob.min_x = ob.position.x();
+        ob.max_x = ob.position.x();
+        ob.min_y = ob.position.y();
+        ob.max_y = ob.position.y();
+        return path;
+    }
+    
+    if (!ob.has_ground_truth) return path;
+
+    // 1. Calculate Effective Radius
+    double R_eff = 0.0;
+    if (ob.type == Obstacle::CIRCLE) {
+        R_eff = ob.dimensions.radius;
+    } else {
+        R_eff = std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+    }
+
+    // 2. Get Speed (Scalar magnitude of velocity vector)
+    double speed = ob.velocity.norm();
+
+    // 3. Calculate Adaptive DT
+    double dt_step = 0.1; 
+    if (speed > 1e-6) {
+        double calculated_dt = (2.0 * R_eff) / speed;
+        dt_step = std::clamp(calculated_dt, 0.05, 1.0);
+    } else {
+        // If speed is 0 (Static Obstacle), take larger steps to build a time pillar efficiently
+        dt_step = 0.5; 
+    }
+
+    // 4. Generate Path (FULL HORIZON down to 0.0)
+    Eigen::Vector2d predicted_pos = ob.position;
+    Eigen::Vector2d current_v = ob.velocity;
+
+    // For static obstacles, current_v is (0,0), so this loop just stacks points at the 
+    // exact same X,Y position all the way down the time axis, creating a solid pillar.
+    for (double t = currentTime; t >= -1e-9; t -= dt_step) {
+        path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
+        predicted_pos = predicted_pos + (current_v * dt_step);
+    }
+    
+    // 5. Update Bounding Box
+    ob.min_x = std::numeric_limits<double>::max();
+    ob.max_x = std::numeric_limits<double>::lowest();
+    ob.min_y = std::numeric_limits<double>::max();
+    ob.max_y = std::numeric_limits<double>::lowest();
+
+    for (const auto& p : path) {
+        if (p.x() < ob.min_x) ob.min_x = p.x();
+        if (p.x() > ob.max_x) ob.max_x = p.x();
+        if (p.y() < ob.min_y) ob.min_y = p.y();
+        if (p.y() > ob.max_y) ob.max_y = p.y();
+    }
+
+    return path;
+}
+
+
+// /*
+
+// You are asking exactly the right questions about how Receding Horizon Control (MPC) is supposed to work.
+
+// It might feel redundant, but the UPDATE_INTERVAL (sliding window) is the core mechanism that keeps the robot safe without blowing up your CPU.
+
+// Here is exactly why we cannot regenerate the tube every iteration, and why we cannot wait the full 2.5 seconds to regenerate it.
+// The "Constant Replanning" Problem (Why not every iteration?)
+
+// Yes, checkAndRepairObstacles is called in every single simulation slice (e.g., every 0.1 seconds).
+// If we generate a new prediction tube in every single slice:
+
+//     FMTX would call removeObstacle and addNewObstacle 10 times a second.
+
+//     FMTX would run the heavy plan() wavefront repair 10 times a second.
+
+//     You would be deleting and recreating almost the exact same space-time tube over and over, wasting massive amounts of CPU and making your latency graphs look terrible.
+
+// The "Blind Spot" Problem (Why not wait the full 2.5s?)
+
+// You suggested: "we just need to check here if 2.5 second horizon has passed or not to regnerate the tube"
+
+// If we wait for the full 2.5 seconds to pass before generating a new tube, watch what happens to the planner's "vision":
+
+//     At T=10.0: We generate a tube down to T=7.5. The planner sees 2.5 seconds into the future. Perfect.
+
+//     At T=8.5: The robot has moved. The tube still only goes down to T=7.5. The planner now only sees 1.0 second into the future.
+
+//     At T=7.6: The planner only sees 0.1 seconds into the future! The robot might plan a path that drives right up to the obstacle, assuming the obstacle magically vanishes at T=7.5.
+
+//     At T=7.5: The horizon expires, we finally generate a new tube. But it's too late—the robot is already on a collision course because it was planning with a "blind spot" for the last second.
+
+// The Solution: The Sliding Window (Receding Horizon)
+
+// To fix this, we need the planner to always see at least 1.5 seconds into the future, but we don't want to run plan() 10 times a second.
+
+// This is why we use an UPDATE_INTERVAL (e.g., 1.0s) that is smaller than the PREDICTION_HORIZON (2.5s).
+
+//     At T=10.0: Generate tube to 7.5. (Vision: 2.5s ahead)
+
+//     At T=9.0: The timer fires! We delete the old tube and generate a new one to 6.5. (Vision was dropping to 1.5s, but now it's back to 2.5s ahead).
+
+//     At T=8.0: The timer fires! Generate new tube to 5.5.
+
+// Why this is elegant for FMTX:
+
+//     Safety: The robot never goes blind. It always has between 1.5s and 2.5s of guaranteed space-time invalidation in front of it.
+
+//     Efficiency: updateObstacles and plan() only run once per second (or instantly if an oracle turnaround event happens). Your CPU stays relaxed, and your baseline average planning time drops drastically.
+
+// This UPDATE_INTERVAL vs PREDICTION_HORIZON ratio is a foundational concept in receding horizon planners. In your paper, you can boast that FMTX uses a "1.0s sliding update with a 2.5s prediction horizon to guarantee minimum look-ahead safety while bounding computational frequency.
+
+
+
+// However, the reason you cannot wait the full 2.5 seconds to call updateObstacles is a fatal mathematical flaw called the Prediction Blind Spot.
+
+// Since your plan() is running in every single iteration, it is constantly looking at the graph to find the optimal path. If you only regenerate the tube when the 2.5 seconds expire, you are feeding the planner a shrinking window of the future, which will cause the robot to crash.
+// The "Shrinking Headlights" Problem
+
+// Think of the 2.5s prediction tube as the robot's headlights.
+
+// If you update every 2.5 seconds:
+
+//     T_robot = 10.0: You generate a 2.5s tube down to $T=7.5$. Your plan() function runs and safely avoids the obstacle because it sees 2.5 seconds into the future.
+
+//     T_robot = 8.5: You are in the main loop. plan() runs to add new samples. It looks at the graph. The obstacle tube currently in the graph ends at $T=7.5$. That is only 1.0 second in the future! The planner assumes that after $T=7.5$, the obstacle ceases to exist. It will happily route the robot right through the obstacle's future path.
+
+//     T_robot = 7.6: plan() runs. The tube in the graph ends at $T=7.5$. The planner can only see 0.1 seconds into the future. The robot is practically blind and driving at high speed.
+
+//     T_robot = 7.5: The 2.5s timer finally expires. You call updateObstacles and generate a new tube. But it's too late—the robot already committed to a trajectory that crashes into the obstacle because it couldn't see it coming during the last 1.5 seconds.
+
+// Why the 1.0s Sliding Window (Update Interval) is Mandatory
+
+// To keep the robot safe, plan() must never be allowed to look at a graph that has less than a safe braking distance of future prediction.
+
+// By setting UPDATE_INTERVAL = 1.0 and HORIZON = 2.5, you create an overlapping receding horizon.
+
+//     T_robot = 10.0: Tube goes to $T=7.5$ (Vision: 2.5s)
+
+//     T_robot = 9.5: Tube goes to $T=7.5$ (Vision: 2.0s)
+
+//     T_robot = 9.0: The 1.0s interval triggers! You call updateObstacles. The old tube is deleted, and a new 2.5s tube is generated down to $T=6.5$. (Vision jumps back up to 2.5s).
+
+// */
+
+
+
+// ObstacleVector DeterministicObstacleChecker::checkAndRepairObstacles(double T_robot) {
+//     ObstacleVector triggered_obs;
+    
+//     // --- FINITE HORIZON PERIODIC TRIGGER ---
+//     // We need to periodically slide the short 2.5s prediction tube forward.
+//     static double last_periodic_update_T_robot = initial_budget_time_; 
+//     const double UPDATE_INTERVAL = 1.0; // Trigger a new tube every 1.0 seconds
+    
+//     bool global_periodic_trigger = false;
+//     if (last_periodic_update_T_robot - T_robot >= UPDATE_INTERVAL) {
+//         global_periodic_trigger = true;
+//         last_periodic_update_T_robot = T_robot;
+//     }
+
+//     // Identify if this is the absolute first tick of the simulation
+//     bool is_first_slice = (std::abs(T_robot - initial_budget_time_) < 1e-6);
+
+//     for (auto& [name, ob] : obstacle_positions_map_) {
+        
+//         // ==========================================
+//         // 1. STATIC OBSTACLE LOGIC
+//         // ==========================================
+//         if (!ob.is_dynamic) {
+//             // ONLY initialize static obstacles on the very first simulation tick
+//             if (is_first_slice && !ob.is_initialized_in_graph) {
+//                 ob.is_initialized_in_graph = true;
+//                 ob.predicted_path = this->generatePrediction(ob, T_robot);
+//                 triggered_obs.push_back(ob);
+//             }
+//             continue; // Skip static obstacles forever after Day 0
+//         }
+
+//         // ==========================================
+//         // 2. DYNAMIC OBSTACLE LOGIC
+//         // ==========================================
+//         bool turnaround_triggered = false;
+
+//         // A. Initial Graph Setup for Dynamics
+//         if (!ob.is_initialized_in_graph) {
+//             ob.is_initialized_in_graph = true;
+//             ob.predicted_path = this->generatePrediction(ob, T_robot);
+//             triggered_obs.push_back(ob);
+            
+//             // Schedule the NEXT turnaround
+//             double time_for_one_leg = ob.motion_limit / ob.speed_scalar;
+//             ob.nextDirectionChangeTime = T_robot - time_for_one_leg; 
+            
+//             continue; 
+//         }
+        
+//         // B. ORACLE EVENT: Check for Turnaround
+//         if (T_robot <= ob.nextDirectionChangeTime) {
+//             turnaround_triggered = true;
+            
+//             // Calculate ascending Sim Time for standard modulo math
+//             double sim_time = initial_budget_time_ - T_robot; 
+            
+//             RCLCPP_WARN(rclcpp::get_logger("Obs_Debug"),
+//                 "!!! TURNAROUND [%s] !!! | T_Robot: %.2f | Scheduled: %.2f", 
+//                 name.c_str(), T_robot, ob.nextDirectionChangeTime);
+                
+//             // Schedule the NEXT turnaround (one leg further down in T_robot time)
+//             double time_for_one_leg = ob.motion_limit / ob.speed_scalar;
+//             ob.nextDirectionChangeTime -= time_for_one_leg;
+            
+//             // Update the Oracle Truth (Flip the velocity)
+//             double cycle_time = 2.0 * time_for_one_leg;
+//             double cycle_position = std::fmod(sim_time, cycle_time);
+            
+//             if (cycle_position <= time_for_one_leg) {
+//                 ob.velocity = ob.motion_axis * ob.speed_scalar; // Forward
+//             } else {
+//                 ob.velocity = ob.motion_axis * (-ob.speed_scalar); // Backward
+//             }
+//         }
+
+//         // C. TUBE GENERATION: Trigger if sliding horizon OR oracle event occurred
+//         if (global_periodic_trigger || turnaround_triggered) {
+//             // Generate the prediction using the CURRENT velocity (constant velocity assumption)
+//             ob.predicted_path = this->generatePrediction(ob, T_robot);
+//             triggered_obs.push_back(ob);
+//         }
+//     }
+    
+//     return triggered_obs;
+// }
+
+// std::vector<Eigen::Vector3d> DeterministicObstacleChecker::generatePrediction(
+//     const Obstacle& ob, 
+//     double currentTime) const 
+// {
+//     std::vector<Eigen::Vector3d> path;
+
+//     // --- GEOMETRIC MODE ---
+//     if (is_geometric_mode_) {
+//         // Geometric mode treats all obstacles as 2D static points in the KD-Tree
+//         path.emplace_back(ob.position.x(), ob.position.y(), 0.0);
+//         ob.min_x = ob.position.x();
+//         ob.max_x = ob.position.x();
+//         ob.min_y = ob.position.y();
+//         ob.max_y = ob.position.y();
+//         return path;
+//     }
+    
+//     // Safety check (Static obstacles use their current initial position)
+//     if (!ob.is_dynamic || !ob.has_ground_truth) {
+//         path.emplace_back(ob.position.x(), ob.position.y(), currentTime);
+//         ob.min_x = ob.position.x();
+//         ob.max_x = ob.position.x();
+//         ob.min_y = ob.position.y();
+//         ob.max_y = ob.position.y();
+//         return path;
+//     }
+
+//     // 1. Calculate Effective Radius
+//     double R_eff = 0.0;
+//     if (ob.type == Obstacle::CIRCLE) {
+//         R_eff = ob.dimensions.radius;
+//     } else {
+//         R_eff = std::hypot(ob.dimensions.width/2.0, ob.dimensions.height/2.0);
+//     }
+
+//     // 2. Get Speed
+//     double speed = ob.velocity.norm();
+
+//     // 3. Calculate Adaptive DT
+//     double dt_step = 0.1; 
+//     if (speed > 1e-6) {
+//         double calculated_dt = (2.0 * R_eff) / speed;
+//         dt_step = std::clamp(calculated_dt, 0.05, 1.0);
+//     } else {
+//         dt_step = 0.5; 
+//     }
+
+//     // 4. Generate Path (FINITE HORIZON + CONSTANT VELOCITY)
+//     Eigen::Vector2d predicted_pos = ob.position;
+//     Eigen::Vector2d current_v = ob.velocity;
+
+//     // --- HORIZON SETTING ---
+//     const double PREDICTION_HORIZON = 2.5; 
+//     double end_time = std::max(-1e-9, currentTime - PREDICTION_HORIZON);
+
+//     // Constant Velocity Assumption: Project a straight line
+//     for (double t = currentTime; t >= end_time; t -= dt_step) {
+//         path.emplace_back(predicted_pos.x(), predicted_pos.y(), t);
+//         predicted_pos = predicted_pos + (current_v * dt_step);
+//     }
+    
+//     // 5. Update Bounding Box
+//     ob.min_x = std::numeric_limits<double>::max();
+//     ob.max_x = std::numeric_limits<double>::lowest();
+//     ob.min_y = std::numeric_limits<double>::max();
+//     ob.max_y = std::numeric_limits<double>::lowest();
+
+//     for (const auto& p : path) {
+//         if (p.x() < ob.min_x) ob.min_x = p.x();
+//         if (p.x() > ob.max_x) ob.max_x = p.x();
+//         if (p.y() < ob.min_y) ob.min_y = p.y();
+//         if (p.y() > ob.max_y) ob.max_y = p.y();
+//     }
+
+//     return path;
+// }

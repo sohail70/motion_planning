@@ -58,6 +58,35 @@ public:
     }
 
 
+    void setBestParentLLPT(DStarLiteNode* p, std::shared_ptr<Trajectory> traj) {
+
+        // // Reject parent if the edge cost is infinity
+        // if (p) {
+        //     auto it = forward_neighbors_.find(p);
+        //     if (it != forward_neighbors_.end() && std::isinf(it->second.distance)) {
+        //         std::cerr << "[FATAL] Attempt to set parent with inf edge! node=" << getIndex()
+        //                 << " parent=" << p->getIndex() << std::endl;
+        //         return;   // refuse the parent assignment
+        //     }
+        // }
+
+        if (best_parent_ == p) return;
+        
+        // Remove from old parent's children list
+        if (best_parent_) {
+            auto& siblings = best_parent_->children_;
+            siblings.erase(std::remove(siblings.begin(), siblings.end(), this), siblings.end());
+        }
+        
+        best_parent_ = p;
+        best_parent_trajectory_ = std::move(traj);
+        
+        // Add to new parent's children list
+        if (best_parent_) {
+            best_parent_->children_.push_back(this);
+        }
+    }
+
 
     double getTimeToGoal() const noexcept { return time_to_goal_; }
     void setTimeToGoal(double time) noexcept { time_to_goal_ = time; }
@@ -84,7 +113,7 @@ public:
     DStarLiteNode* best_parent_; 
     // Trajectory best_parent_trajectory_;
     std::shared_ptr<Trajectory> best_parent_trajectory_;
-    // std::vector<DStarLiteNode*> children_;
+    std::vector<DStarLiteNode*> children_; // Specific to LLPT*
 
 
     // std::unordered_set<std::string> threats_;

@@ -1,0 +1,36 @@
+experiment:
+  name: "LLPTStar_R2_Geometric_Test"
+  planner_type: "KinodynamicLLPTStar"
+  state_space_type: "RDT"
+  manager_type: "R2T"
+
+simulation:
+  duration_limit: 3
+  slice_time: 0.02
+  seed: 42
+
+robot:
+  start_state: [48.0, 48.0] 
+  goal_state:  [-48.0, -48.0]
+  dimensions: 2
+  bounds_min: [-50.0, -50.0]
+  bounds_max: [50.0, 50.0]
+
+planner_params:
+  num_of_samples: 3
+  factor: 3.0
+  delta: 10.0
+  kdtree_type: "NanoFlann"
+  partial_update: true
+  kd_dim: 2 # 2 for R2
+  is_geometric_mode: true 
+  heuristic: true
+
+manager_params:
+  vis_frequency_hz: 30
+
+gazebo_params:
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20_r2t.sdf"
+  # sdf_path: "../sims/dynamic_world_diag.sdf"
+  # sdf_path: "../sims/dynamic_world_2_obs.sdf"
+  inflation: 0.0

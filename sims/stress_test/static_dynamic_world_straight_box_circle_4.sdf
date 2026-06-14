@@ -1,0 +1,119 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+  
+<physics type="ode">
+    <max_step_size>0.01</max_step_size>
+    <real_time_update_rate>60</real_time_update_rate>
+</physics>  
+  
+    <!-- Add a ground plane with a lighter color -->
+<model name="ground_plane">
+  <static>true</static>
+  <link name="link">
+    <collision name="collision">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+      <size>100 100</size>
+        </plane>
+      </geometry>
+      <!-- Disable collisions with kinematic objects -->
+      <surface>
+        <contact>
+          <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+        </contact>
+      </surface>
+    </collision>
+    <visual name="visual">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+          <size>100 100</size>
+        </plane>
+      </geometry>
+      <material>
+        <ambient>0.6 0.6 0.6 1</ambient>
+        <diffuse>0.6 0.6 0.6 1</diffuse>
+      </material>
+    </visual>
+  </link>
+</model>
+
+
+
+
+
+
+<!-- Outer Prison Walls (Stops at 38 to leave an escape corridor) -->
+<model name="prison_south">
+  <pose>22.0 0.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>32.0 4.0 1.0</size></box>
+  </geometry><material><ambient>0.2 0.2 0.2 1</ambient></material></visual></link>
+</model>
+
+<model name="prison_west">
+  <pose>0.0 22.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>4.0 32.0 1.0</size></box>
+  </geometry><material><ambient>0.2 0.2 0.2 1</ambient></material></visual></link>
+</model>
+
+<!-- Baffles (Scaled down to fit inside the 38x38 box) -->
+<model name="baffle_1">
+  <pose>12.0 12.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>24.0 2.0 1.0</size></box> <!-- Leaves X > 24 open -->
+  </geometry><material><ambient>0.8 0.4 0.0 1</ambient></material></visual></link>
+</model>
+
+<model name="baffle_2">
+  <pose>26.0 24.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>24.0 2.0 1.0</size></box> <!-- Leaves X < 14 open -->
+  </geometry><material><ambient>0.8 0.4 0.0 1</ambient></material></visual></link>
+</model>
+
+<!-- Dynamic Plug at the [0,0] Exit -->
+<model name="dynamic_plug_titan">
+  <pose>-10.0 3.0 0 0 0 0</pose> 
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual"><geometry>
+      <box><size>10.0 10.0 1.0</size></box>
+    </geometry><material><ambient>1 0 0 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>1 0 0</direction>
+    <amplitude>11.0</amplitude> <!-- Sweeps from -10 to 1, sealing the 6m gap -->
+    <speed>6.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+
+
+
+
+<!--****** -->
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+
+<!-- 
+  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+    <speed>0.8</speed>
+    <interpolation_step>0.3</interpolation_step>
+  </plugin> -->
+
+
+    </include>
+
+  </world>
+</sdf>
+
+
+
+

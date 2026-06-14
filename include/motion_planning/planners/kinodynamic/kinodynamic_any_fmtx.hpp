@@ -47,10 +47,18 @@ class KinodynamicANYFMTX : public Planner {
         const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
         void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
 
+        void diagnoseLostAnchor(const Eigen::VectorXd& robot_state,
+                        const Eigen::VectorXd& query_point,
+                        double max_radius);
+
+        void diagnoseTimeCone(const Eigen::VectorXd& robot_state,
+                                                const Eigen::VectorXd& query_point,
+                                                double max_radius);
+                        
 
         double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
         bool isRobotSafe();
-        int getTreeSize() { return tree_.size();}
+        int getTreeSize() { return tree_.size()-num_pillar_nodes_;}
 
         // Adds a batch of samples to the existing tree and updates structures
         void addBatchOfSamplesEager(int num_samples); // O(n log(n))
@@ -150,10 +158,18 @@ class KinodynamicANYFMTX : public Planner {
 
         void runFMT(SuboptimalityMetrics& metrics);
 
+        bool isCurrentBridgeSafe(const ObstacleVector& obstacles) const override;
+        bool hasReachedAnchor(const Eigen::VectorXd& current_sim_state) const override;
+        std::vector<Eigen::VectorXd> getLivePathPositions(const Eigen::VectorXd& current_state) const;
+        bool hasShortcut(const Eigen::VectorXd& robot_state, double threshold);
+
+        void setCurrentRobotTime(double T_robot);
     private:
+        int collision_checked_ = 0;
         bool updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node);
         void cullNeighbors(FMTNode* v);
         void shrinkingBallRadius();
+        Eigen::VectorXd saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta);
 
 
         std::vector<std::unique_ptr<FMTNode>> tree_;
@@ -177,6 +193,8 @@ class KinodynamicANYFMTX : public Planner {
         bool use_knn = false;
         double factor;
         
+        double T_robot;
+
         int kd_dim ; 
         int dimension_;
         Eigen::VectorXd robot_continuous_state_;

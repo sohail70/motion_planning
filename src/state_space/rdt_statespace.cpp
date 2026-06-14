@@ -35,9 +35,10 @@ RDTStateSpace::RDTStateSpace( int dimension, double min_velocity, double max_vel
       euclidean_dim_(is_geometric_mode ? dimension : dimension - 1),
       min_velocity_(min_velocity),
       max_velocity_(max_velocity),
-      is_geometric_mode_(is_geometric_mode)
+      is_geometric_mode_(is_geometric_mode),
+      rng_(seed)
 {
-    std::srand(seed);
+    // std::srand(seed);
 
     distance_weights_.resize(dimension_);
 
@@ -482,12 +483,38 @@ std::shared_ptr<State> RDTStateSpace::sampleUniform(const Eigen::VectorXd& min_b
     if (min_bounds.size() != dimension_ || max_bounds.size() != dimension_) {
         throw std::invalid_argument("Bounds vectors must match the state space dimension.");
     }
+    
     Eigen::VectorXd values(dimension_);
     for (int i = 0; i < dimension_; ++i) {
-        double random_coeff = static_cast<double>(rand()) / RAND_MAX;
-        values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
+        std::uniform_real_distribution<double> dist(min_bounds[i], max_bounds[i]);
+        values[i] = dist(rng_);
     }
     return StateSpace::addState(std::make_shared<EuclideanState>(values));
+}
+// Eigen::VectorXd RDTStateSpace::sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) {
+//     if (min_bounds.size() != dimension_ || max_bounds.size() != dimension_) {
+//         throw std::invalid_argument("Bounds vectors must match the state space dimension.");
+//     }
+//     Eigen::VectorXd values(dimension_);
+//     for (int i = 0; i < dimension_; ++i) {
+//         double random_coeff = static_cast<double>(rand()) / RAND_MAX;
+//         values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
+//     }
+//     return values;
+// }
+
+Eigen::VectorXd RDTStateSpace::sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) {
+    if (min_bounds.size() != dimension_ || max_bounds.size() != dimension_) {
+        throw std::invalid_argument("Bounds vectors must match the state space dimension.");
+    }
+    
+    Eigen::VectorXd values(dimension_);
+    for (int i = 0; i < dimension_; ++i) {
+        std::uniform_real_distribution<double> dist(min_bounds[i], max_bounds[i]);
+        values[i] = dist(rng_);
+    }
+    
+    return values;
 }
 
 bool RDTStateSpace::isValid(const std::shared_ptr<State>& state) const {

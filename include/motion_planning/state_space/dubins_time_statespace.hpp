@@ -45,8 +45,9 @@ public:
     /**
      * Generates a random 4D sample within the specified bounds.
      */
-    std::shared_ptr<State> sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds);
+    std::shared_ptr<State> sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) override;
 
+    Eigen::VectorXd sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) override;
     /**
      * Creates a circular hover path at a given state.
      * hover_state The 4D state (x, y, theta, time) where the hover should begin.
@@ -66,6 +67,7 @@ public:
 
 
 private:
+    std::mt19937 rng_;
     double min_velocity_;
     double max_velocity_;
 };

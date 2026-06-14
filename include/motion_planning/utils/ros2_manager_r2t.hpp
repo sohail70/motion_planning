@@ -457,6 +457,7 @@ public:
           initial_budget_time_(initial_budget_time)
     {
         inflation = params.getParam<double>("inflation");
+        slice_time = params.getParam<double>("slice_time");
 
         if (initial_sim_state.size() != 3) {
             throw std::runtime_error("R2TROS2Manager: Initial state must be 3D.");
@@ -487,6 +488,9 @@ public:
 
     }
 
+
+
+
     // --- PUBLIC API ---
     /*
         1. Repair/update graph for planning (happens in the main function)
@@ -499,20 +503,29 @@ public:
         This is assuming a valid anchor node is found in the update that just happened
     */
     void stepSimulation(double dt) {
-        std::lock_guard<std::mutex> lock(path_mutex_);
+        std::lock_guard<std::mutex> lock(path_mutex_);   // lock ONCE, here
+        const double max_sub = slice_time;                      // collision-check resolution
+        int n = std::max(1, (int)std::ceil(dt / max_sub));
+        double sub = dt / n;
+        for (int i = 0; i < n; ++i) {
+            stepOnce(sub);
+        }
+    }
+    void stepOnce(double dt) {
+        // std::lock_guard<std::mutex> lock(path_mutex_);
         
         // Advance Time
         current_sim_time_ -= dt;
 
         // // Safety Clamps
-        // if (!current_path_.empty()) {
-        //     if (current_sim_time_ > current_path_.front()(2)) {
-        //         current_sim_time_ = current_path_.front()(2);
-        //     }
-        //     if (current_sim_time_ < current_path_.back()(2)) {
-        //         current_sim_time_ = current_path_.back()(2);
-        //     }
-        // }
+        if (!current_path_.empty()) {
+            if (current_sim_time_ > current_path_.front()(2)) {
+                current_sim_time_ = current_path_.front()(2);
+            }
+            if (current_sim_time_ < current_path_.back()(2)) {
+                current_sim_time_ = current_path_.back()(2);
+            }
+        }
 
         if (!is_path_set_ || current_path_.size() < 2) return;
 
@@ -546,6 +559,7 @@ public:
         // Interpolate
         if (segment_duration <= 1e-9) {
             current_interpolated_state_ = state_after;
+            current_interpolated_state_(2) = current_sim_time_;
         } else {
             double time_into_segment = state_before(2) - current_sim_time_;
             double interp_factor = time_into_segment / segment_duration;
@@ -609,11 +623,31 @@ public:
         }
 
         // Create a 3D point for start and end (Z=0)
-        Eigen::VectorXd start_pt(3); start_pt << prev_state(0), prev_state(1), 0.0; // <--- ADDED SEMICOLON HERE
+        Eigen::VectorXd start_pt(3); start_pt << prev_state(0), prev_state(1), 0.0;
         Eigen::VectorXd end_pt(3);   end_pt << current_interpolated_state_(0), current_interpolated_state_(1), 0.0;
         
         // Add to edge list
         robot_trace_edges_.push_back({start_pt, end_pt});
+
+        // ---- Physical solution-quality metrics (report L and T, in physical units) ----
+        const double seg_dt = prev_state(2) - current_interpolated_state_(2);                        // [s]
+        const double seg_dx = (current_interpolated_state_.head<2>() - prev_state.head<2>()).norm();  // [m]
+
+        executed_path_length_ += seg_dx;   // distance travelled so far
+        executed_time_        += seg_dt;   // elapsed time; equals arrival time T at goal
+
+        // std::cout << "[R2T] L = " << executed_path_length_ << " m"
+        //         << " | T = "    << executed_time_        << " s"
+        //         << " | v = "    << current_speed_        << " m/s\n";
+
+    }
+
+
+    ExecutedMetrics getExecutedMetrics() const override {
+        ExecutedMetrics m;
+        m.path_length  = executed_path_length_;
+        m.arrival_time = executed_time_;
+        return m;   // heading_change, control_effort left 0.0
     }
 
     // void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
@@ -690,9 +724,9 @@ public:
     std::lock_guard<std::mutex> lock(path_mutex_);
 
     if (new_path_from_main.size() < 2) {
-        is_path_set_ = false;
-        current_path_.clear();
-        return;
+        // is_path_set_ = false;
+        // current_path_.clear();
+        return; // keep moving on the existing path, like Dubins
     }
 
     if (!is_path_set_) {
@@ -807,6 +841,11 @@ std::shared_ptr<RVizVisualization> visualizer_;
     double current_speed_ = 0;
     bool goal_reached_ = false;
 
+    double slice_time;
+
+    // R2T members
+    double executed_path_length_ = 0.0;   // [m]  total distance travelled
+    double executed_time_        = 0.0;   // [s]  total elapsed time == arrival time T
 
     // // Visualization Loop (Background Thread - Obstacles Only)
     // void visualizationLoop() { 
@@ -875,6 +914,10 @@ std::shared_ptr<RVizVisualization> visualizer_;
             const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); 
             
             for (const auto& obstacle : all_obstacles) {
+                // SKIPPING STATIC OBSTACLES THAT ARE NOT VISIBLE (EITHER AT FIRST OR NOT IN SENSOR RANGE)
+                if(!obstacle.is_dynamic && !obstacle.is_discovered) continue;
+                if(!obstacle.is_dynamic && obstacle.is_removed) continue;
+
                 bool is_threat = current_threat_names_.count(obstacle.name);
                 if (obstacle.type == Obstacle::CIRCLE) {
                     Eigen::VectorXd pos(2); pos << obstacle.position.x(), obstacle.position.y();

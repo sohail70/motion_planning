@@ -46,6 +46,7 @@ public:
         inflation = params.getParam<double>("inflation");
         int dim = params.getParam<int>("thruster_state_dimension", 5);
         current_interpolated_state_ = Eigen::VectorXd::Zero(dim);
+        slice_time = params.getParam<double>("slice_time");
         
         if (initial_sim_state.size() != dim) {
             throw std::runtime_error("ROS2Manager (Thruster): Initial state dimension mismatch.");
@@ -88,23 +89,32 @@ public:
     }
 
 
-    // --- PUBLIC API ---
     void stepSimulation(double dt) {
-        std::lock_guard<std::mutex> lock(path_mutex_);
+        std::lock_guard<std::mutex> lock(path_mutex_);   // lock ONCE, here
+        const double max_sub = slice_time;                      // collision-check resolution
+        int n = std::max(1, (int)std::ceil(dt / max_sub));
+        double sub = dt / n;
+        for (int i = 0; i < n; ++i) {
+            stepOnce(sub);
+        }
+    }
+
+    void stepOnce(double dt) {
+        // std::lock_guard<std::mutex> lock(path_mutex_);
         
         // 1. Advance Time
         current_sim_time_ -= dt;
         
         // // 2. Safety Clamps
-        // if (!current_path_.empty()) {
-        //     const int dim = current_path_.front().size();
-        //     if (current_sim_time_ > current_path_.front()(dim - 1)) {
-        //         current_sim_time_ = current_path_.front()(dim - 1);
-        //     }
-        //     if (current_sim_time_ < current_path_.back()(dim - 1)) {
-        //         current_sim_time_ = current_path_.back()(dim - 1);
-        //     }
-        // }
+        if (!current_path_.empty()) {
+            const int dim = current_path_.front().size();
+            if (current_sim_time_ > current_path_.front()(dim - 1)) {
+                current_sim_time_ = current_path_.front()(dim - 1);
+            }
+            if (current_sim_time_ < current_path_.back()(dim - 1)) {
+                current_sim_time_ = current_path_.back()(dim - 1);
+            }
+        }
 
         if (!is_path_set_ || current_path_.size() < 2) return;
 
@@ -132,6 +142,7 @@ public:
         // Interpolate
         if (segment_duration <= 1e-9) {
             current_interpolated_state_ = state_after;
+            current_interpolated_state_(dim - 1) = current_sim_time_;
         } else {
             double time_into_segment = state_before(dim - 1) - current_sim_time_;
             double interp_factor = time_into_segment / segment_duration;
@@ -174,7 +185,7 @@ public:
             
             // Calculate yaw from velocity
             double current_yaw = 0.0;
-            if (current_vel.norm() > 1e-3) {
+            if (current_vel.norm() > 1e-6) {
                 current_yaw = std::atan2(current_vel[1], current_vel[0]);
             }
             
@@ -209,8 +220,45 @@ public:
         Eigen::VectorXd start_pt(3); start_pt << prev_state(0), prev_state(1), 0.0;
         Eigen::VectorXd end_pt(3);   end_pt << current_interpolated_state_(0), current_interpolated_state_(1), 0.0;
         robot_trace_edges_.push_back({start_pt, end_pt});
+
+
+
+        // ---- Physical solution-quality metrics (each meaningful quantity kept separate) ----
+        const double seg_dt = prev_state(dim - 1) - current_interpolated_state_(dim - 1);   // [s]
+
+        const Eigen::VectorXd p_prev = getSpatialPosition(prev_state);
+        const Eigen::VectorXd p_now  = getSpatialPosition(current_interpolated_state_);
+        const Eigen::VectorXd v_prev = getSpatialVelocity(prev_state);
+        const Eigen::VectorXd v_now  = getSpatialVelocity(current_interpolated_state_);
+
+        const double seg_dx = (p_now - p_prev).norm();   // [m]   spatial distance this step
+        const double seg_dv = (v_now - v_prev).norm();   // [m/s] speed change magnitude this step
+
+        executed_path_length_   += seg_dx;   // L: how far it travelled
+        executed_time_          += seg_dt;   // T: arrival time
+        executed_control_effort_ += seg_dv;  // sum|dv| == integral|a|dt: how hard it actuated
+
+        // std::cout << "[Thruster] L = " << executed_path_length_    << " m"
+        //         << " | T = "         << executed_time_           << " s"
+        //         << " | effort = "    << executed_control_effort_ << " m/s (int|a|dt)"
+        //         << " | speed = "     << current_speed_           << " m/s"
+        //         << " | |a| = "       << current_accel_mag_       << " m/s^2\n";
+
+
+
+
     }
 
+
+    ExecutedMetrics getExecutedMetrics() const override {
+        ExecutedMetrics m;
+        m.path_length   = executed_path_length_;
+        m.arrival_time  = executed_time_;
+        m.control_effort = executed_control_effort_;
+        return m;   // heading_change left 0.0
+    }
+
+    
     // void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
     //     std::lock_guard<std::mutex> lock(path_mutex_);
     //     if (new_path_from_main.size() < 2) {
@@ -251,9 +299,9 @@ void setPath(const std::vector<Eigen::VectorXd>& new_path_from_main) {
     std::lock_guard<std::mutex> lock(path_mutex_);
 
     if (new_path_from_main.size() < 2) {
-        is_path_set_ = false;
-        current_path_.clear();
-        return;
+        // is_path_set_ = false;
+        // current_path_.clear();
+        return; // keep moving on the existing path
     }
 
     if (!is_path_set_) {
@@ -401,6 +449,14 @@ private:
     double current_accel_mag_ = 0;
     bool goal_reached_ = false;
 
+    double slice_time;
+    
+
+    // Thruster members
+    double executed_path_length_   = 0.0; // [m]
+    double executed_time_          = 0.0; // [s]
+    double executed_control_effort_= 0.0; // [m/s] integral of |a| dt == sum of |dv|
+
 
     void visualizationLoop() { 
         if (!obstacle_checker_ || !visualizer_) return; 
@@ -420,6 +476,9 @@ private:
             const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); 
             
             for (const auto& obstacle : all_obstacles) {
+                // SKIPPING STATIC OBSTACLES THAT ARE NOT VISIBLE (EITHER AT FIRST OR NOT IN SENSOR RANGE)
+                if(!obstacle.is_dynamic && !obstacle.is_discovered) continue;
+
                 bool is_threat = current_threat_names_.count(obstacle.name);
                 if (obstacle.type == Obstacle::CIRCLE) {
                     Eigen::VectorXd pos(2); pos << obstacle.position.x(), obstacle.position.y();

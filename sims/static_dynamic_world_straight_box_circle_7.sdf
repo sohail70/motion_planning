@@ -1,0 +1,190 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+  
+<physics type="ode">
+    <max_step_size>0.01</max_step_size>
+    <real_time_update_rate>60</real_time_update_rate>
+</physics>  
+  
+    <!-- Add a ground plane with a lighter color -->
+<model name="ground_plane">
+  <static>true</static>
+  <link name="link">
+    <collision name="collision">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+      <size>100 100</size>
+        </plane>
+      </geometry>
+      <!-- Disable collisions with kinematic objects -->
+      <surface>
+        <contact>
+          <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+        </contact>
+      </surface>
+    </collision>
+    <visual name="visual">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+          <size>100 100</size>
+        </plane>
+      </geometry>
+      <material>
+        <ambient>0.6 0.6 0.6 1</ambient>
+        <diffuse>0.6 0.6 0.6 1</diffuse>
+      </material>
+    </visual>
+  </link>
+</model>
+
+
+
+<!-- ========== THE DOUBLE BUCKET BUG TRAP ========== -->
+<!-- This environment is specifically designed to destroy Lazy Planners -->
+
+<!-- Outer boundary -->
+<model name="bound_top"><pose>0 50 0 0 0 0</pose><static>true</static><link name="l"><visual name="v"><geometry><box><size>100 2 2</size></box></geometry><material><ambient>0.25 0.25 0.25 1</ambient></material></visual></link></model>
+<model name="bound_bottom"><pose>0 -50 0 0 0 0</pose><static>true</static><link name="l"><visual name="v"><geometry><box><size>100 2 2</size></box></geometry><material><ambient>0.25 0.25 0.25 1</ambient></material></visual></link></model>
+<model name="bound_left"><pose>-50 0 0 0 0 0</pose><static>true</static><link name="l"><visual name="v"><geometry><box><size>2 100 2</size></box></geometry><material><ambient>0.25 0.25 0.25 1</ambient></material></visual></link></model>
+<model name="bound_right"><pose>50 0 0 0 0 0</pose><static>true</static><link name="l"><visual name="v"><geometry><box><size>2 100 2</size></box></geometry><material><ambient>0.25 0.25 0.25 1</ambient></material></visual></link></model>
+
+<!-- ========================================== -->
+<!-- BUCKET 1: Center at (10,10), faces (48,48) -->
+<!-- ========================================== -->
+<!-- Back Wall (Split into two halves to leave a tiny teasing gap in the middle) -->
+<model name="b1_back_left">
+  <pose>2 18 0 0 0 -0.785398</pose><static>true</static>
+  <link name="l"><visual name="v"><geometry><box><size>20 2 2</size></box></geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+<model name="b1_back_right">
+  <pose>18 2 0 0 0 -0.785398</pose><static>true</static>
+  <link name="l"><visual name="v"><geometry><box><size>20 2 2</size></box></geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+<!-- Side Walls to complete the bucket -->
+<model name="b1_side_top">
+  <pose>6 34 0 0 0 0.785398</pose><static>true</static>
+  <link name="l"><visual name="v"><geometry><box><size>30 2 2</size></box></geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+<model name="b1_side_right">
+  <pose>34 6 0 0 0 0.785398</pose><static>true</static>
+  <link name="l"><visual name="v"><geometry><box><size>30 2 2</size></box></geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+
+<!-- ========================================== -->
+<!-- BUCKET 2: Center at (-20,-20), faces Bucket 1 -->
+<!-- ========================================== -->
+<model name="b2_back_left">
+  <pose>-28 -10 0 0 0 -0.785398</pose><static>true</static>
+  <link name="l"><visual name="v"><geometry><box><size>20 2 2</size></box></geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+<model name="b2_back_right">
+  <pose>-10 -28 0 0 0 -0.785398</pose><static>true</static>
+  <link name="l"><visual name="v"><geometry><box><size>20 2 2</size></box></geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+<model name="b2_side_top">
+  <pose>-24 6 0 0 0 0.785398</pose><static>true</static>
+  <link name="l"><visual name="v"><geometry><box><size>30 2 2</size></box></geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+<model name="b2_side_right">
+  <pose>6 -24 0 0 0 0.785398</pose><static>true</static>
+  <link name="l"><visual name="v"><geometry><box><size>30 2 2</size></box></geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+
+<!-- ========================================== -->
+<!-- CHAOTIC DYNAMIC OBSTACLES (The Killers)    -->
+<!-- ========================================== -->
+
+<!-- TRAPDOOR 1: Swings wildly back and forth across the tiny gap at the bottom of Bucket 1 -->
+<model name="trapdoor_1">
+  <pose>10 10 0 0 0 0</pose>
+  <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2</radius><length>1</length></cylinder></geometry><material><ambient>1 0 0 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>l</link_name><direction>-0.707 0.707 0</direction><amplitude>6</amplitude><speed>16</speed><turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<!-- TRAPDOOR 2: Same, at the bottom of Bucket 2 -->
+<model name="trapdoor_2">
+  <pose>-20 -20 0 0 0 0</pose>
+  <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2</radius><length>1</length></cylinder></geometry><material><ambient>1 0 0 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>l</link_name><direction>-0.707 0.707 0</direction><amplitude>6</amplitude><speed>18</speed><turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<!-- INTERIOR CHAOS: These bounce around INSIDE the buckets, constantly intersecting LLPT's repair paths -->
+<model name="chaos_in_b1">
+  <pose>20 20 0 0 0 0</pose>
+  <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2.5</radius><length>1</length></cylinder></geometry><material><ambient>1 0 1 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>l</link_name><direction>1 0 0</direction><amplitude>8</amplitude><speed>14</speed><turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="chaos_in_b2">
+  <pose>-10 -10 0 0 0 0</pose>
+  <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2.5</radius><length>1</length></cylinder></geometry><material><ambient>1 0 1 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>l</link_name><direction>0 1 0</direction><amplitude>8</amplitude><speed>15</speed><turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<!-- ENTRANCE BAIT: These swing across the entrance of the buckets to force sudden braking -->
+<model name="bait_b1">
+  <pose>30 30 0 0 0 0</pose>
+  <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2</radius><length>1</length></cylinder></geometry><material><ambient>0 1 0 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>l</link_name><direction>-0.707 0.707 0</direction><amplitude>12</amplitude><speed>20</speed><turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="bait_b2">
+  <pose>0 0 0 0 0 0</pose>
+  <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2</radius><length>1</length></cylinder></geometry><material><ambient>0 1 0 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>l</link_name><direction>0.707 -0.707 0</direction><amplitude>12</amplitude><speed>22</speed><turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<!-- OUTER ESCAPE SWEEPERS: To make sure FMTX also has dynamic obstacles to dodge on the correct outer path -->
+<model name="sweep_outer_1">
+  <pose>-20 30 0 0 0 0</pose>
+  <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>3</radius><length>1</length></cylinder></geometry><material><ambient>0 0 1 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>l</link_name><direction>1 0 0</direction><amplitude>15</amplitude><speed>25</speed><turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<model name="sweep_outer_2">
+  <pose>30 -20 0 0 0 0</pose>
+  <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>3</radius><length>1</length></cylinder></geometry><material><ambient>0 0 1 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>l</link_name><direction>0 1 0</direction><amplitude>15</amplitude><speed>25</speed><turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+
+<!--****** -->
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+
+<!-- 
+  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+    <speed>0.8</speed>
+    <interpolation_step>0.3</interpolation_step>
+  </plugin> -->
+
+
+    </include>
+
+  </world>
+</sdf>
+
+
+
+

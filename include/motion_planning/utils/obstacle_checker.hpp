@@ -63,6 +63,14 @@ struct Obstacle {
     bool is_initialized_in_graph = false; // For the first time obstalce moves we need to inform the graph with this!
 
 
+    // STATIC OBSTACLES
+    bool is_discovered = false;       // sensor-range reveal for hidden static obstacles
+    bool initially_visible = false;   // true → "visible" in name, known from the start
+    bool is_removed = false;          // true → "visible" obstacle purged after robot reached it
+
+
+
+
     // This is the TIME BUDGET's "guess" currently marked as blocked in the KD-tree
     std::vector<Eigen::Vector3d> predicted_path; 
 

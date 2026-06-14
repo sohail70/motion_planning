@@ -1,0 +1,170 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+  
+<physics type="ode">
+    <max_step_size>0.01</max_step_size>
+    <real_time_update_rate>60</real_time_update_rate>
+</physics>  
+  
+    <!-- Add a ground plane with a lighter color -->
+<model name="ground_plane">
+  <static>true</static>
+  <link name="link">
+    <collision name="collision">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+      <size>100 100</size>
+        </plane>
+      </geometry>
+      <!-- Disable collisions with kinematic objects -->
+      <surface>
+        <contact>
+          <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+        </contact>
+      </surface>
+    </collision>
+    <visual name="visual">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+          <size>100 100</size>
+        </plane>
+      </geometry>
+      <material>
+        <ambient>0.6 0.6 0.6 1</ambient>
+        <diffuse>0.6 0.6 0.6 1</diffuse>
+      </material>
+    </visual>
+  </link>
+</model>
+
+
+
+
+
+
+<!-- ======================================================= -->
+<!-- LAYER 1: The Top Gates (Y = 15)                         -->
+<!-- ======================================================= -->
+
+<!-- West Wall: X=-35 (Spans -50 to -20) -->
+<model name="L1_west">
+  <pose>-35.0 15.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>30.0 2.0 1.0</size></box>
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<!-- Center Wall: X=0 (Spans -10 to 10) -->
+<model name="L1_center">
+  <pose>0.0 15.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>20.0 2.0 1.0</size></box>
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<!-- East Wall: X=35 (Spans 20 to 50) -->
+<model name="L1_east">
+  <pose>35.0 15.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>30.0 2.0 1.0</size></box>
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<!-- Slider 1 (Sweeps across the top gaps) -->
+<model name="slider_top">
+  <pose>-15.0 18.0 0 0 0 0</pose> 
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual"><geometry><box><size>12.0 2.0 1.0</size></box></geometry>
+    <material><ambient>1 0 0 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>1 0 0</direction>
+    <amplitude>30.0</amplitude> <!-- Sweeps from X=-15 to X=15 -->
+    <speed>15.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<!-- ======================================================= -->
+<!-- THE DIVIDER (Forces commitment to East or West channel) -->
+<!-- ======================================================= -->
+<model name="central_divider">
+  <pose>0.0 0.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>2.0 26.0 1.0</size></box>
+  </geometry><material><ambient>0.8 0.6 0.1 1</ambient></material></visual></link>
+</model>
+
+<!-- ======================================================= -->
+<!-- LAYER 2: The Bottom Gates (Y = -15)                     -->
+<!-- ======================================================= -->
+
+<!-- West Wall -->
+<model name="L2_west">
+  <pose>-35.0 -15.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>30.0 2.0 1.0</size></box>
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<!-- Center Wall -->
+<model name="L2_center">
+  <pose>0.0 -15.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>20.0 2.0 1.0</size></box>
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<!-- East Wall -->
+<model name="L2_east">
+  <pose>35.0 -15.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>30.0 2.0 1.0</size></box>
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<!-- Slider 2 (Sweeps across the bottom gaps, opposite direction) -->
+<model name="slider_bottom">
+  <pose>15.0 -12.0 0 0 0 0</pose> 
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual"><geometry><box><size>12.0 2.0 1.0</size></box></geometry>
+    <material><ambient>1 0 0 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>-1 0 0</direction> <!-- Sweeps from X=15 to X=-15 -->
+    <amplitude>30.0</amplitude> 
+    <speed>15.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+
+
+
+
+<!--****** -->
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+
+<!-- 
+  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+    <speed>0.8</speed>
+    <interpolation_step>0.3</interpolation_step>
+  </plugin> -->
+
+
+    </include>
+
+  </world>
+</sdf>
+
+
+
+

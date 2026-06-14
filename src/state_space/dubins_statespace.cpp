@@ -18,9 +18,10 @@ double normalizeAngle(double a) {
 
 DubinsStateSpace::DubinsStateSpace(double min_turning_radius, int dimension, unsigned int seed)
     : StateSpace(dimension), // Pass the dimension through
-      min_turning_radius_(min_turning_radius) {
+      min_turning_radius_(min_turning_radius),
+      rng_(seed) {
 
-    std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
+    // std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
     weights_.resize(3);
     weights_ << 1.0, 1.0, 0.4; // These weights are still for the 3D case
 }
@@ -1137,26 +1138,57 @@ std::shared_ptr<State> DubinsStateSpace::sampleUniform(double min, double max) {
 void DubinsStateSpace::sampleUniform(double min, double max, int k) { /* ... */ }
 
 std::shared_ptr<State> DubinsStateSpace::sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) {
-    // Check that the input bounds are 3-dimensional.
-    // This class specifically handles the 3D Dubins car model.
     if (min_bounds.size() != 3 || max_bounds.size() != 3) {
         throw std::invalid_argument("DubinsStateSpace requires 3D bounds for vector-based sampling.");
     }
 
-    // Create a 3D vector for the new sample.
     Eigen::VectorXd values(3);
-
-    // Sample x, y, and theta from their respective bounds.
     for (int i = 0; i < 3; ++i) {
-        // Generate a random double between 0.0 and 1.0
-        double random_coeff = static_cast<double>(rand()) / RAND_MAX;
-        
-        // Scale the random value to the range for the current dimension
-        values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
+        // Use std::uniform_real_distribution bound to your state space's RNG
+        std::uniform_real_distribution<double> dist(min_bounds[i], max_bounds[i]);
+        values[i] = dist(rng_);
     }
     
     // Use the class's own addState method to create and return the new state.
     return this->addState(values);
+}
+
+// Eigen::VectorXd DubinsStateSpace::sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) {
+//     // Check that the input bounds are 3-dimensional.
+//     // This class specifically handles the 3D Dubins car model.
+//     if (min_bounds.size() != 3 || max_bounds.size() != 3) {
+//         throw std::invalid_argument("DubinsStateSpace requires 3D bounds for vector-based sampling.");
+//     }
+
+//     // Create a 3D vector for the new sample.
+//     Eigen::VectorXd values(3);
+
+//     // Sample x, y, and theta from their respective bounds.
+//     for (int i = 0; i < 3; ++i) {
+//         // Generate a random double between 0.0 and 1.0
+//         double random_coeff = static_cast<double>(rand()) / RAND_MAX;
+        
+//         // Scale the random value to the range for the current dimension
+//         values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
+//     }
+    
+//     // Use the class's own addState method to create and return the new state.
+//     return values;
+// }
+
+Eigen::VectorXd DubinsStateSpace::sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) {
+    if (min_bounds.size() != 3 || max_bounds.size() != 3) {
+        throw std::invalid_argument("DubinsStateSpace requires 3D bounds for vector-based sampling.");
+    }
+
+    Eigen::VectorXd values(3);
+    for (int i = 0; i < 3; ++i) {
+        // Use std::uniform_real_distribution bound to your state space's RNG
+        std::uniform_real_distribution<double> dist(min_bounds[i], max_bounds[i]);
+        values[i] = dist(rng_);
+    }
+    
+    return values;
 }
 
 

@@ -1,0 +1,45 @@
+experiment:
+  name: "LLPTStar_Dubins_Test"
+  planner_type: "KinodynamicLLPTStar"
+  state_space_type: "Dubins"
+  manager_type: "Dubins"
+
+simulation:
+  time_budget: 25.0
+  slice_time: 0.02
+  seed: 42
+
+robot:
+  start_state: [48.0, 48.0, -0.785] # x, y, theta, time_budget
+  goal_state:  [-48.0, -48.0, -2.356] # x, y, theta, time_to_go
+  dimensions: 4
+  bounds_min: [-50.0, -50.0, -3.14159]
+  bounds_max: [50.0, 50.0, 3.14159]
+  
+  min_velocity: 2.0
+  max_velocity: 15.0
+  min_turning_radius: 2.0
+
+planner_params:
+  num_of_samples: 3
+  factor: 3.0
+  delta: 30.0
+  kdtree_type: "NanoFlann"
+  partial_update: true
+  kd_dim: 4
+  is_geometric_mode: false
+  num_pillar_nodes: 0
+  goal_radius: 0.5
+  heuristic: true
+
+manager_params:
+  vis_frequency_hz: 30
+
+gazebo_params:
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20_dubins.sdf"
+  # sdf_path: "../sims/static_world_straight_box_circle_35.sdf"
+  # sdf_path: "../sims/static_dynamic_world_straight_box_circle_11.sdf"
+  # sdf_path: "../sims/dynamic_world_diag.sdf"
+  # sdf_path: "../sims/static_dynamic_world_straight_box_circle_5.sdf"
+  # sdf_path: "../sims/dynamic_world_straight_box_circle_20_fast.sdf"
+  inflation: 1.0

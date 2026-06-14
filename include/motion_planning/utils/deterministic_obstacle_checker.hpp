@@ -114,7 +114,7 @@ public:
 
 
     double calculateNextFlip(const Obstacle& ob, double currentRobotTime);
-    ObstacleVector checkAndRepairObstacles(double T_robot);
+    ObstacleVector checkAndRepairObstacles(double T_robot, const Eigen::Vector2d& robot_pos);
     std::vector<Eigen::Vector3d> generatePrediction(const Obstacle& ob, double current_time) const override;
     void initializeDynamicObstacles(double currentRobotTime);
     void updateObstaclesMathematically(double current_robot_time);
@@ -196,5 +196,7 @@ private:
 
     double initial_budget_time_ ;
     bool is_geometric_mode_;
+
+    const double sensor_range_ = 20.0;
 
 };

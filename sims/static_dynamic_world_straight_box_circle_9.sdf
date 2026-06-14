@@ -1,0 +1,270 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+  
+<physics type="ode">
+    <max_step_size>0.01</max_step_size>
+    <real_time_update_rate>60</real_time_update_rate>
+</physics>  
+  
+    <!-- Add a ground plane with a lighter color -->
+<model name="ground_plane">
+  <static>true</static>
+  <link name="link">
+    <collision name="collision">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+      <size>100 100</size>
+        </plane>
+      </geometry>
+      <!-- Disable collisions with kinematic objects -->
+      <surface>
+        <contact>
+          <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+        </contact>
+      </surface>
+    </collision>
+    <visual name="visual">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+          <size>100 100</size>
+        </plane>
+      </geometry>
+      <material>
+        <ambient>0.6 0.6 0.6 1</ambient>
+        <diffuse>0.6 0.6 0.6 1</diffuse>
+      </material>
+    </visual>
+  </link>
+</model>
+
+
+
+<!-- ========================================================== -->
+<!-- ANTI-PHASE CORRIDOR STRESS TEST (100x100 Arena)            -->
+<!-- Robot: (48, 48) → Goal: (-48, -48)                         -->
+<!--                                                            -->
+<!-- Three corridors with anti-phase dynamic gates.             -->
+<!-- When Gate A opens, Gate C closes, and vice versa.          -->
+<!-- Gate B oscillates asynchronously (chaos agent).            -->
+<!-- Delta patrols the western detour to prevent bypass.        -->
+<!-- ========================================================== -->
+
+<!-- ==================== OUTER WALLS ==================== -->
+
+<model name="wall_north">
+  <pose>0.0 52.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>108.0 4.0 1.0</size></box>
+  </geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>108.0 4.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<model name="wall_south">
+  <pose>0.0 -52.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>108.0 4.0 1.0</size></box>
+  </geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>108.0 4.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<model name="wall_east">
+  <pose>52.0 0.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>4.0 108.0 1.0</size></box>
+  </geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>4.0 108.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<model name="wall_west">
+  <pose>-52.0 0.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>4.0 108.0 1.0</size></box>
+  </geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>4.0 108.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<!-- ==================== CORRIDOR STRUCTURE ==================== -->
+
+<!-- === MAIN DIVIDER at y=0: Gap x ∈ [-5, 5] (Gate B, middle) === -->
+<model name="divider_left">
+  <pose>-27.5 0.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>45.0 5.0 1.0</size></box>
+  </geometry><material><ambient>0.6 0.6 0.2 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>45.0 5.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<model name="divider_right">
+  <pose>27.5 0.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>45.0 5.0 1.0</size></box>
+  </geometry><material><ambient>0.6 0.6 0.2 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>45.0 5.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<!-- === GATE A (Upper path) at y=23: Gap x ∈ [13, 23] === -->
+<model name="gate_a_left">
+  <pose>-18.5 23.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>63.0 5.0 1.0</size></box>
+  </geometry><material><ambient>0.8 0.4 0.0 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>63.0 5.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<model name="gate_a_right">
+  <pose>36.5 23.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>27.0 5.0 1.0</size></box>
+  </geometry><material><ambient>0.8 0.4 0.0 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>27.0 5.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<!-- === GATE C (Lower path) at y=-23: Gap x ∈ [-23, -13] === -->
+<model name="gate_c_left">
+  <pose>-36.5 -23.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>27.0 5.0 1.0</size></box>
+  </geometry><material><ambient>0.5 0.0 0.8 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>27.0 5.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<model name="gate_c_right">
+  <pose>18.5 -23.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>63.0 5.0 1.0</size></box>
+  </geometry><material><ambient>0.5 0.0 0.8 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>63.0 5.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<!-- === FUNNEL WALLS: Force early corridor commitment === -->
+<model name="funnel_upper">
+  <pose>27.0 37.0 0 0 0 0.4</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>33.0 5.0 1.0</size></box>
+  </geometry><material><ambient>0.3 0.5 0.3 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>33.0 5.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<model name="funnel_lower">
+  <pose>-27.0 -37.0 0 0 0 0.4</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>33.0 5.0 1.0</size></box>
+  </geometry><material><ambient>0.3 0.5 0.3 1</ambient></material></visual>
+  <collision name="collision"><geometry><box><size>33.0 5.0 1.0</size></box></geometry></collision></link>
+</model>
+
+<!-- ==================== DYNAMIC OBSTACLES ==================== -->
+
+<!-- OBSTACLE ALPHA: Patrols Gate A (upper corridor)              -->
+<!-- Sweeps from y=48 down to y=23 (into gate A gap).            -->
+<!-- When centered at (18, 23), its 13-unit width seals the      -->
+<!-- 10-unit gap at x∈[13,23]. Period ≈ 6.25s.                   -->
+<model name="obstacle_alpha">
+  <pose>18.0 48.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual"><geometry>
+      <box><size>13.0 6.0 1.0</size></box>
+    </geometry><material><ambient>1.0 0.0 0.0 1</ambient></material></visual>
+    <collision name="collision"><geometry><box><size>13.0 6.0 1.0</size></box></geometry></collision>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0 -1 0</direction>
+    <amplitude>25.0</amplitude>
+    <speed>8.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<!-- OBSTACLE BETA: Patrols Gate B (middle corridor)              -->
+<!-- Sweeps from y=20 down to y=0 (into middle gap).             -->
+<!-- 12-unit width seals the 10-unit gap at x∈[-5,5].            -->
+<!-- Period ≈ 3s — asynchronous chaos agent.                     -->
+<model name="obstacle_beta">
+  <pose>0.0 20.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual"><geometry>
+      <box><size>12.0 5.0 1.0</size></box>
+    </geometry><material><ambient>1.0 0.5 0.0 1</ambient></material></visual>
+    <collision name="collision"><geometry><box><size>12.0 5.0 1.0</size></box></geometry></collision>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0 -1 0</direction>
+    <amplitude>20.0</amplitude>
+    <speed>13.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<!-- OBSTACLE GAMMA: Patrols Gate C (lower corridor) — ANTI-PHASE -->
+<!-- STARTS at the gate (blocking), sweeps down to y=-48.         -->
+<!-- When Alpha reaches gate A (blocking it), Gamma is at y=-48   -->
+<!-- (gate C FREE). Anti-phase period matches Alpha ≈ 6.25s.      -->
+<model name="obstacle_gamma">
+  <pose>-18.0 -23.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual"><geometry>
+      <box><size>13.0 6.0 1.0</size></box>
+    </geometry><material><ambient>0.0 0.0 1.0 1</ambient></material></visual>
+    <collision name="collision"><geometry><box><size>13.0 6.0 1.0</size></box></geometry></collision>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0 -1 0</direction>
+    <amplitude>25.0</amplitude>
+    <speed>8.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+<!-- OBSTACLE DELTA: "The Ambush" — patrols western detour        -->
+<!-- Prevents wide path around all gates via west side.           -->
+<!-- Sweeps vertically along x=-46, y∈[0, 27].                   -->
+<model name="obstacle_delta">
+  <pose>-46.0 0.0 0 0 0 0</pose>
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual"><geometry>
+      <box><size>7.0 13.0 1.0</size></box>
+    </geometry><material><ambient>0.0 0.8 0.0 1</ambient></material></visual>
+    <collision name="collision"><geometry><box><size>7.0 13.0 1.0</size></box></geometry></collision>
+  </link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0 1 0</direction>
+    <amplitude>27.0</amplitude>
+    <speed>8.0</speed>
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+
+
+<!--****** -->
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+
+<!-- 
+  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+    <speed>0.8</speed>
+    <interpolation_step>0.3</interpolation_step>
+  </plugin> -->
+
+
+    </include>
+
+  </world>
+</sdf>
+
+
+
+

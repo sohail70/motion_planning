@@ -1,3 +1,17 @@
+#FOR REALTIME TEST! ---> ALSO CHECK THE TEMP BECAUSE THERMAL THROTTLE IS REAL!
+# 1. Kill frequency scaling — this is your biggest noise source
+sudo cpupower frequency-set -g performance
+# or pin a fixed frequency:
+sudo cpupower frequency-set -d 2.0GHz -u 2.0GHz
+
+# 2. Pin the benchmark to specific cores, away from core 0
+taskset -c 2,3 ./your_benchmark
+
+# 3. Give it realtime priority
+sudo chrt -f 80 taskset -c 2,3 ./your_benchmark
+
+
+
 Using nanoflann for exact nearest neighbor search
 https://github.com/jlblancoc/nanoflann
 

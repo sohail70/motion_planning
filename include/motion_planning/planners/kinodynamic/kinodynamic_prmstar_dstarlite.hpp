@@ -14,7 +14,7 @@
 
 // Use the standard DStarLiteComparator which expects std::pair<double, Node*>
 // This matches your existing priority_queue.hpp definition
-using DStarLitePQ = PriorityQueue<DStarLiteNode, DStarLiteComparator>;
+// using DStarLitePQ = PriorityQueue<DStarLiteNode, DStarLiteComparator>;
 
 class KinodynamicPRMStarDStarLite : public Planner {
     public:
@@ -42,7 +42,7 @@ class KinodynamicPRMStarDStarLite : public Planner {
         void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
 
 
-        int getTreeSize() { return nodes_.size();}
+        int getTreeSize() { return nodes_.size()-num_pillar_nodes_;}
 
         double getAvgOutDegree() const {
             if (nodes_.empty()) return 0.0;
@@ -116,6 +116,10 @@ class KinodynamicPRMStarDStarLite : public Planner {
         void resetLastAnchorRepairMs() { last_anchor_repair_ms_ = 0.0; }
 
 
+        bool isCurrentBridgeSafe(const ObstacleVector& obstacles) const override;
+        bool hasReachedAnchor(const Eigen::VectorXd& current_sim_state) const override;
+        std::vector<Eigen::VectorXd> getLivePathPositions(const Eigen::VectorXd& current_state) const;
+        bool hasShortcut(const Eigen::VectorXd& robot_state, double threshold);
     private:
         // --- D* Lite Core ---
         double heuristic(DStarLiteNode* a, DStarLiteNode* b);

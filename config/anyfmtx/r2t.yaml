@@ -19,15 +19,15 @@ robot:
   max_velocity: 20.0
 
 planner_params:
-  num_of_samples: 1
-  factor: 2.0
-  delta: 20.0
+  num_of_samples: 3
+  factor: 3.0
+  delta: 25.0
   epsilon: 0.1
   kdtree_type: "NanoFlann"
-  partial_update: true
+  partial_update: false
   kd_dim: 3
   is_geometric_mode: false
-  num_pillar_nodes: 50
+  num_pillar_nodes: 0
   goal_radius: 0.5
 
 
@@ -35,5 +35,11 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_10.sdf"
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20_r2t.sdf"
+  # sdf_path: "../sims/static_world_straight_box_circle_35.sdf"
+  # sdf_path: "../sims/soheil.sdf"
+  # sdf_path: "../sims/static_dynamic_world_straight_box_circle_11.sdf"
+  # sdf_path: "../sims/dynamic_world_diag.sdf"
+  # sdf_path: "../sims/stress_test/random.sdf"
+  # sdf_path: "../sims/stress_test/20obs_25vel.sdf"
   inflation: 1.0

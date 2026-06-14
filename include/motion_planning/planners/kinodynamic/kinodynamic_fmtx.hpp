@@ -68,7 +68,7 @@ class KinodynamicFMTX : public Planner {
         void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
         double getRobotTimeToGo() const { return robot_current_time_to_goal_; }
         bool isRobotSafe();
-        int getTreeSize() { return tree_.size();}
+        int getTreeSize() { return tree_.size()-num_pillar_nodes_;}
 
         bool runCollisionForensics();
         bool runCostForensics();
@@ -154,6 +154,11 @@ class KinodynamicFMTX : public Planner {
 
         void runFMT(SuboptimalityMetrics& metrics);
 
+
+        bool isCurrentBridgeSafe(const ObstacleVector& obstacles) const override;
+        bool hasReachedAnchor(const Eigen::VectorXd& current_sim_state) const override;
+        std::vector<Eigen::VectorXd> getLivePathPositions(const Eigen::VectorXd& current_state) const;
+        bool hasShortcut(const Eigen::VectorXd& robot_state, double threshold);
     private:
         std::vector<std::unique_ptr<FMTNode>> tree_;
         std::shared_ptr<KDTree> kdtree_;

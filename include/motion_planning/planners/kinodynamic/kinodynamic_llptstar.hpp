@@ -10,12 +10,11 @@
 #define LLPT_WARN(msg)  std::cout << "\033[1;33m[WARN] [LLPT] " << msg << "\033[0m\n"
 #define LLPT_ERROR(msg) std::cerr << "\033[1;31m[ERROR] [LLPT] " << msg << "\033[0m\n"
 
-// Reusing your custom priority queue logic
-using LLPT_PQ = PriorityQueue<DStarLiteNode, DStarLiteComparator>;
 
-class KinodynamicLLPT : public Planner {
+
+class KinodynamicLLPTStar : public Planner {
     public:
-        KinodynamicLLPT(std::shared_ptr<StateSpace> statespace, 
+        KinodynamicLLPTStar(std::shared_ptr<StateSpace> statespace, 
                         std::shared_ptr<ProblemDefinition> pdef,
                         std::shared_ptr<ObstacleChecker> obs_checker);
 
@@ -32,15 +31,47 @@ class KinodynamicLLPT : public Planner {
         
         // --- Visualization & Metrics ---
         void visualizeTree();
+        void visualizeTreeGradient();
         void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
-        
+        void visualizePathGradient(const std::vector<Eigen::VectorXd>& path_waypoints);
+
         const ReplanMetrics& getLastReplanMetrics() const { return last_replan_metrics_; }
         void resetMetrics() { last_replan_metrics_ = ReplanMetrics(); }
         
-        int getTreeSize() { return nodes_.size(); }
-        void logGraphState(std::ofstream& out_file, int cycle_number) const override;
+        int getTreeSize() { return nodes_.size()-num_pillar_nodes_; }
+        double getAvgOutDegree() const {
+            if (nodes_.empty()) return 0.0;
+            long long total_out = 0;
+            for (const auto& node_ptr : nodes_) {
+                total_out += node_ptr->forward_neighbors_.size(); 
+            }
+            return static_cast<double>(total_out) / nodes_.size();
+        }
+
+        double getAvgInDegree() const {
+            if (nodes_.empty()) return 0.0;
+            long long total_in = 0;
+            for (const auto& node_ptr : nodes_) {
+                total_in += node_ptr->backward_neighbors_.size(); 
+            }
+            return static_cast<double>(total_in) / nodes_.size();
+        }
+
+        double getNeighborhoodRadius(){return connection_radius_;}
+        double getLastAnchorRepairMs() const { return last_anchor_repair_ms_; }
+        void resetLastAnchorRepairMs() { last_anchor_repair_ms_ = 0.0; }
+
+
+        bool isCurrentBridgeSafe(const ObstacleVector& obstacles) const;
+        bool hasReachedAnchor(const Eigen::VectorXd& current_sim_state) const;
+        std::vector<Eigen::VectorXd> getLivePathPositions(const Eigen::VectorXd& current_state) const;
+        bool hasShortcut(const Eigen::VectorXd& robot_state, double threshold) override;
+        void setCurrentRobotTime(double T_robot);
+
 
     private:
+        int collision_checked_ = 0;
+        void near(int node_index); // NEW: Neighbor caching function
         // --- LLPT Core Procedures (from paper Algorithms 1-6) ---
         
         // Calculates priority keys [k1, k2] matching LLPT logic
@@ -57,6 +88,7 @@ class KinodynamicLLPT : public Planner {
         
         // Algo 4: ComputeShortestPath() - Repairs the spanning tree
         void computeShortestPath();
+        void resolvePathLazy();
 
         // Algo 2: EvaluateEdge(N) - Lazily checks collisions on the current shortest path
         // Returns the list of nodes that became invalidated (collided)
@@ -67,7 +99,8 @@ class KinodynamicLLPT : public Planner {
         void removeFromTree(DStarLiteNode* v);
 
         // Algo 6: ExtendSearchGraph() - Graph densification during leftover planning time
-        void extendSearchGraph();
+        bool extendSearchGraph();
+        Eigen::VectorXd saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta);
 
         // Returns true if lmc (rhs) or best parent changed
         bool recomputeLMC(DStarLiteNode* s); 
@@ -87,18 +120,17 @@ class KinodynamicLLPT : public Planner {
         std::shared_ptr<Visualization> visualization_;
         
         std::vector<std::unique_ptr<DStarLiteNode>> nodes_;
-        LLPT_PQ open_queue_;
+        DStarLitePriorityQueue open_queue_;
         
-        DStarLiteNode* start_node_;
+        DStarLiteNode* start_node_=nullptr;
         DStarLiteNode* goal_node_;
         
         double km_; // Key modifier for moving start node
         bool partial_update_ = false;
 
         // LLPT Specific Parameters
-        int num_initial_samples_;
-        int eval_batch_size_; // N parameter from LLPT paper (edges evaluated per inner loop)
-        double max_planning_time_ms_; // Bounds the ExtendSearchGraph time limits
+        int num_samples_;
+        int eval_batch_size_ = 100; // N parameter from LLPT paper (edges evaluated per inner loop)
         
         // PRM/Graph parameters
         double connection_radius_;
@@ -115,4 +147,87 @@ class KinodynamicLLPT : public Planner {
         std::unordered_set<int> time_pillar_indices_;
         int num_pillar_nodes_;
         void injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes);
+
+
+        // --- Members ---
+        
+        Eigen::VectorXd robot_continuous_state_; 
+        Eigen::VectorXd lower_bounds_;
+        Eigen::VectorXd upper_bounds_;
+
+
+        bool use_kdtree_;
+        bool use_heuristic;
+        double factor_;
+        double delta; 
+        double gamma_;
+        double mu_;
+        double zetaD_;
+        double T_robot;
+        
+        double bridge_cost_;
+
+        bool neighbor_precache_; // Parameter from config
+
+
+
+
+        DStarLiteNode* last_start_node = nullptr; 
+        std::unordered_map<DStarLiteNode*, DStarLiteNode*> dijkstra_tree_parents_;
+
+
+
+
+
+bool isPathFullyEvaluated() const {
+    DStarLiteNode* cur = start_node_;
+    while (cur && cur != goal_node_) {
+        DStarLiteNode* parent = cur->getParent();
+        if (!parent) return false;
+        if (cur->forward_neighbors_.at(parent).last_eval_epoch != global_eval_epoch_)
+            return false;
+        cur = parent;
+    }
+    return true;
+}
+
+        void debugCompareDijkstraVsDStarLite();
+        
+        std::unordered_set<DStarLiteNode*> orphans_;
+        Trajectory current_bridge_trajectory_;
+        double global_max_cost_ = -1;
+
+
+        double last_anchor_repair_ms_ = 0.0; // computeshortstpath duration in the setRobotState in case heuristic is on!
+
+        
+        // NEW
+        uint64_t global_eval_epoch_ = 1; // Start at one because extend function adds new edges with zero epoch so this ensured collision checking happens right after new samples are added and made the shortest path shorter!!
+        std::vector<std::pair<DStarLiteNode*, DStarLiteNode*>> collided_edges_;
+
+        // // Add this helper function:
+        // double getLazyWeight(const EdgeInfo& edge) const {
+        //     if (edge.last_eval_epoch != global_eval_epoch_)
+        //         return edge.distance_original;
+        //     return edge.distance;
+        // }
+
+// double getLazyWeight(const EdgeInfo& edge) const {
+//     if (edge.last_eval_epoch != 0)   // has been evaluated at least once
+//         return edge.distance;        // could be finite or inf
+//     return edge.distance_original;   // never evaluated – optimistic
+// }
+
+
+double getLazyWeight(const EdgeInfo& edge) const {
+    if (edge.last_eval_epoch == global_eval_epoch_)
+        return edge.distance;
+    return edge.distance_original;
+}
+
+
+
+
+
+
 };

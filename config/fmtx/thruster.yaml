@@ -6,9 +6,9 @@ experiment:
   manager_type: "Thruster"
 
 simulation:
-  time_budget: 25.0
+  time_budget: 35.0
   slice_time: 0.02
-  seed: 58
+  seed: 78
 
 robot:
   # Start: x, y, vx, vy, time_budget
@@ -16,14 +16,14 @@ robot:
   # Goal: x, y, vx, vy, time_to_go
   goal_state:  [-48.0, -48.0, 0.0, 0.0]
   dimensions: 5
-  bounds_min: [-50.0, -50.0, -15.0, -15.0]
-  bounds_max: [ 50.0,  50.0,  15.0,  15.0]
+  bounds_min: [-50.0, -50.0, -10.0, -10.0]
+  bounds_max: [ 50.0,  50.0,  10.0,  10.0]
   min_velocity: 0.0
-  max_velocity: 15.0
+  max_velocity: 10.0
   max_acceleration: 5.0
 
 planner_params:
-  num_of_samples: 1000
+  num_of_samples: 3000
   factor: 3.0
   kdtree_type: "NanoFlann"
   partial_update: true
@@ -36,5 +36,5 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_10_slow.sdf"
-  inflation: 0.75
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20_thruster.sdf"
+  inflation: 1.0

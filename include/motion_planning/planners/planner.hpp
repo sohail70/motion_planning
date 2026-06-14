@@ -32,7 +32,7 @@ enum class PlannerType{
     KinodynamicANYFMTX,
     KinodynamicANYRRTX,
     KinodynamicPRMStarDStarLite,
-    
+    KinodynamicLLPTStar,
 };
 
 
@@ -102,7 +102,12 @@ class Planner {
         virtual double getAvgInDegree() const { return 0.0; }
         virtual int getIsolatedNodeCount() const { return 0; }
         virtual void resetMetrics() {}
-
+        // virtual bool isAnchorSafe() const { return true; } // Default to true for eager planners
+        virtual void setCurrentRobotTime(double T_robot) {};
+        virtual bool isCurrentBridgeSafe(const ObstacleVector& obstacles) const {return true;}
+        virtual bool hasReachedAnchor(const Eigen::VectorXd& current_sim_state) const {return false;}
+        virtual std::vector<Eigen::VectorXd> getLivePathPositions(const Eigen::VectorXd& current_state) const {return {};}
+        virtual bool hasShortcut(const Eigen::VectorXd& robot_state, double threshold) {return false;}
     protected:
 
 

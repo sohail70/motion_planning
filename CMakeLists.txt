@@ -116,6 +116,7 @@ add_library(motion_planning
     src/planners/kinodynamic/kinodynamic_any_fmtx.cpp
     src/planners/kinodynamic/kinodynamic_any_rrtx.cpp
     src/planners/kinodynamic/kinodynamic_prmstar_dstarlite.cpp
+    src/planners/kinodynamic/kinodynamic_llptstar.cpp
     src/planners/geometric/rrtx.cpp
     src/planners/geometric/bit_star.cpp
     src/planners/planner_factory.cpp

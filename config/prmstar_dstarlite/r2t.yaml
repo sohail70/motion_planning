@@ -7,7 +7,7 @@ experiment:
 simulation:
   time_budget: 25.0
   slice_time: 0.02
-  seed: 46
+  seed: 43
 
 robot:
   start_state: [48.0, 48.0] # x, y, time_budget (Must match dim)
@@ -19,13 +19,13 @@ robot:
   max_velocity: 20.0
 
 planner_params:
-  num_of_samples: 3000
-  factor: 2.0
+  num_of_samples: 1000
+  factor: 3.0
   kdtree_type: "NanoFlann"
   partial_update: true
   kd_dim: 3 # 3 for R2T
   is_geometric_mode: false
-  num_pillar_nodes: 0
+  num_pillar_nodes: 100
   goal_radius: 0.5
   heuristic: true
 
@@ -34,5 +34,6 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_20.sdf"
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20_r2t.sdf"
+  # sdf_path: "../sims/static_dynamic_world_straight_box_circle_5.sdf"
   inflation: 1.0

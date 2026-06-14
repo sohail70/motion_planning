@@ -1,0 +1,149 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+  
+<physics type="ode">
+    <max_step_size>0.01</max_step_size>
+    <real_time_update_rate>60</real_time_update_rate>
+</physics>  
+  
+    <!-- Add a ground plane with a lighter color -->
+<model name="ground_plane">
+  <static>true</static>
+  <link name="link">
+    <collision name="collision">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+      <size>100 100</size>
+        </plane>
+      </geometry>
+      <!-- Disable collisions with kinematic objects -->
+      <surface>
+        <contact>
+          <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+        </contact>
+      </surface>
+    </collision>
+    <visual name="visual">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+          <size>100 100</size>
+        </plane>
+      </geometry>
+      <material>
+        <ambient>0.6 0.6 0.6 1</ambient>
+        <diffuse>0.6 0.6 0.6 1</diffuse>
+      </material>
+    </visual>
+  </link>
+</model>
+
+
+
+
+
+
+<!-- ========================================== -->
+<!-- OUTER WALLS (Creates the 30x30 Room)         -->
+<!-- ========================================== -->
+
+<!-- North Wall (Leaves top-right entrance open) -->
+<model name="wall_north">
+  <pose>-5.0 15.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>20.0 2.0 1.0</size></box>
+  </geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+
+<!-- East Wall (Leaves top-right entrance open) -->
+<model name="wall_east">
+  <pose>15.0 -5.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>2.0 20.0 1.0</size></box>
+  </geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+
+<!-- West Wall (Solid all the way down) -->
+<model name="wall_west">
+  <pose>-15.0 0.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>2.0 32.0 1.0</size></box>
+  </geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+
+<!-- South Wall (Leaves bottom-left exit open) -->
+<model name="wall_south">
+  <pose>5.0 -15.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>20.0 2.0 1.0</size></box>
+  </geometry><material><ambient>0.4 0.4 0.4 1</ambient></material></visual></link>
+</model>
+
+<!-- ========================================== -->
+<!-- INNER BAFFLES (Creates the Maze)             -->
+<!-- ========================================== -->
+
+<!-- Baffle 1 (Forces robot to curve down) -->
+<model name="baffle_1">
+  <pose>-2.0 5.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>18.0 2.0 1.0</size></box>
+  </geometry><material><ambient>0.6 0.6 0.2 1</ambient></material></visual></link>
+</model>
+
+<!-- Baffle 2 (Forces robot to curve left) -->
+<model name="baffle_2">
+  <pose>5.0 -2.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>2.0 18.0 1.0</size></box>
+  </geometry><material><ambient>0.6 0.6 0.2 1</ambient></material></visual></link>
+</model>
+
+<!-- ========================================== -->
+<!-- THE DYNAMIC PLUG (Springs the Trap)          -->
+<!-- ========================================== -->
+
+<!-- Starts outside, sweeps in to seal the bottom-left gap perfectly -->
+<model name="dynamic_plug">
+  <pose>-26.0 -15.0 0 0 0 0</pose> 
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual"><geometry>
+      <box><size>12.0 2.0 1.0</size></box>
+    </geometry><material><ambient>1 0 0 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>1 0 0</direction> <!-- Moves horizontally -->
+    <amplitude>16.0</amplitude>  <!-- Sweeps from X=-26 to X=-10 -->
+    <speed>6.0</speed>           <!-- Fast slam shut -->
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+
+
+
+
+<!--****** -->
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+
+<!-- 
+  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+    <speed>0.8</speed>
+    <interpolation_step>0.3</interpolation_step>
+  </plugin> -->
+
+
+    </include>
+
+  </world>
+</sdf>
+
+
+
+

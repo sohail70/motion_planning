@@ -1,0 +1,108 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+  
+<physics type="ode">
+    <max_step_size>0.01</max_step_size>
+    <real_time_update_rate>60</real_time_update_rate>
+</physics>  
+  
+    <!-- Add a ground plane with a lighter color -->
+<model name="ground_plane">
+  <static>true</static>
+  <link name="link">
+    <collision name="collision">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+      <size>100 100</size>
+        </plane>
+      </geometry>
+      <!-- Disable collisions with kinematic objects -->
+      <surface>
+        <contact>
+          <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+        </contact>
+      </surface>
+    </collision>
+    <visual name="visual">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+          <size>100 100</size>
+        </plane>
+      </geometry>
+      <material>
+        <ambient>0.6 0.6 0.6 1</ambient>
+        <diffuse>0.6 0.6 0.6 1</diffuse>
+      </material>
+    </visual>
+  </link>
+</model>
+
+
+
+
+<!-- ======================================================= -->
+<!-- BARRIER WALL (Y=0) — solid except one SAMPLER-PASSABLE  -->
+<!-- gap at X=0. Gap width 10 (X=-5..5) >> node spacing ~4.5 -->
+<!-- so the tree reliably connects through when it's OPEN.   -->
+<!-- ======================================================= -->
+<model name="wall_west">
+  <pose>-27.5 0.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>45.0 2.0 1.0</size></box>
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<model name="wall_east">
+  <pose>27.5 0.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>45.0 2.0 1.0</size></box>
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<!-- ======================================================= -->
+<!-- HEAD-ON SLAMMER — starts UP (gap clear) so the initial  -->
+<!-- tree builds. Swings DOWN through the gap and back.      -->
+<!-- Width 12 > gap 10 → fully seals while down, reopens     -->
+<!-- while up. THIS is the source of invalidation churn.     -->
+<!-- ======================================================= -->
+<model name="gap_blocker">
+  <pose>0.0 14.0 0 0 0 0</pose>     <!-- start above gap: open at t=0 -->
+  <link name="moving_link"><gravity>false</gravity>
+    <visual name="visual"><geometry><box><size>12.0 2.0 1.0</size></box></geometry>
+    <material><ambient>1 0 0 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>0 -1 0</direction>     <!-- head-on, down the path -->
+    <amplitude>16.0</amplitude>        <!-- Y=14 -> Y=-2 -> back to 14 -->
+    <speed>8.0</speed>                 <!-- down long enough to invalidate,
+                                            up long enough to reconnect -->
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+
+
+<!--****** -->
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+
+<!-- 
+  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+    <speed>0.8</speed>
+    <interpolation_step>0.3</interpolation_step>
+  </plugin> -->
+
+
+    </include>
+
+  </world>
+</sdf>
+
+
+
+

@@ -7,6 +7,12 @@
 #include <memory>
 #include "motion_planning/utils/obstacle_checker.hpp"
 
+struct ExecutedMetrics {
+    double path_length    = 0.0;  // L      [m]
+    double arrival_time   = 0.0;  // T      [s]
+    double heading_change = 0.0;  // turn   [rad]   (Dubins)
+    double control_effort = 0.0;  // int|a|dt       (Thruster)
+};
 // Abstract Base Class for ROS2 Managers
 class ROS2ManagerBase : public rclcpp::Node {
 public:
@@ -20,6 +26,7 @@ public:
     
     // Advance the simulation by dt
     virtual void stepSimulation(double dt) = 0;
+    virtual void stepStationary(double dt) = 0;
 
     // Update the internal path the robot follows
     virtual void setPath(const std::vector<Eigen::VectorXd>& new_path) = 0;
@@ -37,4 +44,10 @@ public:
     virtual double getCurrentSimTime() const = 0;
 
     virtual void notifyGoalReached() = 0;
+
+
+
+    virtual ExecutedMetrics getExecutedMetrics() const = 0;
+
+
 };

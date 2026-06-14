@@ -23,6 +23,12 @@
 #define SCREEN_SHOT 0
 #define USE_METRIC 1
 
+/*
+    USE_REALTIME: Real-time viability on this hardware
+*/
+#define USE_REALTIME 0 // Penalizing Long plan time and making the simulator to catch up (and we test collisions in stepOnce in manager classes to benchmark)
+#define USE_1_X 0 // Just for smooth visualization purposes
+
 
 struct ExperimentConfig {
     std::string name;
@@ -194,6 +200,23 @@ struct LogEntry {
     double avg_deg_out = std::numeric_limits<double>::quiet_NaN();
     double avg_deg_in = std::numeric_limits<double>::quiet_NaN();
     double neighborhood_radius = std::numeric_limits<double>::quiet_NaN();
+
+
+    double setrobotstate_ms = std::numeric_limits<double>::quiet_NaN();
+    // FOR REAL TIME!
+    double decision_latency_ms = std::numeric_limits<double>::quiet_NaN(); // real compute that drove the sim step
+    double applied_step_s      = std::numeric_limits<double>::quiet_NaN(); // actual simulated advance this iteration
+
+
+
+
+    // executed solution quality — filled only on terminal rows
+    bool   reached_goal = false;
+    double exec_length  = std::numeric_limits<double>::quiet_NaN(); // L    [m]
+    double exec_time    = std::numeric_limits<double>::quiet_NaN(); // T    [s]
+    double exec_turn    = std::numeric_limits<double>::quiet_NaN(); // turn [rad]   (Dubins)
+    double exec_effort  = std::numeric_limits<double>::quiet_NaN(); // int|a|dt     (Thruster)
+
 };
 #endif
 
@@ -701,6 +724,7 @@ int main(int argc, char** argv) {
     double infl = cfg.get_inflation();
     gazebo_params.setParam("inflation", infl);
     manager_params.setParam("inflation", infl);
+    manager_params.setParam("slice_time", cfg.slice_time);
 
     bool should_vis = (cfg.vis_frequency_hz > 0);
 
@@ -817,6 +841,7 @@ int main(int argc, char** argv) {
     else if (cfg.planner_type == "KinodynamicANYFMTX") { p_type = PlannerType::KinodynamicANYFMTX; is_anytime = true; }
     else if (cfg.planner_type == "KinodynamicANYRRTX") { p_type = PlannerType::KinodynamicANYRRTX; is_anytime = true; }
     else if (cfg.planner_type == "KinodynamicPRMStarDStarLite") p_type = PlannerType::KinodynamicPRMStarDStarLite;
+    else if (cfg.planner_type == "KinodynamicLLPTStar") { p_type = PlannerType::KinodynamicLLPTStar; is_anytime = true;}
     else {
         std::cerr << "Unknown Planner: " << cfg.planner_type << std::endl;
         return 1;
@@ -833,18 +858,24 @@ int main(int argc, char** argv) {
     // kinodynamic_planner = std::dynamic_pointer_cast<KinodynamicFMTX>(planner); 
     // if (kinodynamic_planner) kinodynamic_planner->setClock(sim_clock);
 
+    kinodynamic_planner->setCurrentRobotTime(cfg.time_budget);
 
     // just in case heuristic is on!
     KinodynamicPRMStarDStarLite* dlite = nullptr;
+    KinodynamicLLPTStar* llpt = nullptr;
     if (cfg.heuristic) {
         dlite = dynamic_cast<KinodynamicPRMStarDStarLite*>(kinodynamic_planner.get());
+        llpt = dynamic_cast<KinodynamicLLPTStar*>(kinodynamic_planner.get());
     }
+
+  
+
 
     // --- 8. Initial Plan ---
     RCLCPP_INFO(vis_node->get_logger(), "Running initial plan...");
     auto start_t = std::chrono::steady_clock::now();
     
-    bool fixed_sample = false;
+    bool fixed_sample = true; // Always use deterministic loops for scientific runs or else the intial tree size would be different for the time based preplan in each run even with the same seed!
     if (is_anytime) {
         if(!fixed_sample){
             auto warmup_duration = std::chrono::milliseconds(500); 
@@ -862,10 +893,29 @@ int main(int argc, char** argv) {
     } else {
         planner->plan();
     }
+
+    std::cout<<"INITIAL TREE SIZE: "<<planner->getTreeSize()<<"\n";
     
     auto end_t = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_t - start_t);
     std::cout << "Initial plan took: " << duration.count() << " ms" << std::endl;
+    
+    // --- 8.5 Seed Obstacles & Cut Graph ---
+    // Now that the free-space graph exists, we drop the Day 0 obstacles onto it.
+    auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker);
+    if (gazebo_checker) {
+        double initial_T = is_geometric_mode ? 0.0 : start_vec(start_vec.size()-1);
+        
+        Eigen::Vector2d robot_pos = start_vec.head<2>(); // (x,y)
+        gazebo_checker->processLatestPoseInfo(0.0); 
+        ObstacleVector initial_obs = gazebo_checker->checkAndRepairObstacles(initial_T, robot_pos);
+        
+        // This physically severs edges and triggers D* Lite to recompute the shortest path
+        if (!initial_obs.empty() && kinodynamic_planner) {
+            kinodynamic_planner->updateObstacles(initial_obs);
+            RCLCPP_INFO(vis_node->get_logger(), "Day 0 Obstacles Seeded. Graph edges cut and repaired!");
+        }
+    }
     
     kinodynamic_planner->setRobotState(start_vec); 
     
@@ -980,13 +1030,13 @@ int main(int argc, char** argv) {
 
 
 
-    auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker);
-    if (gazebo_checker) {
-        // Initialize with T=0 for geometric, or time_budget for kinodynamic
-        double initial_T = is_geometric_mode ? 0.0 : start_vec(start_vec.size()-1);
-        gazebo_checker->processLatestPoseInfo(0); // Sync physics at T=0
-        gazebo_checker->initializeDynamicObstacles(initial_T);
-    }
+    // auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker);
+    // if (gazebo_checker) {
+    //     // Initialize with T=0 for geometric, or time_budget for kinodynamic
+    //     double initial_T = is_geometric_mode ? 0.0 : start_vec(start_vec.size()-1);
+    //     gazebo_checker->processLatestPoseInfo(0); // Sync physics at T=0
+    //     gazebo_checker->initializeDynamicObstacles(initial_T);
+    // }
 
     auto global_start = std::chrono::steady_clock::now();
     auto time_limit = std::chrono::seconds(cfg.duration_limit);
@@ -998,40 +1048,38 @@ int main(int argc, char** argv) {
         // --- GEOMETRIC MODE (R2) ---
         RCLCPP_INFO(vis_node->get_logger(), "Starting Geometric Planning Loop (R2)...");
 
-        const double slice_dt = cfg.slice_time;
-        const auto loop_duration = std::chrono::duration<double>(slice_dt);
+        double pending_anchor_repair_ms = 0.0; // Specific to LLPT
+        // const auto loop_duration = std::chrono::duration<double>(slice_dt);
+        const double slice_dt   = cfg.slice_time;
+        const int    num_slices = static_cast<int>(std::lround(cfg.duration_limit / slice_dt));
         double sim_time = 0.0;
 
-        while (g_running && rclcpp::ok()) {
+        std::cout<<"NUM_SLICES: "<<num_slices<<"\n";
+        // while (g_running && rclcpp::ok()) {
+        for (int slice = 0; slice < num_slices; ++slice) {
+
             auto loop_start_time = std::chrono::steady_clock::now();
             executor.spin_some();
 
-            // TIME LIMIT CHECK FIRST
-            if (std::chrono::steady_clock::now() - start_time > time_limit) {
-                std::cout << "[INFO] Time limit reached." << std::endl;
-
-#if USE_METRIC
-                {
-                    auto t_final = std::chrono::steady_clock::now();
-                    LogEntry final;
-                    final.row_id = next_row_id++;
-                    final.event_type = "time_limit";
-                    final.elapsed_s = std::chrono::duration<double>(t_final - global_start).count();
-                    final.sim_time = sim_time;
-                    final.time_to_goal = 0.0;
-                    final.tree_size = kinodynamic_planner->getTreeSize();
-                    final.isolated_nodes = kinodynamic_planner->getIsolatedNodeCount();
-                    final.avg_deg_out = kinodynamic_planner->getAvgOutDegree();
-                    final.avg_deg_in = kinodynamic_planner->getAvgInDegree();
-                    final.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
-                    log_data.push_back(final);
+            if (cfg.heuristic) { 
+                if(cfg.planner_type == "KinodynamicPRMStarDStarLite"){
+                    double repair = dlite->getLastAnchorRepairMs();
+                    pending_anchor_repair_ms += repair;
+                    dlite->resetLastAnchorRepairMs();
                 }
-#endif
-                break;
+                else if(cfg.planner_type == "KinodynamicLLPTStar"){
+                    double repair = llpt->getLastAnchorRepairMs();
+                    pending_anchor_repair_ms += repair;
+                    llpt->resetLastAnchorRepairMs();
+
+                }
             }
 
             gazebo_checker->processLatestPoseInfo(sim_time);
             ObstacleVector all_obs = gazebo_checker->getObstacles();
+            for (auto& ob : all_obs){
+                ob.predicted_path = gazebo_checker->generatePrediction(ob, 0);
+            }
 
             // 1. UPDATE EVENT
             kinodynamic_planner->resetMetrics();
@@ -1040,9 +1088,15 @@ int main(int argc, char** argv) {
             auto t_update_2 = std::chrono::steady_clock::now();
             double update_time_ms = std::chrono::duration<double, std::milli>(t_update_2 - t_update_1).count();
 
-            if (update_time_ms > 1.0) {
-                RCLCPP_INFO( rclcpp::get_logger("Planner_Timing"), "updateObstacles took: %.2f ms", update_time_ms);
+            if (cfg.heuristic){ //Specific to DLITE
+                update_time_ms += pending_anchor_repair_ms;
+                // std::cout << "PENDING ANCHOR REPAIR: " << std::fixed << std::setprecision(6) << pending_anchor_repair_ms << "\n";
+                pending_anchor_repair_ms = 0.0;
             }
+
+            // if (update_time_ms > 1.0) {
+                RCLCPP_INFO( rclcpp::get_logger("Planner_Timing"), "updateObstacles took: %.2f ms", update_time_ms);
+            // }
 
 #if USE_METRIC
             {
@@ -1144,6 +1198,20 @@ int main(int argc, char** argv) {
                 }
             }
 
+
+            // In the geometric loop, after updateObstacles / plan, before extracting path:
+            Eigen::VectorXd static_robot_state = start_vec; // your static start state
+            // If your state space includes time in kinodynamic mode, but here it's R2,
+            // ensure the state dimension matches what the planner expects (e.g., just [x,y]).
+            // If you're using the same KinodynamicLLPTStar with kd_dim_=2, it's fine.
+            // kinodynamic_planner->setRobotState(static_robot_state);
+            auto t1 = std::chrono::steady_clock::now();
+            kinodynamic_planner->setRobotState(static_robot_state);
+            auto t2 = std::chrono::steady_clock::now();
+            double ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
+            RCLCPP_INFO(rclcpp::get_logger("SETROBOTSTATE"), " took: %.6f ms", ms);
+
+
             if(should_vis){
                 Eigen::Vector3d robot_pos(start_vec(0), start_vec(1), 0.0);
                 Eigen::VectorXd orientation_quat(4);
@@ -1158,15 +1226,30 @@ int main(int argc, char** argv) {
                 );
 
                 kinodynamic_planner->visualizeTree();
+
+
+                auto current_path = kinodynamic_planner->getPathPositions();
+                if (!current_path.empty()) {
+                    kinodynamic_planner->visualizePathGradient(current_path);
+                } else {
+                    // path is empty → planner is trapped
+                    RCLCPP_WARN(vis_node->get_logger(), "No path found!");
+                }
+
+
                 visualization->triggerPublish();
             }
+
+
             
             sim_time += slice_dt;
             auto loop_end_time = std::chrono::steady_clock::now();
+            double loop_wall_ms = std::chrono::duration<double, std::milli>(loop_end_time - loop_start_time).count();
+
 #if USE_METRIC
             {
-                // LOOP-END MARKER
-                double loop_wall_ms = std::chrono::duration<double, std::milli>(loop_end_time - loop_start_time).count();
+                // // LOOP-END MARKER
+                // double loop_wall_ms = std::chrono::duration<double, std::milli>(loop_end_time - loop_start_time).count();
 
                 LogEntry slice_entry;
                 slice_entry.row_id = next_row_id++;
@@ -1178,11 +1261,40 @@ int main(int argc, char** argv) {
             }
 #endif
 
-            auto elapsed = std::chrono::duration<double>(loop_end_time - loop_start_time);
-            if (elapsed < loop_duration) {
-                // std::this_thread::sleep_for(loop_duration - elapsed);
+
+#if USE_1_X
+            // Cosmetic pacing — visualization only, no effect on benchmarks
+            if (should_vis) {
+                double target_ms = slice_dt * 1000.0;
+                if (loop_wall_ms < target_ms) {
+                    std::this_thread::sleep_for(
+                        std::chrono::duration<double, std::milli>(target_ms - loop_wall_ms));
+                }
             }
+#endif
+
+
         }
+#if USE_METRIC
+        {
+            auto t_final = std::chrono::steady_clock::now();
+            LogEntry final;
+            final.row_id = next_row_id++;
+            final.event_type = "sim_end";   // renamed from "time_limit"
+            final.elapsed_s = std::chrono::duration<double>(t_final - global_start).count();
+            final.sim_time = sim_time;
+            final.time_to_goal = 0.0;
+            final.tree_size = kinodynamic_planner->getTreeSize();
+            final.isolated_nodes = kinodynamic_planner->getIsolatedNodeCount();
+            final.avg_deg_out = kinodynamic_planner->getAvgOutDegree();
+            final.avg_deg_in = kinodynamic_planner->getAvgInDegree();
+            final.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
+            log_data.push_back(final);
+        }
+#endif
+
+
+
     }
     else {
 
@@ -1192,10 +1304,22 @@ int main(int argc, char** argv) {
         auto slice_start_time = std::chrono::steady_clock::now(); // CHANGED: keep only slice landmark, removed accumulators
         bool first_path_ready = false;   // ensures screenshot waits for a path
         double pending_anchor_repair_ms = 0.0; // Specific to DLITE
+        double last_shortcut_check_time = 0.0; 
+#if USE_REALTIME
+        //even if compute were instant, the world still moves forward one control period, because the controller physically cannot issue commands faster than its rate.
+        const double control_dt = 0.02; // control rate
+#endif
+        double decision_latency_ms = 0.0; // real decision compute only (for real time latency)
+
+
+
+
+        const double perception_ms = 0.0; // realistic sensor+detection cost when modeling deployment
 
 
         while (g_running && rclcpp::ok()) {
             executor.spin_some();
+
 
             Eigen::VectorXd current_sim_state = ros_manager->getCurrentSimulatedState();
             if (current_sim_state.size() == 0) {
@@ -1203,21 +1327,44 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            kinodynamic_planner->resetMetrics(); // Reset for setRobotState even loggin
-            kinodynamic_planner->setRobotState(current_sim_state);
+            // kinodynamic_planner->resetMetrics(); // Reset for setRobotState even loggin
+
+
+            // auto t1 = std::chrono::steady_clock::now();
+            // kinodynamic_planner->setRobotState(current_sim_state);
+            // auto t2 = std::chrono::steady_clock::now();
+            // double ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
+            // RCLCPP_INFO(rclcpp::get_logger("SETROBOTSTATE"), " took: %.6f ms", ms);
+            
 
             
             if (cfg.heuristic) { // Specific to DLITE
-                double repair = dlite->getLastAnchorRepairMs();
-                pending_anchor_repair_ms += repair;
-                dlite->resetLastAnchorRepairMs();
+                if(cfg.planner_type == "KinodynamicPRMStarDStarLite"){
+                    double repair = dlite->getLastAnchorRepairMs();
+                    pending_anchor_repair_ms += repair;
+                    dlite->resetLastAnchorRepairMs();
+                }
+                else if(cfg.planner_type == "KinodynamicLLPTStar"){
+                    double repair = llpt->getLastAnchorRepairMs();
+                    pending_anchor_repair_ms += repair;
+                    llpt->resetLastAnchorRepairMs();
+
+                }
             }
 
 
             auto t_set_state = std::chrono::steady_clock::now();  // setRobotState event completion time
 
             double T_robot = current_sim_state(current_sim_state.size() - 1);
+            Eigen::Vector2d robot_pos = current_sim_state.head<2>(); // (x,y)
+
             double sim_time = cfg.time_budget - T_robot;
+            if (T_robot <= 0.0) {
+                // Log a time-limit event if desired
+                g_running = false;
+                break;
+            }
+            kinodynamic_planner->setCurrentRobotTime(T_robot);
 
 #if SCREEN_SHOT
             if (!captured_start && first_path_ready) {
@@ -1231,35 +1378,9 @@ int main(int argc, char** argv) {
             }
 #endif
 
-#if USE_METRIC
-            {   // log setRobotState snapshot as its own event row
-                LogEntry state_entry;
-                const auto& state_metrics = kinodynamic_planner->getLastReplanMetrics();
 
-                state_entry.row_id = next_row_id++; 
-                state_entry.event_type = "set_state";
-                state_entry.elapsed_s = std::chrono::duration<double>(
-                    t_set_state - global_start).count();
-                state_entry.sim_time = sim_time;
-                state_entry.time_to_goal = T_robot;
-
-                state_entry.path_cost = state_metrics.path_cost;
-                state_entry.obstacle_checks = state_metrics.obstacle_checks;
-                state_entry.tree_size = kinodynamic_planner->getTreeSize();
-                state_entry.isolated_nodes = kinodynamic_planner->getIsolatedNodeCount();
-
-                log_data.push_back(state_entry);
-            }
-#endif
-
-            ObstacleVector turned_obs = gazebo_checker->checkAndRepairObstacles(T_robot);
-            /*
-                sync live snapshot right after checkAndRepairObstacles with new tubes for addNewObstacle & removeObstacle (check with other CURRENT obstacles/tubes) & obs vis & step sim 
-                Update obstacle positions at planning time T_plan (before planning).
-                This gives the planner the correct obstacle state for tree/graph repair.
-                We call this function in managers too as post-step before sanity collision check for report
-            */
             gazebo_checker->processLatestPoseInfo(sim_time);
+            ObstacleVector turned_obs = gazebo_checker->checkAndRepairObstacles(T_robot, robot_pos);
 
             // 1. MEASURE UPDATE TIME
             if (!turned_obs.empty()) {
@@ -1269,10 +1390,12 @@ int main(int argc, char** argv) {
                 kinodynamic_planner->updateObstacles(turned_obs);
                 auto t2 = std::chrono::steady_clock::now();
                 double update_time_ms = std::chrono::duration<double, std::milli>(t2 - t1).count(); // CHANGED
+                decision_latency_ms += update_time_ms;
 
 
                 if (cfg.heuristic){ //Specific to DLITE
                     update_time_ms += pending_anchor_repair_ms;
+                    // std::cout << "PENDING ANCHOR REPAIR: " << std::fixed << std::setprecision(6) << pending_anchor_repair_ms << "\n";
                     pending_anchor_repair_ms = 0.0;
                 }
 
@@ -1307,6 +1430,7 @@ int main(int argc, char** argv) {
 #endif
             }
 
+
             // 2. MEASURE PLAN TIME
             if (is_anytime) {
                 kinodynamic_planner->resetMetrics(); // reset for plan event
@@ -1314,6 +1438,7 @@ int main(int argc, char** argv) {
                 kinodynamic_planner->plan();
                 auto t2 = std::chrono::steady_clock::now();
                 double plan_time_ms = std::chrono::duration<double, std::milli>(t2 - t1).count(); // CHANGED
+                decision_latency_ms += plan_time_ms;
 
                 if (!turned_obs.empty()) {
                     RCLCPP_INFO( rclcpp::get_logger("Planner_Timing"), "plan took: %.2f ms", plan_time_ms);
@@ -1324,52 +1449,190 @@ int main(int argc, char** argv) {
                     LogEntry plan_entry;
                     const auto& plan_metrics = kinodynamic_planner->getLastReplanMetrics();
 
-                    plan_entry.row_id = next_row_id++; // CHANGED
-                    plan_entry.event_type = "plan"; // CHANGED
+                    plan_entry.row_id = next_row_id++;
+                    plan_entry.event_type = "plan";
                     plan_entry.elapsed_s = std::chrono::duration<double>(
-                        t2 - global_start).count(); // CHANGED
-                    plan_entry.sim_time = sim_time; // CHANGED
-                    plan_entry.time_to_goal = T_robot; // CHANGED
+                        t2 - global_start).count();
+                    plan_entry.sim_time = sim_time;
+                    plan_entry.time_to_goal = T_robot;
 
-                    plan_entry.plan_ms = plan_time_ms; // CHANGED
+                    plan_entry.plan_ms = plan_time_ms;
 
-                    plan_entry.path_cost = plan_metrics.path_cost; // CHANGED
-                    plan_entry.obstacle_checks = plan_metrics.obstacle_checks; // CHANGED
-                    plan_entry.tree_size = kinodynamic_planner->getTreeSize(); // CHANGED
-                    plan_entry.isolated_nodes = kinodynamic_planner->getIsolatedNodeCount(); // CHANGED
+                    plan_entry.path_cost = plan_metrics.path_cost;
+                    plan_entry.obstacle_checks = plan_metrics.obstacle_checks;
+                    plan_entry.tree_size = kinodynamic_planner->getTreeSize();
+                    plan_entry.isolated_nodes = kinodynamic_planner->getIsolatedNodeCount();
 
-                    log_data.push_back(plan_entry); // CHANGED
+                    log_data.push_back(plan_entry);
                 }
 #endif
             }
+
+            // Keeping track of hasShortcut + isCurrentBridgeSafe + hasReachedAnchor
+            auto tq1 = std::chrono::steady_clock::now();
+
+            /*
+                hasShortcut function is dangerous for benchmarking when LLPT is involved! because using resolvePathLazy inside actually steps the algorithm away
+                from being lazy and it acts like a semi-eager approach! so for benchmarking we ommit the hasShortcut from all!
+                or i make the hasShortcut of LLPT , readonly!
+            */
+            // OPPORTUNISTIC SHORTCUT TIMER
+            // static double last_shortcut_check_time = 0.0; 
+            const double SHORTCUT_CHECK_INTERVAL = 0.5; // Peek at KD-Tree every 0.5s of sim time
+            
+            bool opportunity_found = false;
+            // if ((sim_time - last_shortcut_check_time) >= SHORTCUT_CHECK_INTERVAL) {
+            //     if (first_path_ready) {
+            //         opportunity_found = kinodynamic_planner->hasShortcut(current_sim_state, 0.01); //0.01 --> 1 percent improvement!
+            //     }
+            //     last_shortcut_check_time = sim_time;
+            // }
+            // // ------------------------------------
+
+
+            // 1. Did the latest updateObstacles destroy our current edge?
+            bool edge_destroyed = false;
+            
+            // Check against ALL obstacles
+            // The dynamic obstacles are always moving, so we must check if their 
+            // continuous sweep has intersected our current bridge trajectory.
+            const auto& all_current_obs = gazebo_checker->getObstacles(); 
+            edge_destroyed = !kinodynamic_planner->isCurrentBridgeSafe(all_current_obs);
+            // ----------------------------------------------------------------
+
+            // 2. Have we physically reached the end of the edge we are tracking? (or Did the anchor become inf?)
+            bool reached_end_of_edge = kinodynamic_planner->hasReachedAnchor(current_sim_state);
+
+            auto tq2 = std::chrono::steady_clock::now();
+            decision_latency_ms += std::chrono::duration<double, std::milli>(tq2 - tq1).count();
+
+    
+            
+
+           if (edge_destroyed || reached_end_of_edge || !first_path_ready || opportunity_found) {
+                // if (opportunity_found) std::cout << "\n[SHORTCUT] >= 15% Improvement Opportunity Seized!\n";
+                // std::cout<<"Edge Destroyed: "<<edge_destroyed<<"|"<<"Reached End of Edge: "<<reached_end_of_edge<<"|"<<"Oppurtunity Found: "<<opportunity_found<<"\n";
+
+                kinodynamic_planner->resetMetrics(); // Reset for setRobotState even loggin
+                // std::cout<<edge_destroyed<<", "<<reached_end_of_edge<<" , "<<first_path_ready<<"\n";
+                auto t1 = std::chrono::steady_clock::now();
+                kinodynamic_planner->setRobotState(current_sim_state);
+                auto t2 = std::chrono::steady_clock::now();
+                double ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
+                RCLCPP_INFO(rclcpp::get_logger("SETROBOTSTATE"), " took: %.6f ms", ms);
+                decision_latency_ms += ms;
+
+
+#if USE_METRIC
+                {   
+                    auto t_after_set = std::chrono::steady_clock::now();  
+
+                    // log setRobotState snapshot as its own event row
+                    LogEntry state_entry;
+                    const auto& state_metrics = kinodynamic_planner->getLastReplanMetrics();
+
+                    state_entry.row_id = next_row_id++; 
+                    state_entry.event_type = "set_state";
+                    state_entry.elapsed_s = std::chrono::duration<double>(
+                        t_after_set - global_start).count();
+                    state_entry.sim_time = sim_time;
+                    state_entry.time_to_goal = T_robot;
+
+                    state_entry.path_cost = state_metrics.path_cost;
+                    state_entry.obstacle_checks = state_metrics.obstacle_checks;
+                    state_entry.tree_size = kinodynamic_planner->getTreeSize();
+                    state_entry.isolated_nodes = kinodynamic_planner->getIsolatedNodeCount();
+                    state_entry.setrobotstate_ms = ms;
+                    log_data.push_back(state_entry);
+                }
+#endif
+                
+                // Fetch the new path resulting from the new anchor
+                /*
+                    planner emits a time-parameterized path (time is the last element of each waypoint),
+                    so the trajectory is the command (There’s no control law turning a plan into actuation)
+                */
+                auto new_path = kinodynamic_planner->getPathPositions();
+                if (!new_path.empty()) {
+                    ros_manager->setPath(new_path);
+                    first_path_ready = true;
+                } else {
+                    // Planner is Trapped
+                    ros_manager->setPath({}); 
+#if USE_METRIC 
+                    LogEntry trapped_entry;
+                    trapped_entry.row_id = next_row_id++;
+                    trapped_entry.event_type = "planner_trapped";
+                    trapped_entry.elapsed_s = std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - global_start).count();
+                    trapped_entry.sim_time = sim_time;
+                    trapped_entry.time_to_goal = T_robot;
+                    const auto& metrics = kinodynamic_planner->getLastReplanMetrics();
+                    trapped_entry.path_cost = metrics.path_cost;
+                    trapped_entry.obstacle_checks = metrics.obstacle_checks;
+                    trapped_entry.tree_size = kinodynamic_planner->getTreeSize();
+                    trapped_entry.isolated_nodes = kinodynamic_planner->getIsolatedNodeCount();
+                    log_data.push_back(trapped_entry);
+#endif
+                    g_running = false;
+                    break;   // exit simulation
+                }
+            }
+
 
             if (should_vis){
                 // VISUALIZATION
                 visualization->visualizeTimeToGoal(T_robot, -42.5, 45.0);
                 kinodynamic_planner->visualizeTree();
+                // kinodynamic_planner->visualizeTreeReal();
                 // kinodynamic_planner->visualizeTreeGradient();
-            }
-            auto new_path = kinodynamic_planner->getPathPositions();
-            if (!new_path.empty()) {
-                ros_manager->setPath(new_path);
-                first_path_ready = true;   // <-- mark that we have a path
 
-                if(should_vis){
-                    kinodynamic_planner->visualizePathGradient(new_path);
+                auto live_path = kinodynamic_planner->getLivePathPositions(current_sim_state);
+                if (!live_path.empty()) {
+                    kinodynamic_planner->visualizePathGradient(live_path);
                 }
+
+
+
             }
 
-            // SLICE BOUNDARY CHECK
-            auto now = std::chrono::steady_clock::now();
-            double dt_wall = std::chrono::duration<double>(now - slice_start_time).count();
+            auto t_slice_end = std::chrono::steady_clock::now();
+            double slice_wall_ms = std::chrono::duration<double, std::milli>(t_slice_end - slice_start_time).count();
 
-            if (dt_wall >= cfg.slice_time) {
+            double applied_step_s = 0.0;
+            double decision_latency_ms_logged = 0.0;
+            {
+#if USE_REALTIME
+                decision_latency_ms += perception_ms;
+                decision_latency_ms_logged = decision_latency_ms;
+                double decision_latency_s = decision_latency_ms / 1000.0;
+                /*
+                    you cannot apply a new plan faster than the controller ticks. 
+                    Suppose the planner finishes in 0.5 ms but your control loop runs at 100 Hz (control_dt=10 ms).
+                    The actuators only accept a new reference at the next control edge. 
+                    Finishing early buys you nothing — the fresh plan still waits until the loop ticks
+;
+                    One honest caveat:
+                    This collapses two asynchronous clocks into one. In a real robot the controller ticks at control_dt
+                    continuously while the planner updates the reference whenever it finishes, asynchronously. 
+                    A fully faithful model runs those on separate threads. 
+                    The max is the single-threaded simplification of that, and for my purpose it’s the conservative, defensible choice: 
+                    it never understates how long the robot ran on a stale plan. 
+                    So for a latency stress test it’s not just legitimate, it’s the right reduction.
+                */
+                applied_step_s = std::max(decision_latency_s, control_dt);
+                // std::cout<<"APPLIED_STEP_S: "<<applied_step_s<<"\n";
+                ros_manager->stepSimulation(applied_step_s);
+#else
+                decision_latency_ms_logged = decision_latency_ms;          // bonus diagnostic in slice mode
+                applied_step_s = cfg.slice_time;
                 ros_manager->stepSimulation(cfg.slice_time);
+#endif
+                decision_latency_ms = 0.0; // Clear for next iteration
+
 
 #if USE_METRIC
                 {
-                    auto t_slice_end = std::chrono::steady_clock::now();
-                    double slice_wall_ms = std::chrono::duration<double, std::milli>(t_slice_end - slice_start_time).count();
                     Eigen::VectorXd updated_state = ros_manager->getCurrentSimulatedState();
                     double updated_T_robot = updated_state(updated_state.size() - 1);
                     double updated_sim_time = cfg.time_budget - updated_T_robot;
@@ -1382,14 +1645,21 @@ int main(int argc, char** argv) {
                     slice_entry.sim_time = updated_sim_time;
                     slice_entry.time_to_goal = updated_T_robot;
                     slice_entry.total_latency_ms = slice_wall_ms;
+// #if USE_REALTIME
+                    slice_entry.decision_latency_ms = decision_latency_ms_logged; // drove the step in realtime
+                    slice_entry.applied_step_s      = applied_step_s;             // actual sim advance
+// #endif
                     log_data.push_back(slice_entry);
                 }
 #endif
 
                 // GOAL CHECK
                 Eigen::VectorXd updated_state = ros_manager->getCurrentSimulatedState();
+                // double dist_to_goal = (updated_state.head<2>() - goal_vec.head<2>()).norm();
                 double dist_to_goal = (updated_state.head<2>() - goal_vec.head<2>()).norm();
                 if (dist_to_goal < cfg.goal_radius) {
+                    ExecutedMetrics em = ros_manager->getExecutedMetrics(); // SOLUTION QUALITY!
+
                     ros_manager->notifyGoalReached(); // Artifically makes everything zero for the bar vis. The more accurate way is to consider the root's boundary condtion
 
 #if SCREEN_SHOT
@@ -1400,7 +1670,7 @@ int main(int argc, char** argv) {
                     {   
                         // Final path cost of the robot when it reached the boundary of the Goal Region
                         kinodynamic_planner->resetMetrics();
-                        kinodynamic_planner->setRobotState(updated_state);
+                        // kinodynamic_planner->setRobotState(updated_state);
                         auto t_goal_state = std::chrono::steady_clock::now();
                         RCLCPP_INFO(vis_node->get_logger(), "Goal Reached!");
                         // goal reached is its own terminal event row
@@ -1414,34 +1684,82 @@ int main(int argc, char** argv) {
                         final_entry.sim_time = cfg.time_budget - updated_state(updated_state.size() - 1); // CHANGED
                         final_entry.time_to_goal = updated_state(updated_state.size() - 1);
 
-                        final_entry.path_cost = final_metrics.path_cost;
+                        final_entry.path_cost = 0.0;
                         final_entry.tree_size = kinodynamic_planner->getTreeSize();
                         final_entry.isolated_nodes = kinodynamic_planner->getIsolatedNodeCount();
                         final_entry.avg_deg_out = kinodynamic_planner->getAvgOutDegree();
                         final_entry.avg_deg_in = kinodynamic_planner->getAvgInDegree();
                         final_entry.neighborhood_radius = kinodynamic_planner->getNeighborhoodRadius();
 
+
+                        final_entry.reached_goal = true;
+                        final_entry.exec_length  = em.path_length;
+                        final_entry.exec_time    = em.arrival_time;   // == cfg.time_budget - updated_T_robot
+                        final_entry.exec_turn    = em.heading_change;
+                        final_entry.exec_effort  = em.control_effort;
+
                         log_data.push_back(final_entry);
                     }
 #endif
                     g_running = false;
-                }
-
-                slice_start_time = std::chrono::steady_clock::now(); // CHANGED: only reset slice landmark
-            } else {
-                double remaining = cfg.slice_time - dt_wall;
-                if (remaining > 0.0) {
-                    // std::this_thread::sleep_for(std::chrono::duration<double>(remaining));
                 }
             }
 
             if(should_vis){
                 visualization->triggerPublish();
             }
+
+
+            // RViz does NOT play back at 1x by itself. It just renders whatever pose was
+            // last published. Nothing forces a published frame to linger on screen for the
+            // amount of *sim time* that frame represents. So perceived speed = how fast
+            // this loop iterates, NOT how much sim time each iteration advances.
+            //
+            // Three things make sim-clock outrun the wall-clock here:
+            //
+            //   1. perception_ms = 100.0 is a MODELED cost. We ADD it to decision_latency_ms
+            //      to advance the sim clock, but we never actually *spend* 100 ms of CPU on
+            //      it. So every iteration jumps the sim forward >=100 ms while the real loop
+            //      body only burns a few ms. Result: sim runs ~20-50x faster than real life.
+            //
+            //   2. USE_REALTIME ties applied_step_s to COMPUTE time, not WALL time. Those are
+            //      not the same clock. "The world moved 50 ms while I thought for 50 ms" is
+            //      causally correct for the *model*, but it says nothing about how long the
+            //      iteration takes on your screen.
+            //
+            //   3. When the control_dt floor kicks in (compute < 20 ms), the sim still jumps
+            //      a full 20 ms while the iteration finishes in microseconds -> faster again.
+            //
+            // FIX: pad each iteration with a real sleep so the wall-clock time spent equals
+            // applied_step_s. This stretches each frame to its intended real duration, so
+            // your eyes finally see it at 1x. This is COSMETIC ONLY — every metric was
+            // already captured above, so sleeping here changes no logged number. It is
+            // gated on should_vis so benchmark runs stay at full speed.
+            // ============================================================================
+#if USE_1_X
+            if (should_vis) {
+                auto iter_now = std::chrono::steady_clock::now();
+                double iter_wall_ms = std::chrono::duration<double, std::milli>(
+                    iter_now - slice_start_time).count();
+                double target_ms = applied_step_s * 1000.0;   // real time this frame should occupy
+                double sleep_ms  = target_ms - iter_wall_ms;   // remaining real time to burn
+                if (sleep_ms > 0.0) {
+                    std::this_thread::sleep_for(
+                        std::chrono::duration<double, std::milli>(sleep_ms));
+                }
+                // If sleep_ms < 0 the compute was slower than applied_step_s, so we're
+                // already behind real time and simply don't sleep — the sim falls behind
+                // gracefully instead of speeding up. State stays correct either way.
+            }
+#endif
+
+
+
+            slice_start_time = std::chrono::steady_clock::now();
+
         }
-
-
     }
+    // std::cout<<"OUT: "<<kinodynamic_planner->getAvgOutDegree()<<", IN: "<<kinodynamic_planner->getAvgInDegree()<<"\n";
     std::cout<<"FINAL TREE SIZE: "<<planner->getTreeSize()<<"\n";
     CALLGRIND_STOP_INSTRUMENTATION;
 
@@ -1468,7 +1786,9 @@ int main(int argc, char** argv) {
 
     out << "row_id,event_type,elapsed_s,sim_time,setup_ms,total_latency_ms,update_ms,plan_ms,"
            "time_to_goal,path_cost,obstacle_checks,collision_count,tree_size,isolated_nodes,"
-           "avg_deg_out,avg_deg_in,neighborhood_radius\n";
+           "avg_deg_out,avg_deg_in,neighborhood_radius,"
+           "setrobotstate_ms,decision_latency_ms,applied_step_s,"
+           "reached_goal,exec_length,exec_time,exec_turn,exec_effort\n";
 
     for (const auto& entry : log_data) {
         out << entry.row_id << ","
@@ -1487,7 +1807,15 @@ int main(int argc, char** argv) {
             << entry.isolated_nodes << ","
             << entry.avg_deg_out << ","
             << entry.avg_deg_in << ","
-            << entry.neighborhood_radius << "\n";
+            << entry.neighborhood_radius << ","
+            << entry.setrobotstate_ms << ","
+            << entry.decision_latency_ms << ","
+            << entry.applied_step_s << ","
+            << entry.reached_goal << ","
+            << entry.exec_length << ","
+            << entry.exec_time << ","
+            << entry.exec_turn << ","
+            << entry.exec_effort << "\n";
     }
 
     out.close();

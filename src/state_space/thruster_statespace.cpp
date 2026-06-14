@@ -5,14 +5,14 @@
 #include <iomanip>
 
 ThrusterSteerStateSpace::ThrusterSteerStateSpace(int dimension, double max_acceleration, unsigned int seed)
-    : StateSpace(dimension), max_acceleration_(max_acceleration) {
+    : StateSpace(dimension), max_acceleration_(max_acceleration),rng_(seed) {
     // For 3D position and 3D velocity, plus time, dimension is 7.
     // Ensure dimension is 2*D_spatial + 1.
     if (dimension <= 1 || (dimension - 1) % 2 != 0) {
         throw std::invalid_argument("ThrusterStateSpace dimension must be 2*D_spatial + 1 (e.g., 7 for 3D pos/vel/time).");
     }
 
-    std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
+    // std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
     // Set up weights for KD-Tree distance, if desired. Otherwise, unit weights.
     // These weights would be for: [x,y,z,vx,vy,vz,t]
     weights_.resize(dimension_);
@@ -24,7 +24,7 @@ ThrusterSteerStateSpace::ThrusterSteerStateSpace(int dimension, double max_accel
 }
 
 ThrusterSteerStateSpace::ThrusterSteerStateSpace(int dimension, double max_acceleration, double max_velocity, unsigned int seed)
-    : StateSpace(dimension), max_acceleration_(max_acceleration), max_velocity_(max_velocity) {
+    : StateSpace(dimension), max_acceleration_(max_acceleration), max_velocity_(max_velocity),rng_(seed) {
     // For 3D position and 3D velocity, plus time, dimension is 7.
     // Ensure dimension is 2*D_spatial + 1.
     if (dimension <= 1 || (dimension - 1) % 2 != 0) {
@@ -65,12 +65,38 @@ std::shared_ptr<State> ThrusterSteerStateSpace::sampleUniform(const Eigen::Vecto
     if (min_bounds.size() != dimension_ || max_bounds.size() != dimension_) {
         throw std::invalid_argument("Bounds vectors must match the state space dimension.");
     }
+    
     Eigen::VectorXd values(dimension_);
     for (int i = 0; i < dimension_; ++i) {
-        double random_coeff = static_cast<double>(rand()) / RAND_MAX;
-        values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
+        std::uniform_real_distribution<double> dist(min_bounds[i], max_bounds[i]);
+        values[i] = dist(rng_);
     }
     return StateSpace::addState(std::make_shared<EuclideanState>(values));
+}
+// Eigen::VectorXd ThrusterSteerStateSpace::sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) {
+//     if (min_bounds.size() != dimension_ || max_bounds.size() != dimension_) {
+//         throw std::invalid_argument("Bounds vectors must match the state space dimension.");
+//     }
+//     Eigen::VectorXd values(dimension_);
+//     for (int i = 0; i < dimension_; ++i) {
+//         double random_coeff = static_cast<double>(rand()) / RAND_MAX;
+//         values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
+//     }
+//     return values;
+// }
+
+Eigen::VectorXd ThrusterSteerStateSpace::sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) {
+    if (min_bounds.size() != dimension_ || max_bounds.size() != dimension_) {
+        throw std::invalid_argument("Bounds vectors must match the state space dimension.");
+    }
+    
+    Eigen::VectorXd values(dimension_);
+    for (int i = 0; i < dimension_; ++i) {
+        std::uniform_real_distribution<double> dist(min_bounds[i], max_bounds[i]);
+        values[i] = dist(rng_);
+    }
+    
+    return values;
 }
 
 double ThrusterSteerStateSpace::distance(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2) const {
@@ -110,7 +136,7 @@ Eigen::VectorXd ThrusterSteerStateSpace::steering1D(double x_start, double x_end
     double orig_x_start = x_start, orig_x_end = x_end, orig_v_start = v_start, orig_v_end = v_end;
 
     double delta_t = t_end - t_start;
-    const double EPS = 1e-9;
+    const double EPS = 1e-6;
 
     if (delta_t < EPS) { 
         // std::cout << "  Delta_t non-positive." << std::endl;
@@ -593,7 +619,7 @@ ThrusterSteerStateSpace::NDSteeringResult ThrusterSteerStateSpace::steeringND(
     int D_spatial = x_start.size();
     NDSteeringResult result;
     result.success = false;
-    const double EPS = 1e-9;
+    const double EPS = 1e-6;
 
     // for raw_t note that first and last ime are the same for all D and so left out of here
     Eigen::MatrixXd raw_t(2, D_spatial); // t1, t2 for each dimension (relative to segment start, not global time)
@@ -878,7 +904,7 @@ ThrusterSteerStateSpace::fineGrain(const Eigen::VectorXd& Time_raw, const Eigen:
     
     int D_spatial = X_raw.cols();
     int num_raw_points = Time_raw.size();
-    const double EPS = 1e-9;
+    const double EPS = 1e-6;
 
     // Handle edge cases: no data to process or invalid time step.
     if (num_raw_points < 2 || dt_res <= 0) {
@@ -968,7 +994,7 @@ Trajectory ThrusterSteerStateSpace::steer(const Eigen::VectorXd& from, const Eig
     Trajectory traj_out;
     traj_out.is_valid = false;
     traj_out.cost = std::numeric_limits<double>::infinity();
-    const double EPS = 1e-9;
+    const double EPS = 1e-6;
 
     // Extract states and calculate the duration of the trajectory
     if (from.size() != dimension_ || to.size() != dimension_) {
@@ -1228,7 +1254,7 @@ std::vector<Trajectory> ThrusterSteerStateSpace::generateRecoveryPrimitives(
     int integration_steps) const
 {
     std::vector<Trajectory> primitives;
-    const double EPS = 1e-9;
+    const double EPS = 1e-6;
 
     int D_spatial = (dimension_ - 1) / 2;
     if (D_spatial != 2) {

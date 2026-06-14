@@ -35,6 +35,7 @@ public:
         }
         current_interpolated_state_ = initial_sim_state;
         current_sim_time_ = initial_sim_state(3); // Time is at index 3 for Dubins
+        slice_time = params.getParam<double>("slice_time");
         
         int vis_frequency_hz = params.getParam<int>("vis_frequency_hz", 30);
         
@@ -158,146 +159,181 @@ public:
     // }
 
 
-void stepSimulation(double dt) {
-    std::lock_guard<std::mutex> lock(path_mutex_);
-
-    const double TIME_EPS = 1e-9;
-
-    // 1. Advance time
-    current_sim_time_ -= dt;
-
-    if (!is_path_set_ || current_path_.size() < 2) {
-        current_interpolated_state_(3) = current_sim_time_;
-        return;
-    }
-
-    // 2. Clamp time to path range
-    if (current_sim_time_ > current_path_.front()(3)) {
-        current_sim_time_ = current_path_.front()(3);
-    }
-    if (current_sim_time_ < current_path_.back()(3)) {
-        current_sim_time_ = current_path_.back()(3);
-    }
-
-    Eigen::VectorXd prev_state = current_interpolated_state_;
-
-    // 3. Find segment manually and robustly
-    size_t seg_idx = current_path_.size() - 2;
-    bool found = false;
-
-    for (size_t i = 0; i + 1 < current_path_.size(); ++i) {
-        const double t0 = current_path_[i](3);     // later
-        const double t1 = current_path_[i + 1](3); // earlier
-
-        if (t0 + TIME_EPS >= current_sim_time_ &&
-            current_sim_time_ + TIME_EPS >= t1) {
-            seg_idx = i;
-            found = true;
-            break;
+    void stepSimulation(double dt) {
+        std::lock_guard<std::mutex> lock(path_mutex_);   // lock ONCE, here
+        const double max_sub = slice_time;                      // collision-check resolution
+        int n = std::max(1, (int)std::ceil(dt / max_sub));
+        double sub = dt / n;
+        for (int i = 0; i < n; ++i) {
+            stepOnce(sub);
         }
     }
+    void stepOnce(double dt) {
+        // std::lock_guard<std::mutex> lock(path_mutex_);
 
-    if (!found) {
-        if (current_sim_time_ >= current_path_.front()(3) - TIME_EPS) {
-            current_interpolated_state_ = current_path_.front();
+        const double TIME_EPS = 1e-9;
+
+        // 1. Advance time
+        current_sim_time_ -= dt;
+
+        if (!is_path_set_ || current_path_.size() < 2) {
             current_interpolated_state_(3) = current_sim_time_;
+            return;
+        }
+
+        // 2. Clamp time to path range
+        if (current_sim_time_ > current_path_.front()(3)) {
+            current_sim_time_ = current_path_.front()(3);
+        }
+        if (current_sim_time_ < current_path_.back()(3)) {
+            current_sim_time_ = current_path_.back()(3);
+        }
+
+        Eigen::VectorXd prev_state = current_interpolated_state_;
+
+        // 3. Find segment manually and robustly
+        size_t seg_idx = current_path_.size() - 2;
+        bool found = false;
+
+        for (size_t i = 0; i + 1 < current_path_.size(); ++i) {
+            const double t0 = current_path_[i](3);     // later
+            const double t1 = current_path_[i + 1](3); // earlier
+
+            if (t0 + TIME_EPS >= current_sim_time_ &&
+                current_sim_time_ + TIME_EPS >= t1) {
+                seg_idx = i;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            if (current_sim_time_ >= current_path_.front()(3) - TIME_EPS) {
+                current_interpolated_state_ = current_path_.front();
+                current_interpolated_state_(3) = current_sim_time_;
+            } else {
+                current_interpolated_state_ = current_path_.back();
+                current_interpolated_state_(3) = current_sim_time_;
+            }
         } else {
-            current_interpolated_state_ = current_path_.back();
-            current_interpolated_state_(3) = current_sim_time_;
-        }
-    } else {
-        const Eigen::VectorXd& state_before = current_path_[seg_idx];
-        const Eigen::VectorXd& state_after  = current_path_[seg_idx + 1];
+            const Eigen::VectorXd& state_before = current_path_[seg_idx];
+            const Eigen::VectorXd& state_after  = current_path_[seg_idx + 1];
 
-        const double t_before = state_before(3);
-        const double t_after  = state_after(3);
-        const double segment_duration = t_before - t_after;
+            const double t_before = state_before(3);
+            const double t_after  = state_after(3);
+            const double segment_duration = t_before - t_after;
 
-        // Compute speed for this segment
-        double segment_dist = (state_after.head<2>() - state_before.head<2>()).norm();
-        if (segment_duration > TIME_EPS) {
-            current_speed_ = segment_dist / segment_duration;
-        } else {
-            current_speed_ = 0.0;
-        }
-
-        // compute angular velocity from heading change
-        double dtheta = normalizeAngle(state_after(2) - state_before(2));
-        current_angular_speed_ = (segment_duration > TIME_EPS) ? (dtheta / segment_duration) : 0.0;
-
-
-        
-
-        if (segment_duration <= TIME_EPS) {
-            current_interpolated_state_ =
-                (std::abs(current_sim_time_ - t_before) <= std::abs(current_sim_time_ - t_after))
-                ? state_before : state_after;
-            current_interpolated_state_(3) = current_sim_time_;
-        } else {
-            double alpha = (t_before - current_sim_time_) / segment_duration;
-            alpha = std::clamp(alpha, 0.0, 1.0);
-
-            const Eigen::Vector2d p0 = state_before.head<2>();
-            const Eigen::Vector2d p1 = state_after.head<2>();
-
-            const double th0 = state_before(2);
-            const double th1 = state_after(2);
-            const double dth = normalizeAngle(th1 - th0);
-
-            current_interpolated_state_ = state_before;
-            current_interpolated_state_.head<2>() = p0 + alpha * (p1 - p0);
-            current_interpolated_state_(2) = normalizeAngle(th0 + alpha * dth);
-            current_interpolated_state_(3) = current_sim_time_;
-        }
-    }
-
-    // 4. Collision check
-    auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
-    if (gazebo_checker) {
-        double current_planner_time = this->getCurrentSimTime();
-        double current_sim_time = initial_budget_time_ - current_planner_time;
-        gazebo_checker->processLatestPoseInfo(current_sim_time);
-
-        const Eigen::Vector2d current_pos = current_interpolated_state_.head<2>();
-        const double current_yaw = current_interpolated_state_(2);
-
-        bool is_colliding_now = gazebo_checker->checkRobotCollision(current_pos, current_yaw);
-
-        if (is_colliding_now && !is_in_collision_state_) {
-            collision_count_++;
-
-            std::vector<std::string> colliding_obstacles;
-            const auto& all_obstacles = gazebo_checker->getObstaclePositions();
-            for (const auto& obs : all_obstacles) {
-                Eigen::Vector2d obs_pos(obs.position.x(), obs.position.y());
-                double dist = (current_pos - obs_pos).norm();
-                if (dist < obs.dimensions.radius + inflation) {
-                    colliding_obstacles.push_back(obs.name);
-                }
+            // Compute speed for this segment
+            double segment_dist = (state_after.head<2>() - state_before.head<2>()).norm();
+            if (segment_duration > TIME_EPS) {
+                current_speed_ = segment_dist / segment_duration;
+            } else {
+                current_speed_ = 0.0;
             }
 
-            RCLCPP_FATAL(this->get_logger(),
-                        "XXX COLLISION DETECTED XXX At T=%.2f | Total Collisions: %d\n"
-                        "Robot Pos: [%.3f, %.3f] | Theta: %.3f rad\n"
-                        "Colliding Obstacles: %s",
-                        current_sim_time_,
-                        collision_count_.load(),
-                        current_pos.x(), current_pos.y(), current_yaw,
-                        colliding_obstacles.empty() ? "NONE" : colliding_obstacles.front().c_str());
+            // compute angular velocity from heading change
+            double dtheta = normalizeAngle(state_after(2) - state_before(2));
+            current_angular_speed_ = (segment_duration > TIME_EPS) ? (dtheta / segment_duration) : 0.0;
+
+
+            
+
+            if (segment_duration <= TIME_EPS) {
+                current_interpolated_state_ =
+                    (std::abs(current_sim_time_ - t_before) <= std::abs(current_sim_time_ - t_after))
+                    ? state_before : state_after;
+                current_interpolated_state_(3) = current_sim_time_;
+            } else {
+                double alpha = (t_before - current_sim_time_) / segment_duration;
+                alpha = std::clamp(alpha, 0.0, 1.0);
+
+                const Eigen::Vector2d p0 = state_before.head<2>();
+                const Eigen::Vector2d p1 = state_after.head<2>();
+
+                const double th0 = state_before(2);
+                const double th1 = state_after(2);
+                const double dth = normalizeAngle(th1 - th0);
+
+                current_interpolated_state_ = state_before;
+                current_interpolated_state_.head<2>() = p0 + alpha * (p1 - p0);
+                current_interpolated_state_(2) = normalizeAngle(th0 + alpha * dth);
+                current_interpolated_state_(3) = current_sim_time_;
+            }
         }
 
-        is_in_collision_state_ = is_colliding_now;
+        // 4. Collision check
+        auto gazebo_checker = std::dynamic_pointer_cast<DeterministicObstacleChecker>(obstacle_checker_);
+        if (gazebo_checker) {
+            double current_planner_time = this->getCurrentSimTime();
+            double current_sim_time = initial_budget_time_ - current_planner_time;
+            gazebo_checker->processLatestPoseInfo(current_sim_time);
+
+            const Eigen::Vector2d current_pos = current_interpolated_state_.head<2>();
+            const double current_yaw = current_interpolated_state_(2);
+
+            bool is_colliding_now = gazebo_checker->checkRobotCollision(current_pos, current_yaw);
+
+            if (is_colliding_now && !is_in_collision_state_) {
+                collision_count_++;
+
+                std::vector<std::string> colliding_obstacles;
+                const auto& all_obstacles = gazebo_checker->getObstaclePositions();
+                for (const auto& obs : all_obstacles) {
+                    Eigen::Vector2d obs_pos(obs.position.x(), obs.position.y());
+                    double dist = (current_pos - obs_pos).norm();
+                    if (dist < obs.dimensions.radius + inflation) {
+                        colliding_obstacles.push_back(obs.name);
+                    }
+                }
+
+                RCLCPP_FATAL(this->get_logger(),
+                            "XXX COLLISION DETECTED XXX At T=%.2f | Total Collisions: %d\n"
+                            "Robot Pos: [%.3f, %.3f] | Theta: %.3f rad\n"
+                            "Colliding Obstacles: %s",
+                            current_sim_time_,
+                            collision_count_.load(),
+                            current_pos.x(), current_pos.y(), current_yaw,
+                            colliding_obstacles.empty() ? "NONE" : colliding_obstacles.front().c_str());
+            }
+
+            is_in_collision_state_ = is_colliding_now;
+        }
+
+        // 5. Update trace on ground
+        Eigen::VectorXd start_pt(3);
+        start_pt << prev_state(0), prev_state(1), 0.0;
+
+        Eigen::VectorXd end_pt(3);
+        end_pt << current_interpolated_state_(0), current_interpolated_state_(1), 0.0;
+
+        robot_trace_edges_.push_back({start_pt, end_pt});
+
+
+        // ---- Physical solution-quality metrics ----
+        const double seg_dt     = prev_state(3) - current_interpolated_state_(3);                       // [s]
+        const double seg_dx     = (current_interpolated_state_.head<2>() - prev_state.head<2>()).norm(); // [m]
+        const double seg_dtheta = std::abs(normalizeAngle(current_interpolated_state_(2) - prev_state(2))); // [rad]
+
+        executed_path_length_    += seg_dx;
+        executed_time_           += seg_dt;
+        executed_heading_change_ += seg_dtheta;   // captures curvature/turning that L alone hides
+
+        // std::cout << "[Dubins] L = " << executed_path_length_    << " m"
+        //         << " | T = "       << executed_time_           << " s"
+        //         << " | turn = "    << executed_heading_change_ << " rad"
+        //         << " | v = "       << current_speed_           << " m/s"
+        //         << " | w = "       << current_angular_speed_   << " rad/s\n";
+
+
     }
 
-    // 5. Update trace on ground
-    Eigen::VectorXd start_pt(3);
-    start_pt << prev_state(0), prev_state(1), 0.0;
-
-    Eigen::VectorXd end_pt(3);
-    end_pt << current_interpolated_state_(0), current_interpolated_state_(1), 0.0;
-
-    robot_trace_edges_.push_back({start_pt, end_pt});
-}
+    ExecutedMetrics getExecutedMetrics() const override {
+        ExecutedMetrics m;
+        m.path_length    = executed_path_length_;
+        m.arrival_time   = executed_time_;
+        m.heading_change = executed_heading_change_;
+        return m;   // control_effort left 0.0
+    }
 
 
 
@@ -449,6 +485,13 @@ private:
     double current_angular_speed_ = 0;
     bool goal_reached_ = false;
 
+    double slice_time;
+
+    // Dubins members
+    double executed_path_length_   = 0.0; // [m]
+    double executed_time_          = 0.0; // [s]
+    double executed_heading_change_= 0.0; // [rad] total absolute turning
+
 
     double normalizeAngle(double angle) {
         angle = fmod(angle + M_PI, 2.0 * M_PI);
@@ -474,6 +517,9 @@ private:
             const ObstacleVector& all_obstacles = gazebo_checker->getObstaclePositions(); 
             
             for (const auto& obstacle : all_obstacles) {
+                // SKIPPING STATIC OBSTACLES THAT ARE NOT VISIBLE (EITHER AT FIRST OR NOT IN SENSOR RANGE)
+                if(!obstacle.is_dynamic && !obstacle.is_discovered) continue;
+
                 bool is_threat = current_threat_names_.count(obstacle.name);
                 if (obstacle.type == Obstacle::CIRCLE) {
                     Eigen::VectorXd pos(2); pos << obstacle.position.x(), obstacle.position.y();

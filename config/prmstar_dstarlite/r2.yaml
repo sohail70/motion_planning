@@ -19,7 +19,6 @@ robot:
 planner_params:
   num_of_samples: 1000
   factor: 2.0
-  partial_plot: "true" 
   kdtree_type: "NanoFlann"
   partial_update: true
   kd_dim: 2 # 2 for R2

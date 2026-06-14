@@ -23,6 +23,7 @@ public:
     Trajectory steer(const Eigen::VectorXd& from, const Eigen::VectorXd& to) const override;
 
     std::shared_ptr<State> sampleUniform(double min, double max) override;
+    Eigen::VectorXd sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) override;
     void sampleUniform(double min, double max, int k) override;
     std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const override;
 
@@ -33,6 +34,7 @@ public:
     std::vector<Trajectory> getEscapePrimitives(const Eigen::VectorXd& state, double dt) const;
 
 private:
+    std::mt19937 rng_;
     int euclidean_dim_;
     double min_velocity_;
     double max_velocity_;

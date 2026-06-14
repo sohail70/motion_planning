@@ -24,6 +24,7 @@ public:
     std::shared_ptr<State> sampleUniform(double min = 0.0, double max = 1.0) override;
     void sampleUniform(double min = 0.0, double max = 1.0, int k = 1) override;
     std::shared_ptr<State> sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) override;
+    Eigen::VectorXd sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) override;
     double distance(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2) const override;
     std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const override;
     bool isValid(const std::shared_ptr<State>& state) const override;
@@ -66,6 +67,7 @@ public:
     std::vector<Trajectory> generateRecoveryPrimitives( const Eigen::VectorXd& state, double dt, int num_uniform_dirs = 16, int integration_steps = 12) const;
 
 private:
+    std::mt19937 rng_;
     double max_acceleration_; // Maximum absolute acceleration per dimension
     Eigen::VectorXd weights_; // To balance
 

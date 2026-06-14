@@ -1,0 +1,146 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="default">
+  
+<physics type="ode">
+    <max_step_size>0.01</max_step_size>
+    <real_time_update_rate>60</real_time_update_rate>
+</physics>  
+  
+    <!-- Add a ground plane with a lighter color -->
+<model name="ground_plane">
+  <static>true</static>
+  <link name="link">
+    <collision name="collision">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+      <size>100 100</size>
+        </plane>
+      </geometry>
+      <!-- Disable collisions with kinematic objects -->
+      <surface>
+        <contact>
+          <collide_without_contact_bitmask>0x01</collide_without_contact_bitmask>
+        </contact>
+      </surface>
+    </collision>
+    <visual name="visual">
+      <geometry>
+        <plane>
+          <normal>0 0 1</normal>
+          <size>100 100</size>
+        </plane>
+      </geometry>
+      <material>
+        <ambient>0.6 0.6 0.6 1</ambient>
+        <diffuse>0.6 0.6 0.6 1</diffuse>
+      </material>
+    </visual>
+  </link>
+</model>
+
+
+
+
+
+
+<!-- ======================================================= -->
+<!-- THE DECEPTIVE GORGE (Forces diagonal traffic inside)    -->
+<!-- ======================================================= -->
+
+<!-- North Wall of the Gorge (Blocks going around the top easily) -->
+<model name="gorge_north">
+  <pose>0.0 20.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>80.0 2.0 1.0</size></box> <!-- Spans X=40 to X=-40 -->
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<!-- West Wall (The Back of the Gorge) -->
+<model name="gorge_west">
+  <pose>-40.0 5.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>2.0 32.0 1.0</size></box> <!-- Spans Y=20 to Y=-10 -->
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<!-- East Wall Top (Forms the top of the Entrance) -->
+<model name="gorge_east_top">
+  <pose>20.0 15.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>2.0 12.0 1.0</size></box> <!-- Spans Y=20 to Y=9 -->
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<!-- East Wall Bottom (Forms the bottom of the Entrance) -->
+<model name="gorge_east_bottom">
+  <pose>20.0 -5.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>2.0 12.0 1.0</size></box> <!-- Spans Y=1 to Y=-10 -->
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+<!-- NOTE: This creates a 8-meter wide ENTRANCE at X=20, Y=5 -->
+
+
+<!-- South Wall East Half -->
+<model name="gorge_south_east">
+  <pose>10.0 -10.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>20.0 2.0 1.0</size></box> <!-- Spans X=20 to X=0 -->
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+
+<!-- South Wall West Half -->
+<model name="gorge_south_west">
+  <pose>-35.0 -10.0 0 0 0 0</pose>
+  <link name="wall_link"><gravity>false</gravity><visual name="visual"><geometry>
+    <box><size>12.0 2.0 1.0</size></box> <!-- Spans X=-29 to X=-41 -->
+  </geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link>
+</model>
+<!-- NOTE: This creates a massive 29-meter wide EXIT gap between X=0 and X=-29 -->
+
+
+<!-- ======================================================= -->
+<!-- THE DYNAMIC TRAP DOOR (The Priority Queue Destroyer)    -->
+<!-- ======================================================= -->
+<!-- Starts open (hidden behind the South-East wall). 
+     Moves left to slam shut across the EXIT gap. -->
+<model name="trap_door">
+  <pose>15.0 -10.0 0 0 0 0</pose> 
+  <link name="moving_link">
+    <gravity>false</gravity>
+    <visual name="visual"><geometry><box><size>30.0 2.1 1.2</size></box></geometry>
+    <material><ambient>1 0 0 1</ambient></material></visual></link>
+  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <link_name>moving_link</link_name>
+    <direction>-1 0 0</direction> <!-- Moves Left -->
+    <amplitude>30.0</amplitude>   <!-- Sweeps across the entire exit gap -->
+    <speed>6.0</speed>            <!-- Timed to shut as robot gets deep inside -->
+    <turnaround_threshold>0.5</turnaround_threshold>
+  </plugin>
+</model>
+
+
+
+<!--****** -->
+    <include>
+      <uri>/home/sohail/gazeb/GAZEBO_MOV/model.sdf</uri>
+      <name>tugbot</name>
+      <pose>48.0 48.0 0.1 0 0 0</pose>
+
+<!-- 
+  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+    <speed>0.8</speed>
+    <interpolation_step>0.3</interpolation_step>
+  </plugin> -->
+
+
+    </include>
+
+  </world>
+</sdf>
+
+
+
+

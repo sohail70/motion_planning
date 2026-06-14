@@ -16,6 +16,7 @@
 #include "motion_planning/planners/kinodynamic/kinodynamic_any_fmtx.hpp"
 #include "motion_planning/planners/kinodynamic/kinodynamic_any_rrtx.hpp"
 #include "motion_planning/planners/kinodynamic/kinodynamic_prmstar_dstarlite.hpp"
+#include "motion_planning/planners/kinodynamic/kinodynamic_llptstar.hpp"
 
 class PlannerFactory {
  public:
@@ -55,3 +56,4 @@ static AutorRegisterPlanners<KinodynamicANYFMTX> autoRegisterKinodynamicANYFMTx(
 static AutorRegisterPlanners<KinodynamicANYRRTX> autoRegisterKinodynamicANYRRTx(PlannerType::KinodynamicANYRRTX);
 
 static AutorRegisterPlanners<KinodynamicPRMStarDStarLite> autoRegisterKinodynamicPRMStarDStarLite(PlannerType::KinodynamicPRMStarDStarLite);
+static AutorRegisterPlanners<KinodynamicLLPTStar> autoRegisterKinodynamicLLPTStar(PlannerType::KinodynamicLLPTStar);

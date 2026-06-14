@@ -24,6 +24,7 @@ public:
     std::shared_ptr<State> sampleUniform(double min, double max) override;
     void sampleUniform(double min, double max, int k) override;
     std::shared_ptr<State> sampleUniform(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) override;
+    Eigen::VectorXd sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds) override;
     std::shared_ptr<State> interpolate(const std::shared_ptr<State>& state1, const std::shared_ptr<State>& state2, double t) const override;
     bool isValid(const std::shared_ptr<State>& state) const override;
 
@@ -39,6 +40,7 @@ public:
     // static inline double arc_len_optimized( const Eigen::Vector2d& A, const Eigen::Vector2d& B, const Eigen::Vector2d& C, double r, bool clockwise);
 
 protected:
+    std::mt19937 rng_;
     double min_turning_radius_;
     Eigen::VectorXd weights_; // To balance x, y vs. theta in the distance metric --> But i do not use this because i implemented this in kd tree
 };

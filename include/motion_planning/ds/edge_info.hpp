@@ -53,7 +53,7 @@ struct Trajectory {
     Eigen::VectorXd final_acceleration; // for min snap
     //  This will store the polynomial coefficients for each axis.
     std::vector<Eigen::VectorXd> coeffs_per_axis;  // for min snap
-    
+
     // // Helper fields to pass info from base to derived steer function --> Well I guess I dont need these also because they are used for dubins analytical data used in (commented out) getCollidingObstalce function!
     // std::string maneuver_type;
     // std::vector<Eigen::Vector2d> maneuver_pts;
@@ -91,9 +91,12 @@ struct EdgeInfo {
     bool       is_trajectory_computed = false;
 
 
+
     
     // LLPT FLAGS
-    bool is_evaluated = false; 
+    // bool is_evaluated = false; 
+    uint64_t last_eval_epoch = 0; 
+    bool permanently_blocked = false;
 
     /**
      * TODO: Maybe utilize this somehow in FMTX instead of using a map and clearing it everytime!

@@ -9,9 +9,11 @@ double normalizeAngle(double angle);
 DubinsTimeStateSpace::DubinsTimeStateSpace(double min_turning_radius, double min_velocity, double max_velocity, unsigned int seed)
     : DubinsStateSpace(min_turning_radius, 4, seed), // Call the base class constructor
       min_velocity_(min_velocity),
-      max_velocity_(max_velocity) {
+      max_velocity_(max_velocity),
+      rng_(seed)
+      {
     
-    std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
+    // std::srand(seed); // TODO: For sampling the same batch every time just for debug and test. --> remove it later.
 
     // Set the dimension to 4 for this state space
     dimension_ = 4;
@@ -62,7 +64,7 @@ Trajectory DubinsTimeStateSpace::steer(const Eigen::VectorXd& from, const Eigen:
     traj_geom.geometric_distance = workspace_distance;
     double required_velocity = workspace_distance / time_elapsed;
     // std::cout<<"Req Velocity: "<<required_velocity<<"\n";
-    if (required_velocity < min_velocity_ || required_velocity > max_velocity_) {
+    if (required_velocity < min_velocity_ - 1e-6 || required_velocity > max_velocity_ + 1e-6) {
         traj_geom.is_valid = false;
         return traj_geom;
     }
@@ -179,13 +181,40 @@ std::shared_ptr<State> DubinsTimeStateSpace::sampleUniform(const Eigen::VectorXd
     if (min_bounds.size() != 4 || max_bounds.size() != 4) {
         throw std::invalid_argument("Bounds must be 4-dimensional for DubinsTimeStateSpace.");
     }
+    
     Eigen::VectorXd values(4);
     for (int i = 0; i < 4; ++i) {
-        double random_coeff = static_cast<double>(rand()) / RAND_MAX;
-        values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
+        std::uniform_real_distribution<double> dist(min_bounds[i], max_bounds[i]);
+        values[i] = dist(rng_);
     }
     return this->addState(values);
 }
+// Eigen::VectorXd DubinsTimeStateSpace::sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds)  {
+//     if (min_bounds.size() != 4 || max_bounds.size() != 4) {
+//         throw std::invalid_argument("Bounds must be 4-dimensional for DubinsTimeStateSpace.");
+//     }
+//     Eigen::VectorXd values(4);
+//     for (int i = 0; i < 4; ++i) {
+//         double random_coeff = static_cast<double>(rand()) / RAND_MAX;
+//         values[i] = min_bounds[i] + (max_bounds[i] - min_bounds[i]) * random_coeff;
+//     }
+//     return values;
+// }
+
+Eigen::VectorXd DubinsTimeStateSpace::sampleUniformUnregistered(const Eigen::VectorXd& min_bounds, const Eigen::VectorXd& max_bounds)  {
+    if (min_bounds.size() != 4 || max_bounds.size() != 4) {
+        throw std::invalid_argument("Bounds must be 4-dimensional for DubinsTimeStateSpace.");
+    }
+    
+    Eigen::VectorXd values(4);
+    for (int i = 0; i < 4; ++i) {
+        std::uniform_real_distribution<double> dist(min_bounds[i], max_bounds[i]);
+        values[i] = dist(rng_);
+    }
+    
+    return values;
+}
+
 
 Trajectory DubinsTimeStateSpace::createHoverPath(const Eigen::VectorXd& hover_state, double duration, HoverDirection direction) const {
     Trajectory hover_traj;

@@ -1,0 +1,8 @@
+Random unbiased environment:
+python generate_sdf.py --speed 30 --nobs 20 --random-placement --seed 42 --out random.sdf
+
+Biased, perpendicular-crossing environment:
+python generate_sdf.py --speed 20 --nobs 20 --seed 42 --out bias.sdf
+
+Synchronised adversarial environment (like your killer SDF):
+python generate_sdf.py --speed 30 --nobs 10 --sync --sync-offset 55 --sync-amplitude 110 --radius 4.0 --seed 42 --out sync_killer.sdf

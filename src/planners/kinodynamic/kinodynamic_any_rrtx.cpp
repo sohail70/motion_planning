@@ -41,6 +41,11 @@ void KinodynamicANYRRTX::setGoal(const Eigen::VectorXd& goal) {
 }
 
 
+
+void KinodynamicANYRRTX::setCurrentRobotTime(double robot_time_) {
+    T_robot = robot_time_;
+}
+
 std::vector<Eigen::VectorXd> KinodynamicANYRRTX::getPathPositions() const {
     if (!vbot_node_ || vbot_node_->getLMC() == std::numeric_limits<double>::infinity()) {
         RRTX_ERROR("[RRTX_Path_Assembly] Robot has no valid anchor node. Cannot build path.");
@@ -102,22 +107,75 @@ void KinodynamicANYRRTX::clearPlannerState() {
 }
 
 
+// void KinodynamicANYRRTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes) {
+//     double max_time = upper_bounds_(statespace_->getDimension() - 1); 
+
+
+//     for (int i = 1; i <= num_pillar_nodes; ++i) {
+//         Eigen::VectorXd pillar_state = goal_state_val;
+
+//         // Safely zero velocities ONLY for 5D (x, y, vx, vy, t)
+//         if (statespace_->getDimension() == 5) {
+//             pillar_state(2) = 0.0; // vx
+//             pillar_state(3) = 0.0; // vy
+//         }
+
+//         // Distribute evenly across time
+//         double t_val = (max_time / num_pillar_nodes) * i; 
+//         pillar_state(statespace_->getDimension() - 1) = t_val;
+
+//         auto state_ptr = statespace_->addState(pillar_state);
+//         auto node = std::make_unique<RRTxNode>(state_ptr, tree_.size());
+        
+//         node->setTimeToGoal(t_val);
+        
+//         node->setLMC(0.0);
+//         node->setG(0.0);
+        
+//         inconsistency_queue_.add(node.get(), 0.0);
+
+//         time_pillar_indices_.insert(node->getIndex()); 
+
+//         tree_.push_back(std::move(node));
+//     }
+// }
+
 void KinodynamicANYRRTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes) {
-    double max_time = upper_bounds_(statespace_->getDimension() - 1); 
+    if (num_pillar_nodes <= 0) return;
 
+    auto start_state_val_ = problem_->getGoal();
+    // 1. Calculate minimum required time (using only X and Y coordinates)
+    double dist = (goal_state_val.head(2) - start_state_val_.head(2)).norm();
+    double min_arrival_time = dist / statespace_->getMaxVelocity();
 
+    // 2. Get the maximum time budget from the problem bounds
+    int time_dim_index = statespace_->getDimension() - 1;
+    double max_time = upper_bounds_(time_dim_index); 
+
+    // If max_time is less than min_arrival_time, the goal is physically unreachable.
+    if (max_time <= min_arrival_time) {
+        std::cerr << "Time budget is too strict. Goal is physically unreachable at max velocity.\n";
+        return; 
+    }
+
+    // 3. Define the reachable time window
+    double time_window = max_time - min_arrival_time;
+
+    // 4. Inject the Time Pillars
     for (int i = 1; i <= num_pillar_nodes; ++i) {
+        // Copy the goal state (This inherently copies vx=0, vy=0 for 5D if they are in the config)
         Eigen::VectorXd pillar_state = goal_state_val;
 
-        // Safely zero velocities ONLY for 5D (x, y, vx, vy, t)
-        if (statespace_->getDimension() == 5) {
-            pillar_state(2) = 0.0; // vx
-            pillar_state(3) = 0.0; // vy
-        }
+        // Distribute time evenly across the REACHABLE window
+        // double t_val = min_arrival_time + (time_window / num_pillar_nodes) * i; 
 
-        // Distribute evenly across time
-        double t_val = (max_time / num_pillar_nodes) * i; 
-        pillar_state(statespace_->getDimension() - 1) = t_val;
+        // 1. Calculate how long the journey takes (distributed between min_arrival and max_time)
+        double travel_time = min_arrival_time + (time_window / num_pillar_nodes) * i; 
+        
+        // 2. Subtract travel_time from max_time because time decreases from the robot to the goal
+        double t_val = max_time - travel_time; 
+
+        pillar_state(time_dim_index) = t_val;
 
         auto state_ptr = statespace_->addState(pillar_state);
         auto node = std::make_unique<RRTxNode>(state_ptr, tree_.size());
@@ -127,6 +185,7 @@ void KinodynamicANYRRTX::injectTimePillarNodes(const Eigen::VectorXd& goal_state
         node->setLMC(0.0);
         node->setG(0.0);
         
+        // Use RRTx's specific queue
         inconsistency_queue_.add(node.get(), 0.0);
 
         time_pillar_indices_.insert(node->getIndex()); 
@@ -187,7 +246,7 @@ void KinodynamicANYRRTX::setup(const Params& params, std::shared_ptr<Visualizati
 
 
     setStart(problem_->getStart());
-    setGoal(problem_->getGoal()); //robots current position
+    // setGoal(problem_->getGoal()); //robots current position
     // Protect the original main root (T=0)
     time_pillar_indices_.insert(root_state_index_); 
     // Inject the rest of the Time Pillars (Backward search: start is the destination)
@@ -219,7 +278,7 @@ void KinodynamicANYRRTX::setup(const Params& params, std::shared_ptr<Visualizati
     std::cout<<"factor: "<<factor<<"\n";
     delta = params.getParam<double>("delta");
     std::cout << "delta: " << delta << std::endl;
-
+    neighborhood_radius_ = shrinkingBallRadius();
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Time taken by setup: " << duration.count() << " milliseconds\n";
@@ -443,13 +502,70 @@ bool KinodynamicANYRRTX::runCostForensics() {
 }
 
 void KinodynamicANYRRTX::plan() {
-    for (int i = 0; i < num_of_samples_; ++i) {
+    int successfully_added = 0;
+
+
+    // if (!is_geometric_mode_ && dimension_ >= 3) {
+    //     const double R = T_robot * statespace_->getMaxVelocity();
+    //     // Degenerate footprint near goal: adding nodes in a collapsing start-disk
+    //     // buys nothing and costs everything. Skip the batch.
+    //     if (R < 2*neighborhood_radius_) return;   // tune threshold to taste
+    // }
+
+    // Raw-attempt cap: bounds the loop when the footprint is degenerate
+    // (near goal, T_robot <= t_reach rejects almost every draw).
+    // Tune the multiplier; large enough that it never bites in normal regions.
+    const int max_attempts = num_of_samples_ * 20;
+    int attempts = 0;
+
+    // for (int i = 0; i < num_of_samples_; ++i) {
+    while (successfully_added < num_of_samples_ && attempts < max_attempts){
+        ++attempts;   // every iteration consumes an attempt, including the ones that `continue`
+
         // Calculate Radius
         neighborhood_radius_ = shrinkingBallRadius();
 
         // Sample a point
-        Eigen::VectorXd sample = Eigen::VectorXd::Random(dimension_);
-        sample = (lower_bounds_.array() + (upper_bounds_ - lower_bounds_).array() * ((sample.array() + 1.0) / 2.0)).matrix();
+        Eigen::VectorXd sample = statespace_->sampleUniformUnregistered(lower_bounds_, upper_bounds_);
+        // if (!is_geometric_mode_ && dimension_ >= 3) {
+        //     Eigen::Vector2d root_position_ = problem_->getStart().head(2);
+        //     const int t_idx = dimension_ - 1;
+        //     auto dist = (root_position_ - sample.head(2)).norm();
+        //     const double t_reach = dist / statespace_->getMaxVelocity(); // minTimeToReachNode (time-to-goal model
+        //     const double t_samp  = sample[t_idx];
+
+        //     const bool too_early = (t_samp < t_reach);
+        //     const bool behind    = (t_samp > T_robot);
+        //     if ((too_early || behind) && T_robot > t_reach) {
+        //         // Remap the ALREADY-DRAWN time into [t_reach, t_robot]
+        //         // u is uniform in [0,1)
+        //         const double u = (t_samp - lower_bounds_[t_idx]) /
+        //                         (upper_bounds_[t_idx] - lower_bounds_[t_idx]);
+        //         auto before = sample[t_idx];
+        //         sample[t_idx] = t_reach + u * (T_robot - t_reach);
+        //         // std::cout<<"BEFORE: "<<before<<", AFTER: "<<sample[t_idx]<<"\n";
+        //     }
+        // }
+        if (!is_geometric_mode_ && dimension_ >= 3) {
+            Eigen::Vector2d root_position_ = problem_->getStart().head(2);
+            const int t_idx = dimension_ - 1;
+            const double dist   = (root_position_ - sample.head(2)).norm();
+            const double t_reach = dist / statespace_->getMaxVelocity();
+
+            // Footprint feasibility: empty interval -> reject and redraw position.
+            if (T_robot <= t_reach) {
+                continue;                 // do NOT increment successfully_added
+            }
+            auto before = sample[t_idx];
+            // UNCONDITIONAL remap: u is uniform on [0,1), so t_new ~ Unif[t_reach, T_robot].
+            const double u = (sample[t_idx] - lower_bounds_[t_idx]) /
+                            (upper_bounds_[t_idx] - lower_bounds_[t_idx]);
+            sample[t_idx] = t_reach + u * (T_robot - t_reach);
+            // std::cout<<"BEFORE: "<<before<<", AFTER: "<<sample[t_idx]<<"\n";
+        }
+
+
+
         
         
         // Find Nearest
@@ -485,6 +601,10 @@ void KinodynamicANYRRTX::plan() {
             // verifyQueue(new_node);
 
             reduceInconsistency();
+
+            // We successfully added a node! Increment counter.
+            successfully_added++;
+
         }
     }
 
@@ -602,6 +722,9 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
         }
     }
 
+
+
+
     // COMMIT GRAPH CHANGES
     new_node->setParent(best_parent, best_traj);
     new_node->setLMC(min_lmc);
@@ -609,31 +732,103 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
     kdtree_->buildTree(); // Build tree is an empty function in DynamicKdtree
     
 
+    // for (auto& eval : evaluated_edges) {
+    //     if (!eval.neighbor) continue;
+    //     if (eval.fwd_exists) {
+    //         new_node->addNeighbor(eval.neighbor, true, false, eval.fwd_traj);
+    //         if (!eval.fwd_safe) {
+    //             new_node->outgoingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+    //             new_node->outgoingEdges().at(eval.neighbor).invalidating_obstacles = eval.fwd_blockers;
+    //             if (eval.neighbor->incomingEdges().count(new_node.get())) {
+    //                 eval.neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+    //                 eval.neighbor->incomingEdges().at(new_node.get()).invalidating_obstacles = eval.fwd_blockers;
+    //             }
+    //         }
+    //     }
+    //     if (eval.rev_exists) {
+    //         eval.neighbor->addNeighbor(new_node.get(), false, true, eval.rev_traj);
+    //         if (!eval.rev_safe) {
+    //             eval.neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+    //             eval.neighbor->outgoingEdges().at(new_node.get()).invalidating_obstacles = eval.rev_blockers;
+    //             if (new_node->incomingEdges().count(eval.neighbor)) {
+    //                 new_node->incomingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+    //                 new_node->incomingEdges().at(eval.neighbor).invalidating_obstacles = eval.rev_blockers;
+    //             }
+    //         }
+    //     }
+    // }
+
+    auto hitStatic = [](const std::vector<const Obstacle*>& blockers) {
+        for (const Obstacle* ob_ptr : blockers) {
+            if (!ob_ptr->is_dynamic) return true;
+        }
+        return false;
+    };
+
     for (auto& eval : evaluated_edges) {
         if (!eval.neighbor) continue;
+
         if (eval.fwd_exists) {
             new_node->addNeighbor(eval.neighbor, true, false, eval.fwd_traj);
+
             if (!eval.fwd_safe) {
-                new_node->outgoingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
-                new_node->outgoingEdges().at(eval.neighbor).invalidating_obstacles = eval.fwd_blockers;
+                bool fwd_static = hitStatic(eval.fwd_blockers);
+
+                auto& out_edge = new_node->outgoingEdges().at(eval.neighbor);
+                out_edge.distance = std::numeric_limits<double>::infinity();
+
+                if (fwd_static) {
+                    out_edge.permanently_blocked = true;
+                    out_edge.invalidating_obstacles.clear();
+                } else {
+                    out_edge.invalidating_obstacles = eval.fwd_blockers;
+                }
+
                 if (eval.neighbor->incomingEdges().count(new_node.get())) {
-                    eval.neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
-                    eval.neighbor->incomingEdges().at(new_node.get()).invalidating_obstacles = eval.fwd_blockers;
+                    auto& in_edge = eval.neighbor->incomingEdges().at(new_node.get());
+                    in_edge.distance = std::numeric_limits<double>::infinity();
+
+                    if (fwd_static) {
+                        in_edge.permanently_blocked = true;
+                        in_edge.invalidating_obstacles.clear();
+                    } else {
+                        in_edge.invalidating_obstacles = eval.fwd_blockers;
+                    }
                 }
             }
         }
+
         if (eval.rev_exists) {
             eval.neighbor->addNeighbor(new_node.get(), false, true, eval.rev_traj);
+
             if (!eval.rev_safe) {
-                eval.neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
-                eval.neighbor->outgoingEdges().at(new_node.get()).invalidating_obstacles = eval.rev_blockers;
+                bool rev_static = hitStatic(eval.rev_blockers);
+
+                auto& out_edge = eval.neighbor->outgoingEdges().at(new_node.get());
+                out_edge.distance = std::numeric_limits<double>::infinity();
+
+                if (rev_static) {
+                    out_edge.permanently_blocked = true;
+                    out_edge.invalidating_obstacles.clear();
+                } else {
+                    out_edge.invalidating_obstacles = eval.rev_blockers;
+                }
+
                 if (new_node->incomingEdges().count(eval.neighbor)) {
-                    new_node->incomingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
-                    new_node->incomingEdges().at(eval.neighbor).invalidating_obstacles = eval.rev_blockers;
+                    auto& in_edge = new_node->incomingEdges().at(eval.neighbor);
+                    in_edge.distance = std::numeric_limits<double>::infinity();
+
+                    if (rev_static) {
+                        in_edge.permanently_blocked = true;
+                        in_edge.invalidating_obstacles.clear();
+                    } else {
+                        in_edge.invalidating_obstacles = eval.rev_blockers;
+                    }
                 }
             }
         }
     }
+
 
     tree_.push_back(std::move(new_node));
 
@@ -666,6 +861,9 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
 
     // Resize uses existing capacity, ZERO heap allocations!
     evaluated_edges.resize(neighbors.size());
+    std::vector<bool> fwd_hit_static(neighbors.size(), false);
+    std::vector<bool> rev_hit_static(neighbors.size(), false);
+
     for (size_t i = 0; i < neighbors.size(); ++i) {
         evaluated_edges[i].fwd_exists = false;
         evaluated_edges[i].rev_exists = false;
@@ -694,6 +892,9 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
                 last_replan_metrics_.obstacle_checks++;
                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_fwd_traj, *threat_ptr)) {
                     evaluated_edges[i].fwd_safe = false;
+                    if (!threat_ptr->is_dynamic) {
+                        fwd_hit_static[i] = true;
+                    }
                     break; 
                 }
             }
@@ -722,6 +923,7 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
             evaluated_edges[i].rev_exists = evaluated_edges[i].fwd_exists;
             evaluated_edges[i].rev_traj = evaluated_edges[i].fwd_traj;
             evaluated_edges[i].rev_safe = evaluated_edges[i].fwd_safe;
+            rev_hit_static[i] = fwd_hit_static[i];
         } else {
             Trajectory temp_rev_traj = statespace_->steer(u->getStateValue(), new_node->getStateValue());
             if (temp_rev_traj.is_valid && temp_rev_traj.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
@@ -735,6 +937,9 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
                     last_replan_metrics_.obstacle_checks++;
                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_rev_traj, *threat_ptr)) {
                         evaluated_edges[i].rev_safe = false;
+                        if (!threat_ptr->is_dynamic) {
+                            rev_hit_static[i] = true;
+                        }
                         break;
                     }
                 }
@@ -749,27 +954,65 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
     kdtree_->buildTree(); 
     
 
-    for (auto& eval : evaluated_edges) {
+    // for (auto& eval : evaluated_edges) {
+    //     if (!eval.neighbor) continue;
+    //     if (eval.fwd_exists) {
+    //         new_node->addNeighbor(eval.neighbor, true, false, eval.fwd_traj);
+    //         if (!eval.fwd_safe) {
+    //             new_node->outgoingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+    //             if (eval.neighbor->incomingEdges().count(new_node.get())) {
+    //                 eval.neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+    //             }
+    //         }
+    //     }
+    //     if (eval.rev_exists) {
+    //         eval.neighbor->addNeighbor(new_node.get(), false, true, eval.rev_traj);
+    //         if (!eval.rev_safe) {
+    //             eval.neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+    //             if (new_node->incomingEdges().count(eval.neighbor)) {
+    //                 new_node->incomingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+    //             }
+    //         }
+    //     }
+    // }
+    for (size_t i = 0; i < evaluated_edges.size(); ++i) {
+        auto& eval = evaluated_edges[i];
         if (!eval.neighbor) continue;
+
         if (eval.fwd_exists) {
             new_node->addNeighbor(eval.neighbor, true, false, eval.fwd_traj);
+
             if (!eval.fwd_safe) {
-                new_node->outgoingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+                auto& out_edge = new_node->outgoingEdges().at(eval.neighbor);
+                out_edge.distance = std::numeric_limits<double>::infinity();
+                out_edge.permanently_blocked = fwd_hit_static[i];
+
                 if (eval.neighbor->incomingEdges().count(new_node.get())) {
-                    eval.neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+                    auto& in_edge = eval.neighbor->incomingEdges().at(new_node.get());
+                    in_edge.distance = std::numeric_limits<double>::infinity();
+                    in_edge.permanently_blocked = fwd_hit_static[i];
                 }
             }
         }
+
         if (eval.rev_exists) {
             eval.neighbor->addNeighbor(new_node.get(), false, true, eval.rev_traj);
+
             if (!eval.rev_safe) {
-                eval.neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+                auto& out_edge = eval.neighbor->outgoingEdges().at(new_node.get());
+                out_edge.distance = std::numeric_limits<double>::infinity();
+                out_edge.permanently_blocked = rev_hit_static[i];
+
                 if (new_node->incomingEdges().count(eval.neighbor)) {
-                    new_node->incomingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+                    auto& in_edge = new_node->incomingEdges().at(eval.neighbor);
+                    in_edge.distance = std::numeric_limits<double>::infinity();
+                    in_edge.permanently_blocked = rev_hit_static[i];
                 }
             }
         }
     }
+
+
     tree_.push_back(std::move(new_node));
 
     return true;
@@ -798,6 +1041,10 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
 
     // Resize uses existing capacity, ZERO heap allocations!
     evaluated_edges.resize(neighbors.size());
+
+    std::vector<bool> fwd_hit_static(neighbors.size(), false); // NEW
+    std::vector<bool> rev_hit_static(neighbors.size(), false); // NEW
+
     for (size_t i = 0; i < neighbors.size(); ++i) {
         evaluated_edges[i].fwd_exists = false;
         evaluated_edges[i].rev_exists = false;
@@ -827,6 +1074,10 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
                 // Dereference pointer for the checker
                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_fwd_traj, ob)) {
                     evaluated_edges[i].fwd_safe = false;
+                    // CACHE STATIC WALL ---
+                    if (!ob.is_dynamic) {
+                        fwd_hit_static[i] = true;
+                    }
                     break;
                 }
             }
@@ -856,6 +1107,7 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
             evaluated_edges[i].rev_exists = evaluated_edges[i].fwd_exists;
             evaluated_edges[i].rev_traj = evaluated_edges[i].fwd_traj; // Share pointer
             evaluated_edges[i].rev_safe = evaluated_edges[i].fwd_safe;
+            rev_hit_static[i] = fwd_hit_static[i];
         } else {
             // Kinodynamic: Must steer separately
             Trajectory temp_rev_traj = statespace_->steer(u->getStateValue(), new_node->getStateValue());
@@ -871,6 +1123,11 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
                     last_replan_metrics_.obstacle_checks++;
                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*shared_rev_traj, ob)) {
                         evaluated_edges[i].rev_safe = false;
+                        // --- CACHE STATIC WALL ---
+                        if (!ob.is_dynamic) {
+                            rev_hit_static[i] = true;
+                        }
+
                         break;
                     }
                 }
@@ -885,16 +1142,47 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
     kdtree_->buildTree();
     
 
-    for (auto& eval : evaluated_edges) {
+    // for (auto& eval : evaluated_edges) {
+    //     if (!eval.neighbor) continue;
+
+    //     if (eval.fwd_exists) {
+    //         new_node->addNeighbor(eval.neighbor, true, false, eval.fwd_traj);
+            
+    //         if (!eval.fwd_safe) {
+    //             new_node->outgoingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+    //             if (eval.neighbor->incomingEdges().count(new_node.get())) {
+    //                 eval.neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+    //             }
+    //         }
+    //     }
+
+    //     if (eval.rev_exists) {
+    //         eval.neighbor->addNeighbor(new_node.get(), false, true, eval.rev_traj);
+            
+    //         if (!eval.rev_safe) {
+    //             eval.neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+    //             if (new_node->incomingEdges().count(eval.neighbor)) {
+    //                 new_node->incomingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+    //             }
+    //         }
+    //     }
+    // }
+    for (size_t i = 0; i < evaluated_edges.size(); ++i) {
+        auto& eval = evaluated_edges[i];
         if (!eval.neighbor) continue;
 
         if (eval.fwd_exists) {
             new_node->addNeighbor(eval.neighbor, true, false, eval.fwd_traj);
             
             if (!eval.fwd_safe) {
-                new_node->outgoingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+                auto& out_edge = new_node->outgoingEdges().at(eval.neighbor);
+                out_edge.distance = std::numeric_limits<double>::infinity();
+                out_edge.permanently_blocked = fwd_hit_static[i]; // APPLY CACHE
+
                 if (eval.neighbor->incomingEdges().count(new_node.get())) {
-                    eval.neighbor->incomingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+                    auto& in_edge = eval.neighbor->incomingEdges().at(new_node.get());
+                    in_edge.distance = std::numeric_limits<double>::infinity();
+                    in_edge.permanently_blocked = fwd_hit_static[i]; // APPLY CACHE
                 }
             }
         }
@@ -903,13 +1191,20 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
             eval.neighbor->addNeighbor(new_node.get(), false, true, eval.rev_traj);
             
             if (!eval.rev_safe) {
-                eval.neighbor->outgoingEdges().at(new_node.get()).distance = std::numeric_limits<double>::infinity();
+                auto& out_edge = eval.neighbor->outgoingEdges().at(new_node.get());
+                out_edge.distance = std::numeric_limits<double>::infinity();
+                out_edge.permanently_blocked = rev_hit_static[i]; // APPLY CACHE
+
                 if (new_node->incomingEdges().count(eval.neighbor)) {
-                    new_node->incomingEdges().at(eval.neighbor).distance = std::numeric_limits<double>::infinity();
+                    auto& in_edge = new_node->incomingEdges().at(eval.neighbor);
+                    in_edge.distance = std::numeric_limits<double>::infinity();
+                    in_edge.permanently_blocked = rev_hit_static[i]; // APPLY CACHE
                 }
             }
         }
     }
+
+
     tree_.push_back(std::move(new_node));
 
     return true;
@@ -980,11 +1275,33 @@ void KinodynamicANYRRTX::reduceInconsistency() {
 
 
 
+// double KinodynamicANYRRTX::shrinkingBallRadius() const {
+//     int d = kd_dim;
+//     auto rad = factor * gamma_ * pow(log(tree_.size()) / tree_.size(), 1.0/d);
+//     return std::min(rad, delta);
+// }
 double KinodynamicANYRRTX::shrinkingBallRadius() const {
+
+    // tree_.size() includes the root + injected time pillars, which are
+    // co-located at the goal position and are NOT space-filling. Counting
+    // them inflates N and shrinks r_n as if the space were denser than it is,
+    // degrading connectivity. Exclude them so N reflects only the random,
+    // space-filling samples.
+    int N = static_cast<int>(tree_.size()) - num_pillar_nodes_;
+    if (N == 0) return delta; // No real samples yet
+
+
+    
+    // Prevent log(1) = 0 by enforcing a minimum N of 2.
+    // This gives the tree a valid initial volume to start growing.
+    double safe_N = std::max(2, N);
+    
     int d = kd_dim;
-    auto rad = factor * gamma_ * pow(log(tree_.size()) / tree_.size(), 1.0/d);
+    double rad = factor * gamma_ * std::pow(std::log(safe_N) / safe_N, 1.0 / d);
+    
     return std::min(rad, delta);
 }
+
 
 /*
     Why not start the min_lmc variable from INF? 
@@ -1024,6 +1341,9 @@ void KinodynamicANYRRTX::updateLMC(RRTxNode* v) {
 
 
 void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
+    // static long long cull_count_ = 0;  // total successful culls this run
+
+
     if (v->last_culled_radius_ > 0 && 
         (v->last_culled_radius_ / neighborhood_radius_) < 1.0001) {
         return; 
@@ -1056,6 +1376,8 @@ void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
                 v->culled_outgoing_edges_[neighbor] = edge;
                 it = outgoing.erase(it);
                 // outgoing.erase(it++); /for absl
+                // ++cull_count_;  // a real cull happened
+
                 continue; // Node is culled; move to next iterator
             }
         }
@@ -1063,6 +1385,7 @@ void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
         ++it;
     }
     v->last_culled_radius_ = neighborhood_radius_;
+    // std::cout<<"count: "<<cull_count_<<"\n";
 }
 
 
@@ -1440,187 +1763,306 @@ void KinodynamicANYRRTX::dumpTreeToCSV(const std::string& filename) const {
 }
 
 
-void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
-    robot_continuous_state_ = robot_state;
-    // Extract actual planner-time (Time-to-Go) from the state (last element)
-    double robot_time_to_go = robot_continuous_state_(robot_continuous_state_.size() - 1);
+// void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
+//     robot_continuous_state_ = robot_state;
+//     // Extract actual planner-time (Time-to-Go) from the state (last element)
+//     double robot_time_to_go = robot_continuous_state_(robot_continuous_state_.size() - 1);
 
-    // QUERY POINT CONSTRUCTION
-    Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim);
-    if (robot_continuous_state_.size() >= 2) {
-        query_point(0) = robot_continuous_state_(0);
-        query_point(1) = robot_continuous_state_(1);
-    }
-    if (kd_dim == 3) {
-        query_point(2) = robot_time_to_go;
-    } else if (kd_dim == 4) {
-        query_point(2) = robot_continuous_state_(2); 
-        query_point(3) = robot_time_to_go;
-    } else if (kd_dim == 5) {
-        query_point = robot_continuous_state_; 
-    }
+//     // QUERY POINT CONSTRUCTION
+//     Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim);
+//     if (robot_continuous_state_.size() >= 2) {
+//         query_point(0) = robot_continuous_state_(0);
+//         query_point(1) = robot_continuous_state_(1);
+//     }
+//     if (kd_dim == 3) {
+//         query_point(2) = robot_time_to_go;
+//     } else if (kd_dim == 4) {
+//         query_point(2) = robot_continuous_state_(2); 
+//         query_point(3) = robot_time_to_go;
+//     } else if (kd_dim == 5) {
+//         query_point = robot_continuous_state_; 
+//     }
 
-    // HYSTERESIS LOGIC
-    const double hysteresis_factor = 0.98;
-    double cost_of_current_path = std::numeric_limits<double>::infinity();
-    Trajectory bridge;
-    bool safe = true;
-    if (vbot_node_ && vbot_node_->getLMC() != std::numeric_limits<double>::infinity()) {
-        bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
+//     // HYSTERESIS LOGIC
+//     const double hysteresis_factor = 0.98;
+//     double cost_of_current_path = std::numeric_limits<double>::infinity();
+//     Trajectory bridge;
+//     bool safe = true;
+//     if (vbot_node_ && vbot_node_->getLMC() != std::numeric_limits<double>::infinity()) {
+//         bridge = statespace_->steer(robot_continuous_state_, vbot_node_->getStateValue());
 
-        // Use robot_time_to_go so collision check is synced with the world
-        if (bridge.is_valid) {
-            const auto& obstacles = obs_checker_->getObstacles();
+//         // Use robot_time_to_go so collision check is synced with the world
+//         if (bridge.is_valid) {
+//             const auto& obstacles = obs_checker_->getObstacles();
 
-            for (const auto& ob : obstacles) {
-                last_replan_metrics_.obstacle_checks++;
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, ob)) {
-                    safe = false;
-                    break;
-                }
-            }
+//             for (const auto& ob : obstacles) {
+//                 last_replan_metrics_.obstacle_checks++;
+//                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(bridge, ob)) {
+//                     safe = false;
+//                     break;
+//                 }
+//             }
 
-            if (safe) {
-                cost_of_current_path = bridge.cost + vbot_node_->getLMC();
-                robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
-            }
-        }
-    }
+//             if (safe) {
+//                 cost_of_current_path = bridge.cost + vbot_node_->getLMC();
+//                 robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
+//             }
+//         }
+//     }
 
-    RRTxNode* best_candidate_node = nullptr;
-    Trajectory best_candidate_bridge;
-    double best_candidate_cost = std::numeric_limits<double>::infinity();
+//     RRTxNode* best_candidate_node = nullptr;
+//     Trajectory best_candidate_bridge;
+//     double best_candidate_cost = std::numeric_limits<double>::infinity();
     
-    // Radius Expansion fallback tracking (for unexplored nodes)
-    RRTxNode* best_fallback_node = nullptr;
-    Trajectory best_fallback_bridge;
-    double best_fallback_cost = std::numeric_limits<double>::infinity();
+//     // Radius Expansion fallback tracking (for unexplored nodes)
+//     RRTxNode* best_fallback_node = nullptr;
+//     Trajectory best_fallback_bridge;
+//     double best_fallback_cost = std::numeric_limits<double>::infinity();
 
-    // Radius Expansion to handle sparse graphs
-    double current_search_radius = neighborhood_radius_; 
-    const int max_attempts = 5; 
-    const double radius_multiplier = 2.0;
+//     // Radius Expansion to handle sparse graphs
+//     double current_search_radius = neighborhood_radius_; 
+//     const int max_attempts = 5; 
+//     const double radius_multiplier = 2.0;
     
-    std::unordered_set<size_t> tested_indices;
+//     std::unordered_set<size_t> tested_indices;
 
-    for (int attempt = 1; attempt <= max_attempts; ++attempt) {
-        auto nearby_indices = kdtree_->radiusSearch(query_point, current_search_radius);
+//     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+//         auto nearby_indices = kdtree_->radiusSearch(query_point, current_search_radius);
 
-        for (auto idx : nearby_indices) {
-            if (!tested_indices.insert(idx).second) {
-                continue;
-            }
-            RRTxNode* candidate = tree_[idx].get();
+//         for (auto idx : nearby_indices) {
+//             if (!tested_indices.insert(idx).second) {
+//                 continue;
+//             }
+//             RRTxNode* candidate = tree_[idx].get();
 
-            // DO NOT SKIP based on getG() == infinity yet! We need it for the fallback check.
+//             // DO NOT SKIP based on getG() == infinity yet! We need it for the fallback check.
 
-            Trajectory temp_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+//             Trajectory temp_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
             
-            if (!temp_bridge.is_valid) continue;
+//             if (!temp_bridge.is_valid) continue;
 
-            bool safe = true;
-            const auto& obstacles = obs_checker_->getObstacles();
-            for (const auto& ob : obstacles) {
-                last_replan_metrics_.obstacle_checks++;
-                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(temp_bridge, ob)) {
-                    safe = false;
-                    break;  // stop checking remaining obstacles for this bridge
-                }
-            }
+//             bool safe = true;
+//             const auto& obstacles = obs_checker_->getObstacles();
+//             for (const auto& ob : obstacles) {
+//                 last_replan_metrics_.obstacle_checks++;
+//                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(temp_bridge, ob)) {
+//                     safe = false;
+//                     break;  // stop checking remaining obstacles for this bridge
+//                 }
+//             }
 
-            if (!safe) continue;
+//             if (!safe) continue;
 
-#if USE_RECOVERY
-            // Fallback Tracking: Easiest safe physical node to reach
-            if (temp_bridge.cost < best_fallback_cost) {
-                best_fallback_node = candidate;
-                best_fallback_bridge = temp_bridge;
-                best_fallback_cost = temp_bridge.cost;
-            }
-#endif
+// #if USE_RECOVERY
+//             // Fallback Tracking: Easiest safe physical node to reach
+//             if (temp_bridge.cost < best_fallback_cost) {
+//                 best_fallback_node = candidate;
+//                 best_fallback_bridge = temp_bridge;
+//                 best_fallback_cost = temp_bridge.cost;
+//             }
+// #endif
 
-            // Connected Tracking: Best node that ALREADY has a finite path
-            if (candidate->getLMC() != std::numeric_limits<double>::infinity()) {
-                double cost = temp_bridge.cost + candidate->getLMC();
-                if (cost < best_candidate_cost) {
-                    best_candidate_node = candidate;
-                    best_candidate_bridge = temp_bridge;
-                    best_candidate_cost = cost;
-                }
-            }
-        }
+//             // Connected Tracking: Best node that ALREADY has a finite path
+//             if (candidate->getLMC() != std::numeric_limits<double>::infinity()) {
+//                 double cost = temp_bridge.cost + candidate->getLMC();
+//                 if (cost < best_candidate_cost) {
+//                     best_candidate_node = candidate;
+//                     best_candidate_bridge = temp_bridge;
+//                     best_candidate_cost = cost;
+//                 }
+//             }
+//         }
         
-        // Only break early if we found a CONNECTED node.
-        if (best_candidate_node) break;
-        current_search_radius *= radius_multiplier;
-    }
+//         // Only break early if we found a CONNECTED node.
+//         if (best_candidate_node) break;
+//         current_search_radius *= radius_multiplier;
+//     }
 
-    // ASSIGNMENT PRIORITY (Fixed order)
-    // 1) Better connected anchor
-    if (best_candidate_node &&
-        best_candidate_cost < cost_of_current_path * hysteresis_factor) {
 
-        vbot_node_ = best_candidate_node;
-        robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
-        last_replan_metrics_.path_cost = best_candidate_cost;
-        current_bridge_trajectory_ = best_candidate_bridge;
-        bridge_cost_ = best_candidate_bridge.cost;
-    } 
-    // 2) Keep current anchor with fresh bridge
-    else if (safe && vbot_node_ &&
-             cost_of_current_path != std::numeric_limits<double>::infinity() &&
-             bridge.is_valid) {
 
-        robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
-        last_replan_metrics_.path_cost = cost_of_current_path;
-        current_bridge_trajectory_ = bridge;
-        bridge_cost_ = bridge.cost;
-    } 
-    // 3) Recovery: go to nearest safe tree node (HIGHER PRIORITY THAN CACHED REUSE)
-#if USE_RECOVERY
-    else if (best_fallback_node) {
-        // vbot_node_ = best_fallback_node;
-        robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
-        bridge_cost_ = best_fallback_cost;
-        current_bridge_trajectory_ = best_fallback_bridge;
-        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
 
-        RRTX_WARN("[RRTX_SetRobotState] USE_RECOVERY: Falling back to nearest safe tree node.");
-    }
-#endif
-    // 4) Keep current anchor, reuse previous cached bridge
-    //    This is the near-root / numerical-steer-failure case.
-    else if (vbot_node_ &&
-             current_bridge_trajectory_.is_valid &&
-             !current_bridge_trajectory_.path_points.empty()) {
 
-        robot_current_time_to_goal_ =
-            current_bridge_trajectory_.time_duration + vbot_node_->getTimeToGoal();
+//     bool cached_bridge_safe = false;                // will be set inside the cached‑bridge block
+//     std::string first_unsafe_obstacle_name_;        // will be set inside the cached‑bridge block
+//     // ----- TRAP DIAGNOSTIC LAMBDA -----
+//     auto trap_reason = [&]() -> std::string {
+//         std::ostringstream oss;
+//         oss << "TRAP DIAGNOSTIC: ";
+//         if (best_candidate_node) {
+//             oss << "candidate exists (cost " << best_candidate_cost
+//                 << ") but not better than current (" << cost_of_current_path
+//                 << ") or hysteresis (factor " << hysteresis_factor << "). ";
+//         } else {
+//             oss << "no candidate with safe bridge + finite LMC found within "
+//                 << (current_search_radius / radius_multiplier) << " m radius. "
+//                 << "Searched " << tested_indices.size() << " nodes. ";
+//         }
+//         if (vbot_node_) {
+//             oss << "Current anchor LMC=" << vbot_node_->getLMC() << ", ";
+//         } else {
+//             oss << "No current anchor. ";
+//         }
+//         oss << "Fresh steer safe=" << safe << ", bridge valid=" << bridge.is_valid;
+//         if (!bridge.is_valid && vbot_node_) {
+//             oss << " (steer failed from " << robot_continuous_state_.head<2>().transpose()
+//                 << " to " << vbot_node_->getStateValue().head<2>().transpose() << ")";
+//         }
+//         if (current_bridge_trajectory_.is_valid) {
+//             // We’ll set cached_bridge_safe before entering the trap branches
+//             oss << ", cached bridge exists, re‑stamped and checked="
+//                 << (cached_bridge_safe ? "safe" : "unsafe");
+//             if (!cached_bridge_safe) {
+//                 oss << " (collision with " << first_unsafe_obstacle_name_ << ")";
+//             }
+//         } else {
+//             oss << ", no cached bridge";
+//         }
+//         oss << ", recovery=" << (USE_RECOVERY ? "enabled" : "disabled");
+//         return oss.str();
+//     };
+//     // ----- END LAMBDA -----
 
-        // Keep finite so we do NOT enter trapped logic.
-        const double anchor_tail_cost =
-            (vbot_node_->getLMC() != std::numeric_limits<double>::infinity())
-                ? vbot_node_->getLMC()
-                : 0.0;
 
-        cost_of_current_path = current_bridge_trajectory_.cost + anchor_tail_cost;
-        last_replan_metrics_.path_cost = cost_of_current_path;
-        bridge_cost_ = current_bridge_trajectory_.cost;
+//     // ASSIGNMENT PRIORITY (Fixed order)
+//     // 1) Better connected anchor
+//     if (best_candidate_node &&
+//         best_candidate_cost < cost_of_current_path * hysteresis_factor) {
 
-        RRTX_WARN("[RRTX_SetRobotState] Fresh steer failed near anchor/root. Reusing cached bridge.");
-    }
-    // 5) Truly trapped
-    else {
-        vbot_node_ = nullptr;
-        robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
-        bridge_cost_ = std::numeric_limits<double>::infinity();
-        current_bridge_trajectory_ = Trajectory();
-        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+//         vbot_node_ = best_candidate_node;
+//         robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+//         last_replan_metrics_.path_cost = best_candidate_cost;
+//         current_bridge_trajectory_ = best_candidate_bridge;
+//         bridge_cost_ = best_candidate_bridge.cost;
+//     } 
+//     // 2) Keep current anchor with fresh bridge
+//     else if (safe && vbot_node_ &&
+//              cost_of_current_path != std::numeric_limits<double>::infinity() &&
+//              bridge.is_valid) {
 
-        RRTX_WARN("[RRTX_SetRobotState] LOST SAFE ANCHOR. TRULY TRAPPED.");
-    }
+//         robot_current_time_to_goal_ = bridge.time_duration + vbot_node_->getTimeToGoal();
+//         last_replan_metrics_.path_cost = cost_of_current_path;
+//         current_bridge_trajectory_ = bridge;
+//         bridge_cost_ = bridge.cost;
+//     } 
+//     // 3) Recovery: go to nearest safe tree node (HIGHER PRIORITY THAN CACHED REUSE)
+// #if USE_RECOVERY
+//     else if (best_fallback_node) {
+//         // vbot_node_ = best_fallback_node;
+//         robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+//         bridge_cost_ = best_fallback_cost;
+//         current_bridge_trajectory_ = best_fallback_bridge;
+//         last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
 
-}
+//         RRTX_WARN("[RRTX_SetRobotState] USE_RECOVERY: Falling back to nearest safe tree node.");
+//     }
+// #endif
+//     // // 4) Keep current anchor, reuse previous cached bridge
+//     // //    This is the near-root / numerical-steer-failure case.
+//     // else if (vbot_node_ &&
+//     //          current_bridge_trajectory_.is_valid &&
+//     //          !current_bridge_trajectory_.path_points.empty()) {
+
+//     //     robot_current_time_to_goal_ =
+//     //         current_bridge_trajectory_.time_duration + vbot_node_->getTimeToGoal();
+
+//     //     // Keep finite so we do NOT enter trapped logic.
+//     //     const double anchor_tail_cost =
+//     //         (vbot_node_->getLMC() != std::numeric_limits<double>::infinity())
+//     //             ? vbot_node_->getLMC()
+//     //             : 0.0;
+
+//     //     cost_of_current_path = current_bridge_trajectory_.cost + anchor_tail_cost;
+//     //     last_replan_metrics_.path_cost = cost_of_current_path;
+//     //     bridge_cost_ = current_bridge_trajectory_.cost;
+
+//     //     RRTX_WARN("[RRTX_SetRobotState] Fresh steer failed near anchor/root. Reusing cached bridge.");
+//     // }
+
+
+//     else if (vbot_node_ &&
+//          vbot_node_->getLMC() != std::numeric_limits<double>::infinity() &&
+//          current_bridge_trajectory_.is_valid &&
+//          !current_bridge_trajectory_.path_points.empty()) {
+
+//         // 1. Build a re‑stamped version of the cached bridge
+//         const auto& old_pts = current_bridge_trajectory_.path_points;
+//         std::vector<Eigen::VectorXd> new_pts = old_pts;  // copy spatial points
+
+//         // Original time step (assuming uniform spacing)
+//         double dt_old = (old_pts.front()(2) - old_pts.back()(2)) / (old_pts.size() - 1);
+
+//         // New time values: current robot_sim_time down to robot_sim_time - duration
+//         double new_start = robot_time_to_go;                // <-- use robot_sim_time
+//         for (size_t i = 0; i < new_pts.size(); ++i) {
+//             new_pts[i](2) = new_start - i * dt_old;
+//         }
+
+//         // Create a temporary trajectory for collision checking
+//         Trajectory re_stamped_bridge = current_bridge_trajectory_;
+//         re_stamped_bridge.path_points = new_pts;
+
+//         // 2. Re‑verify against ALL current obstacles
+//         // bool cached_bridge_safe = true;
+//         // std::string first_unsafe_obstacle_name_;   // local, but we'll copy to the member for logging later
+//         cached_bridge_safe = true;                 // reuse the outer variable
+//         first_unsafe_obstacle_name_.clear();       // reset to empty
+
+//         for (const auto& [name, ob] : previous_obstacles_) {
+//             last_replan_metrics_.obstacle_checks++;
+//             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(
+//                     re_stamped_bridge, ob)) {
+//                 cached_bridge_safe = false;
+//                 first_unsafe_obstacle_name_ = ob.name;   // store the name
+//                 break;
+//             }
+//         }
+
+//         if (!cached_bridge_safe) {
+//             // The old bridge is now unsafe – truly trapped.
+//             vbot_node_ = nullptr;
+//             robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+//             bridge_cost_ = std::numeric_limits<double>::infinity();
+//             current_bridge_trajectory_ = Trajectory();
+//             last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+//             RRTX_WARN("[Set Robot State] " << trap_reason());
+
+
+//             RRTX_WARN("[Set Robot State] Cached bridge became unsafe. TRULY TRAPPED.");
+//         } else {
+//             // The cached bridge is still safe – reuse it.
+//             robot_current_time_to_goal_ =
+//                 current_bridge_trajectory_.time_duration + vbot_node_->getTimeToGoal();
+//             const double anchor_tail_cost =
+//                 (vbot_node_->getLMC() != std::numeric_limits<double>::infinity())
+//                     ? vbot_node_->getLMC()
+//                     : 0.0;
+//             // cost_of_current_path = current_bridge_trajectory_.cost + anchor_tail_cost;
+//             // last_replan_metrics_.path_cost = cost_of_current_path;
+//             // bridge_cost_ = current_bridge_trajectory_.cost;
+
+//             current_bridge_trajectory_ = re_stamped_bridge;   // <-- important
+//             bridge_cost_ = re_stamped_bridge.cost;
+//             robot_current_time_to_goal_ = re_stamped_bridge.time_duration + vbot_node_->getTimeToGoal();
+//             cost_of_current_path = re_stamped_bridge.cost + anchor_tail_cost;
+//             last_replan_metrics_.path_cost = cost_of_current_path;
+
+//             RRTX_WARN("[Set Robot State] Fresh steer failed near anchor/root. Reusing cached bridge (verified safe).");
+//         }
+//     }
+
+
+//     // 5) Truly trapped
+//     else {
+//         vbot_node_ = nullptr;
+//         robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+//         bridge_cost_ = std::numeric_limits<double>::infinity();
+//         current_bridge_trajectory_ = Trajectory();
+//         last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+
+//         RRTX_WARN("[RRTX_SetRobotState] LOST SAFE ANCHOR. TRULY TRAPPED.");
+//     }
+
+// }
 
 
 bool KinodynamicANYRRTX::isRobotSafe() {
@@ -1657,13 +2099,21 @@ void KinodynamicANYRRTX::updateObstacles(const ObstacleVector& turned_obstacles)
             removeObstacle(stored_ob); 
         }
 
+        // FOR REMOVED STATIC OBS
+        // PURGE: visible obstacle the robot reached. Free edges, erase, never re-add. --> Remove static obstalce!
+        if (incoming_ob.is_removed) {
+            previous_obstacles_.erase(incoming_ob.name);
+            continue;
+        }
+        //////////////////
+
         // UPDATE STATE 
         stored_ob = incoming_ob; 
 
         // GENERATE NEW DENSE TUBE
         // We regenerate this here to ensure it uses the Planner's exact 'T_robot'.
         // Since we copied the object in step above, 'stored_ob' now has the valid physics data to do this.
-        stored_ob.predicted_path = obs_checker_->generatePrediction(stored_ob, T_robot);
+        // stored_ob.predicted_path = obs_checker_->generatePrediction(stored_ob, T_robot);
 
         // --- DEBUG LOGGING ---
         /*
@@ -1723,18 +2173,33 @@ void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob) {
     }
 
     auto checkAndBlockEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge) {
+        if (edge.permanently_blocked) return;
         last_replan_metrics_.obstacle_checks++;
 
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             edge.distance = std::numeric_limits<double>::infinity();
-            if (std::find(edge.invalidating_obstacles.begin(), edge.invalidating_obstacles.end(), &ob) == edge.invalidating_obstacles.end()) {
-                edge.invalidating_obstacles.push_back(&ob);
+
+            if (!ob.is_dynamic) {
+                edge.permanently_blocked = true;
+                edge.invalidating_obstacles.clear();
+            } else {
+                if (std::find(edge.invalidating_obstacles.begin(),
+                            edge.invalidating_obstacles.end(), &ob) == edge.invalidating_obstacles.end()) {
+                    edge.invalidating_obstacles.push_back(&ob);
+                }
             }
+
             if (neighbor->incomingEdges().count(node)) {
                 auto& inc_edge = neighbor->incomingEdges().at(node);
                 inc_edge.distance = std::numeric_limits<double>::infinity();
-                if (std::find(inc_edge.invalidating_obstacles.begin(), inc_edge.invalidating_obstacles.end(), &ob) == inc_edge.invalidating_obstacles.end()) {
-                    inc_edge.invalidating_obstacles.push_back(&ob);
+                if (!ob.is_dynamic) {
+                    inc_edge.permanently_blocked = true;
+                    inc_edge.invalidating_obstacles.clear();
+                } else {
+                    if (std::find(inc_edge.invalidating_obstacles.begin(),
+                                inc_edge.invalidating_obstacles.end(), &ob) == inc_edge.invalidating_obstacles.end()) {
+                        inc_edge.invalidating_obstacles.push_back(&ob);
+                    }
                 }
             }
             
@@ -1745,12 +2210,30 @@ void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob) {
                 auto& rev_edge = neighbor->outgoingEdges().at(node);
                 if (rev_edge.distance != std::numeric_limits<double>::infinity()) {
                     rev_edge.distance = std::numeric_limits<double>::infinity();
+                    if (!ob.is_dynamic) {
+                        rev_edge.permanently_blocked = true;
+                        rev_edge.invalidating_obstacles.clear();
+                    } else {
+                        if (std::find(rev_edge.invalidating_obstacles.begin(),
+                                    rev_edge.invalidating_obstacles.end(), &ob) == rev_edge.invalidating_obstacles.end()) {
+                            rev_edge.invalidating_obstacles.push_back(&ob);
+                        }
+                    }
 
                     if (node->incomingEdges().count(neighbor)) {
-                        node->incomingEdges().at(neighbor).distance =
-                            std::numeric_limits<double>::infinity();
+                        auto& rev_inc = node->incomingEdges().at(neighbor);
+                        rev_inc.distance = std::numeric_limits<double>::infinity();
+                        if (!ob.is_dynamic) {
+                            rev_inc.permanently_blocked = true;
+                            rev_inc.invalidating_obstacles.clear();
+                        } else {
+                            if (std::find(rev_inc.invalidating_obstacles.begin(),
+                                        rev_inc.invalidating_obstacles.end(), &ob) == rev_inc.invalidating_obstacles.end()) {
+                                rev_inc.invalidating_obstacles.push_back(&ob);
+                            }
+                        }
                     }
-                    // if (node->getParent() == neighbor) verifyOrphan(node);
+
                     if (neighbor->getParent() == node) verifyOrphan(neighbor);
                 }
             }
@@ -1789,6 +2272,7 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
     }
     auto checkAndRestoreEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge, bool& neighborsWereBlocked) {
+        if (edge.permanently_blocked) return;
         if (edge.distance == std::numeric_limits<double>::infinity()) {
             
             // SWAP-AND-POP for the outgoing edge
@@ -1876,15 +2360,23 @@ void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob) {
     }
 
     auto checkAndBlockEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge) {
+        if (edge.permanently_blocked) return;
         if (edge.distance == std::numeric_limits<double>::infinity()) return; 
 
         last_replan_metrics_.obstacle_checks++;
 
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             edge.distance = std::numeric_limits<double>::infinity();
-            
+            if (!ob.is_dynamic) {
+                edge.permanently_blocked = true;
+            } 
+
             if (neighbor->incomingEdges().count(node)) {
-                neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
+                auto& inc_edge = neighbor->incomingEdges().at(node);
+                inc_edge.distance = std::numeric_limits<double>::infinity();
+                if (!ob.is_dynamic) {
+                    inc_edge.permanently_blocked = true;
+                }
             }
             
             // if (neighbor->getParent() == node) verifyOrphan(neighbor);
@@ -1894,12 +2386,18 @@ void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob) {
                 auto& rev_edge = neighbor->outgoingEdges().at(node);
                 if (rev_edge.distance != std::numeric_limits<double>::infinity()) {
                     rev_edge.distance = std::numeric_limits<double>::infinity();
+                    if (!ob.is_dynamic) {
+                        rev_edge.permanently_blocked = true;
+                    }
 
                     if (node->incomingEdges().count(neighbor)) {
-                        node->incomingEdges().at(neighbor).distance =
-                            std::numeric_limits<double>::infinity();
+                        auto& rev_inc = node->incomingEdges().at(neighbor);
+                        rev_inc.distance = std::numeric_limits<double>::infinity();
+                        if (!ob.is_dynamic) {
+                            rev_inc.permanently_blocked = true;
+                        }
                     }
-                    // if (node->getParent() == neighbor) verifyOrphan(node);
+
                     if (neighbor->getParent() == node) verifyOrphan(neighbor);
                 }
             }
@@ -1942,6 +2440,7 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
         for (size_t idx : indices) unique_node_indices.insert(static_cast<int>(idx));
     }
     auto checkAndRestoreEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge, bool& neighborsWereBlocked) {
+        if (edge.permanently_blocked) return;
         if (edge.distance == std::numeric_limits<double>::infinity()) {
             bool is_safe = true;
             
@@ -1950,6 +2449,22 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
                 last_replan_metrics_.obstacle_checks++;
                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), *threat_ptr)) {
                     is_safe = false;
+                    if (!threat_ptr->is_dynamic) {
+                        edge.permanently_blocked = true;
+
+                        if (neighbor->incomingEdges().count(node)) {
+                            neighbor->incomingEdges().at(node).permanently_blocked = true;
+                        }
+
+                        if (is_geometric_mode_ && neighbor->outgoingEdges().count(node)) {
+                            auto& rev_edge = neighbor->outgoingEdges().at(node);
+                            rev_edge.permanently_blocked = true;
+
+                            if (node->incomingEdges().count(neighbor)) {
+                                node->incomingEdges().at(neighbor).permanently_blocked = true;
+                            }
+                        }
+                    }
                     break;
                 }
             }
@@ -2026,15 +2541,25 @@ void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob) {
     }
 
     auto checkAndBlockEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge) {
+        if (edge.permanently_blocked) return;
         if (edge.distance == std::numeric_limits<double>::infinity()) return; 
 
         last_replan_metrics_.obstacle_checks++;
 
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
             edge.distance = std::numeric_limits<double>::infinity();
+            // --- CACHE NEW STATIC WALLS ---
+            if (!ob.is_dynamic) {
+                edge.permanently_blocked = true;
+            }
+
             
             if (neighbor->incomingEdges().count(node)) {
-                neighbor->incomingEdges().at(node).distance = std::numeric_limits<double>::infinity();
+                auto& inc_edge = neighbor->incomingEdges().at(node);
+                inc_edge.distance = std::numeric_limits<double>::infinity();
+                if (!ob.is_dynamic) {
+                    inc_edge.permanently_blocked = true;
+                }
             }
             
             // if (neighbor->getParent() == node) verifyOrphan(neighbor);
@@ -2044,12 +2569,18 @@ void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob) {
                 auto& rev_edge = neighbor->outgoingEdges().at(node);
                 if (rev_edge.distance != std::numeric_limits<double>::infinity()) {
                     rev_edge.distance = std::numeric_limits<double>::infinity();
+                    if (!ob.is_dynamic) {
+                        rev_edge.permanently_blocked = true;
+                    }
 
                     if (node->incomingEdges().count(neighbor)) {
-                        node->incomingEdges().at(neighbor).distance =
-                            std::numeric_limits<double>::infinity();
+                        auto& rev_inc = node->incomingEdges().at(neighbor);
+                        rev_inc.distance = std::numeric_limits<double>::infinity();
+                        if (!ob.is_dynamic) {
+                            rev_inc.permanently_blocked = true;
+                        }
                     }
-                    // if (node->getParent() == neighbor) verifyOrphan(node);
+
                     if (neighbor->getParent() == node) verifyOrphan(neighbor);
                 }
             }
@@ -2092,6 +2623,10 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
 
     auto checkAndRestoreEdge = [&](RRTxNode* node, RRTxNode* neighbor, EdgeInfo& edge, bool& neighborsWereBlocked) {
         if (edge.distance == std::numeric_limits<double>::infinity()) {
+
+            // --- 1. STATIC CACHE BYPASS (Instant CPU Savings) ---
+            if (edge.permanently_blocked) return; 
+
             bool should_restore = false;
             last_replan_metrics_.obstacle_checks++;
             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), ob)) {
@@ -2101,6 +2636,24 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
                     last_replan_metrics_.obstacle_checks++;
                     if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(edge.cached_trajectory), other_ob)) {
                         conflicts_with_other = true;
+                        // --- 2. CACHE STATIC WALLS FOUND DURING RESTORE ---
+                        if (!other_ob.is_dynamic) {
+                            edge.permanently_blocked = true;
+
+                            if (neighbor->incomingEdges().count(node)) {
+                                neighbor->incomingEdges().at(node).permanently_blocked = true;
+                            }
+
+                            if (is_geometric_mode_ && neighbor->outgoingEdges().count(node)) {
+                                auto& rev_edge = neighbor->outgoingEdges().at(node);
+                                rev_edge.permanently_blocked = true;
+
+                                if (node->incomingEdges().count(neighbor)) {
+                                    node->incomingEdges().at(neighbor).permanently_blocked = true;
+                                }
+                            }
+                        }
+
                         break; 
                     }
                 }
@@ -2149,3 +2702,294 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
 }
 
 #endif
+
+
+
+void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
+    robot_continuous_state_ = robot_state;
+    double robot_time_to_go = robot_continuous_state_(robot_continuous_state_.size() - 1);
+
+    // QUERY POINT CONSTRUCTION
+    Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim);
+    if (robot_continuous_state_.size() >= 2) {
+        query_point(0) = robot_continuous_state_(0);
+        query_point(1) = robot_continuous_state_(1);
+    }
+    if (kd_dim == 3) {
+        query_point(2) = robot_time_to_go;
+    } else if (kd_dim == 4) {
+        query_point(2) = robot_continuous_state_(2); 
+        query_point(3) = robot_time_to_go;
+    } else if (kd_dim == 5) {
+        query_point = robot_continuous_state_; 
+    }
+
+    RRTxNode* best_candidate_node = nullptr;
+    Trajectory best_candidate_bridge;
+    double best_candidate_cost = std::numeric_limits<double>::infinity();
+    
+    RRTxNode* best_fallback_node = nullptr;
+    Trajectory best_fallback_bridge;
+    double best_fallback_cost = std::numeric_limits<double>::infinity();
+
+    double current_search_radius = neighborhood_radius_; 
+    const int max_attempts = 5; 
+    const double radius_multiplier = 2.0;
+    
+    std::unordered_set<size_t> tested_indices;
+    int steer_feasible_count = 0;   // <-- ADD: nodes reachable by valid steer
+    int safe_feasible_count  = 0;   // <-- ADD: reachable AND collision-free
+    int connected_count = 0;   // safe AND finite LMC
+
+    // 1. PERFORM RADIUS SEARCH FOR A NEW ANCHOR
+    for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+        auto nearby_indices = kdtree_->radiusSearch(query_point, current_search_radius);
+        for (auto idx : nearby_indices) {
+            if (!tested_indices.insert(idx).second) continue;
+            
+            RRTxNode* candidate = tree_[idx].get();
+
+            Trajectory temp_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
+            if (!temp_bridge.is_valid) continue;
+            steer_feasible_count++;   // <-- ADD
+
+            bool safe = true;
+            for (const auto& [name, ob] : previous_obstacles_) {
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(temp_bridge, ob)) {
+                    safe = false;
+                    break;
+                }
+            }
+            if (!safe) continue;
+            safe_feasible_count++;    // <-- ADD
+
+#if USE_RECOVERY
+            // Fallback Tracking: Easiest safe physical node to reach
+            if (temp_bridge.cost < best_fallback_cost) {
+                best_fallback_node = candidate;
+                best_fallback_bridge = temp_bridge;
+                best_fallback_cost = temp_bridge.cost;
+            }
+#endif
+
+            // Connected Tracking: Best node that ALREADY has a finite path
+            if (candidate->getLMC() != std::numeric_limits<double>::infinity()) {
+                connected_count++;     // <-- ADD
+                double cost = temp_bridge.cost + candidate->getLMC();
+                if (cost < best_candidate_cost) {
+                    best_candidate_node = candidate;
+                    best_candidate_bridge = temp_bridge;
+                    best_candidate_cost = cost;
+                }
+            }
+        }
+        
+        // Break early if we found a strictly CONNECTED node.
+        if (best_candidate_node) break;
+        current_search_radius *= radius_multiplier;
+    }
+
+    // 2. SIMPLE ASSIGNMENT LOGIC
+    if (best_candidate_node) {
+        vbot_node_ = best_candidate_node;
+        robot_current_time_to_goal_ = best_candidate_bridge.time_duration + best_candidate_node->getTimeToGoal();
+        last_replan_metrics_.path_cost = best_candidate_cost;
+        current_bridge_trajectory_ = best_candidate_bridge;
+        bridge_cost_ = best_candidate_bridge.cost;
+    } 
+#if USE_RECOVERY
+    else if (best_fallback_node) {
+        // vbot_node_ = best_fallback_node; // Uncomment if RRTX architecture requires assigning vbot_node_ here
+        robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        bridge_cost_ = best_fallback_cost;
+        current_bridge_trajectory_ = best_fallback_bridge;
+        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+        RRTX_WARN("[RRTX_SetRobotState] USE_RECOVERY: Falling back to nearest safe tree node.");
+    }
+#endif
+    else {
+        vbot_node_ = nullptr;
+        robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
+        bridge_cost_ = std::numeric_limits<double>::infinity();
+        current_bridge_trajectory_ = Trajectory();
+        last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
+        RRTX_WARN("[RRTX_SetRobotState] LOST SAFE ANCHOR. TRULY TRAPPED.");
+    }
+
+
+
+
+    // // one line per replan
+    // double t_rem = upper_bounds_(upper_bounds_.size() - 1) - robot_time_to_go;
+    // RRTX_INFO("[Traj]"
+    //     << " t_rem="          << t_rem
+    //     << " x="              << robot_continuous_state_(0)
+    //     << " y="              << robot_continuous_state_(1)
+    //     << " theta="          << robot_continuous_state_(2)
+    //     << " steer_feasible=" << steer_feasible_count
+    //     << " safe_feasible="  << safe_feasible_count
+    //     << " connected="      << connected_count
+    //     << " radius="         << current_search_radius
+    //     << " anchor="         << (best_candidate_node ? "OK" :
+    //                               (best_fallback_node ? "FALLBACK" : "TRAP")));
+
+
+}
+
+
+bool KinodynamicANYRRTX::isCurrentBridgeSafe(const ObstacleVector& obstacles) const {
+    if (!current_bridge_trajectory_.is_valid || current_bridge_trajectory_.path_points.empty()) {
+        // RRTX_WARN("[Bridge Check] Bridge is empty or invalid!");
+        return false; 
+    }
+
+    // 1. Check immediate bridge collision
+    for (const auto& ob : obstacles) {
+        if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(current_bridge_trajectory_, ob)) {
+            // RRTX_WARN("[Bridge Check] IMMEDIATE COLLISION! Bridge intersects with obstacle: " << ob.name);
+            return false; 
+        }
+    }
+
+    // 2. THE ROOT CAUSE CHECK: Is the anchor node still safely connected to the goal?
+    // In RRTX, rewire/cascade updates might have set our vbot_node_ LMC to INF!
+    if (vbot_node_ != nullptr) {
+        if (vbot_node_->getLMC() == std::numeric_limits<double>::infinity()) {
+            // RRTX_WARN("[Bridge Check] GRAPH DESYNC! The immediate bridge is safe, but the anchor node (LMC=INF) has been cut off!");
+            return false; // The bridge leads to a dead end!
+        }
+    } else {
+        // RRTX_WARN("[Bridge Check] GRAPH DESYNC! vbot_node_ is NULL!");
+        return false;
+    }
+
+    return true;
+}
+
+bool KinodynamicANYRRTX::hasReachedAnchor(const Eigen::VectorXd& current_sim_state) const {
+    // If we don't have an anchor, trigger a new search
+    if (!vbot_node_) return true; 
+    if (vbot_node_->getLMC() == std::numeric_limits<double>::infinity()) return true; 
+
+    // Calculate the time remaining on the current edge.
+    // T_robot is the time left in the simulation budget.
+    double current_T_robot = current_sim_state(current_sim_state.size() - 1);
+    
+    // The anchor node's T_robot
+    double anchor_T_robot = vbot_node_->getStateValue()(current_sim_state.size() - 1);
+
+    // We consider the anchor "reached" if we are within a small temporal threshold 
+    // of the node's timestamp (e.g., 0.1 seconds away from the node).
+    if (current_T_robot <= anchor_T_robot + 1e-6) {
+        return true;
+    }
+
+    return false;
+}
+
+bool KinodynamicANYRRTX::hasShortcut(const Eigen::VectorXd& robot_state, double threshold) {
+    if (!vbot_node_ || vbot_node_->getLMC() == std::numeric_limits<double>::infinity()) {
+        return false;
+    }
+
+    double current_cost = bridge_cost_ + vbot_node_->getLMC();
+    if (current_cost <= 1e-9 || current_cost == std::numeric_limits<double>::infinity()) {
+        return false;
+    }
+
+    double robot_time_to_go = robot_state(robot_state.size() - 1);
+
+    Eigen::VectorXd query_point = Eigen::VectorXd::Zero(kd_dim);
+    if (robot_state.size() >= 2) {
+        query_point(0) = robot_state(0);
+        query_point(1) = robot_state(1);
+    }
+    if (kd_dim == 3) {
+        query_point(2) = robot_time_to_go;
+    } else if (kd_dim == 4) {
+        query_point(2) = robot_state(2);
+        query_point(3) = robot_time_to_go;
+    } else if (kd_dim == 5) {
+        query_point = robot_state;
+    }
+
+    double current_search_radius = neighborhood_radius_ * 2.0;
+    const int max_attempts = 5;
+    const double radius_multiplier = 2.0;
+
+    std::unordered_set<size_t> tested_indices;
+
+    for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+        auto nearby_indices = kdtree_->radiusSearch(query_point, current_search_radius);
+
+        for (auto idx : nearby_indices) {
+            if (!tested_indices.insert(idx).second) continue;
+
+            RRTxNode* candidate = tree_[idx].get();
+            if (candidate->getLMC() == std::numeric_limits<double>::infinity()) continue;
+
+            Trajectory temp_bridge = statespace_->steer(robot_state, candidate->getStateValue());
+            if (!temp_bridge.is_valid) continue;
+
+            double new_total_cost = temp_bridge.cost + candidate->getLMC();
+            double improvement = (current_cost - new_total_cost) / current_cost;
+
+            if (improvement >= threshold) {
+                bool safe = true;
+                for (const auto& [name, ob] : previous_obstacles_) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(temp_bridge, ob)) {
+                        safe = false;
+                        break;
+                    }
+                }
+
+                if (safe) {
+                    return true;
+                }
+            }
+        }
+
+        current_search_radius *= radius_multiplier;
+    }
+
+    return false;
+}
+
+std::vector<Eigen::VectorXd> KinodynamicANYRRTX::getLivePathPositions(const Eigen::VectorXd& current_state) const
+{
+    if (!vbot_node_ || vbot_node_->getLMC() == std::numeric_limits<double>::infinity()) {
+        return {}; 
+    }
+
+    // 1. Create a temporary, real-time bridge from the robot to the anchor
+    Trajectory live_bridge = statespace_->steer(current_state, vbot_node_->getStateValue());
+    
+    if (!live_bridge.is_valid || live_bridge.path_points.empty()) {
+        // If the live steer fails (e.g. numerical issue very close to the node),
+        // fallback to the cached path
+        return getPathPositions(); 
+    }
+
+    // 2. Start the path with the live bridge
+    std::vector<Eigen::VectorXd> final_executable_path = live_bridge.path_points;
+
+    // 3. Traverse the rest of the tree from the anchor node
+    RRTxNode* child = vbot_node_;
+    RRTxNode* parent = child->getParent();
+
+    while (parent) {
+        auto cached_traj = child->getParentTrajectory();
+        if (cached_traj->is_valid && cached_traj->path_points.size() > 1) {
+            final_executable_path.insert(final_executable_path.end(),
+                                         cached_traj->path_points.begin() + 1,
+                                         cached_traj->path_points.end());
+        } else {
+            break;
+        }
+        child = parent;
+        parent = child->getParent();
+    }
+
+    return final_executable_path;
+}
