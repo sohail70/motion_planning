@@ -13,7 +13,7 @@
 #define DEBUG 0
 #define USE_RECOVERY 0 // Emergency Fallback
 
-KinodynamicANYRRTX::KinodynamicANYRRTX(std::shared_ptr<StateSpace> statespace, 
+KinodynamicANYRRTX::KinodynamicANYRRTX(std::shared_ptr<StateSpace> statespace,
     std::shared_ptr<ProblemDefinition> problem_def,
     std::shared_ptr<ObstacleChecker> obs_checker): statespace_(statespace), problem_(problem_def), obs_checker_(obs_checker){
         std::cout<<"KinodynamicANYRRTX constructor \n";
@@ -525,8 +525,8 @@ void KinodynamicANYRRTX::plan() {
         // Calculate Radius
         neighborhood_radius_ = shrinkingBallRadius();
 
-        // Sample a point
-        Eigen::VectorXd sample = statespace_->sampleUniformUnregistered(lower_bounds_, upper_bounds_);
+        // Sample a point (centralized strategy: Halton low-dispersion or i.i.d. uniform)
+        Eigen::VectorXd sample = statespace_->sampleUnregistered(lower_bounds_, upper_bounds_);
         // if (!is_geometric_mode_ && dimension_ >= 3) {
         //     Eigen::Vector2d root_position_ = problem_->getStart().head(2);
         //     const int t_idx = dimension_ - 1;
@@ -547,21 +547,12 @@ void KinodynamicANYRRTX::plan() {
         //     }
         // }
         if (!is_geometric_mode_ && dimension_ >= 3) {
-            Eigen::Vector2d root_position_ = problem_->getStart().head(2);
             const int t_idx = dimension_ - 1;
-            const double dist   = (root_position_ - sample.head(2)).norm();
-            const double t_reach = dist / statespace_->getMaxVelocity();
-
-            // Footprint feasibility: empty interval -> reject and redraw position.
-            if (T_robot <= t_reach) {
+            // One-sided goal-reachability cone (shared StateSpace helper).
+            if (!statespace_->remapTimeToGoalCone(sample, Eigen::Vector2d(problem_->getStart().head(2)),
+                                                  T_robot, lower_bounds_[t_idx], upper_bounds_[t_idx])) {
                 continue;                 // do NOT increment successfully_added
             }
-            auto before = sample[t_idx];
-            // UNCONDITIONAL remap: u is uniform on [0,1), so t_new ~ Unif[t_reach, T_robot].
-            const double u = (sample[t_idx] - lower_bounds_[t_idx]) /
-                            (upper_bounds_[t_idx] - lower_bounds_[t_idx]);
-            sample[t_idx] = t_reach + u * (T_robot - t_reach);
-            // std::cout<<"BEFORE: "<<before<<", AFTER: "<<sample[t_idx]<<"\n";
         }
 
 
@@ -1572,7 +1563,7 @@ void KinodynamicANYRRTX::visualizeTree() {
     //           << " | Avg Neighbors: " << std::fixed << std::setprecision(2) << average_neighbors << std::endl;
     
     // visualization_->visualizeNodes(tree_nodes, "map", 
-    //                         std::vector<float>{0.0f, 1.0f, 0.0f},  // Green color
+    //                         std::vector<float>{0.0f, 0.0f, 1.0f},  // Green color
     //                         "tree_nodes");
     
 

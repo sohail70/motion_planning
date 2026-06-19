@@ -5,7 +5,7 @@ experiment:
   manager_type: "Dubins"
 
 simulation:
-  time_budget: 100.0
+  time_budget: 25.0
   slice_time: 0.02
   seed: 88
 
@@ -28,18 +28,18 @@ planner_params:
   partial_update: true
   kd_dim: 4 # Important for Dubins
   is_geometric_mode: false
-  num_pillar_nodes: 100
+  num_pillar_nodes: 0
   goal_radius: 0.5
 
 manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  # sdf_path: "../sims/dynamic_world_straight_box_circle_20_dubins.sdf"
+  sdf_path: "../sims/dynamic_world_straight_box_circle_20_dubins.sdf"
   # sdf_path: "../sims/static_dynamic_world_straight_box_circle_5.sdf"
   # sdf_path: "../sims/static_world_straight_box_circle_35.sdf"
   # sdf_path: "../sims/dynamic_world_diag.sdf"
   # sdf_path: "../sims/static_world_straight_box_circle_35.sdf"
-  sdf_path: "../sims/static_dynamic_world_straight_box_circle_11.sdf"
+  # sdf_path: "../sims/static_dynamic_world_straight_box_circle_11.sdf"
   # sdf_path: "../sims/dynamic_world_straight_box_circle_20_fast.sdf"
   inflation: 1.0

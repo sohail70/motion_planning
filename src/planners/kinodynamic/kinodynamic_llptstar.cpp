@@ -246,7 +246,9 @@ void KinodynamicLLPTStar::setup(const Params& params, std::shared_ptr<Visualizat
 
     int d = statespace_->getDimension(); // Since i use the kd dim as dimensions (always for now!) this is the same as d = kd_dim
     Eigen::VectorXd range = upper_bounds_ - lower_bounds_;
-    mu_ = range.prod();
+    // Same mu as FMTX/RRTX: product of per-dimension ranges (workspace volume).
+    mu_ = 1.0;
+    for (int i = 0; i < d; ++i) mu_ *= range(i);
     zetaD_ = std::pow(M_PI, d / 2.0) / std::tgamma((d / 2.0) + 1);
     /*
         Mind that PRM* doenst have the 1/d exponent (Karaman paper) for the "2" 
@@ -346,7 +348,7 @@ bool KinodynamicLLPTStar::extendSearchGraph() {
     // sample = (lower_bounds_.head(kd_dim_).array() + 
     //          (upper_bounds_.head(kd_dim_) - lower_bounds_.head(kd_dim_)).array() * 
     //          ((sample.array() + 1.0) / 2.0)).matrix();
-    Eigen::VectorXd sample = statespace_->sampleUniformUnregistered(lower_bounds_, upper_bounds_);
+    Eigen::VectorXd sample = statespace_->sampleUnregistered(lower_bounds_, upper_bounds_);
 
     int dimension_ = sample.size();
 
@@ -378,21 +380,12 @@ bool KinodynamicLLPTStar::extendSearchGraph() {
     // }
 
     if (!is_geometric_mode_ && dimension_ >= 3) {
-        Eigen::Vector2d root_position_ = problem_def_->getStart().head(2);
         const int t_idx = dimension_ - 1;
-        const double dist   = (root_position_ - sample.head(2)).norm();
-        const double t_reach = dist / statespace_->getMaxVelocity();
-
-        // Footprint feasibility: empty interval -> reject and redraw position.
-        if (T_robot <= t_reach) {
+        // One-sided goal-reachability cone (shared StateSpace helper).
+        if (!statespace_->remapTimeToGoalCone(sample, Eigen::Vector2d(problem_def_->getStart().head(2)),
+                                              T_robot, lower_bounds_[t_idx], upper_bounds_[t_idx])) {
             return false; // do NOT increment successfully_added
         }
-        auto before = sample[t_idx];
-        // UNCONDITIONAL remap: u is uniform on [0,1), so t_new ~ Unif[t_reach, T_robot].
-        const double u = (sample[t_idx] - lower_bounds_[t_idx]) /
-                        (upper_bounds_[t_idx] - lower_bounds_[t_idx]);
-        sample[t_idx] = t_reach + u * (T_robot - t_reach);
-        // std::cout<<"BEFORE: "<<before<<", AFTER: "<<sample[t_idx]<<"\n";
     }
 
 
@@ -436,12 +429,13 @@ bool KinodynamicLLPTStar::extendSearchGraph() {
         }
     }
 
-    if (forward_candidates.empty()) {
-        // Cannot reach any neighbour → discard sample
-        return false; // FAILED
-    }
+    // Per LLPT* Alg 6 (line 5): the node is added unconditionally once it is collision-free.
+    // We do NOT discard a sample for lacking a forward (outgoing) edge — it starts dormant
+    // (rhs=inf) and the lifelong search connects it once densification provides an outgoing
+    // edge (text after Alg 6: "lmc/g initialized as inf; inserted into Q only if it can yield
+    // a solution via a neighbor").
 
-    // ---- Node is viable; create and register it ----
+    // ---- Register the node (RRG densification) ----
     auto state_ptr = statespace_->addState(new_state_val);
     auto new_node_ptr = std::make_unique<DStarLiteNode>(state_ptr, nodes_.size());
     nodes_.push_back(std::move(new_node_ptr));

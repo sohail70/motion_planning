@@ -21,7 +21,7 @@ robot:
   min_turning_radius: 2.0
 
 planner_params:
-  num_of_samples: 3
+  num_of_samples: 1
   factor: 3.0
   delta: 30.0
   kdtree_type: "NanoFlann"

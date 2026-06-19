@@ -62,6 +62,22 @@ public:
     double getMaxVelocity() const override { return max_velocity_; }
     double getMaxAcceleration() const override { return 0.0; } // Dubins is typically 1st-order velocity
 
+    // Heading bias. State = (x, y, theta, t_to_goal). In a goal-rooted tree the robot travels
+    // goal-ward, so bias the drawn heading toward the goal direction (with a wide spread, so
+    // angular support is kept). Nearby samples then share compatible headings -> short Dubins
+    // links (<= r_n). Tree-independent -> AO-safe. (Experimental heuristic; tune 'spread'.)
+    void shapeKinodynamicSample(Eigen::VectorXd& sample, const Eigen::Vector2d& root_xy) const override {
+        if (sample.size() < 4) return;
+        const Eigen::Vector2d d = root_xy - sample.head(2);
+        if (d.norm() < 1e-9) return;
+        const double theta_goal = std::atan2(d.y(), d.x());
+        const double spread = 0.6;                 // <1 compresses toward goal heading (~+-108 deg)
+        double theta = theta_goal + spread * sample[2];   // sample[2] (theta) drawn uniform in [-pi,pi]
+        while (theta >  M_PI) theta -= 2.0 * M_PI;
+        while (theta < -M_PI) theta += 2.0 * M_PI;
+        sample[2] = theta;
+    }
+
     Trajectory generateEmergencyManeuver(const Eigen::VectorXd& state, double dt) const;
     std::vector<Trajectory> getEscapePrimitives(const Eigen::VectorXd& state, double dt) const;
 

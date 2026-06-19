@@ -8,6 +8,11 @@
 #include "motion_planning/state_space/euclidean_state.hpp"
 #include "motion_planning/ds/edge_info.hpp" // For Trajectory struct
 
+// Global toggle for the centralized sampler (see sampleUnregistered() below).
+#define USE_DETERMINISTIC_SAMPLING 0 // 1 = Halton low-dispersion (Janson-Ichter-Pavone); 0 = i.i.d. uniform
+
+// Dynamics-aware sample shaping (velocity reachability cone / heading bias). 1 = on, 0 = off.
+#define USE_DYNAMICS_AWARE_SAMPLING 0
 
 class StateSpace {
  public:
@@ -60,8 +65,72 @@ class StateSpace {
     virtual double getMaxVelocity() const { return 0.0; }
     virtual double getMaxAcceleration() const { return 0.0; }
 
+    // Dynamics-aware sample shaping. After remapTimeToGoalCone fixes the time coordinate,
+    // make the remaining coordinates (velocity, heading, ...) consistent with the system's
+    // reachability so nearby samples are more often mutually steerable. Default: no-op
+    // (holonomic R2T needs none). Tree-independent (sample + goal + dynamics only) -> AO-safe.
+    virtual void shapeKinodynamicSample(Eigen::VectorXd& /*sample*/, const Eigen::Vector2d& /*root_xy*/) const {}
 
+    // Shared kinodynamic time remap (one-sided goal-reachability cone), used by every
+    // planner. The last coordinate is time-to-goal; a sample at (x,y) needs at least
+    // dist(xy, root_xy)/v_max of time-to-goal to reach the goal. Remaps the sampled time
+    // uniformly into [t_to_goal, budget] (budget = the planner's time horizon / remaining
+    // time), and returns false if the cone is empty (budget <= t_to_goal) so the caller
+    // can redraw/skip. A fixed-set sampling-domain restriction (NOT informed sampling),
+    // so FMT*/RRT* asymptotic optimality is preserved.
+    bool remapTimeToGoalCone(Eigen::VectorXd& sample,
+                             const Eigen::Vector2d& root_xy,
+                             double budget,
+                             double t_lower,
+                             double t_upper) const {
+        const double v = getMaxVelocity();
+        if (v <= 0.0) return true;                 // no velocity model -> no shaping
+        const int t_idx = dimension_ - 1;
+        const double t_to_goal = (Eigen::Vector2d(sample.head(2)) - root_xy).norm() / v;
+        if (budget <= t_to_goal) return false;     // empty cone -> caller redraws/skips
+        const double span = t_upper - t_lower;
+        const double u = (span > 0.0) ? (sample[t_idx] - t_lower) / span : 0.0;
+        sample[t_idx] = t_to_goal + u * (budget - t_to_goal);
+#if USE_DYNAMICS_AWARE_SAMPLING
+        shapeKinodynamicSample(sample, root_xy);   // velocity cone / heading bias (no-op by default)
+#endif
+        return true;
+    }
 
+    // --- Centralized sampling strategy (used by every planner) ---------------
+    // Returns an UNREGISTERED sample drawn with the configured strategy: a scrambled
+    // Halton low-dispersion sequence when USE_DETERMINISTIC_SAMPLING==1, else i.i.d.
+    // uniform. Register it with addState() if it is kept. Centralizing here makes all
+    // planners sample identically (and removes per-planner copies).
+    Eigen::VectorXd sampleUnregistered(const Eigen::VectorXd& lower, const Eigen::VectorXd& upper) {
+#if USE_DETERMINISTIC_SAMPLING
+        return sampleHaltonUnregistered(lower, upper);
+#else
+        return sampleUniformUnregistered(lower, upper);
+#endif
+    }
+
+    // Scrambled-Halton low-dispersion draw. Stateful: continues ONE sequence as samples
+    // accumulate, and a per-run random offset (Cranley-Patterson rotation, seeded lazily
+    // from the uniform RNG) preserves low dispersion while giving per-seed variation.
+    // Index/offset are cleared in reset(), so re-seed each run.
+    Eigen::VectorXd sampleHaltonUnregistered(const Eigen::VectorXd& lower, const Eigen::VectorXd& upper) {
+        if (halton_offset_.size() != lower.size()) {
+            halton_offset_ = sampleUniformUnregistered(
+                Eigen::VectorXd::Zero(lower.size()), Eigen::VectorXd::Ones(lower.size()));
+            halton_index_ = 0;
+        }
+        static const unsigned int primes[] = {2u,3u,5u,7u,11u,13u,17u,19u,23u,29u};
+        ++halton_index_;
+        const int d = static_cast<int>(lower.size());
+        Eigen::VectorXd p(d);
+        for (int k = 0; k < d; ++k) {
+            double u = haltonRadicalInverse(halton_index_, primes[k < 10 ? k : 9]) + halton_offset_[k];
+            u -= std::floor(u);                          // wrap into [0,1)
+            p[k] = lower[k] + u * (upper[k] - lower[k]);
+        }
+        return p;
+    }
 
     const Eigen::MatrixXd& getSamples() const { return states_;} // This one might have zeros in it because of doubling the capacity in the addState function
     Eigen::MatrixXd getSamplesCopy() const { return states_.topRows(num_states_).eval();}  // eval creates a copy. without eval its just a (reference) view of the first num_states_ columns of the matrix!
@@ -70,6 +139,8 @@ class StateSpace {
 
     void reset() {
         num_states_ = 0; // Reset the counter
+        halton_index_ = 0;                  // re-seed the deterministic sampler per run
+        halton_offset_ = Eigen::VectorXd();
         // states_.resize(0, dimension_); // Clear the states matrix
         std::cout << "StateSpace reset: num_states_ = " << num_states_ << std::endl;
     }
@@ -100,7 +171,17 @@ class StateSpace {
     int dimension_;
     int num_states_;
 
-    Eigen::MatrixXd states_;   
+    Eigen::MatrixXd states_;
+
+ private:
+    // Deterministic (scrambled-Halton) low-dispersion sampler state.
+    static double haltonRadicalInverse(unsigned int i, unsigned int base) {
+        double f = 1.0, r = 0.0;
+        while (i > 0) { f /= base; r += f * static_cast<double>(i % base); i /= base; }
+        return r;
+    }
+    unsigned int halton_index_ = 0;
+    Eigen::VectorXd halton_offset_;
 };
 
 

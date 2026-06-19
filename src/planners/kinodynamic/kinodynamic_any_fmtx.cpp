@@ -1068,357 +1068,8 @@ Eigen::VectorXd KinodynamicANYFMTX::saturate(const Eigen::VectorXd& newPoint, co
 
 
 
-// bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node) {
-
-// #if !STATIC
-//     std::vector<size_t> candidate_indices = kdtree_->radiusSearch(sample_val.head(kd_dim), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
-// #endif
-// #if STATIC
-//     std::vector<size_t> candidate_indices = spatial_kdtree_->radiusSearch(sample_val.head(2), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
-// #endif
-
-//     bool is_valid_sample = false;
-
-//     // OUTGOING VALIDATION & DIRECT COMMIT
-//     for (size_t idx : candidate_indices) {
-//         FMTNode* neighbor = tree_[idx].get();
-//         Trajectory traj_outgoing = statespace_->steer(sample_val, neighbor->getStateValue());
-        
-//         if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
-//             is_valid_sample = true; 
-            
-//             auto shared_traj_outgoing = std::make_shared<Trajectory>(std::move(traj_outgoing));
-            
-//             EdgeInfo edge_info;
-//             edge_info.distance = shared_traj_outgoing->cost;
-//             edge_info.distance_original = shared_traj_outgoing->cost;
-//             edge_info.is_trajectory_computed = true;
-//             edge_info.cached_trajectory = shared_traj_outgoing;
-            
-//             // Commit Forward 
-//             edge_info.is_initial = true;
-//             new_node->forwardNeighbors()[neighbor] = edge_info;
-//             edge_info.is_initial = false;
-//             neighbor->backwardNeighbors()[new_node] = edge_info;
-            
-//             // Geometric Optimization
-//             if (is_geometric_mode_) {
-//                 edge_info.is_initial = true;
-//                 new_node->backwardNeighbors()[neighbor] = edge_info;
-//                 edge_info.is_initial = false;
-//                 neighbor->forwardNeighbors()[new_node] = edge_info;
-//             }
-//         }
-//     }
-
-//     // Bail early, no expensive steer checks wasted
-//     // if (!is_valid_sample || new_node->forwardNeighbors().size() < 0.1*candidate_indices.size()) {
-//     if (!is_valid_sample) {
-//         return false; 
-//     }
-
-//     // INCOMING VALIDATION
-//     if (!is_geometric_mode_) {
-//         for (size_t idx : candidate_indices) {
-//             FMTNode* neighbor = tree_[idx].get();
-//             Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
-            
-//             if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
-                
-//                 auto shared_traj_incoming = std::make_shared<Trajectory>(std::move(traj_incoming));
-                
-//                 EdgeInfo edge_info;
-//                 edge_info.distance = shared_traj_incoming->cost;
-//                 edge_info.distance_original = shared_traj_incoming->cost;
-//                 edge_info.is_trajectory_computed = true;
-//                 edge_info.cached_trajectory = shared_traj_incoming;
-                
-//                 edge_info.is_initial = true;
-//                 new_node->backwardNeighbors()[neighbor] = edge_info;
-//                 edge_info.is_initial = false;
-//                 neighbor->forwardNeighbors()[new_node] = edge_info;
-//             }
-//         }
-//     }
-    
-//     return true;
-// }
-
-
-// // /*
-// //   Eager new sample insertion, later in plan we do lazy propagation
-// //   In anytime fmtx eager approach we still dont care about all the collision checking connections from new node to neighbors or neighbors to new node
-// //   except maybe the new sampled node to its forward neighbors! so we only collision check to find the parent here! but in anytime rrtx we have to check all of the
-// //   edges and make them to have edge.distance of INF because that how rrtx works! but here because of lazy collision checking we dont have to do this!
-// //   Even this collision checking was not necessary if i could've found a way to make the addBatchOfSamplesLazy to not become O(n log^2 (n))
-// //   But here the O(n log(n)) will be preserved because we only do one heap push if the new node finds the best parent!
-// // */
-// void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
-//     if (num_samples <= 0) return;
-
-//     // if (!is_geometric_mode_ && dimension_ >= 3) {
-//     //     const double R = T_robot * statespace_->getMaxVelocity();
-//     //     // Degenerate footprint near goal: adding nodes in a collapsing start-disk
-//     //     // buys nothing and costs everything. Skip the batch.
-//     //     if (R < 2*neighborhood_radius_) return;   // tune threshold to taste
-//     // }
-    
-//     std::vector<int> added_node_indices;
-
-//     int successfully_added = 0;
-
-
-//     // Raw-attempt cap: bounds the loop when the footprint is degenerate
-//     // (near goal, T_robot <= t_reach rejects almost every draw).
-//     // Tune the multiplier; large enough that it never bites in normal regions.
-//     const int max_attempts = num_samples * 20;
-//     int attempts = 0;
-
-
-//     // std::cout<<"T_ROBOT: "<<T_robot<<"\n";
-//     // for (int i = 0; i < num_samples; ++i) {
-//     while (successfully_added < num_samples && attempts < max_attempts){
-//         ++attempts;   // every iteration consumes an attempt, including the ones that `continue`
-
-
-
-//         // Generate Sample
-//         Eigen::VectorXd sample_val = statespace_->sampleUniformUnregistered(lower_bounds_, upper_bounds_);
-        
-//         // if (!is_geometric_mode_ && dimension_ >= 3) {
-//         //     Eigen::Vector2d root_position_ = problem_->getStart().head(2);
-//         //     const int t_idx = dimension_ - 1;
-//         //     auto dist = (root_position_ - sample_val.head(2)).norm();
-//         //     const double t_reach = dist / statespace_->getMaxVelocity(); // minTimeToReachNode (time-to-goal model, no S.start offset)
-//         //     const double t_samp  = sample_val[t_idx];
-
-//         //     const bool too_early = (t_samp < t_reach);
-//         //     const bool behind    = (t_samp > T_robot);
-//         //     if ((too_early || behind) && T_robot > t_reach) {
-//         //         // Remap the ALREADY-DRAWN time into [t_reach, t_robot]
-//         //         // u is uniform in [0,1)
-//         //         const double u = (t_samp - lower_bounds_[t_idx]) /
-//         //                         (upper_bounds_[t_idx] - lower_bounds_[t_idx]);
-//         //         auto before = sample_val[t_idx];
-//         //         sample_val[t_idx] = t_reach + u * (T_robot - t_reach);
-//         //         // std::cout<<"BEFORE: "<<before<<", AFTER: "<<sample_val[t_idx]<<"\n";
-//         //     }
-//         // }
-//         if (!is_geometric_mode_ && dimension_ >= 3) {
-//             Eigen::Vector2d root_position_ = problem_->getStart().head(2);
-//             const int t_idx = dimension_ - 1;
-//             const double dist   = (root_position_ - sample_val.head(2)).norm();
-//             const double t_reach = dist / statespace_->getMaxVelocity();
-
-//             // Footprint feasibility: empty interval -> reject and redraw position.
-//             if (T_robot <= t_reach) {
-//                 continue;                 // do NOT increment successfully_added
-//             }
-//             auto before = sample_val[t_idx];
-//             // UNCONDITIONAL remap: u is uniform on [0,1), so t_new ~ Unif[t_reach, T_robot].
-//             const double u = (sample_val[t_idx] - lower_bounds_[t_idx]) /
-//                             (upper_bounds_[t_idx] - lower_bounds_[t_idx]);
-//             sample_val[t_idx] = t_reach + u * (T_robot - t_reach);
-//             // std::cout<<"BEFORE: "<<before<<", AFTER: "<<sample_val[t_idx]<<"\n";
-//         }
-
-
-
-
-//         // NOT USED IN FMTX, I ONLY PUT IT FOR DEBUG PURPOSES
-//         // // Find Nearest
-//         // std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample_val.head(kd_dim), 1);
-//         // FMTNode* nearest_node = tree_[nearest_indices[0]].get();
-//         // Eigen::VectorXd nearest_state = nearest_node->getStateValue();
-        
-//         // // Saturate
-//         // sample_val = saturate(sample_val, nearest_state, delta);
-
-
-//         // This is just for fmtx to be complete! in case we have static obstalces!
-//         if (!obs_checker_->isObstacleFree(sample_val)) {
-//             continue;
-//         }
-
-//         // Create Node Object (Temporarily)
-//         // We create the node to get the pointer, but we don't push it to tree_ yet.
-//         auto node = std::make_unique<FMTNode>(statespace_->addState(sample_val), tree_.size());
-        
-    
-// #if USE_THREAT_SET_STRATEGY
-//         // INITIALIZE THREATS FOR NEW NODES
-//         // Use previous_obstacles_ because it contains the fully populated predicted_path!
-//         /*
-//             We immediately update the threat set of the new sample because even though we collision check later at this function to find it a collision free parent
-//             but later a new sample maybe generated and rewire that previous new sample! so new samples need to update their threat set immediately and we cant ait for the 
-//             addNewObstacle function to update the threat set!
-//         */
-//         for (const auto& [name, ob] : previous_obstacles_) {
-//             if (obs_checker_->isNodeInObstacleTube(node->getStateValue(), ob, delta)) {
-//                 node->threats.push_back(&ob); // Pointer insertion
-//             }
-//         }
-        
-// #endif
-
-
-//         // CHECK FEASIBILITY & CONNECT
-//         // updateNeighbors will perform the steering and populate the neighbor maps.
-//         // It returns TRUE if at least one valid steer was found.
-//         if (!updateNeighbors(sample_val, node.get())) {
-//             // DISCARD: The node is kinematically unreachable.
-//             // It is NOT added to tree_, and the shared_ptr will go out of scope and be destroyed.
-//             continue; 
-//         }
-
-//         // COMMIT TO TREE
-//         // If we reach here, the node is good.
-//         int node_index = tree_.size();
-        
-//         if (!is_geometric_mode_ && node->getStateValue().size() > 2) {
-//             double absolute_t = node->getStateValue().tail<1>()[0];
-//             node->setTimeToGoal(absolute_t);
-//         } else {
-//             node->setTimeToGoal(0.0);
-//         }
-
-//         kdtree_->addPoint(sample_val.head(kd_dim)); 
-//         kdtree_->buildTree(); // BUILD KD-TREE --> BUILD TREE function is empty in case you use DynamicWeightedNanoFlann
-// #if STATIC
-//         spatial_kdtree_->addPoint(sample_val.head(2)); 
-//         spatial_kdtree_->buildTree();
-// #endif
-
-//         tree_.push_back(std::move(node));
-//         added_node_indices.push_back(node_index);
-
-//         // WE SUCCEEDED! Increment the actual counter.
-//         successfully_added++;
-
-//     }
-
-//     if (added_node_indices.empty()) return;
-
-
-//     // UPDATE NEIGHBORHOOD RADIUS
-//     shrinkingBallRadius();
-//     // SEED V_OPEN (EAGER INSERTION + LAZY PROPAGATION WITH THREATS)
-//     /*
-//         Mention this in the paper: Mind that there is no immediate rewiring like rrtx here!
-//         the propagation is lazy! but in rrtx there is an immediate rewiring because the neighbors 
-//         need to know if they are getting better through the new sample and then go into the queue
-//         for triggering the propagation (when needed!) but here the new node goes into the queue and
-//         triggers the new propagation when needed so we dont have to check the neighbors right away!
-//         its ineherent to the main fmt expand function
-//     */ 
-//     for (int idx : added_node_indices) {
-//         FMTNode* new_node = tree_[idx].get();
-
-//         std::vector<std::pair<double, FMTNode*>> candidate_parents;
-//         candidate_parents.reserve(new_node->forwardNeighbors().size());
-
-//         for (auto& [neighbor, edge_info] : new_node->forwardNeighbors()) {
-//             if (neighbor->getLMC() == std::numeric_limits<double>::infinity()) {
-//                 continue; 
-//             }
-//             double potential_cost = neighbor->getLMC() + edge_info.distance; 
-//             candidate_parents.emplace_back(potential_cost, neighbor); // emplace_back is slightly faster than push_back
-//         }
-
-//         if (candidate_parents.empty()) continue;
-
-//         // Build a Min-Heap in strictly O(K) time instead of O(K log K)
-//         // We use std::greater to make the lowest cost bubble to the top
-//         std::make_heap(candidate_parents.begin(), candidate_parents.end(), std::greater<std::pair<double, FMTNode*>>());
-
-//         bool connected = false;
-
-//         // Eagerly check candidates by popping from the Min-Heap
-//         while (!candidate_parents.empty()) {
-//             // Pop the lowest cost element from the heap in O(log K) time
-//             std::pop_heap(candidate_parents.begin(), candidate_parents.end(), std::greater<std::pair<double, FMTNode*>>());
-//             auto candidate = candidate_parents.back();
-//             candidate_parents.pop_back();
-
-//             FMTNode* potential_parent = candidate.second;
-//             auto& edge_info = new_node->forwardNeighbors().at(potential_parent);
-
-//             auto traj_xy = edge_info.cached_trajectory;
-//             if (!traj_xy->is_valid) continue;
-//             bool collision_free = true;
-// #if USE_THREAT_SET_STRATEGY
-//             // We ONLY check the exact obstacle pointers in memory!
-//             for (const Obstacle* ob_ptr : new_node->threats) {
-//                 last_replan_metrics_.obstacle_checks++;
-//                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*traj_xy, *ob_ptr)) {
-//                     collision_free = false;
-
-//                     // CACHE STATIC WALLS FOR LATER
-//                     if (!ob_ptr->is_dynamic) {
-//                         edge_info.permanently_blocked = true;
-//                     }
-                    
-
-//                     break; // Short-circuit
-//                 }
-//             }
-// #else
-//             // Default Blind strategy
-//             // Again, brute-force must check everything in previous_obstacles_
-//             for (const auto& [name, ob] : previous_obstacles_) {
-//                 last_replan_metrics_.obstacle_checks++;
-//                 collision_checked_++;
-//                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*traj_xy, ob)) {
-                    
-//                     // CACHE STATIC WALLS FOR LATER
-//                     if (!ob.is_dynamic) {
-//                         edge_info.permanently_blocked = true;
-//                     }
-
-//                     collision_free = false;
-//                     break;
-//                 }
-//             }
-// #endif
-
-//             if (collision_free) {
-//                 // SUCCESS!
-//                 new_node->setLMC(candidate.first);
-//                 new_node->setParent(potential_parent, traj_xy);
-//                 connected = true;
-//                 break; // Stop checking candidates.
-//             }
-//             /*
-//                 If NOT collision free, do nothing! Just let the while loop 
-//                 pop the next candidate from the heap. The edge remains intact 
-//                 for future dynamic repairs.
-//                 To me this is like Bidirectional Approach because at setup we have start and goal node so the way FMTX preserves samples is like a bidirectional approach 
-//                 Although the tree is created from root but since FMTX is a dynamic replanner we cache the neighbors any way so as soon as the two sides reach each other, voilla! 
-            
-//             */
-//         }
-
-//         /*
-//             Important Insight on AO with epsilon usage: as you can see the new samples is added to the tree and now is in vopen heap! we do not immediately improve the neighbors
-//             which can use this! but if nothing happens and this new samples didnt get removed from the heap the neighbors would use this to connect. epsilon is not in the picture 
-//             until the queue operations in plan function!
-//             now if x's cost is improved little then we wouldn't cascade! 
-//             so the argument that when we use epsilon we have epsilon bounded AO is incorrect because those children that we didnt improve will get better by new samples!
-//             so all in all the new sample will eventually betters their immediate neighbors if partial update allows (i.e., its useful) because the new sample is in the vopen and when
-//             plan function runs then immediate neighbors will get improved anyway! and only then afterward the epsilon comes into picture to decide if the immeidate neighbor should also
-//             get into queue or not!
-//         */
-//         // THE SINGLE HEAP INSERTION
-//         if (connected) {
-//             v_open_heap_.add(new_node, new_node->getLMC());
-//         } 
-//     }
-// }
-
-
-
-
-bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node) {
+#if 0  // ===== DISABLED: dormant/accept-all variant (kept for reference; saturate+discard is active below) =====
+void KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node) {
 
 #if !STATIC
     std::vector<size_t> candidate_indices = kdtree_->radiusSearch(sample_val.head(kd_dim), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
@@ -1427,94 +1078,371 @@ bool KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
     std::vector<size_t> candidate_indices = spatial_kdtree_->radiusSearch(sample_val.head(2), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
 #endif
 
-    bool is_valid_sample = false;
-
-    // ==========================================
-    // OUTGOING VALIDATION (buffer only, no map mutation)
-    // ==========================================
+    // OUTGOING VALIDATION & DIRECT COMMIT
     for (size_t idx : candidate_indices) {
         FMTNode* neighbor = tree_[idx].get();
         Trajectory traj_outgoing = statespace_->steer(sample_val, neighbor->getStateValue());
-
+        
         if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
-            is_valid_sample = true;
-
             auto shared_traj_outgoing = std::make_shared<Trajectory>(std::move(traj_outgoing));
-
+            
             EdgeInfo edge_info;
             edge_info.distance = shared_traj_outgoing->cost;
             edge_info.distance_original = shared_traj_outgoing->cost;
             edge_info.is_trajectory_computed = true;
             edge_info.cached_trajectory = shared_traj_outgoing;
-
-            // Write ONLY into the new node's own maps. The new node is still
-            // a transient unique_ptr; nothing external points at it yet.
+            
+            // Commit Forward 
             edge_info.is_initial = true;
             new_node->forwardNeighbors()[neighbor] = edge_info;
-
+            edge_info.is_initial = false;
+            neighbor->backwardNeighbors()[new_node] = edge_info;
+            
+            // Geometric Optimization
             if (is_geometric_mode_) {
+                edge_info.is_initial = true;
                 new_node->backwardNeighbors()[neighbor] = edge_info;
+                edge_info.is_initial = false;
+                neighbor->forwardNeighbors()[new_node] = edge_info;
             }
         }
     }
 
-    // Bail early: nothing was wired into any existing node, so discarding
-    // new_node here leaves NO dangling pointers.
-    if (!is_valid_sample) {
-        return false;
-    }
-
-    // ==========================================
-    // INCOMING VALIDATION (buffer only, no map mutation)
-    // ==========================================
+    // INCOMING VALIDATION
     if (!is_geometric_mode_) {
         for (size_t idx : candidate_indices) {
             FMTNode* neighbor = tree_[idx].get();
             Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
-
+            
             if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
-
+                
                 auto shared_traj_incoming = std::make_shared<Trajectory>(std::move(traj_incoming));
-
+                
                 EdgeInfo edge_info;
                 edge_info.distance = shared_traj_incoming->cost;
                 edge_info.distance_original = shared_traj_incoming->cost;
                 edge_info.is_trajectory_computed = true;
                 edge_info.cached_trajectory = shared_traj_incoming;
-
-                // Write ONLY into the new node's own backward map.
+                
                 edge_info.is_initial = true;
                 new_node->backwardNeighbors()[neighbor] = edge_info;
+                edge_info.is_initial = false;
+                neighbor->forwardNeighbors()[new_node] = edge_info;
             }
         }
     }
-
-    return true;
 }
 
+
+// /*
+//   Eager new sample insertion, later in plan we do lazy propagation
+//   In anytime fmtx eager approach we still dont care about all the collision checking connections from new node to neighbors or neighbors to new node
+//   except maybe the new sampled node to its forward neighbors! so we only collision check to find the parent here! but in anytime rrtx we have to check all of the
+//   edges and make them to have edge.distance of INF because that how rrtx works! but here because of lazy collision checking we dont have to do this!
+//   Even this collision checking was not necessary if i could've found a way to make the addBatchOfSamplesLazy to not become O(n log^2 (n))
+//   But here the O(n log(n)) will be preserved because we only do one heap push if the new node finds the best parent!
+// */
+void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
+    if (num_samples <= 0) return;
+
+    // if (!is_geometric_mode_ && dimension_ >= 3) {
+    //     const double R = T_robot * statespace_->getMaxVelocity();
+    //     // Degenerate footprint near goal: adding nodes in a collapsing start-disk
+    //     // buys nothing and costs everything. Skip the batch.
+    //     if (R < 2*neighborhood_radius_) return;   // tune threshold to taste
+    // }
+    
+    std::vector<int> added_node_indices;
+
+    int successfully_added = 0;
+
+
+    // Raw-attempt cap: bounds the loop when the footprint is degenerate
+    // (near goal, T_robot <= t_reach rejects almost every draw).
+    // Tune the multiplier; large enough that it never bites in normal regions.
+    const int max_attempts = num_samples * 20;
+    int attempts = 0;
+
+
+    // std::cout<<"T_ROBOT: "<<T_robot<<"\n";
+    // for (int i = 0; i < num_samples; ++i) {
+    while (successfully_added < num_samples && attempts < max_attempts){
+        ++attempts;   // every iteration consumes an attempt, including the ones that `continue`
+
+
+
+        // Generate Sample (centralized strategy: Halton low-dispersion or i.i.d. uniform)
+        Eigen::VectorXd sample_val = statespace_->sampleUnregistered(lower_bounds_, upper_bounds_);
+        
+        // if (!is_geometric_mode_ && dimension_ >= 3) {
+        //     Eigen::Vector2d root_position_ = problem_->getStart().head(2);
+        //     const int t_idx = dimension_ - 1;
+        //     auto dist = (root_position_ - sample_val.head(2)).norm();
+        //     const double t_reach = dist / statespace_->getMaxVelocity(); // minTimeToReachNode (time-to-goal model, no S.start offset)
+        //     const double t_samp  = sample_val[t_idx];
+
+        //     const bool too_early = (t_samp < t_reach);
+        //     const bool behind    = (t_samp > T_robot);
+        //     if ((too_early || behind) && T_robot > t_reach) {
+        //         // Remap the ALREADY-DRAWN time into [t_reach, t_robot]
+        //         // u is uniform in [0,1)
+        //         const double u = (t_samp - lower_bounds_[t_idx]) /
+        //                         (upper_bounds_[t_idx] - lower_bounds_[t_idx]);
+        //         auto before = sample_val[t_idx];
+        //         sample_val[t_idx] = t_reach + u * (T_robot - t_reach);
+        //         // std::cout<<"BEFORE: "<<before<<", AFTER: "<<sample_val[t_idx]<<"\n";
+        //     }
+        // }
+
+
+        // if (!is_geometric_mode_ && dimension_ >= 3) {
+        //     Eigen::Vector2d root_position_ = problem_->getStart().head(2);
+        //     const int t_idx = dimension_ - 1;
+        //     const double dist   = (root_position_ - sample_val.head(2)).norm();
+        //     const double t_reach = dist / statespace_->getMaxVelocity();
+
+        //     // Footprint feasibility: empty interval -> reject and redraw position.
+        //     if (T_robot <= t_reach) {
+        //         continue;                 // do NOT increment successfully_added
+        //     }
+        //     auto before = sample_val[t_idx];
+        //     // UNCONDITIONAL remap: u is uniform on [0,1), so t_new ~ Unif[t_reach, T_robot].
+        //     const double u = (sample_val[t_idx] - lower_bounds_[t_idx]) /
+        //                     (upper_bounds_[t_idx] - lower_bounds_[t_idx]);
+        //     sample_val[t_idx] = t_reach + u * (T_robot - t_reach);
+        //     // std::cout<<"BEFORE: "<<before<<", AFTER: "<<sample_val[t_idx]<<"\n";
+        // }
+
+        if (!is_geometric_mode_ && dimension_ >= 3) {
+            const int t_idx = dimension_ - 1;
+            // One-sided goal-reachability cone (shared StateSpace helper). root_xy = goal
+            // (backward search: the problem's "start" IS the goal).
+            if (!statespace_->remapTimeToGoalCone(sample_val, Eigen::Vector2d(problem_->getStart().head(2)),
+                                                  T_robot, lower_bounds_[t_idx], upper_bounds_[t_idx])) {
+                continue;                 // do NOT increment successfully_added
+            }
+        }
+
+
+
+
+        // NOT USED IN FMTX, I ONLY PUT IT FOR DEBUG PURPOSES
+        // // Find Nearest
+        // std::vector<size_t> nearest_indices = kdtree_->knnSearch(sample_val.head(kd_dim), 1);
+        // FMTNode* nearest_node = tree_[nearest_indices[0]].get();
+        // Eigen::VectorXd nearest_state = nearest_node->getStateValue();
+        
+        // // Saturate
+        // sample_val = saturate(sample_val, nearest_state, delta);
+
+
+        // This is just for fmtx to be complete! in case we have static obstalces!
+        if (!obs_checker_->isObstacleFree(sample_val)) {
+            continue;
+        }
+
+        // Create Node Object (Temporarily)
+        // We create the node to get the pointer, but we don't push it to tree_ yet.
+        auto node = std::make_unique<FMTNode>(statespace_->addState(sample_val), tree_.size());
+        
+    
+#if USE_THREAT_SET_STRATEGY
+        // INITIALIZE THREATS FOR NEW NODES
+        // Use previous_obstacles_ because it contains the fully populated predicted_path!
+        /*
+            We immediately update the threat set of the new sample because even though we collision check later at this function to find it a collision free parent
+            but later a new sample maybe generated and rewire that previous new sample! so new samples need to update their threat set immediately and we cant ait for the 
+            addNewObstacle function to update the threat set!
+        */
+        for (const auto& [name, ob] : previous_obstacles_) {
+            if (obs_checker_->isNodeInObstacleTube(node->getStateValue(), ob, delta)) {
+                node->threats.push_back(&ob); // Pointer insertion
+            }
+        }
+        
+#endif
+
+
+        // POPULATE NEIGHBORS (no discard)
+        // updateNeighbors performs the steering and populates the neighbor maps in both
+        // directions. A node with no valid edge yet is kept dormant; the wavefront connects
+        // it once a later sample provides an edge.
+        updateNeighbors(sample_val, node.get());
+
+        // COMMIT TO TREE
+        // If we reach here, the node is good.
+        int node_index = tree_.size();
+        
+        if (!is_geometric_mode_ && node->getStateValue().size() > 2) {
+            double absolute_t = node->getStateValue().tail<1>()[0];
+            node->setTimeToGoal(absolute_t);
+        } else {
+            node->setTimeToGoal(0.0);
+        }
+
+        kdtree_->addPoint(sample_val.head(kd_dim)); 
+        kdtree_->buildTree(); // BUILD KD-TREE --> BUILD TREE function is empty in case you use DynamicWeightedNanoFlann
+#if STATIC
+        spatial_kdtree_->addPoint(sample_val.head(2)); 
+        spatial_kdtree_->buildTree();
+#endif
+
+        tree_.push_back(std::move(node));
+        added_node_indices.push_back(node_index);
+
+        // WE SUCCEEDED! Increment the actual counter.
+        successfully_added++;
+
+    }
+
+    if (added_node_indices.empty()) return;
+
+
+    // UPDATE NEIGHBORHOOD RADIUS
+    shrinkingBallRadius();
+    // SEED V_OPEN (EAGER INSERTION + LAZY PROPAGATION WITH THREATS)
+    /*
+        Mention this in the paper: Mind that there is no immediate rewiring like rrtx here!
+        the propagation is lazy! but in rrtx there is an immediate rewiring because the neighbors 
+        need to know if they are getting better through the new sample and then go into the queue
+        for triggering the propagation (when needed!) but here the new node goes into the queue and
+        triggers the new propagation when needed so we dont have to check the neighbors right away!
+        its ineherent to the main fmt expand function
+    */ 
+    for (int idx : added_node_indices) {
+        FMTNode* new_node = tree_[idx].get();
+
+        std::vector<std::pair<double, FMTNode*>> candidate_parents;
+        candidate_parents.reserve(new_node->forwardNeighbors().size());
+
+        for (auto& [neighbor, edge_info] : new_node->forwardNeighbors()) {
+            if (neighbor->getLMC() == std::numeric_limits<double>::infinity()) {
+                continue; 
+            }
+            double potential_cost = neighbor->getLMC() + edge_info.distance; 
+            candidate_parents.emplace_back(potential_cost, neighbor); // emplace_back is slightly faster than push_back
+        }
+
+        if (candidate_parents.empty()) continue;
+
+        // Build a Min-Heap in strictly O(K) time instead of O(K log K)
+        // We use std::greater to make the lowest cost bubble to the top
+        std::make_heap(candidate_parents.begin(), candidate_parents.end(), std::greater<std::pair<double, FMTNode*>>());
+
+        bool connected = false;
+
+        // Eagerly check candidates by popping from the Min-Heap
+        while (!candidate_parents.empty()) {
+            // Pop the lowest cost element from the heap in O(log K) time
+            std::pop_heap(candidate_parents.begin(), candidate_parents.end(), std::greater<std::pair<double, FMTNode*>>());
+            auto candidate = candidate_parents.back();
+            candidate_parents.pop_back();
+
+            FMTNode* potential_parent = candidate.second;
+            auto& edge_info = new_node->forwardNeighbors().at(potential_parent);
+
+            auto traj_xy = edge_info.cached_trajectory;
+            if (!traj_xy->is_valid) continue;
+            bool collision_free = true;
+#if USE_THREAT_SET_STRATEGY
+            // We ONLY check the exact obstacle pointers in memory!
+            for (const Obstacle* ob_ptr : new_node->threats) {
+                last_replan_metrics_.obstacle_checks++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*traj_xy, *ob_ptr)) {
+                    collision_free = false;
+
+                    // CACHE STATIC WALLS FOR LATER
+                    if (!ob_ptr->is_dynamic) {
+                        edge_info.permanently_blocked = true;
+                    }
+                    
+
+                    break; // Short-circuit
+                }
+            }
+#else
+            // Default Blind strategy
+            // Again, brute-force must check everything in previous_obstacles_
+            for (const auto& [name, ob] : previous_obstacles_) {
+                last_replan_metrics_.obstacle_checks++;
+                collision_checked_++;
+                if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*traj_xy, ob)) {
+                    
+                    // CACHE STATIC WALLS FOR LATER
+                    if (!ob.is_dynamic) {
+                        edge_info.permanently_blocked = true;
+                    }
+
+                    collision_free = false;
+                    break;
+                }
+            }
+#endif
+
+            if (collision_free) {
+                // SUCCESS!
+                new_node->setLMC(candidate.first);
+                new_node->setParent(potential_parent, traj_xy);
+                connected = true;
+                break; // Stop checking candidates.
+            }
+            /*
+                If NOT collision free, do nothing! Just let the while loop 
+                pop the next candidate from the heap. The edge remains intact 
+                for future dynamic repairs.
+                To me this is like Bidirectional Approach because at setup we have start and goal node so the way FMTX preserves samples is like a bidirectional approach 
+                Although the tree is created from root but since FMTX is a dynamic replanner we cache the neighbors any way so as soon as the two sides reach each other, voilla! 
+            
+            */
+        }
+
+        /*
+            Important Insight on AO with epsilon usage: as you can see the new samples is added to the tree and now is in vopen heap! we do not immediately improve the neighbors
+            which can use this! but if nothing happens and this new samples didnt get removed from the heap the neighbors would use this to connect. epsilon is not in the picture 
+            until the queue operations in plan function!
+            now if x's cost is improved little then we wouldn't cascade! 
+            so the argument that when we use epsilon we have epsilon bounded AO is incorrect because those children that we didnt improve will get better by new samples!
+            so all in all the new sample will eventually betters their immediate neighbors if partial update allows (i.e., its useful) because the new sample is in the vopen and when
+            plan function runs then immediate neighbors will get improved anyway! and only then afterward the epsilon comes into picture to decide if the immeidate neighbor should also
+            get into queue or not!
+        */
+        // THE SINGLE HEAP INSERTION
+        if (connected) {
+            v_open_heap_.add(new_node, new_node->getLMC());
+        } 
+    }
+}
+
+
+
+
+#endif // ===== end disabled dormant/accept-all variant =====
+
+
+// NOTE: updateNeighbors() has been INLINED into addBatchOfSamplesEager() so the
+// outgoing (forward) steers can run BEFORE the parent/discard decision and the
+// expensive incoming (reverse) steers only AFTER a node survives (discarded nodes
+// skip them entirely). The standalone version is preserved (disabled) in the
+// #if 0 block above for reference. Header declaration kept (now unused).
 void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
     if (num_samples <= 0) return;
     int successfully_added = 0;
-    const int max_attempts = num_samples * 1; // Keep the buffer!
+    const int max_attempts = num_samples * 20; // Keep the buffer!
     int attempts = 0;
 
     while (successfully_added < num_samples && attempts < max_attempts){
         ++attempts;
 
-        // 1. Generate Sample
-        Eigen::VectorXd sample_val = statespace_->sampleUniformUnregistered(lower_bounds_, upper_bounds_);
+        // 1. Generate Sample (centralized strategy: i.i.d. or Halton via toggle)
+        Eigen::VectorXd sample_val = statespace_->sampleUnregistered(lower_bounds_, upper_bounds_);
 
         if (!is_geometric_mode_ && dimension_ >= 3) {
-            Eigen::Vector2d root_position_ = problem_->getStart().head(2);
             const int t_idx = dimension_ - 1;
-            const double dist   = (root_position_ - sample_val.head(2)).norm();
-            const double t_reach = dist / statespace_->getMaxVelocity();
-
-            if (T_robot <= t_reach) continue;
-
-            const double u = (sample_val[t_idx] - lower_bounds_[t_idx]) /
-                            (upper_bounds_[t_idx] - lower_bounds_[t_idx]);
-            sample_val[t_idx] = t_reach + u * (T_robot - t_reach);
+            // One-sided goal-reachability cone (shared StateSpace helper).
+            if (!statespace_->remapTimeToGoalCone(sample_val, Eigen::Vector2d(problem_->getStart().head(2)),
+                                                  T_robot, lower_bounds_[t_idx], upper_bounds_[t_idx])) {
+                continue;
+            }
         }
 
         // ==========================================
@@ -1541,10 +1469,42 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         }
 #endif
 
-        // 4. Populate Neighbors (Kinematic Check Only)
-        //    NOTE: updateNeighbors now writes ONLY into node's own maps.
-        //    Existing nodes' maps are untouched until the commit step below.
-        if (!updateNeighbors(sample_val, node.get())) continue;
+        // 4. NEIGHBOR SEARCH (shared by the outgoing pass here and, if the node
+        //    survives the discard check, the deferred incoming pass below).
+#if !STATIC
+        std::vector<size_t> candidate_indices = kdtree_->radiusSearch(sample_val.head(kd_dim), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
+#endif
+#if STATIC
+        std::vector<size_t> candidate_indices = spatial_kdtree_->radiusSearch(sample_val.head(2), neighborhood_radius_ + std::numeric_limits<double>::epsilon());
+#endif
+
+        // 4a. OUTGOING VALIDATION (verify-then-wire: writes ONLY into the new node's
+        //     own maps; existing nodes' maps stay untouched until the commit step).
+        //     Only outgoing (forward) edges decide parent feasibility, so these are
+        //     the ONLY steers we pay for BEFORE the discard check. The expensive
+        //     reverse (incoming) steers are deferred until the node is actually kept
+        //     (mirrors RRTX::extend: find a parent from outgoing edges first, only
+        //     then evaluate the incoming edges).
+        for (size_t idx : candidate_indices) {
+            FMTNode* neighbor = tree_[idx].get();
+            Trajectory traj_outgoing = statespace_->steer(sample_val, neighbor->getStateValue());
+
+            if (traj_outgoing.is_valid && traj_outgoing.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
+                auto shared_traj_outgoing = std::make_shared<Trajectory>(std::move(traj_outgoing));
+
+                EdgeInfo edge_info;
+                edge_info.distance = shared_traj_outgoing->cost;
+                edge_info.distance_original = shared_traj_outgoing->cost;
+                edge_info.is_trajectory_computed = true;
+                edge_info.cached_trajectory = shared_traj_outgoing;
+                edge_info.is_initial = true;
+
+                node->forwardNeighbors()[neighbor] = edge_info;
+                if (is_geometric_mode_) {
+                    node->backwardNeighbors()[neighbor] = edge_info;
+                }
+            }
+        }
 
         // 5. EAGER PARENT SEARCH (Uses your exact existing logic)
         std::vector<std::pair<double, FMTNode*>> candidate_parents;
@@ -1604,11 +1564,36 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
             }
         }
 
-        // 6. FAILURE PATH: trivial discard. Because updateNeighbors never
-        //    mutated any existing node's maps, there is nothing to unlink.
-        //    The unique_ptr simply goes out of scope -> no dangling pointers.
+        // 6. FAILURE PATH: trivial discard. No existing node's maps were mutated,
+        //    so there is nothing to unlink; the unique_ptr just goes out of scope.
+        //    Crucially this is BEFORE the reverse steers, so a discarded node never
+        //    pays for its (expensive, high-D) incoming trajectories.
         if (!connected) {
             continue;
+        }
+
+        // 6a. INCOMING VALIDATION (deferred to here: only KEPT nodes pay for it).
+        //     Reuses the same candidate_indices as the outgoing pass. Geometric mode
+        //     already filled backwardNeighbors during the outgoing pass (incoming ==
+        //     outgoing), so it is skipped here.
+        if (!is_geometric_mode_) {
+            for (size_t idx : candidate_indices) {
+                FMTNode* neighbor = tree_[idx].get();
+                Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
+
+                if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
+                    auto shared_traj_incoming = std::make_shared<Trajectory>(std::move(traj_incoming));
+
+                    EdgeInfo edge_info;
+                    edge_info.distance = shared_traj_incoming->cost;
+                    edge_info.distance_original = shared_traj_incoming->cost;
+                    edge_info.is_trajectory_computed = true;
+                    edge_info.cached_trajectory = shared_traj_incoming;
+                    edge_info.is_initial = true;
+
+                    node->backwardNeighbors()[neighbor] = edge_info;
+                }
+            }
         }
 
         // ==========================================

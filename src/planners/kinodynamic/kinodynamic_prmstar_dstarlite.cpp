@@ -322,15 +322,13 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
         const double t_lo      = lower_bounds_(time_idx);
         const double t_hi      = upper_bounds_(time_idx);
         const double T_horizon = t_hi;
-        const double inv_vmax  = (statespace_->getMaxVelocity() > 1e-9) ? 1.0 / statespace_->getMaxVelocity() : 0.0;
-        const double t_span    = t_hi - t_lo;
 
         // Pillars are NOT charged against the sample budget: produce the full
         // num_samples_ space-filling samples (minus the 2 endpoints).
         int remaining_samples = num_samples_ - 2;
         for (int i = 0; i < remaining_samples; ++i) {
             if (is_geometric_mode_) {
-                auto state_ptr = statespace_->sampleUniform(lower_bounds_, upper_bounds_);
+                auto state_ptr = statespace_->addState(statespace_->sampleUnregistered(lower_bounds_, upper_bounds_));
                 auto node = std::make_unique<DStarLiteNode>(state_ptr, nodes_.size());
                 node->setTimeToGoal(0.0);
                 nodes_.push_back(std::move(node));
@@ -339,19 +337,15 @@ void KinodynamicPRMStarDStarLite::setup(const Params& params, std::shared_ptr<Vi
 
             // Sample unregistered so we can re-project the time before commit.
             Eigen::VectorXd sample_val =
-                statespace_->sampleUniformUnregistered(lower_bounds_, upper_bounds_);
+                statespace_->sampleUnregistered(lower_bounds_, upper_bounds_);
 
-            // Minimum time-to-reach the root given position and v_max.
-            double t_reach = (sample_val.head(2) - goal_state_val.head(2)).norm() * inv_vmax;
-
+            // One-sided goal-reachability cone (shared StateSpace helper; budget = T_horizon).
+            const bool cone_ok = statespace_->remapTimeToGoalCone(
+                sample_val, Eigen::Vector2d(goal_state_val.head(2)), T_horizon, t_lo, t_hi);
             // Invariant: with diag_xy / v_max <= t_hi the cone is always non-empty.
-            // If a too-tight time budget ever violates this, fail loudly here rather
-            // than fabricating a node pinned to the horizon.
-            assert(t_reach <= T_horizon && "time budget too small for workspace diagonal");
-
-            double u     = (t_span > 1e-9) ? (sample_val(time_idx) - t_lo) / t_span : 0.0;
-            double t_new = t_reach + u * (T_horizon - t_reach);
-            sample_val(time_idx) = t_new;
+            assert(cone_ok && "time budget too small for workspace diagonal");
+            (void)cone_ok;
+            const double t_new = sample_val(time_idx);
 
             auto state_ptr = statespace_->addState(sample_val);
             auto node = std::make_unique<DStarLiteNode>(state_ptr, nodes_.size());

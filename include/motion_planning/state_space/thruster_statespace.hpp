@@ -59,8 +59,23 @@ public:
     
     double getGeometricDistance(const NDSteeringResult& result) const;
 
-    double getMaxVelocity() const override { return max_velocity_; } 
+    double getMaxVelocity() const override { return max_velocity_; }
     double getMaxAcceleration() const override { return max_acceleration_; }
+
+    // Double-integrator velocity reachability cone. State = (x, y, vx, vy, t_to_goal).
+    // To arrive at the goal (v=0) by time t the speed must be brakeable within t, i.e.
+    // |v| <= a_max * t (and <= v_max). Rescale the already-drawn (vx,vy) into that range so
+    // nearby samples are far more often mutually steerable (kills near-goal BVP "Unreachable").
+    void shapeKinodynamicSample(Eigen::VectorXd& sample, const Eigen::Vector2d& /*root_xy*/) const override {
+        if (sample.size() < 5 || max_acceleration_ <= 0.0 || max_velocity_ <= 0.0) return;
+        const double t = sample[sample.size() - 1];        // time-to-goal (last coord)
+        if (t <= 0.0) return;
+        double v_cap = max_acceleration_ * t;              // brakeable speed within remaining time
+        if (v_cap > max_velocity_) v_cap = max_velocity_;
+        const double scale = v_cap / max_velocity_;        // in (0,1]; < 1 only when t < v_max/a_max
+        sample[2] *= scale;   // vx
+        sample[3] *= scale;   // vy
+    }
 
     Trajectory generateEmergencyManeuver(const Eigen::VectorXd& state, double dt) const;
     std::vector<Trajectory> getEscapePrimitives(const Eigen::VectorXd& state, double dt) const;

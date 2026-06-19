@@ -166,7 +166,7 @@ class KinodynamicANYFMTX : public Planner {
         void setCurrentRobotTime(double T_robot);
     private:
         int collision_checked_ = 0;
-        bool updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node);
+        void updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node);
         void cullNeighbors(FMTNode* v);
         void shrinkingBallRadius();
         Eigen::VectorXd saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta);
