@@ -160,14 +160,14 @@ class KinodynamicANYRRTX : public Planner {
         std::shared_ptr<ObstacleChecker> obs_checker_;
         std::shared_ptr<Visualization> visualization_;
 
-        RRTxNode*  vbot_node_;
+        RRTxNode*  vbot_node_ = nullptr;  // robot anchor; nullptr until setGoal/setRobotState (read by the time-cone anchor guard)
         std::unordered_set<int> Vc_T_;
         double neighborhood_radius_;
         double epsilon_;
         double gamma_;
         double delta = 20.0; 
         double factor;
-        double T_robot;
+        double T_robot = std::numeric_limits<double>::infinity();  // +inf => time-cone prune is a no-op until setCurrentRobotTime()
         int root_state_index_;
         int num_of_samples_;
         int dimension_;

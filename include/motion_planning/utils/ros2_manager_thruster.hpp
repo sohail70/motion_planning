@@ -238,11 +238,13 @@ public:
         executed_time_          += seg_dt;   // T: arrival time
         executed_control_effort_ += seg_dv;  // sum|dv| == integral|a|dt: how hard it actuated
 
-        // std::cout << "[Thruster] L = " << executed_path_length_    << " m"
-        //         << " | T = "         << executed_time_           << " s"
-        //         << " | effort = "    << executed_control_effort_ << " m/s (int|a|dt)"
-        //         << " | speed = "     << current_speed_           << " m/s"
-        //         << " | |a| = "       << current_accel_mag_       << " m/s^2\n";
+        // if (current_sim_time_ < 0.5){
+        //     std::cout << "[Thruster] L = " << executed_path_length_    << " m"
+        //             << " | T = "         << executed_time_           << " s"
+        //             << " | effort = "    << executed_control_effort_ << " m/s (int|a|dt)"
+        //             << " | speed = "     << current_speed_           << " m/s"
+        //             << " | |a| = "       << current_accel_mag_       << " m/s^2\n";
+        // }
 
 
 

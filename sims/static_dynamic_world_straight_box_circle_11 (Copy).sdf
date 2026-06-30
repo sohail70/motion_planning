@@ -159,6 +159,42 @@
 <model name="div_12"><pose>0 10 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>0.5 2 1</size></box></geometry><material><ambient>0.8 0.6 0.1 1</ambient></material></visual></link></model>
 <model name="div_13"><pose>0 12 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>0.5 2 1</size></box></geometry><material><ambient>0.8 0.6 0.1 1</ambient></material></visual></link></model>
 
+<!-- ========================================== -->
+<!-- NORTH MAZE (above Y=15) – zigzag corridor -->
+<!-- ========================================== -->
+<!-- Wall at Y=42, gap at X=48-49 -->
+<model name="N_01"><pose>46 42 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+
+<!-- Wall at Y=38, gap at X=44-46 -->
+<model name="N_03"><pose>40 38 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_04"><pose>42 38 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_05"><pose>48 38 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<!-- Wall at Y=34, gap at X=40-42 -->
+<model name="N_06"><pose>36 34 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_07"><pose>38 34 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_08"><pose>44 34 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_09"><pose>46 34 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<!-- Wall at Y=30, gap at X=36-38 -->
+<model name="N_10"><pose>32 30 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_11"><pose>34 30 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_12"><pose>40 30 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_13"><pose>42 30 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<!-- Wall at Y=26, gap at X=32-34 -->
+<model name="N_14"><pose>28 26 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_15"><pose>30 26 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_16"><pose>36 26 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_17"><pose>38 26 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<!-- Wall at Y=22, gap at X=24-26 -->
+<model name="N_18"><pose>20 22 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_19"><pose>22 22 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_20"><pose>28 22 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_21"><pose>30 22 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<!-- Wall at Y=18, gap at X=16-18 -->
+<model name="N_22"><pose>12 18 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_23"><pose>14 18 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_24"><pose>20 18 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="N_25"><pose>22 18 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+
 <!-- ========================================= -->
 <!-- EAST CHANNEL MAZE (Y=13.5 .. 15) slalom  -->
 <!-- ========================================= -->
@@ -179,6 +215,46 @@
 <model name="gap_bot_w_03"><pose>-15 -15 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link></model>
 <model name="gap_bot_w_04"><pose>-13 -15 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link></model>
 <model name="gap_bot_w_05"><pose>-11 -15 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.3 0.3 0.3 1</ambient></material></visual></link></model>
+
+<!-- ========================================= -->
+<!-- SOUTH MAZE (below Y=-15) zigzag corridor -->
+<!-- ========================================= -->
+<!-- Wall at Y=-18, gap at X=-20 .. -18 -->
+<model name="S_01"><pose>6 -18 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_02"><pose>8 -18 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_03"><pose>14 -18 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_04"><pose>16 -18 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<!-- Wall at Y=-22, gap at X=-26 .. -24 -->
+<model name="S_05"><pose>0 -22 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_06"><pose>2 -22 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_07"><pose>8 -22 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_08"><pose>10 -22 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<!-- Wall at Y=-26, gap at X=-32 .. -30 -->
+<model name="S_09"><pose>-6 -26 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_10"><pose>-4 -26 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_11"><pose>2 -26 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_12"><pose>4 -26 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<!-- Wall at Y=-30, gap at X=-38 .. -36 -->
+<model name="S_13"><pose>-12 -30 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_14"><pose>-10 -30 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_15"><pose>-4 -30 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_16"><pose>-2 -30 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<!-- Wall at Y=-34, gap at X=-44 .. -42 -->
+<model name="S_17"><pose>-18 -34 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_18"><pose>-16 -34 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_19"><pose>-10 -34 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_20"><pose>-8 -34 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<!-- Wall at Y=-38, gap at X=-46 .. -44 -->
+
+
+
+<model name="S_22"><pose>-42 -38 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_23"><pose>-40 -38 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<!-- Final barrier near goal -->
+<model name="S_24"><pose>-48 -42 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_25"><pose>-46 -42 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+<model name="S_26"><pose>-44 -42 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><box><size>2 0.5 1</size></box></geometry><material><ambient>0.5 0.5 0.5 1</ambient></material></visual></link></model>
+
 
 
 

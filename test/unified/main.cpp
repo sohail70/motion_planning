@@ -924,10 +924,18 @@ int main(int argc, char** argv) {
         ros_manager->setPath(path);
     }
 
-    if (cfg.planner_type == "KinodynamicRRTX"){
-        auto rrtx_planner = dynamic_cast<KinodynamicRRTX*>(planner.get());
-        rrtx_planner->dumpTreeToCSV("rrtx_tree_nodes.csv");
-    }
+    // if (cfg.planner_type == "KinodynamicRRTX"){
+    //     auto rrtx_planner = dynamic_cast<KinodynamicRRTX*>(planner.get());
+    //     rrtx_planner->dumpTreeToCSV("rrtx_tree_nodes.csv");
+    // }
+    // if (cfg.planner_type == "KinodynamicANYRRTX"){
+    //     auto anyrrtx_planner = dynamic_cast<KinodynamicANYRRTX*>(planner.get());
+    //     anyrrtx_planner->dumpTreeToCSV("anyrrtx_tree_nodes.csv");
+    // }
+    // if (cfg.planner_type == "KinodynamicANYFMTX"){
+    //     auto fmtx_planner = dynamic_cast<KinodynamicANYFMTX*>(planner.get());
+    //     fmtx_planner->dumpTreeToCSV("anyfmtx_tree_nodes.csv");
+    // }
 
 #if USE_METRIC
     // STORE THE INITIAL PLAN METRICS FOR THE CSV
@@ -1719,7 +1727,7 @@ int main(int argc, char** argv) {
 
             gazebo_checker->processLatestPoseInfo(sim_time);
             ObstacleVector turned_obs = gazebo_checker->checkAndRepairObstacles(T_robot, robot_pos);
-
+            int count = 0;
             // 1. MEASURE UPDATE TIME
             if (!turned_obs.empty()) {
                 kinodynamic_planner->resetMetrics(); // reset for updateObstacle event
@@ -1766,8 +1774,9 @@ int main(int argc, char** argv) {
                     graph_cycle_count++;
                 }
 #endif
+            count = kinodynamic_planner->getLastReplanMetrics().obstacle_checks;
+            // std::cout<<"UpdateCollisionChecks: "<<kinodynamic_planner->getLastReplanMetrics().obstacle_checks<<"\n";
             }
-
 
             // 2. MEASURE PLAN TIME
             if (is_anytime) {
@@ -1805,6 +1814,13 @@ int main(int argc, char** argv) {
                 }
 #endif
             }
+            // if(!turned_obs.empty()){
+            //     if (cfg.planner_type == "KinodynamicANYRRTX")
+            //         std::cout<<"RepairCollisionChecks: "<<count<<"\n";
+
+            //     if (cfg.planner_type == "KinodynamicANYFMTX")
+            //         std::cout<<"RepairCollisionChecks: "<<count + kinodynamic_planner->getLastReplanMetrics().obstacle_checks<<"\n";
+            // }
 
             // Keeping track of hasShortcut + isCurrentBridgeSafe + hasReachedAnchor
             auto tq1 = std::chrono::steady_clock::now();
@@ -2104,9 +2120,26 @@ int main(int argc, char** argv) {
         }
 #endif 
     }
-    // std::cout<<"OUT: "<<kinodynamic_planner->getAvgOutDegree()<<", IN: "<<kinodynamic_planner->getAvgInDegree()<<"\n";
+    std::cout<<"OUT: "<<kinodynamic_planner->getAvgOutDegree()<<", IN: "<<kinodynamic_planner->getAvgInDegree()<<"\n";
     std::cout<<"FINAL TREE SIZE: "<<planner->getTreeSize()<<"\n";
     CALLGRIND_STOP_INSTRUMENTATION;
+
+
+
+    if (cfg.planner_type == "KinodynamicRRTX"){
+        auto rrtx_planner = dynamic_cast<KinodynamicRRTX*>(planner.get());
+        rrtx_planner->dumpTreeToCSV("rrtx_tree_nodes.csv");
+    }
+    if (cfg.planner_type == "KinodynamicANYRRTX"){
+        auto anyrrtx_planner = dynamic_cast<KinodynamicANYRRTX*>(planner.get());
+        anyrrtx_planner->dumpTreeToCSV("anyrrtx_tree_nodes.csv");
+    }
+    if (cfg.planner_type == "KinodynamicANYFMTX"){
+        auto fmtx_planner = dynamic_cast<KinodynamicANYFMTX*>(planner.get());
+        fmtx_planner->dumpTreeToCSV("anyfmtx_tree_nodes.csv");
+    }
+
+
 
 #if USE_METRIC
     // --- 10. Save Metrics ---

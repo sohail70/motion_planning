@@ -62,7 +62,7 @@
         <link_name>moving_link</link_name>
         <direction>1 0 0</direction>
         <amplitude>110.0</amplitude>
-        <speed>15.9071</speed>
+        <speed>12.3558</speed>
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -87,7 +87,7 @@
         <link_name>moving_link</link_name>
         <direction>1 0 0</direction>
         <amplitude>110.0</amplitude>
-        <speed>10.2875</speed>
+        <speed>12.9307</speed>
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -112,7 +112,7 @@
         <link_name>moving_link</link_name>
         <direction>1 0 0</direction>
         <amplitude>110.0</amplitude>
-        <speed>11.6501</speed>
+        <speed>12.3275</speed>
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -137,7 +137,7 @@
         <link_name>moving_link</link_name>
         <direction>1 0 0</direction>
         <amplitude>110.0</amplitude>
-        <speed>13.5282</speed>
+        <speed>12.5926</speed>
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -162,7 +162,7 @@
         <link_name>moving_link</link_name>
         <direction>1 0 0</direction>
         <amplitude>110.0</amplitude>
-        <speed>16.2670</speed>
+        <speed>10.2434</speed>
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -184,7 +184,7 @@
         <link_name>moving_link</link_name>
         <direction>0 -1 0</direction>
         <amplitude>110.0</amplitude>
-        <speed>10.0153</speed>
+        <speed>13.4726</speed>
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -206,7 +206,7 @@
         <link_name>moving_link</link_name>
         <direction>0 -1 0</direction>
         <amplitude>110.0</amplitude>
-        <speed>16.8825</speed>
+        <speed>14.7503</speed>
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -228,7 +228,7 @@
         <link_name>moving_link</link_name>
         <direction>0 -1 0</direction>
         <amplitude>110.0</amplitude>
-        <speed>14.9701</speed>
+        <speed>11.9084</speed>
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -250,7 +250,7 @@
         <link_name>moving_link</link_name>
         <direction>0 -1 0</direction>
         <amplitude>110.0</amplitude>
-        <speed>12.9858</speed>
+        <speed>12.5603</speed>
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>
@@ -272,7 +272,7 @@
         <link_name>moving_link</link_name>
         <direction>0 -1 0</direction>
         <amplitude>110.0</amplitude>
-        <speed>10.9165</speed>
+        <speed>12.3271</speed>
         <turnaround_threshold>0.5</turnaround_threshold>
     </plugin>
 </model>

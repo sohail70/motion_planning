@@ -123,7 +123,7 @@ class KinodynamicLLPTStar : public Planner {
         DStarLitePriorityQueue open_queue_;
         
         DStarLiteNode* start_node_=nullptr;
-        DStarLiteNode* goal_node_;
+        DStarLiteNode* goal_node_=nullptr;
         
         double km_; // Key modifier for moving start node
         bool partial_update_ = false;
@@ -163,7 +163,7 @@ class KinodynamicLLPTStar : public Planner {
         double gamma_;
         double mu_;
         double zetaD_;
-        double T_robot;
+        double T_robot = std::numeric_limits<double>::infinity();  // +inf => time-cone prune is a no-op until setCurrentRobotTime()
         
         double bridge_cost_;
 

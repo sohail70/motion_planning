@@ -1,4 +1,5 @@
 #include "motion_planning/planners/kinodynamic/kinodynamic_prmstar_dstarlite.hpp"
+#include "motion_planning/planners/kinodynamic/time_cone_prune.hpp"  // TIME_CONE_PRUNED + master switch
 
 #define DEBUG_WITH_DIJKSTRA_ 0
 #define USE_INVALIDATING_SET_STRATEGY 0
@@ -800,6 +801,10 @@ bool KinodynamicPRMStarDStarLite::recomputeRHS(DStarLiteNode* s) {
 
 }
 
+void KinodynamicPRMStarDStarLite::setCurrentRobotTime(double robot_time) {
+    T_robot = robot_time;
+}
+
 void KinodynamicPRMStarDStarLite::computeShortestPath() {
     if (!start_node_ || !goal_node_) return;
 
@@ -831,6 +836,14 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
         DStarLiteKey k_old = open_queue_.topKey();
         if (!u) break;
 
+        // Time-cone prune: a node beyond the robot's reachable cone only feeds cost to even-
+        // higher-tau predecessors, never to the robot's path. Drop it from the queue and skip.
+        // NEVER prune start_node_ so the termination test above stays well-defined. EXACT prune.
+        if (u != start_node_ && TIME_CONE_PRUNED(u, T_robot)) {
+            open_queue_.remove(u);
+            continue;
+        }
+
         DStarLiteKey k_new = calculateKey(u);
 
         if (k_old < k_new) {
@@ -843,6 +856,9 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
             open_queue_.remove(u);
             
             for (auto& [pred, edge_info] : u->backward_neighbors_) {
+                // Time-cone prune: pred (tau(pred) > tau(u)) beyond the robot's cone can never
+                // be on the robot's path; skip offering u as its parent.
+                if (TIME_CONE_PRUNED(pred, T_robot)) continue;
                 if (pred != goal_node_) {
                     double new_cost = edge_info.distance + u->g;
                     // If this new path through u is better, PUSH the update
@@ -870,6 +886,8 @@ void KinodynamicPRMStarDStarLite::computeShortestPath() {
             
             // Process Predecessors (s in pred(u))
             for (auto& [pred, edge_info] : u->backward_neighbors_) {
+                // Time-cone prune: pred beyond the robot's cone is irrelevant; leave it stale.
+                if (TIME_CONE_PRUNED(pred, T_robot)) continue;
                 // if(rhs(s) == c(s,u) + g_old)
                 if (pred->getParent() == u) {
                     
@@ -2335,6 +2353,10 @@ void KinodynamicPRMStarDStarLite::addNewObstacle(const Obstacle& ob) {
 
     for (int idx : unique_node_indices) {
         DStarLiteNode* u = nodes_[idx].get();
+        // Time-cone prune: every edge out of `u` originates at tau(u); if that exceeds the
+        // robot's budget the edge can never be on the robot's path (u can never be a relevant
+        // node's parent), so skip all its collision checks. EXACT prune. See time_cone_prune.hpp.
+        if (TIME_CONE_PRUNED(u, T_robot)) continue;
         bool u_needs_update = false;
         
         for (auto& [neighbor, edge] : u->forward_neighbors_) {
@@ -2457,6 +2479,10 @@ void KinodynamicPRMStarDStarLite::removeObstacle(const Obstacle& ob) {
 
     for (int idx : unique_node_indices) {
         DStarLiteNode* u = nodes_[idx].get();
+        // Time-cone prune: every edge out of `u` originates at tau(u); if that exceeds the
+        // robot's budget the edge can never be on the robot's path (u can never be a relevant
+        // node's parent), so skip all its collision checks. EXACT prune. See time_cone_prune.hpp.
+        if (TIME_CONE_PRUNED(u, T_robot)) continue;
         bool u_needs_update = false;
         
         for (auto& [neighbor, edge] : u->forward_neighbors_) {

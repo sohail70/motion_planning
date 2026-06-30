@@ -32,6 +32,7 @@ class KinodynamicPRMStarDStarLite : public Planner {
         std::vector<Eigen::VectorXd> getPathPositions() const;
 
         void setRobotState(const Eigen::VectorXd& robot_state);
+        void setCurrentRobotTime(double robot_time) override;  // feeds the time-cone prune
         void visualizeTree();
         void visualizeTreeGradient();
         void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
@@ -157,8 +158,8 @@ class KinodynamicPRMStarDStarLite : public Planner {
         // DStarLitePQ open_queue_; 
         DStarLitePriorityQueue open_queue_;
         
-        DStarLiteNode* start_node_;
-        DStarLiteNode* goal_node_;
+        DStarLiteNode* start_node_ = nullptr;  // robot anchor; nullptr until setRobotState (read by the time-cone anchor guard)
+        DStarLiteNode* goal_node_ = nullptr;
         double km_;
         bool partial_update = false;
 
@@ -187,7 +188,9 @@ class KinodynamicPRMStarDStarLite : public Planner {
 
         bool is_geometric_mode_;
 
-        DStarLiteNode* last_start_node = nullptr; 
+        double T_robot = std::numeric_limits<double>::infinity();  // +inf => time-cone prune is a no-op until setCurrentRobotTime()
+
+        DStarLiteNode* last_start_node = nullptr;
         std::unordered_map<DStarLiteNode*, DStarLiteNode*> dijkstra_tree_parents_;
 
 

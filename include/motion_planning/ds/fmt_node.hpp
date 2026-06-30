@@ -133,6 +133,7 @@ public:
     std::vector<const Obstacle*> threats;
 
     double last_culled_radius_ = -1.0; // Initialize to invalid radius
+    double last_culled_T_robot = 0.0;
 
 
 

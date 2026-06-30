@@ -5,7 +5,7 @@ experiment:
   manager_type: "Thruster"
 
 simulation:
-  time_budget: 35.0
+  time_budget: 65.0
   slice_time: 0.02
   seed: 44
 
@@ -38,4 +38,5 @@ manager_params:
 
 gazebo_params:
   sdf_path: "../sims/dynamic_world_straight_box_circle_20_thruster.sdf"
+  # sdf_path: "../sims/full_20.sdf"
   inflation: 1.0

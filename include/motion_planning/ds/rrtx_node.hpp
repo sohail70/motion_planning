@@ -75,6 +75,7 @@ public:
     int bad_count = 0;
 
     double last_culled_radius_ = -1.0;
+    double last_culled_T_robot = 0.0;
 
     // std::unordered_set<std::string> threats_;
     std::vector<const Obstacle*> threats_;

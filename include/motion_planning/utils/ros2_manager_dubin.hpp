@@ -318,11 +318,13 @@ public:
         executed_time_           += seg_dt;
         executed_heading_change_ += seg_dtheta;   // captures curvature/turning that L alone hides
 
-        // std::cout << "[Dubins] L = " << executed_path_length_    << " m"
-        //         << " | T = "       << executed_time_           << " s"
-        //         << " | turn = "    << executed_heading_change_ << " rad"
-        //         << " | v = "       << current_speed_           << " m/s"
-        //         << " | w = "       << current_angular_speed_   << " rad/s\n";
+        // if (current_sim_time_ < 0.5){
+        //     std::cout << "[Dubins] L = " << executed_path_length_    << " m"
+        //             << " | T = "       << executed_time_           << " s"
+        //             << " | turn = "    << executed_heading_change_ << " rad"
+        //             << " | v = "       << current_speed_           << " m/s"
+        //             << " | w = "       << current_angular_speed_   << " rad/s\n";
+        // }
 
 
     }

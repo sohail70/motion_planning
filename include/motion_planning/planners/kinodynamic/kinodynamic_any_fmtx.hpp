@@ -164,13 +164,26 @@ class KinodynamicANYFMTX : public Planner {
         bool hasShortcut(const Eigen::VectorXd& robot_state, double threshold);
 
         void setCurrentRobotTime(double T_robot);
+
+
+        struct CollisionStats {
+            int add_checked = 0;
+            int add_ignored = 0;
+            int plan_checked = 0;
+            int plan_ignored = 0;
+            
+            void reset() {
+                add_checked = add_ignored = 0;
+                plan_checked = plan_ignored = 0;
+            }
+        } col_stats_;
+
     private:
         int collision_checked_ = 0;
         void updateNeighbors(const Eigen::VectorXd& sample_val, FMTNode* new_node);
         void cullNeighbors(FMTNode* v);
         void shrinkingBallRadius();
         Eigen::VectorXd saturate(const Eigen::VectorXd& newPoint, const Eigen::VectorXd& closestPoint, double delta);
-
 
         std::vector<std::unique_ptr<FMTNode>> tree_;
         std::shared_ptr<KDTree> kdtree_;
@@ -193,9 +206,10 @@ class KinodynamicANYFMTX : public Planner {
         bool use_knn = false;
         double factor;
         
-        double T_robot;
+        double T_robot = std::numeric_limits<double>::infinity();  // +inf => time-cone prune is a no-op until setCurrentRobotTime()
+        uint64_t plan_epoch_ = 1;  // USE_CACHE_FAILURE: bumped each updateObstacles; >0 so it never matches the default EdgeInfo::last_eval_epoch (0)
 
-        int kd_dim ; 
+        int kd_dim ;
         int dimension_;
         Eigen::VectorXd robot_continuous_state_;
         double robot_current_time_to_goal_ = std::numeric_limits<double>::infinity();
@@ -225,6 +239,8 @@ class KinodynamicANYFMTX : public Planner {
         mutable std::vector<int> fmt_shadow_parent_;
         mutable bool fmt_shadow_valid_ = false;
         void visualizeFMTtree();
+
+        bool just_updated_ = false;
 
 };
 

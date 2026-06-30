@@ -1,10 +1,18 @@
 #include "motion_planning/planners/kinodynamic/kinodynamic_llptstar.hpp"
+#include "motion_planning/planners/kinodynamic/time_cone_prune.hpp"  // TIME_CONE_PRUNED + master switch
 
 #define DEBUG_WITH_DIJKSTRA_ 0
 #define USE_INVALIDATING_SET_STRATEGY 0
 #define USE_THREAT_SET_STRATEGY 0
 #define USE_GRID_SAMPLING 0
 #define USE_RECOVERY 0 // Emergency Fallback
+// EXPERIMENTAL: discard a new sample that has no steerable outgoing edge within the
+// radius (i.e. it is unsteerable and could only ever sit dormant). This departs from
+// LLPT* Alg 6 (which adds every collision-free sample unconditionally) and mirrors the
+// connect-or-discard sample admission of FMTX/RRTX, so the three planners share a more
+// comparable graph-construction rule for kinodynamic single-query benchmarking.
+// Set to 0 to restore the paper-faithful "keep all" behavior.
+#define LLPT_DISCARD_PARENTLESS 1
 // Constructor
 KinodynamicLLPTStar::KinodynamicLLPTStar(
     std::shared_ptr<StateSpace> statespace, 
@@ -434,6 +442,14 @@ bool KinodynamicLLPTStar::extendSearchGraph() {
     // (rhs=inf) and the lifelong search connects it once densification provides an outgoing
     // edge (text after Alg 6: "lmc/g initialized as inf; inserted into Q only if it can yield
     // a solution via a neighbor").
+#if LLPT_DISCARD_PARENTLESS
+    // EXPERIMENTAL override: an unsteerable sample (no outgoing edge within the radius)
+    // can never contribute, so discard it before any registration. Nothing has been
+    // added to the statespace / KD-tree / node list yet, so this is a clean discard.
+    if (forward_candidates.empty()) {
+        return false;
+    }
+#endif
 
     // ---- Register the node (RRG densification) ----
     auto state_ptr = statespace_->addState(new_state_val);
@@ -489,6 +505,13 @@ bool KinodynamicLLPTStar::extendSearchGraph() {
         // Kinodynamic: need to steer backward explicitly for each neighbour
         for (size_t idx : neighbor_indices) {
             DStarLiteNode* u = nodes_[idx].get();
+            // Time-cone prune: a backward edge u->v_new only lets u (tau(u) > tau(v_new)) adopt
+            // v_new as a parent. If u is beyond the robot's reachable cone, skip its backward
+            // steer + edge entirely. EXACT prune. See time_cone_prune.hpp.
+            // [Option B — behavior-preserving] DISABLED: relay FEEDER (backward-edge wiring,
+            // = FMTX addBatch 1601). It populates dead nodes' neighbour lists that
+            // propagateCostToLeave later cascades through; pruning perturbs the tree. Keep OFF.
+            // if (TIME_CONE_PRUNED(u, T_robot)) continue;
             Trajectory traj_bwd = statespace_->steer(u->getStateValue(), new_state_val);
             if (traj_bwd.is_valid && traj_bwd.cost <= radius + 1e-9) {
                 auto shared_bwd = std::make_shared<Trajectory>(std::move(traj_bwd));
@@ -843,6 +866,15 @@ void KinodynamicLLPTStar::computeShortestPath() {
 
         open_queue_.remove(v);
 
+        // Time-cone prune: a node beyond the robot's reachable cone can only ever propagate
+        // cost to even-higher-tau nodes (its backward neighbours), so freeze it consistent and
+        // skip the expansion. NEVER prune start_node_ (the anchor) so the partial-update
+        // termination above stays well-defined. EXACT prune. See time_cone_prune.hpp.
+        if (v != start_node_ && TIME_CONE_PRUNED(v, T_robot)) {
+            v->g = v->rhs;
+            continue;
+        }
+
         if (v->rhs > v->g + 1e-9 || std::isinf(v->rhs)) {
             for (auto& [u, edge_info] : v->forward_neighbors_) {
                 bool in_VT = (u->getParent() != nullptr || u == goal_node_);
@@ -862,6 +894,9 @@ void KinodynamicLLPTStar::computeShortestPath() {
         if (!std::isinf(v->rhs)) {
             for (auto& [u, edge_info] : v->backward_neighbors_) {
                 if (u == v->getParent()) continue;
+                // Time-cone prune: u is a potential child (tau(u) > tau(v)); if it is beyond
+                // the robot's reachable cone, offering v as its parent only churns the queue.
+                if (TIME_CONE_PRUNED(u, T_robot)) continue;
 
                 const double w_bar = getLazyWeight(edge_info);
                 if (std::isinf(w_bar)) continue;
@@ -956,6 +991,14 @@ void KinodynamicLLPTStar::propagateCostToLeave(DStarLiteNode* v) {
         // 3. Queue dependents
         for (auto& [pred, edge_info] : current->backward_neighbors_) {
             if (pred->getParent() == current) {
+                // Time-cone prune: descendants have strictly higher tau; a child (and its whole
+                // subtree) beyond the robot's reachable cone was never on the robot's path, so
+                // there is no need to orphan it. Relevant descendants (tau <= T_robot) are still
+                // cascaded. EXACT prune. See time_cone_prune.hpp.
+                // [Option B — behavior-preserving] DISABLED: orphan-cascade RELAY (= FMTX
+                // addNewObstacle 2981). Skipping dead descendants drops the re-seeding of their
+                // live neighbours, perturbing the tree. Keep OFF.
+                // if (TIME_CONE_PRUNED(pred, T_robot)) continue;
                 to_orphan.push(pred);
             }
         }

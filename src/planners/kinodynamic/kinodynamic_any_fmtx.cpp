@@ -6,7 +6,13 @@
 #define USE_THREAT_SET_STRATEGY 0 // Context-aware Threat set: The Threat Set is the bridge that allows a lazy algorithm (like FMTx) to behave with the same spatial intelligence as an eager one (Eager like RRTx)
 #define USE_RECOVERY 0 // Emergency Fallback
 #define STATIC 0
+// Epoch-based "soft-block" of edges that fail a parent-search collision check, so the same
+// edge is not re-selected & re-checked again within the SAME obstacle cycle. The mark lives in
+// EdgeInfo::last_eval_epoch (unused by FMTX otherwise) and auto-expires when updateObstacles
+// bumps plan_epoch_ -> NO restoration loop needed. Set to 0 to disable (no caching).
+#define USE_CACHE_FAILURE 1
 #include "motion_planning/planners/kinodynamic/kinodynamic_any_fmtx.hpp"
+#include "motion_planning/planners/kinodynamic/time_cone_prune.hpp"  // TIME_CONE_PRUNED + master switch
 
 KinodynamicANYFMTX::KinodynamicANYFMTX(std::shared_ptr<StateSpace> statespace ,std::shared_ptr<ProblemDefinition> problem_def, std::shared_ptr<ObstacleChecker> obs_checker) :  statespace_(statespace), problem_(problem_def), obs_checker_(obs_checker) {
     std::cout<< "KinodynamicANYFMTX Constructor \n";
@@ -298,8 +304,8 @@ void KinodynamicANYFMTX::analyzeSuboptimality(FMTNode* x, FMTNode* best_parent_f
             if (!is_geometric_mode_) {
                 double missed_dt = x->getTimeToGoal() - y->getTimeToGoal();
                 double missed_dx = (x->getStateValue().head<2>() - y->getStateValue().head<2>()).norm();
-                std::cout << "[SUBOPT_DEBUG] Node " << x->getIndex()
-                        << " | Missed y=" << y->getIndex() << " | Δcost=" << (chosen_cost - candidate_cost) << "\n";
+                // std::cout << "[SUBOPT_DEBUG] Node " << x->getIndex()
+                //         << " | Missed y=" << y->getIndex() << " | Δcost=" << (chosen_cost - candidate_cost) << "\n";
             }
             if (candidate_cost < best_missed_cost) {
                 best_missed_cost = candidate_cost;
@@ -1424,6 +1430,15 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
 // expensive incoming (reverse) steers only AFTER a node survives (discarded nodes
 // skip them entirely). The standalone version is preserved (disabled) in the
 // #if 0 block above for reference. Header declaration kept (now unused).
+/*
+  While ANYFMTX is mathematically proven to generate the same candidate graph 
+  richness as ANYRRTX, achieving 100% byte-for-byte spatial parity of all nodes 
+  over a long run is fundamentally impossible by design.
+  The discprency between RRTX and FMTX sample points is expected becuase 
+  cullNeighbor ins FMTX is not as aggressive as RRTX so KNN in saturate might results in difference 
+  places in FMTX compared to RRTX! 
+
+*/
 void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
     if (num_samples <= 0) return;
     int successfully_added = 0;
@@ -1506,6 +1521,8 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
             }
         }
 
+        bool connected = false;
+
         // 5. EAGER PARENT SEARCH (Uses your exact existing logic)
         std::vector<std::pair<double, FMTNode*>> candidate_parents;
         candidate_parents.reserve(node->forwardNeighbors().size());
@@ -1515,8 +1532,6 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
             double potential_cost = neighbor->getLMC() + edge_info.distance;
             candidate_parents.emplace_back(potential_cost, neighbor);
         }
-
-        bool connected = false;
 
         if (!candidate_parents.empty()) {
             std::make_heap(candidate_parents.begin(), candidate_parents.end(), std::greater<std::pair<double, FMTNode*>>());
@@ -1579,6 +1594,11 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         if (!is_geometric_mode_) {
             for (size_t idx : candidate_indices) {
                 FMTNode* neighbor = tree_[idx].get();
+                // Time-cone prune: an incoming edge neighbor->new_node only lets `neighbor`
+                // (which has tau > tau(new_node)) adopt new_node as a parent. If neighbor is
+                // already beyond the robot's reachable cone it will never be on the robot's
+                // path, so skip its (expensive, high-D) reverse steer. EXACT prune.
+                // if (TIME_CONE_PRUNED(neighbor, T_robot)) continue;  // DISABLED (test): graph-construction prune permanently omits an incoming edge
                 Trajectory traj_incoming = statespace_->steer(neighbor->getStateValue(), sample_val);
 
                 if (traj_incoming.is_valid && traj_incoming.cost <= neighborhood_radius_ + std::numeric_limits<double>::epsilon()) {
@@ -1713,6 +1733,83 @@ void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
     // std::cout<<"count: "<<cull_count_<<"\n";
 }
 
+
+
+// void KinodynamicANYFMTX::cullNeighbors(FMTNode* v) {
+
+//     // Track both radius and time
+//     bool radius_changed = (v->last_culled_radius_ == 0 || 
+//                            (v->last_culled_radius_ / neighborhood_radius_) > 1.0001);
+//     bool time_advanced = (v->last_culled_T_robot < T_robot - 1e-6);
+
+
+//     if (!radius_changed && !time_advanced) {
+//         return;  // Nothing to cull
+//     }
+
+
+//     auto& outgoing = v->forwardNeighbors();
+//     auto it = outgoing.begin();
+
+//     while (it != outgoing.end()) {
+//         auto neighbor = it->first;
+//         auto& edge = it->second;
+
+
+//         // ← ADD: Time-cone prune
+//         if (TIME_CONE_PRUNED(neighbor, T_robot)) {
+//             // SYMMETRIC CULL
+//             auto& incoming = neighbor->backwardNeighbors();
+//             if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
+//                 if (!incoming_it->second.is_initial) {
+//                     incoming.erase(incoming_it);
+//                 }
+//             }
+
+//             // SOURCE CULL
+//             if (!edge.is_initial) {
+//                 it = outgoing.erase(it);
+//                 continue;
+//             }
+//         }
+
+
+//         double edge_cost = edge.cached_trajectory->cost;
+
+//         // An edge is only considered for culling if it is longer than the current radius
+//         // AND the node is not the current parent in the shortest-path tree
+//         if (edge_cost > (neighborhood_radius_ + std::numeric_limits<double>::epsilon()) && neighbor != v->getParent()) {
+
+//             // SYMMETRIC CULL (Neighbor's Side)
+//             // Remove 'v' from the neighbor's backward list if it wasn't an 'initial' birth-neighbor.
+//             auto& incoming = neighbor->backwardNeighbors();
+//             if (auto incoming_it = incoming.find(v); incoming_it != incoming.end()) {
+//                 if (!incoming_it->second.is_initial) {
+//                     incoming.erase(incoming_it);
+//                 }
+//             }
+
+//             // SOURCE CULL (v's Side)
+//             // Remove the neighbor from the active forward set if it wasn't an 'initial' birth-neighbor.
+//             // Preservation of N_0 neighbors is sacred for optimality
+//             if (!edge.is_initial) {
+//                 it = outgoing.erase(it);
+//                 // outgoing.erase(it++); //for absl
+//                 // ++cull_count_;  // a real cull happened
+//                 continue; // Move to next neighbor
+//             }
+//         }
+//         ++it;
+//     }
+//     v->last_culled_radius_ = neighborhood_radius_;
+//     v->last_culled_T_robot = T_robot;  // ← ADD THIS FIELD
+
+//     // std::cout<<"count: "<<cull_count_<<"\n";
+// }
+
+
+
+
 /*
     * SEMANTICS OF COST: 'g' vs 'lmc' (Inspired by D* Lite / RRTX)
     * To maintain strict mathematical correctness during dynamic replanning, we decouple 
@@ -1759,6 +1856,12 @@ void KinodynamicANYFMTX::plan() {
 
     addBatchOfSamplesEager(num_of_samples_); // Add a small batch (e.g., 10) instead of 1
 
+    // // ← ADD THESE LINES
+    // int iteration = 0;
+    // int total_neighbors_considered = 0;
+    // int total_cone_pruned = 0;
+    // // ← END ADD
+
 
 #if VIS
     // VISUALIZATION: Visualize all nodes currently in the Open Set (V_open)
@@ -1791,11 +1894,31 @@ void KinodynamicANYFMTX::plan() {
                 v_open_heap_.top().first < robot_node_->getLMC()))
     {
 
+
+        // // ← ADD THIS
+        // iteration++;
+        // int neighbors_this_iteration = 0;
+        // int cone_pruned_this_iteration = 0;
+        // // ← END ADD
+
         auto top_element = v_open_heap_.top();
         double cost = top_element.first;
         FMTNode* z = top_element.second;
         int zIndex = z->getIndex();
 
+
+
+        // -------- SKIPPING USELESS NODES (time-cone reachability prune) ----------------
+        // If this node's time-to-goal exceeds the robot's remaining time budget, it can
+        // never lie on any feasible path the robot can still execute (tau strictly
+        // decreases along every edge, T_robot is monotone), so expanding it cannot help
+        // any relevant node. EXACT prune -> AO preserved. See time_cone_prune.hpp.
+            if (TIME_CONE_PRUNED(z, T_robot)) {
+                // col_stats_.plan_ignored++;  // ← COUNT PRUNE (z)
+                v_open_heap_.pop();
+                continue;
+            }
+        // ------------------------------------------------
 
         /*
             when a node becomes z (meaning it is acting as a parent and expanding the wavefront), 
@@ -1851,15 +1974,50 @@ void KinodynamicANYFMTX::plan() {
         */
 
         for (FMTNode* child : z->children_) {
+
+            // // ← ADD THIS
+            if (TIME_CONE_PRUNED(child, T_robot)) {
+                continue;  // Don't wake children beyond the cone (A child beyond the cone can never help the robot’s path. Don’t wake it.)
+            }
+            // // ← END
+
             auto traj = child->getParentTrajectory();
             if (!traj) continue;
 
+            // // Diagnostic: check if the tree edge is marked as blocked in the Phase 2 cache --> THIS WILL NEVER HAPPEN!
+            // auto& edge_info = child->forwardNeighbors().at(z);
+            // if (edge_info.distance == std::numeric_limits<double>::infinity()) {
+            //     FMTX_WARN("[FMTX_Phase1] Tree edge (" << z->getIndex() << " → " << child->getIndex()
+            //             << ") is marked BLOCKED in cache (distance = inf) but is in z->children_. "
+            //             << "This violates the assumption that tree edges are collision-free.");
+            // }
+
+            
+
+            /*
+                For the cost via z below in the loop and bellman i used edge.distance instead of traj->cost because here its not needed because 
+                this edge already collision checked in the addnewobstacle!
+                but maybe its needed i dont know!
+                use traj->cost in Phase 1 because it represents the true, immutable edge cost, whereas edge.distance is now a mutable cache that tracks blocked edges within the current cycle. Phase 1 is about propagating mathematically correct Bellman costs down known-safe tree edges, so relying on the ground truth rather than a Phase 2 optimization artifact avoids fragile coupling between the two phases.
+
+
+                For any valid edge, edge.distance == traj->cost by construction (you initialize distance = trajectory->cost). The only time they diverge is when Phase 2 overwrites distance with $\infty$ to cache a collision failure. So the question is really: do you want that $\infty$ poison to be visible in Phase 1?
+                In Phase 2 the answer is yes. The whole point of cost_via_y = y->getLMC() + edge_info_xy.distance is that a blocked edge evaluates to $\infty$ and is automatically never selected as best parent. That’s the optimization working as intended. edge.distance is the right value there precisely because it carries the “blocked this cycle” semantics.
+                In Phase 1 the answer is no, for two reasons:
+                Contract. Phase 1 propagates the strict Bellman cost down edges that are already known safe (the parent-child tree edges). There is no “skip blocked edge” decision to make here. You’re not choosing among candidates, you’re pushing g(P) + c(P,x) down a fixed safe edge. The correct quantity is the unconditional true cost, which is traj->cost.
+                Decoupling. edge.distance is now a mutable, Phase-2-owned cache. If you read it in Phase 1 you’re coupling your Bellman correctness to Phase 2’s caching state and to whatever removeObstacle did or didn’t reset. Even if you can argue the parent edge can never be $\infty$ (a blocked edge can never be selected as parent, so the parent edge’s distance stays valid), that’s a fragile invariant to lean on for the one phase whose entire job is keeping the cost structure mathematically intact. traj->cost has no such coupling.
+
+
+                Why can’t the cache be used in Phase 1?
+                Because Phase 1 propagates cost down known-safe tree edges. The collision status is irrelevant there.
+                The Key Insight: Phase 1 edges CAN’T be in collision
+            */
             double cost_via_z = z->getG() + traj->cost;
             
             // If the parent brings a better cost, push it down to the child
             if (child->getLMC() > cost_via_z) {
                 child->setLMC(cost_via_z);
-                
+
                 // Wake the child up so it can propagate the cost to its own children
                 if (child->in_queue_) {
                     v_open_heap_.update(child, cost_via_z);
@@ -1886,6 +2044,30 @@ void KinodynamicANYFMTX::plan() {
             auto x = it->first;
             auto& edge_info_x_to_z = it->second; 
             ++it; // advance the iterator BEFORE any potential deletion occurs;
+
+
+
+            // -------- SKIPPING USELESS NODES (time-cone reachability prune) ----------------
+            // x lies beyond the robot's reachable cone -> it can never be on the robot's
+            // path and its optimal parent (lower tau) is also beyond reach, so wiring it
+            // here helps nobody relevant. EXACT prune. See time_cone_prune.hpp.
+            if (TIME_CONE_PRUNED(x, T_robot)) {
+                // col_stats_.plan_ignored++;  // ← COUNT PRUNE (x)
+
+                // // ← ADD THIS
+                // cone_pruned_this_iteration++;
+                // total_cone_pruned++;
+                // // ← END ADD
+
+                continue;
+            }
+            // ------------------------------------------------
+
+            // // ← ADD THIS
+            // neighbors_this_iteration++;
+            // total_neighbors_considered++;
+            // // ← END ADD
+
             const Trajectory& traj_xz = *(edge_info_x_to_z.cached_trajectory);
             if (!traj_xz.is_valid) {
                 continue;
@@ -1945,19 +2127,44 @@ void KinodynamicANYFMTX::plan() {
                 std::shared_ptr<Trajectory> best_traj_for_x;
 
                                 
+                //////////////////////////////BELLMAN/////////////////////////////////
+                // for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
+                //     if (y->in_queue_) { // We only consider parents that are in V_open.
+                //         auto traj_xy = edge_info_xy.cached_trajectory;
+                //         if (traj_xy->is_valid) {
+                //             // double cost_via_y = y->getLMC() + traj_xy->cost;
+                //             double cost_via_y = y->getLMC() + edge_info_xy.distance;;
+                //             if (cost_via_y < min_cost_for_x) {
+                //                 min_cost_for_x = cost_via_y;
+                //                 best_parent_for_x = y;
+                //                 best_traj_for_x = traj_xy;
+                //             }
+                //         }
+                //     }
+                // }
+
+                // // Faster version of bellman
                 for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
-                    if (y->in_queue_) { // We only consider parents that are in V_open.
-                        auto traj_xy = edge_info_xy.cached_trajectory;
-                        if (traj_xy->is_valid) {
-                            double cost_via_y = y->getLMC() + traj_xy->cost;
-                            if (cost_via_y < min_cost_for_x) {
-                                min_cost_for_x = cost_via_y;
-                                best_parent_for_x = y;
-                                best_traj_for_x = traj_xy;
-                            }
-                        }
+                    if (!y->in_queue_) continue;                              // only open parents
+                    // NOTE: cached per-epoch failures are intentionally NOT skipped here. Removing a
+                    // blocked edge from the argmin would make x fall through to its next-cheapest
+                    // parent -- "looking for other connections in the neighborhood" -- which FMT*
+                    // explicitly forbids (Janson et al., Sec 3.1: a blocked locally-optimal connection
+                    // means the sample is "simply skipped and left for later"). The failure cache is
+                    // consumed at the collision-check site below instead: a cached-blocked argmin is
+                    // treated as a failed check (no recompute) and x DEFERS -- identical decisions to
+                    // the no-cache path, just without the redundant re-checks.
+                    const double cost_via_y = y->getLMC() + edge_info_xy.distance;  // distance==inf ⇒ excluded automatically
+                    if (cost_via_y < min_cost_for_x) {
+                        min_cost_for_x = cost_via_y;
+                        best_parent_for_x = y;
                     }
                 }
+                if (best_parent_for_x)
+                    best_traj_for_x = x->forwardNeighbors().at(best_parent_for_x).cached_trajectory;  // ONE shared_ptr copy, for the winner only
+
+                /////////////////////////////////////////////////////////////////////////////
+
 
 
 //                 // if (best_parent_for_x != nullptr && min_cost_for_x < (x->getLMC())) { // Depend on min_cost_for_x initialization!
@@ -1999,15 +2206,24 @@ void KinodynamicANYFMTX::plan() {
                     bool obstacle_free = true;
                     if (best_parent_for_x != x->getParent()) {
 
-                        // --- 1. STATIC CACHE BYPASS ---
+                        // --- 1. CACHE BYPASS (static wall + per-epoch dynamic failure) ---
                         // Fetch the specific edge struct for this connection
                         auto& edge_to_check = x->forwardNeighbors().at(best_parent_for_x);
-                        if (edge_to_check.permanently_blocked) {
-                            // We already know this edge hits a static wall. It will never be valid.
-                            // We act as if the collision check failed, and skip adopting this parent.
+                        bool cached_block = edge_to_check.permanently_blocked;   // static wall: blocked forever
+#if USE_CACHE_FAILURE
+                        // This exact edge already failed a collision check THIS obstacle cycle. Treat it
+                        // as blocked WITHOUT recomputing (the repair-time saving), but do NOT advance to
+                        // another parent: x defers, exactly as the no-cache path would. Auto-expires when
+                        // updateObstacles bumps plan_epoch_.
+                        cached_block = cached_block || (edge_to_check.last_eval_epoch == plan_epoch_);
+#endif
+                        if (cached_block) {
+                            // We already know this edge is blocked. Act as if the collision check failed,
+                            // and skip adopting this parent (x defers, keeps its current parent).
                             obstacle_free = false;
-                        } 
+                        }
                         else {
+                            // col_stats_.plan_checked++;  // ← COUNT CHECK
                             // --- 2. PERFORM COLLISION CHECK ---
 #if USE_THREAT_SET_STRATEGY
                             if (!x->threats.empty()){
@@ -2072,16 +2288,63 @@ void KinodynamicANYFMTX::plan() {
                             v_open_heap_.add(x, priorityCost); 
                         }
                     }
+                    else { // I'm not gonna put this else in the pseudo code because failure caching is implmentation dependent. Maybe later i should utilize the edgeInfo struct!
+#if USE_CACHE_FAILURE
+                        // Cache the failure for THIS obstacle cycle: stamp the edge with the current
+                        // epoch. The parent search above MAY re-select this edge as the argmin, but the
+                        // collision-check site will treat it as blocked WITHOUT recomputing (x defers),
+                        // so we never re-run the geometry on a known-blocked edge until the obstacle set
+                        // changes. Auto-expires when updateObstacles bumps plan_epoch_ (no restoration
+                        // loop needed, unlike the old distance=inf hack).
+                        x->forwardNeighbors().at(best_parent_for_x).last_eval_epoch = plan_epoch_;
+#endif
+                    }
                 }
             }
         }
         v_open_heap_.pop();
+
+        // // ← ADD THIS: Log if this iteration was expensive
+        // if (neighbors_this_iteration > 50 || cone_pruned_this_iteration > 100) {
+        //     std::cout << "  [Iter " << iteration 
+        //               << "] z=" << zIndex
+        //               << " | neighbors=" << neighbors_this_iteration
+        //               << " | cone_pruned=" << cone_pruned_this_iteration 
+        //               << " | heap_size=" << v_open_heap_.getHeap().size() << "\n";
+        // }
+        // // ← END ADD
+
+
         // visualizeTree();
         // std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
 
     } 
     
+
+    // // ← ADD THIS BLOCK
+    // if (just_updated_) {
+    //     std::cout << "--- PLAN SUMMARY ---\n";
+    //     std::cout << "  Total iterations: " << iteration << "\n";
+    //     std::cout << "  Total neighbors considered: " << total_neighbors_considered << "\n";
+    //     std::cout << "  Total cone-pruned: " << total_cone_pruned << "\n";
+    //     std::cout << "  Final heap size: " << v_open_heap_.getHeap().size() << "\n";
+    //     just_updated_ = false;
+    // }
+    // // ← END ADD
+
+
+    // // Print at end of plan
+    // if(just_updated_){
+    //     std::cout << "ADD OBS -- checked: " << col_stats_.add_checked 
+    //             << " , ignored: " << col_stats_.add_ignored << "\n";
+    //     std::cout << "PLAN    -- checked: " << col_stats_.plan_checked 
+    //             << " , ignored: " << col_stats_.plan_ignored << "\n";
+        
+    //     just_updated_ = false;
+    // }
+
+
     // std::cout<<"COL:" <<collision_checked_<<"\n";
 #if DEBUG 
     runFMT(dbg_metrics); 
@@ -2530,9 +2793,16 @@ void KinodynamicANYFMTX::dumpTreeToCSV(const std::string& filename) const {
 
 // The Manager
 void KinodynamicANYFMTX::updateObstacles(const ObstacleVector& turned_obstacles) {
+    // col_stats_.reset();  // ← RESET
+    // just_updated_ = true;
 
-    
     if (turned_obstacles.empty()) return;
+
+#if USE_CACHE_FAILURE
+    // New obstacle configuration => every per-edge failure soft-block from the previous cycle
+    // is now stale. Bump the epoch to invalidate them all at once (O(1), no restoration loop).
+    ++plan_epoch_;
+#endif
 
     // if (robot_continuous_state_.size() == 0) {
     //     FMTX_WARN("Planner_Obstacle_Update: Robot state not set.");
@@ -2638,9 +2908,12 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
         for (size_t idx : indices) {
             // Protect ALL Time Pillars and the main root instantly!
             if (time_pillar_indices_.find(static_cast<int>(idx)) != time_pillar_indices_.end()) {
-                continue; 
+                continue;
             }
-            // if (idx != root_state_index_)
+            // (Time-cone prune MOVED DOWN to the filter loop below, so it sits at FMTX's
+            //  collision-check site and visually parallels RRTX addNewObstacle 2630.
+            //  Behavior-identical: orphan_indices is rebuilt from the filtered set, so
+            //  collecting dead nodes here and pruning them there is the same.)
             orphan_indices.insert(static_cast<int>(idx));
         }
     }
@@ -2659,11 +2932,16 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
         it actually changes the behaviour of the heap poping and bellman update wrt fmt* not entiely to the better because sometime fmt* gets lucky
         but in AO they both should reach the same answer but all in all we preserve the correct parent-child relationship
         many mini wavefront propagation VS the big wavefront of FMT*
-    */ 
+    */
 
     std::vector<int> filtered_orphan_indices;
     for (int idx : orphan_indices) {
         FMTNode* node = tree_[idx].get();
+        // Time-cone prune (moved here from the kd-tree collection loop so it sits at FMTX's
+        // collision-check site, visually parallel to RRTX addNewObstacle 2630): a node beyond
+        // the robot's reachable cone can never be on the robot's path, so skip its parent-edge
+        // collision check and all downstream orphan bookkeeping. EXACT prune. See time_cone_prune.hpp.
+        if (TIME_CONE_PRUNED(node, T_robot)) continue;
 #if USE_THREAT_SET_STRATEGY
         // Mark this node as being under threat, ensuring no duplicates
         if (std::find(node->threats.begin(), node->threats.end(), &ob) == node->threats.end()) {
@@ -2673,6 +2951,7 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
 #endif
         // Skip root or nodes with no parent
         if (node->getParent() == nullptr) continue; 
+        // col_stats_.add_checked++;  // ← COUNT CHECK
         last_replan_metrics_.obstacle_checks++;
         collision_checked_++;
         if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*(node->getParentTrajectory()), ob)) {
@@ -2699,6 +2978,7 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
         propagation_queue.pop();
 
         for (FMTNode* child : current->getChildren()) {
+            // if (TIME_CONE_PRUNED(child, T_robot)) continue;
             if (orphan_indices.insert(child->getIndex()).second) {
                 propagation_queue.push(child);
             }
@@ -2718,9 +2998,8 @@ void KinodynamicANYFMTX::addNewObstacle(const Obstacle& ob) {
 
         // Invalidate Cost (but keep Root valid)
         if (node->getIndex() != root_state_index_) {
-            node->setLMC(std::numeric_limits<double>::infinity()); 
+            node->setLMC(std::numeric_limits<double>::infinity());
             node->setG(std::numeric_limits<double>::infinity());
-            
         }
         
         // Sever Parent Connection
@@ -2809,6 +3088,17 @@ void KinodynamicANYFMTX::removeObstacle(const Obstacle& ob) {
     std::unordered_set<FMTNode*> neighbors_to_requeue;
     for (int node_index : freed_indices) {
         auto node = tree_.at(node_index).get();
+
+
+        // Time-cone prune: re-queuing a node beyond the robot's reachable cone only feeds
+        // the heap a node that plan() will immediately pop-and-discard. Skip it. EXACT prune.
+        if (TIME_CONE_PRUNED(node, T_robot)) continue;
+
+        // (Removed) the per-node "reset temporarily blocked edges" neighbor scan: nothing writes
+        // edge.distance = inf anymore. Parent-search failures are soft-blocked via
+        // EdgeInfo::last_eval_epoch (USE_CACHE_FAILURE) and invalidated wholesale by the epoch
+        // bump in updateObstacles; addNewObstacle orphans NODES, not edges. So there is nothing
+        // to restore here.
 #if USE_THREAT_SET_STRATEGY
         // O(1) SWAP-AND-POP THREAT REMOVAL
         auto it = std::find(node->threats.begin(), node->threats.end(), &ob);
@@ -4063,6 +4353,10 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
                 continue;
             }
             FMTNode* candidate = tree_[idx].get();
+            // Time-cone prune: the bridge steer(robot -> candidate) needs tau(candidate) <
+            // robot_sim_time, so a candidate beyond the robot's remaining budget can never be a
+            // valid anchor. Skip the steer attempt (steer would reject it anyway). EXACT prune.
+            if (TIME_CONE_PRUNED(candidate, robot_sim_time)) continue;
             Trajectory temp_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
             if (!temp_bridge.is_valid) continue;
             steer_feasible_count++;   // <-- ADD
@@ -4127,7 +4421,6 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         last_replan_metrics_.path_cost = std::numeric_limits<double>::infinity();
         FMTX_WARN("[Set Robot State] LOST SAFE ANCHOR. TRULY TRAPPED.");
         // diagnoseLostAnchor(robot_continuous_state_, query_point, current_search_radius);
-
     }
 
 

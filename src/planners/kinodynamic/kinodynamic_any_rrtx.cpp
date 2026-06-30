@@ -1,6 +1,7 @@
 // Copyright 2025 Soheil E.nia
 // TODO: culled neighbor edges doesnt need to be in the orphan or edge dist inf! they are there just to find the incoming!
 #include "motion_planning/planners/kinodynamic/kinodynamic_any_rrtx.hpp"
+#include "motion_planning/planners/kinodynamic/time_cone_prune.hpp"  // TIME_CONE_PRUNED + master switch
 /*
     The Threat Set (Node-level)
     The Invalidating Set (Edge-level)
@@ -1093,6 +1094,16 @@ bool KinodynamicANYRRTX::extend(Eigen::VectorXd v) {
         if (!evaluated_edges[i].neighbor) continue;
         RRTxNode* u = evaluated_edges[i].neighbor;
 
+        // Time-cone prune: an incoming edge u->v only lets u (tau(u) > tau(v)) adopt v as a
+        // parent. If u is already beyond the robot's reachable cone it can never be on the
+        // robot's path, so skip its (expensive) reverse steer AND the full obstacle-set
+        // collision check below. EXACT prune; no-op in geometric mode. See time_cone_prune.hpp.
+        // [Option B — behavior-preserving] DISABLED: this incoming-edge wiring is the relay
+        // FEEDER (= FMTX addBatch 1601). It populates dead nodes' neighbour lists that
+        // propagateDescendants later scans to seed live repair; pruning it perturbs the
+        // realized tree (FMTX seed-88 root cause). Keep OFF.
+        // if (TIME_CONE_PRUNED(u, T_robot)) continue;
+
         if (is_geometric_mode_) {
             // Geometric: Incoming is identical to Outgoing
             evaluated_edges[i].rev_exists = evaluated_edges[i].fwd_exists;
@@ -1211,6 +1222,9 @@ void KinodynamicANYRRTX::rewireNeighbors(RRTxNode* v) {
     cullNeighbors(v);
     for (auto& [u, edge] : v->incomingEdges()) {
         if (u == v->getParent() ) continue;
+        // Time-cone prune: offering v as a parent to a neighbor u beyond the robot's
+        // reachable cone helps nobody on the robot's path and only churns the queue. Skip.
+        if (TIME_CONE_PRUNED(u, T_robot)) continue;
         const double candidate_lmc = v->getLMC() + edge.distance;
         if (u->getLMC() > candidate_lmc) {
             u->setLMC(candidate_lmc);
@@ -1243,6 +1257,15 @@ void KinodynamicANYRRTX::reduceInconsistency() {
         }
         inconsistency_queue_.pop();
         RRTxNode* node = top_element.second;
+
+        // Time-cone prune: a node beyond the robot's reachable cone can never affect the
+        // robot's path (its cost is only ever read by even-higher-tau nodes), so leave it
+        // inconsistent and skip its updateLMC/rewire. NEVER prune the robot anchor itself,
+        // so the partial-update termination below stays well-defined. EXACT prune.
+        if (node != vbot_node_ && TIME_CONE_PRUNED(node, T_robot)) {
+            continue;
+        }
+
         // Standard RRTx logic: if Cost > LMC + eps, we need to update
         if (node->getG() > node->getLMC() + epsilon_) {
             updateLMC(node);
@@ -1305,10 +1328,16 @@ void KinodynamicANYRRTX::updateLMC(RRTxNode* v) {
     // The main goal and all Time Pillars are mathematical sinks.
     // They must NEVER recalculate their LMC. Their cost is eternally 0.0.
     if (time_pillar_indices_.find(v->getIndex()) != time_pillar_indices_.end()) {
-        return; 
+        return;
+    }
+    // Time-cone prune (defensive): a node beyond the robot's reachable cone never needs a
+    // recomputed parent. It should already be filtered upstream (reduceInconsistency /
+    // removeObstacle), so this just documents and enforces the invariant. EXACT prune.
+    if (TIME_CONE_PRUNED(v, T_robot)) {
+        return;
     }
     cullNeighbors(v);
-    double min_lmc = v->getLMC(); 
+    double min_lmc = v->getLMC();
     RRTxNode* best_parent = nullptr;
     double best_edge_distance = std::numeric_limits<double>::infinity();
     std::shared_ptr<Trajectory> best_traj; 
@@ -1383,9 +1412,16 @@ void KinodynamicANYRRTX::cullNeighbors(RRTxNode* v) {
 
 
 void KinodynamicANYRRTX::verifyQueue(RRTxNode* node) {
+    // Time-cone prune: never enqueue a node beyond the robot's reachable cone; it would only
+    // be popped and discarded by reduceInconsistency. The robot anchor (vbot_node_) is always
+    // allowed in so the search can repair the path up to it. EXACT prune.
+    if (node != vbot_node_ && TIME_CONE_PRUNED(node, T_robot)) {
+        return;
+    }
+
     const double min_key = std::min(node->getLMC(), node->getG());
     const double g_value = node->getG();
-    
+
 
     if (node->in_queue_) {
         // Update both the priority and maintains g_value through node pointer
@@ -1427,6 +1463,14 @@ void KinodynamicANYRRTX::propagateDescendants() {
         for (RRTxNode* child : current->getChildren()) {
             int child_idx = child->getIndex();
             if (Vc_T_.count(child_idx)) continue;
+            // Time-cone prune: descendants have strictly higher tau than their parent, so a
+            // child beyond the robot's reachable cone (and its whole subtree) can never be on
+            // the robot's path. Don't orphan it and don't descend into it. EXACT prune.
+            // (Relevant descendants have tau <= T_robot and are still reached.)
+            // [Option B — behavior-preserving] DISABLED: this is the orphan-cascade RELAY
+            // (= FMTX addNewObstacle 2981). Skipping dead descendants drops the boundary
+            // verifyQueue() seeding of their live neighbours, perturbing the tree. Keep OFF.
+            // if (TIME_CONE_PRUNED(child, T_robot)) continue;
             // Vc_T_.insert(child_idx);
             verifyOrphan(child);
 
@@ -2577,12 +2621,20 @@ void KinodynamicANYRRTX::addNewObstacle(const Obstacle& ob) {
             }
         }
     };
-
+    // int count = 0;
     for (int idx : unique_node_indices) {
         RRTxNode* node = tree_[idx].get();
+        // Time-cone prune: every edge out of `node` originates at tau(node); if that exceeds
+        // the robot's budget the edge can never be on the robot's path (and `node` can never
+        // be a relevant node's parent), so skip all its collision checks. EXACT prune.
+        if (TIME_CONE_PRUNED(node, T_robot)) {
+            // count++;
+            continue;
+        }
         for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndBlockEdge(node, neighbor, edge);
         for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndBlockEdge(node, neighbor, edge);
     }
+    // std::cout<<"ADD OBS -- "<<"checked: "<<unique_node_indices.size()-count << " , ignored: "<<count<<"\n";
 }
 
 void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
@@ -2677,19 +2729,27 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
             }
         }
     };
-
+    // int count = 0;
     for (int idx : unique_node_indices) {
         RRTxNode* node = tree_[idx].get();
+        // Time-cone prune: restoring edges and recomputing the cost of a node beyond the
+        // robot's reachable cone helps nobody on the robot's path. Skip its collision checks.
+        // Relevant nodes in the freed region (tau <= T_robot) are still restored. EXACT prune.
+        if (TIME_CONE_PRUNED(node, T_robot)) {
+            // count++;
+            continue;
+        }
         bool neighborsWereBlocked = false;
-        
+
         for (auto& [neighbor, edge] : node->outgoingEdges()) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
         for (auto& [neighbor, edge] : node->culled_outgoing_edges_) checkAndRestoreEdge(node, neighbor, edge, neighborsWereBlocked);
-        
+
         if (neighborsWereBlocked) {
             updateLMC(node);
             if (node->getG() != node->getLMC()) verifyQueue(node);
         }
     }
+    // std::cout<<"REM OBS -- "<<"checked: "<<unique_node_indices.size()-count << " , ignored: "<<count<<"\n";
 }
 
 #endif
@@ -2737,8 +2797,14 @@ void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
         auto nearby_indices = kdtree_->radiusSearch(query_point, current_search_radius);
         for (auto idx : nearby_indices) {
             if (!tested_indices.insert(idx).second) continue;
-            
+
             RRTxNode* candidate = tree_[idx].get();
+
+            // Time-cone prune: the bridge steer(robot -> candidate) needs tau(candidate) <
+            // robot_time_to_go (time strictly decreases), so a candidate beyond the robot's
+            // remaining budget can never be a valid anchor. Skip the steer attempt entirely.
+            // (Conservative: steer would reject it anyway; this just saves the call.)
+            if (TIME_CONE_PRUNED(candidate, robot_time_to_go)) continue;
 
             Trajectory temp_bridge = statespace_->steer(robot_continuous_state_, candidate->getStateValue());
             if (!temp_bridge.is_valid) continue;

@@ -30,6 +30,7 @@ class KinodynamicFMTX : public Planner {
         }
 
         void setRobotState(const Eigen::VectorXd& robot_state);
+        void setCurrentRobotTime(double robot_time) override;  // feeds the time-cone prune
         void near(int node_index);
         void visualizeTree();
         void visualizeTreeGradient();
@@ -188,6 +189,8 @@ class KinodynamicFMTX : public Planner {
         std::unordered_map<std::string, Obstacle> previous_obstacles_;
         double bridge_cost_;
         bool is_geometric_mode_;
+        double T_robot = std::numeric_limits<double>::infinity();  // +inf => time-cone prune is a no-op until setCurrentRobotTime()
+        uint64_t plan_epoch_ = 1;  // USE_CACHE_FAILURE: bumped each updateObstacles; >0 so it never matches the default EdgeInfo::last_eval_epoch (0)
         Trajectory current_bridge_trajectory_;
         double global_max_cost_ = -1;
         void injectTimePillarNodes(const Eigen::VectorXd& goal_state_val, int num_pillar_nodes);
