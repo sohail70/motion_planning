@@ -37,13 +37,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_1">
@@ -57,13 +57,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_2">
@@ -77,13 +77,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>0.7071067811865476 -0.7071067811865475 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_3">
@@ -97,13 +97,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_4">
@@ -117,13 +117,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>0.7071067811865476 -0.7071067811865475 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_5">
@@ -137,13 +137,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>0.7071067811865476 -0.7071067811865475 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_6">
@@ -157,13 +157,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>0.7071067811865476 -0.7071067811865475 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_7">
@@ -177,13 +177,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_8">
@@ -197,13 +197,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_9">
@@ -217,13 +217,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_10">
@@ -237,13 +237,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_11">
@@ -257,13 +257,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>0.7071067811865476 -0.7071067811865475 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_12">
@@ -277,13 +277,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_13">
@@ -297,13 +297,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_14">
@@ -317,13 +317,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_15">
@@ -337,13 +337,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_16">
@@ -357,13 +357,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_17">
@@ -377,13 +377,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>0.7071067811865476 -0.7071067811865475 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_18">
@@ -397,13 +397,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>0.7071067811865476 -0.7071067811865475 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_19">
@@ -417,13 +417,13 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-0.7071067811865475 0.7071067811865476 0</direction>
     <amplitude>15.0</amplitude>
     <speed>20.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
     <include>

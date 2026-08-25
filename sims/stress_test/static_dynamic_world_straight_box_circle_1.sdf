@@ -52,29 +52,29 @@
 
 <!-- ===== DYNAMIC SWEEPERS – moderate speed, out of phase ===== -->
 <model name="s1"><pose>40 0 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>1.5</radius><length>1</length></cylinder></geometry><material><ambient>1 0 0 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
-    <link_name>l</link_name><direction>0 1 0</direction><amplitude>6</amplitude><speed>10</speed><turnaround_threshold>0.5</turnaround_threshold></plugin></model>
+  <motion>
+    <link_name>l</link_name><direction>0 1 0</direction><amplitude>6</amplitude><speed>10</speed><turnaround_threshold>0.5</turnaround_threshold></motion></model>
 <model name="s2"><pose>30 0 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>1.5</radius><length>1</length></cylinder></geometry><material><ambient>0 1 0 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
-    <link_name>l</link_name><direction>0 -1 0</direction><amplitude>6</amplitude><speed>12</speed><turnaround_threshold>0.5</turnaround_threshold></plugin></model>
+  <motion>
+    <link_name>l</link_name><direction>0 -1 0</direction><amplitude>6</amplitude><speed>12</speed><turnaround_threshold>0.5</turnaround_threshold></motion></model>
 <model name="s3"><pose>20 0 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>1.5</radius><length>1</length></cylinder></geometry><material><ambient>0 0 1 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
-    <link_name>l</link_name><direction>0 1 0</direction><amplitude>6</amplitude><speed>14</speed><turnaround_threshold>0.5</turnaround_threshold></plugin></model>
+  <motion>
+    <link_name>l</link_name><direction>0 1 0</direction><amplitude>6</amplitude><speed>14</speed><turnaround_threshold>0.5</turnaround_threshold></motion></model>
 <model name="s4"><pose>10 0 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>1.5</radius><length>1</length></cylinder></geometry><material><ambient>1 1 0 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
-    <link_name>l</link_name><direction>0 -1 0</direction><amplitude>6</amplitude><speed>10</speed><turnaround_threshold>0.5</turnaround_threshold></plugin></model>
+  <motion>
+    <link_name>l</link_name><direction>0 -1 0</direction><amplitude>6</amplitude><speed>10</speed><turnaround_threshold>0.5</turnaround_threshold></motion></model>
 <model name="s5"><pose>0 0 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>1.5</radius><length>1</length></cylinder></geometry><material><ambient>1 0 1 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
-    <link_name>l</link_name><direction>0 1 0</direction><amplitude>6</amplitude><speed>12</speed><turnaround_threshold>0.5</turnaround_threshold></plugin></model>
+  <motion>
+    <link_name>l</link_name><direction>0 1 0</direction><amplitude>6</amplitude><speed>12</speed><turnaround_threshold>0.5</turnaround_threshold></motion></model>
 <model name="s6"><pose>-10 0 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>1.5</radius><length>1</length></cylinder></geometry><material><ambient>0 1 1 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
-    <link_name>l</link_name><direction>0 -1 0</direction><amplitude>6</amplitude><speed>16</speed><turnaround_threshold>0.5</turnaround_threshold></plugin></model>
+  <motion>
+    <link_name>l</link_name><direction>0 -1 0</direction><amplitude>6</amplitude><speed>16</speed><turnaround_threshold>0.5</turnaround_threshold></motion></model>
 <model name="s7"><pose>-20 0 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>1.5</radius><length>1</length></cylinder></geometry><material><ambient>1 0.5 0 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
-    <link_name>l</link_name><direction>0 1 0</direction><amplitude>6</amplitude><speed>14</speed><turnaround_threshold>0.5</turnaround_threshold></plugin></model>
+  <motion>
+    <link_name>l</link_name><direction>0 1 0</direction><amplitude>6</amplitude><speed>14</speed><turnaround_threshold>0.5</turnaround_threshold></motion></model>
 <model name="s8"><pose>-30 0 0 0 0 0</pose><link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>1.5</radius><length>1</length></cylinder></geometry><material><ambient>0 0.5 1 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
-    <link_name>l</link_name><direction>0 -1 0</direction><amplitude>6</amplitude><speed>10</speed><turnaround_threshold>0.5</turnaround_threshold></plugin></model>
+  <motion>
+    <link_name>l</link_name><direction>0 -1 0</direction><amplitude>6</amplitude><speed>10</speed><turnaround_threshold>0.5</turnaround_threshold></motion></model>
 
 
 <!--****** -->
@@ -84,10 +84,10 @@
       <pose>48.0 48.0 0.1 0 0 0</pose>
 
 <!-- 
-  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+  <motion type="legacy-teleport">
     <speed>0.8</speed>
     <interpolation_step>0.3</interpolation_step>
-  </plugin> -->
+  </motion> -->
 
 
     </include>

@@ -73,14 +73,14 @@
   <link name="moving_link"><gravity>false</gravity>
     <visual name="visual"><geometry><box><size>12.0 2.0 1.0</size></box></geometry>
     <material><ambient>1 0 0 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>0 -1 0</direction>     <!-- head-on, down the path -->
     <amplitude>16.0</amplitude>        <!-- Y=14 -> Y=-2 -> back to 14 -->
     <speed>8.0</speed>                 <!-- down long enough to invalidate,
                                             up long enough to reconnect -->
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 
@@ -92,10 +92,10 @@
       <pose>48.0 48.0 0.1 0 0 0</pose>
 
 <!-- 
-  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+  <motion type="legacy-teleport">
     <speed>0.8</speed>
     <interpolation_step>0.3</interpolation_step>
-  </plugin> -->
+  </motion> -->
 
 
     </include>

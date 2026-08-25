@@ -80,13 +80,13 @@
     <gravity>false</gravity>
     <visual name="visual"><geometry><box><size>12.0 2.0 1.0</size></box></geometry>
     <material><ambient>1 0 0 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>1 0 0</direction>
     <amplitude>30.0</amplitude> <!-- Sweeps from X=-15 to X=15 -->
     <speed>15.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <!-- ======================================================= -->
@@ -134,13 +134,13 @@
     <gravity>false</gravity>
     <visual name="visual"><geometry><box><size>12.0 2.0 1.0</size></box></geometry>
     <material><ambient>1 0 0 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>-1 0 0</direction> <!-- Sweeps from X=15 to X=-15 -->
     <amplitude>30.0</amplitude> 
     <speed>15.0</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 
@@ -154,10 +154,10 @@
       <pose>48.0 48.0 0.1 0 0 0</pose>
 
 <!-- 
-  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+  <motion type="legacy-teleport">
     <speed>0.8</speed>
     <interpolation_step>0.3</interpolation_step>
-  </plugin> -->
+  </motion> -->
 
 
     </include>

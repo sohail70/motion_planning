@@ -68,63 +68,23 @@ std::unordered_map<std::string, ObstacleInfo> parseSdfObstacles(const std::strin
             continue; 
         }
 
-        // // 3. Extract Plugin Data (MoverPluginC)
-        // for (const auto* plugin = model->FirstChildElement("plugin"); plugin; 
-        //      plugin = plugin->NextSiblingElement("plugin")) {
-            
-        //     const char* plugin_name = plugin->Attribute("name");
-        //     if (plugin_name && std::string(plugin_name) == "MoverPluginC") {
-        //         info.is_dynamic = true;
-                
-        //         // Parse Speed
-        //         if (auto* s = plugin->FirstChildElement("speed")) 
-        //             s->QueryDoubleText(&info.speed);
-                
-        //         // Parse Amplitude
-        //         if (auto* a = plugin->FirstChildElement("amplitude")) 
-        //             a->QueryDoubleText(&info.amplitude);
-                
-        //         // Parse Direction Vector
-        //         if (auto* d = plugin->FirstChildElement("direction")) {
-        //             std::stringstream ss(d->GetText());
-        //             double dx, dy, dz;
-        //             if (ss >> dx >> dy >> dz) {
-        //                 info.direction << dx, dy, dz;
-        //             }
-        //         }
-        //     }
-        // }
+        // 3. Extract deterministic obstacle-motion metadata. Legacy motion
+        // variants carry a type attribute and are intentionally ignored here.
+        if (const auto* motion = model->FirstChildElement("motion");
+            motion && !motion->Attribute("type")) {
+            if (const auto* speed = motion->FirstChildElement("speed"))
+                speed->QueryDoubleText(&info.speed);
 
-                // 3. Extract Plugin Data (MoverPluginC)
-        for (const auto* plugin = model->FirstChildElement("plugin"); plugin; 
-             plugin = plugin->NextSiblingElement("plugin")) {
-            
-            const char* plugin_name = plugin->Attribute("name");
-            if (plugin_name && std::string(plugin_name) == "MoverPluginC") {
-                
-                // Parse Speed
-                if (auto* s = plugin->FirstChildElement("speed")) 
-                    s->QueryDoubleText(&info.speed);
-                
-                // Parse Amplitude
-                if (auto* a = plugin->FirstChildElement("amplitude")) 
-                    a->QueryDoubleText(&info.amplitude);
-                
-                // --- FIX: Only flag as dynamic if it actually moves! ---
-                if (info.speed > 1e-6 && info.amplitude > 1e-6) {
-                    info.is_dynamic = true;
-                } else {
-                    info.is_dynamic = false; // It has a plugin, but it's physically static
-                }
-                
-                // Parse Direction Vector
-                if (auto* d = plugin->FirstChildElement("direction")) {
-                    std::stringstream ss(d->GetText());
-                    double dx, dy, dz;
-                    if (ss >> dx >> dy >> dz) {
-                        info.direction << dx, dy, dz;
-                    }
-                }
+            if (const auto* amplitude = motion->FirstChildElement("amplitude"))
+                amplitude->QueryDoubleText(&info.amplitude);
+
+            info.is_dynamic = info.speed > 1e-6 && info.amplitude > 1e-6;
+
+            if (const auto* direction = motion->FirstChildElement("direction")) {
+                std::stringstream ss(direction->GetText());
+                double dx, dy, dz;
+                if (ss >> dx >> dy >> dz)
+                    info.direction << dx, dy, dz;
             }
         }
 

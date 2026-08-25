@@ -81,13 +81,13 @@ OBSTACLE_TEMPLATE = """
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>{dx} {dy} 0</direction>
     <amplitude>{amplitude}</amplitude>
     <speed>{speed}</speed>
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 """
 

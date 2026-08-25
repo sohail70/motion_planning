@@ -53,12 +53,12 @@
     </visual>
     </link>s
 
-    <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <motion>
         <link_name>moving_link</link_name>
         <direction>0 1 0</direction>  <!-- Move along x-axis -->
         <amplitude>40.0</amplitude>    <!-- 0.5 meters -->
         <speed>8.0</speed>            <!-- 2 rad/s -->
-    </plugin>
+    </motion>
 </model>
 
 
@@ -69,10 +69,10 @@
       <pose>48.0 48.0 0.1 0 0 0</pose>
 
 <!-- 
-  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+  <motion type="legacy-teleport">
     <speed>0.8</speed>
     <interpolation_step>0.3</interpolation_step>
-  </plugin> -->
+  </motion> -->
 
 
     </include>

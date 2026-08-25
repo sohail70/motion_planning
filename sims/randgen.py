@@ -64,10 +64,10 @@ def generate_sdfs(min_speed, max_speed, output_full="full_20.world", output_subs
       <pose>48.0 48.0 0.1 0 0 0</pose>
 
 <!-- 
-  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+  <motion type="legacy-teleport">
     <speed>0.8</speed>
     <interpolation_step>0.3</interpolation_step>
-  </plugin> -->
+  </motion> -->
 
     </include>
 
@@ -132,13 +132,13 @@ def generate_sdfs(min_speed, max_speed, output_full="full_20.world", output_subs
     </visual>
     </link>
 
-    <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+    <motion>
         <link_name>moving_link</link_name>
         <direction>{direction}</direction>
         <amplitude>110.0</amplitude>
         <speed>{speed:.4f}</speed>
         <turnaround_threshold>0.5</turnaround_threshold>
-    </plugin>
+    </motion>
 </model>'''
 
     # --- 5. Build full SDF (all 20) ---------------------------------------------------

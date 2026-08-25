@@ -636,11 +636,11 @@ public:
         executed_path_length_ += seg_dx;   // distance travelled so far
         executed_time_        += seg_dt;   // elapsed time; equals arrival time T at goal
 
-        if (current_sim_time_ < 0.5){
-            std::cout << "[R2T] L = " << executed_path_length_ << " m"
-                    << " | T = "    << executed_time_        << " s"
-                    << " | v = "    << current_speed_        << " m/s\n";
-        }
+        // if (current_sim_time_ < 0.5){
+        //     std::cout << "[R2T] L = " << executed_path_length_ << " m"
+        //             << " | T = "    << executed_time_        << " s"
+        //             << " | v = "    << current_speed_        << " m/s\n";
+        // }
 
     }
 

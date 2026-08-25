@@ -61,32 +61,32 @@
   <model name="b1_trap_a">
     <pose>8 20 0 0 0 0</pose>
     <link name="link"><visual name="v"><geometry><box><size>6 2.2 1</size></box></geometry><material><ambient>1 0 0 1</ambient></material></visual></link>
-    <plugin name="MoverPluginC" filename="libMoverPluginC.so">
+    <motion>
       <direction>1 0 0</direction>
       <amplitude>6.0</amplitude> <!-- Short, fast oscillations -->
       <speed>8.0</speed>         <!-- Very high speed to flicker the tube -->
-    </plugin>
+    </motion>
   </model>
 
   <model name="b1_trap_b">
     <pose>-8 20 0 0 0 0</pose>
     <link name="link"><visual name="v"><geometry><box><size>6 2.2 1</size></box></geometry><material><ambient>1 0 0 1</ambient></material></visual></link>
-    <plugin name="MoverPluginC" filename="libMoverPluginC.so">
+    <motion>
       <direction>-1 0 0</direction>
       <amplitude>6.0</amplitude>
       <speed>8.0</speed>
-    </plugin>
+    </motion>
   </model>
 
   <!-- BARRIER 2 (at Y=0): Repeat the structure but offset the slits -->
   <model name="b2_trap_a">
     <pose>20 0 0 0 0 0</pose>
     <link name="link"><visual name="v"><geometry><box><size>6 2.2 1</size></box></geometry><material><ambient>1 0 0 1</ambient></material></visual></link>
-    <plugin name="MoverPluginC" filename="libMoverPluginC.so">
+    <motion>
       <direction>1 0 0</direction>
       <amplitude>5.0</amplitude>
       <speed>10.0</speed>
-    </plugin>
+    </motion>
   </model>
 
 
@@ -97,10 +97,10 @@
       <pose>48.0 48.0 0.1 0 0 0</pose>
 
 <!-- 
-  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+  <motion type="legacy-teleport">
     <speed>0.8</speed>
     <interpolation_step>0.3</interpolation_step>
-  </plugin> -->
+  </motion> -->
 
 
     </include>

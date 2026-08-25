@@ -58,13 +58,13 @@
       </material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>1 0 0</direction>
     <amplitude>0</amplitude>    <!-- no movement -->
     <speed>0</speed>            <!-- stationary -->
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 <model name="moving_cylinder_2">
   <pose>10.0 0.0 0 0 0 0</pose>
@@ -82,13 +82,13 @@
       </material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>1 0 0</direction>
     <amplitude>0</amplitude>    <!-- no movement -->
     <speed>0</speed>            <!-- stationary -->
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 <model name="moving_cylinder_3">
   <pose>-10.0 0.0 0 0 0 0</pose>
@@ -106,13 +106,13 @@
       </material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>1 0 0</direction>
     <amplitude>0</amplitude>    <!-- no movement -->
     <speed>0</speed>            <!-- stationary -->
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 <model name="moving_cylinder_4">
   <pose>0.0 10.0 0 0 0 0</pose>
@@ -130,13 +130,13 @@
       </material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>1 0 0</direction>
     <amplitude>0</amplitude>    <!-- no movement -->
     <speed>0</speed>            <!-- stationary -->
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 <model name="moving_cylinder_5">
   <pose>0.0 -10.0 0 0 0 0</pose>
@@ -154,13 +154,13 @@
       </material>
     </visual>
   </link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>moving_link</link_name>
     <direction>1 0 0</direction>
     <amplitude>0</amplitude>    <!-- no movement -->
     <speed>0</speed>            <!-- stationary -->
     <turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <!--****** -->
@@ -170,10 +170,10 @@
       <pose>48.0 48.0 0.1 0 0 0</pose>
 
 <!-- 
-  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+  <motion type="legacy-teleport">
     <speed>0.8</speed>
     <interpolation_step>0.3</interpolation_step>
-  </plugin> -->
+  </motion> -->
 
 
     </include>

@@ -56,12 +56,12 @@
     </visual>
     </link>
 
-    <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+    <motion type="legacy-linear">
         <link_name>moving_link</link_name>
         <direction>-1 0 0</direction>  <!-- Move along x-axis -->
         <amplitude>1000.5</amplitude>    <!-- 0.5 meters -->
         <speed>0.5</speed>            <!-- 2 rad/s -->
-    </plugin>
+    </motion>
 </model>
 
 
@@ -80,12 +80,12 @@
       <material><ambient>0 0 1 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>1 0 0</direction>
     <amplitude>800.5</amplitude>
     <speed>0.5</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_8">
@@ -97,12 +97,12 @@
       <material><ambient>0 0 1 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>0 1 0</direction>
     <amplitude>900.5</amplitude>
     <speed>0.5</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_9">
@@ -114,12 +114,12 @@
       <material><ambient>0 0 1 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>1 1 0</direction>
     <amplitude>350.5</amplitude>
     <speed>0.5</speed>
-  </plugin>
+  </motion>
 </model>
 
 
@@ -140,12 +140,12 @@
       <material><ambient>0 0 1 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>1 0 0</direction>
     <amplitude>500.5</amplitude>
     <speed>0.8</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_11_5">
@@ -162,12 +162,12 @@
       <material><ambient>0 0 1 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>-1 0 0</direction>
     <amplitude>500.5</amplitude>
     <speed>0.8</speed>
-  </plugin>
+  </motion>
 </model>
 
 
@@ -186,12 +186,12 @@
       <material><ambient>0 0 1 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>0 1 0</direction>
     <amplitude>1000.5</amplitude>
     <speed>0.3</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_12_5">
@@ -208,12 +208,12 @@
       <material><ambient>0 0 1 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>0 -1 0</direction>
     <amplitude>1000.5</amplitude>
     <speed>0.3</speed>
-  </plugin>
+  </motion>
 </model>
 
 
@@ -231,12 +231,12 @@
       <material><ambient>0 0 1 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>0 -1 0</direction>
     <amplitude>500.5</amplitude>
     <speed>0.3</speed>
-  </plugin>
+  </motion>
 </model>
 
 
@@ -254,12 +254,12 @@
       <material><ambient>0 0 1 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>-1 0 0</direction>
     <amplitude>1000.5</amplitude>
     <speed>0.6</speed>
-  </plugin>
+  </motion>
 </model>
 
 
@@ -276,12 +276,12 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>1 0 0</direction>
     <amplitude>600.0</amplitude>
     <speed>0.4</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_15">
@@ -293,12 +293,12 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>0 1 0</direction>
     <amplitude>750.0</amplitude>
     <speed>0.6</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_16">
@@ -310,12 +310,12 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>-1 0 0</direction>
     <amplitude>400.0</amplitude>
     <speed>0.8</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_17">
@@ -327,12 +327,12 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>0 -1 0</direction>
     <amplitude>950.0</amplitude>
     <speed>0.2</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_18">
@@ -344,12 +344,12 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>0.707 0.707 0</direction>
     <amplitude>550.0</amplitude>
     <speed>0.7</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_19">
@@ -361,12 +361,12 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>1 0 0</direction>
     <amplitude>850.0</amplitude>
     <speed>0.4</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_20">
@@ -378,12 +378,12 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>-0.707 0.707 0</direction>
     <amplitude>300.0</amplitude>
     <speed>0.9</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_21">
@@ -395,12 +395,12 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>0 1 0</direction>
     <amplitude>700.0</amplitude>
     <speed>0.3</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_22">
@@ -412,12 +412,12 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>0 -1 0</direction>
     <amplitude>1100.0</amplitude>
     <speed>0.5</speed>
-  </plugin>
+  </motion>
 </model>
 
 <model name="moving_cylinder_23">
@@ -429,12 +429,12 @@
       <material><ambient>1 0 0 1</ambient></material>
     </visual>
   </link>
-  <plugin name="MoverPlugin" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPlugin.so">
+  <motion type="legacy-linear">
     <link_name>moving_link</link_name>
     <direction>-0.707 -0.707 0</direction>
     <amplitude>650.0</amplitude>
     <speed>0.6</speed>
-  </plugin>
+  </motion>
 </model>
 
 
@@ -588,10 +588,10 @@
       <pose>48.0 48.0 0.1 0 0 0</pose>
 
 <!-- 
-  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+  <motion type="legacy-teleport">
     <speed>0.8</speed>
     <interpolation_step>0.3</interpolation_step>
-  </plugin> -->
+  </motion> -->
 
 
     </include>

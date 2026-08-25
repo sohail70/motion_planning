@@ -101,69 +101,69 @@
 <model name="trapdoor_1">
   <pose>10 10 0 0 0 0</pose>
   <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2</radius><length>1</length></cylinder></geometry><material><ambient>1 0 0 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>l</link_name><direction>-0.707 0.707 0</direction><amplitude>6</amplitude><speed>16</speed><turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <!-- TRAPDOOR 2: Same, at the bottom of Bucket 2 -->
 <model name="trapdoor_2">
   <pose>-20 -20 0 0 0 0</pose>
   <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2</radius><length>1</length></cylinder></geometry><material><ambient>1 0 0 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>l</link_name><direction>-0.707 0.707 0</direction><amplitude>6</amplitude><speed>18</speed><turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <!-- INTERIOR CHAOS: These bounce around INSIDE the buckets, constantly intersecting LLPT's repair paths -->
 <model name="chaos_in_b1">
   <pose>20 20 0 0 0 0</pose>
   <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2.5</radius><length>1</length></cylinder></geometry><material><ambient>1 0 1 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>l</link_name><direction>1 0 0</direction><amplitude>8</amplitude><speed>14</speed><turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="chaos_in_b2">
   <pose>-10 -10 0 0 0 0</pose>
   <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2.5</radius><length>1</length></cylinder></geometry><material><ambient>1 0 1 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>l</link_name><direction>0 1 0</direction><amplitude>8</amplitude><speed>15</speed><turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <!-- ENTRANCE BAIT: These swing across the entrance of the buckets to force sudden braking -->
 <model name="bait_b1">
   <pose>30 30 0 0 0 0</pose>
   <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2</radius><length>1</length></cylinder></geometry><material><ambient>0 1 0 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>l</link_name><direction>-0.707 0.707 0</direction><amplitude>12</amplitude><speed>20</speed><turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="bait_b2">
   <pose>0 0 0 0 0 0</pose>
   <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>2</radius><length>1</length></cylinder></geometry><material><ambient>0 1 0 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>l</link_name><direction>0.707 -0.707 0</direction><amplitude>12</amplitude><speed>22</speed><turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <!-- OUTER ESCAPE SWEEPERS: To make sure FMTX also has dynamic obstacles to dodge on the correct outer path -->
 <model name="sweep_outer_1">
   <pose>-20 30 0 0 0 0</pose>
   <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>3</radius><length>1</length></cylinder></geometry><material><ambient>0 0 1 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>l</link_name><direction>1 0 0</direction><amplitude>15</amplitude><speed>25</speed><turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 <model name="sweep_outer_2">
   <pose>30 -20 0 0 0 0</pose>
   <link name="l"><gravity>false</gravity><visual name="v"><geometry><cylinder><radius>3</radius><length>1</length></cylinder></geometry><material><ambient>0 0 1 1</ambient></material></visual></link>
-  <plugin name="MoverPluginC" filename="/home/sohail/gazeb/GAZEBO_MOV/build/libMoverPluginC.so">
+  <motion>
     <link_name>l</link_name><direction>0 1 0</direction><amplitude>15</amplitude><speed>25</speed><turnaround_threshold>0.5</turnaround_threshold>
-  </plugin>
+  </motion>
 </model>
 
 
@@ -174,10 +174,10 @@
       <pose>48.0 48.0 0.1 0 0 0</pose>
 
 <!-- 
-  <plugin filename="/home/sohail/gazeb/GAZEBO_MOV/build/libTeleportPlugin.so" name="TeleportPlugin">
+  <motion type="legacy-teleport">
     <speed>0.8</speed>
     <interpolation_step>0.3</interpolation_step>
-  </plugin> -->
+  </motion> -->
 
 
     </include>
