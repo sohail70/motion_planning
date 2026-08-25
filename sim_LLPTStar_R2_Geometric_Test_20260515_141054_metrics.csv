@@ -1,3 +1,0 @@
-row_id,event_type,elapsed_s,sim_time,setup_ms,total_latency_ms,update_ms,plan_ms,time_to_goal,path_cost,obstacle_checks,collision_count,tree_size,isolated_nodes,avg_deg_out,avg_deg_in,neighborhood_radius
-1,initial_plan,0,0,0.227784,21424,nan,21424,0,inf,0,0,500,0,0,0,0
-2,time_limit,41.8175,0,nan,nan,nan,nan,0,nan,nan,0,500,0,0,0,0

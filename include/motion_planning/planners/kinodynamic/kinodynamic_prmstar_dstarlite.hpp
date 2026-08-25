@@ -31,7 +31,7 @@ class KinodynamicPRMStarDStarLite : public Planner {
         void updateObstacles(const ObstacleVector& turned_obstacles);
         std::vector<Eigen::VectorXd> getPathPositions() const;
 
-        void setRobotState(const Eigen::VectorXd& robot_state);
+        void setRobotState(const Eigen::VectorXd& robot_state, bool anchor_was_reached);
         void setCurrentRobotTime(double robot_time) override;  // feeds the time-cone prune
         void visualizeTree();
         void visualizeTreeGradient();

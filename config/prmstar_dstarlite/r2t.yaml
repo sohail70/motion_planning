@@ -25,7 +25,7 @@ planner_params:
   partial_update: true
   kd_dim: 3 # 3 for R2T
   is_geometric_mode: false
-  num_pillar_nodes: 100
+  num_pillar_nodes: 0
   goal_radius: 0.5
   heuristic: true
 

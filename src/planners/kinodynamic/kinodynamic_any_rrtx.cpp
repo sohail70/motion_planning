@@ -2756,7 +2756,7 @@ void KinodynamicANYRRTX::removeObstacle(const Obstacle& ob) {
 
 
 
-void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
+void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state, bool anchor_was_reached = false) {
     robot_continuous_state_ = robot_state;
     double robot_time_to_go = robot_continuous_state_(robot_continuous_state_.size() - 1);
 
@@ -2774,6 +2774,39 @@ void KinodynamicANYRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
     } else if (kd_dim == 5) {
         query_point = robot_continuous_state_; 
     }
+
+    if (!is_geometric_mode_) {
+        if (anchor_was_reached
+            && vbot_node_
+            && vbot_node_->getParent() != nullptr 
+            && vbot_node_->getLMC() != std::numeric_limits<double>::infinity()) 
+        {
+            RRTxNode* next_anchor = vbot_node_->getParent();
+            auto cached_traj_ptr = vbot_node_->getParentTrajectory();
+            
+            if (cached_traj_ptr && cached_traj_ptr->is_valid) {
+                Trajectory cached_traj = *cached_traj_ptr;
+                
+                bool safe = true;
+                for (const auto& [name, ob] : previous_obstacles_) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(cached_traj, ob)) {
+                        safe = false; break;
+                    }
+                }
+                
+                if (safe) {
+                    vbot_node_ = next_anchor;
+                    current_bridge_trajectory_ = cached_traj;
+                    bridge_cost_ = cached_traj.cost;
+                    robot_current_time_to_goal_ = cached_traj.time_duration + next_anchor->getTimeToGoal();
+                    last_replan_metrics_.path_cost = bridge_cost_ + next_anchor->getLMC();
+                    return;
+                }
+            }
+        }
+    }
+
+
 
     RRTxNode* best_candidate_node = nullptr;
     Trajectory best_candidate_bridge;

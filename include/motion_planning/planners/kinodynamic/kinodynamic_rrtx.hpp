@@ -33,7 +33,7 @@ class KinodynamicRRTX : public Planner {
         void visualizePath(const std::vector<Eigen::VectorXd>& path_waypoints);
         void visualizePathGradient(const std::vector<Eigen::VectorXd>& path_waypoints);
 
-        void setRobotState(const Eigen::VectorXd& robot_state);
+        void setRobotState(const Eigen::VectorXd& robot_state, bool anchor_was_reached);
 
         void dumpTreeToCSV(const std::string& filename) const;
 

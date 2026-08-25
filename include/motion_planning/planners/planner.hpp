@@ -82,7 +82,7 @@ class Planner {
         virtual void setup(const Params& params , std::shared_ptr<Visualization> visualization) = 0;
         virtual void plan() = 0;
         virtual void setClock(std::shared_ptr<rclcpp::Clock> clock) { }
-        virtual void setRobotState(const Eigen::VectorXd& state) { }
+        virtual void setRobotState(const Eigen::VectorXd& state, bool anchor_was_reached = false) { }
         virtual std::vector<Eigen::VectorXd> getPathPositions() const { return {}; } 
         virtual void updateObstacles(const ObstacleVector& obstacles) { }
         virtual void visualizeTree() {};

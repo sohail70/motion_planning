@@ -21,7 +21,7 @@
 #include <valgrind/callgrind.h>
 
 #define SCREEN_SHOT 0
-#define USE_METRIC 1
+#define USE_METRIC 0
 
 /*
     USE_REALTIME: Real-time viability on this hardware
@@ -412,7 +412,7 @@ void runRotatingTubeExperiment(const ExperimentConfig& cfg) {
     //     planner->plan(); 
     // }
 
-    planner->setRobotState(start_vec);
+    planner->setRobotState(start_vec, false);
 
     // Initial Empty/Clear step
     obstacle_checker->clearActiveObstacles();
@@ -659,7 +659,7 @@ void runAOExperiment(const ExperimentConfig& cfg) {
     obstacle_checker->clearActiveObstacles();
     // planner->addStaticObstacles(static_obs);
     // planner->plan();
-    planner->setRobotState(start_vec);
+    planner->setRobotState(start_vec, false);
     obstacle_checker->processLatestPoseInfo(0.0);
     auto time_limit = std::chrono::seconds(cfg.duration_limit);
     auto start_time = std::chrono::steady_clock::now();
@@ -917,7 +917,7 @@ int main(int argc, char** argv) {
         }
     }
     
-    kinodynamic_planner->setRobotState(start_vec); 
+    kinodynamic_planner->setRobotState(start_vec, false); 
     
     auto path = kinodynamic_planner->getPathPositions();
     if (!path.empty() && ros_manager) {
@@ -1214,7 +1214,7 @@ int main(int argc, char** argv) {
             // If you're using the same KinodynamicLLPTStar with kd_dim_=2, it's fine.
             // kinodynamic_planner->setRobotState(static_robot_state);
             auto t1 = std::chrono::steady_clock::now();
-            kinodynamic_planner->setRobotState(static_robot_state);
+            kinodynamic_planner->setRobotState(static_robot_state , false);
             auto t2 = std::chrono::steady_clock::now();
             double ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
             RCLCPP_INFO(rclcpp::get_logger("SETROBOTSTATE"), " took: %.6f ms", ms);
@@ -1489,7 +1489,7 @@ int main(int argc, char** argv) {
                 kinodynamic_planner->resetMetrics();
 
                 auto t1 = std::chrono::steady_clock::now();
-                kinodynamic_planner->setRobotState(current_sim_state); // WILL BE CHARGED AT THE TOP OF NEXT LOOP
+                kinodynamic_planner->setRobotState(current_sim_state, reached_end_of_edge); // WILL BE CHARGED AT THE TOP OF NEXT LOOP
                 auto t2 = std::chrono::steady_clock::now();
                 double ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
 
@@ -1720,7 +1720,7 @@ int main(int argc, char** argv) {
 
             if (T_robot <= next_screenshot_time && T_robot > 0.5) {
                 visualization->takeScreenshot(T_robot, false);
-                next_screenshot_time -= 4.2;
+                next_screenshot_time -= 10.0;
             }
 #endif
 
@@ -1865,12 +1865,12 @@ int main(int argc, char** argv) {
 
            if (edge_destroyed || reached_end_of_edge || !first_path_ready || opportunity_found) {
                 // if (opportunity_found) std::cout << "\n[SHORTCUT] >= 15% Improvement Opportunity Seized!\n";
-                // std::cout<<"Edge Destroyed: "<<edge_destroyed<<"|"<<"Reached End of Edge: "<<reached_end_of_edge<<"|"<<"Oppurtunity Found: "<<opportunity_found<<"\n";
+                std::cout<<"Edge Destroyed: "<<edge_destroyed<<"|"<<"Reached End of Edge: "<<reached_end_of_edge<<"|"<<"Oppurtunity Found: "<<opportunity_found<<"\n";
 
                 kinodynamic_planner->resetMetrics(); // Reset for setRobotState even loggin
                 // std::cout<<edge_destroyed<<", "<<reached_end_of_edge<<" , "<<first_path_ready<<"\n";
                 auto t1 = std::chrono::steady_clock::now();
-                kinodynamic_planner->setRobotState(current_sim_state);
+                kinodynamic_planner->setRobotState(current_sim_state, reached_end_of_edge);
                 auto t2 = std::chrono::steady_clock::now();
                 double ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
                 RCLCPP_INFO(rclcpp::get_logger("SETROBOTSTATE"), " took: %.6f ms", ms);

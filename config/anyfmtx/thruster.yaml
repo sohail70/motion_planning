@@ -5,9 +5,9 @@ experiment:
   manager_type: "Thruster"
 
 simulation:
-  time_budget: 65.0
+  time_budget: 30.0
   slice_time: 0.02
-  seed: 44
+  seed: 42
 
 robot:
   start_state: [48.0, 48.0, 0.0, 0.0]
@@ -22,7 +22,7 @@ robot:
 planner_params:
   num_of_samples: 1
   factor: 3.0
-  delta: 45.0
+  delta: 50.0
   epsilon: 0.1
   kdtree_type: "NanoFlann"
   partial_update: true

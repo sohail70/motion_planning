@@ -28,7 +28,7 @@ class KinodynamicANYFMTX : public Planner {
         FMTNode* getRobotNode() const {
             return robot_node_;
         }
-        void setRobotState(const Eigen::VectorXd& robot_state);
+        void setRobotState(const Eigen::VectorXd& robot_state, bool anchor_was_reached);
         void visualizeTree();
         void visualizeTreeGradient();
         void visualizeTreeReal();
@@ -61,7 +61,7 @@ class KinodynamicANYFMTX : public Planner {
         int getTreeSize() { return tree_.size()-num_pillar_nodes_;}
 
         // Adds a batch of samples to the existing tree and updates structures
-        void addBatchOfSamplesEager(int num_samples); // O(n log(n))
+        void extend(int num_samples); // O(n log(n))
         double getAvgOutDegree() const {
             if (tree_.empty()) return 0.0;
             long long total_out = 0;

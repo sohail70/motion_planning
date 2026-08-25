@@ -1,7 +1,7 @@
 // Copyright 2025 Soheil E.nia
 // TODO : fix the KNN usage because with knn there is not neighborhood radisu constraints (check near function)
 
-#define DEBUG 0
+#define DEBUG 1
 #define VIS 0
 // The Threat Set is the bridge that allows a lazy algorithm to behave with the same spatial intelligence as an eager one
 #define USE_THREAT_SET_STRATEGY 0
@@ -1310,10 +1310,10 @@ void KinodynamicFMTX::plan() {
 
 
 #if DEBUG
-    runFMT(dbg_metrics);
+    // runFMT(dbg_metrics);
     // compareHeapLogs(shadow_log);
 
-    // printDebugSummary(dbg_metrics); // Experimental proof that increasing sample counts would reduce the average suboptimality cost which happens in FMTX (Inherited from FMT*)
+    printDebugSummary(dbg_metrics); // Experimental proof that increasing sample counts would reduce the average suboptimality cost which happens in FMTX (Inherited from FMT*)
     // runCollisionForensics(); // To Recheck All the trajectories again with all the obstacles to validify our repair!
     // runCostForensics();
     // runGlobalCostForensics();
@@ -2947,7 +2947,7 @@ void KinodynamicFMTX::removeStaticObstacle(const Obstacle& ob) {
 
 
 
-void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
+void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state, bool anchor_was_reached = false) {
     robot_continuous_state_ = robot_state;
     double robot_sim_time = robot_continuous_state_(robot_continuous_state_.size() - 1);
 
@@ -2963,6 +2963,38 @@ void KinodynamicFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
         query_point(3) = robot_sim_time;
     } else if (kd_dim == 5) {
         query_point = robot_continuous_state_; 
+    }
+
+    if (!is_geometric_mode_) {
+        // Phase 1: If anchor reached, try using cached parent trajectory
+        if (anchor_was_reached  // <-- replace time_diff < 1e-2
+            && robot_node_ 
+            && robot_node_->getParent() != nullptr 
+            && robot_node_->getLMC() != std::numeric_limits<double>::infinity()) 
+        {
+            FMTNode* next_anchor = robot_node_->getParent();
+            auto cached_traj_ptr = robot_node_->getParentTrajectory();
+            
+            if (cached_traj_ptr && cached_traj_ptr->is_valid) {
+                Trajectory cached_traj = *cached_traj_ptr;
+                
+                bool safe = true;
+                for (const auto& [name, ob] : previous_obstacles_) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(cached_traj, ob)) {
+                        safe = false; break;
+                    }
+                }
+                
+                if (safe) {
+                    robot_node_ = next_anchor;
+                    current_bridge_trajectory_ = cached_traj;
+                    bridge_cost_ = cached_traj.cost;
+                    robot_current_time_to_goal_ = cached_traj.time_duration + next_anchor->getTimeToGoal();
+                    last_replan_metrics_.path_cost = bridge_cost_ + next_anchor->getLMC();
+                    return;
+                }
+            }
+        }
     }
 
     FMTNode* best_candidate_node = nullptr;

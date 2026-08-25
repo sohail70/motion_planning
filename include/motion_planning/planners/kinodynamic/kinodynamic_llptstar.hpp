@@ -27,7 +27,7 @@ class KinodynamicLLPTStar : public Planner {
         void updateObstacles(const ObstacleVector& turned_obstacles);
         std::vector<Eigen::VectorXd> getPathPositions() const;
 
-        void setRobotState(const Eigen::VectorXd& robot_state);
+        void setRobotState(const Eigen::VectorXd& robot_state, bool anchor_was_reached);
         
         // --- Visualization & Metrics ---
         void visualizeTree();

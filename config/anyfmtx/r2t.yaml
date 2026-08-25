@@ -7,7 +7,7 @@ experiment:
 simulation:
   time_budget: 25.0
   slice_time: 0.02
-  seed: 88
+  seed: 89
 
 robot:
   start_state: [48.0, 48.0] # x, y, time_budget
@@ -19,7 +19,7 @@ robot:
   max_velocity: 20.0
 
 planner_params:
-  num_of_samples: 3
+  num_of_samples: 1
   factor: 3.0
   delta: 25.0
   epsilon: 0.1

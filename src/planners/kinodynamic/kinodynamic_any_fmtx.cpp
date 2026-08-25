@@ -1145,10 +1145,10 @@ void KinodynamicANYFMTX::updateNeighbors(const Eigen::VectorXd& sample_val, FMTN
 //   In anytime fmtx eager approach we still dont care about all the collision checking connections from new node to neighbors or neighbors to new node
 //   except maybe the new sampled node to its forward neighbors! so we only collision check to find the parent here! but in anytime rrtx we have to check all of the
 //   edges and make them to have edge.distance of INF because that how rrtx works! but here because of lazy collision checking we dont have to do this!
-//   Even this collision checking was not necessary if i could've found a way to make the addBatchOfSamplesLazy to not become O(n log^2 (n))
+//   Even this collision checking was not necessary if i could've found a way to make the extend to not become O(n log^2 (n))
 //   But here the O(n log(n)) will be preserved because we only do one heap push if the new node finds the best parent!
 // */
-void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
+void KinodynamicANYFMTX::extend(int num_samples) {
     if (num_samples <= 0) return;
 
     // if (!is_geometric_mode_ && dimension_ >= 3) {
@@ -1425,7 +1425,7 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
 #endif // ===== end disabled dormant/accept-all variant =====
 
 
-// NOTE: updateNeighbors() has been INLINED into addBatchOfSamplesEager() so the
+// NOTE: updateNeighbors() has been INLINED into extend() so the
 // outgoing (forward) steers can run BEFORE the parent/discard decision and the
 // expensive incoming (reverse) steers only AFTER a node survives (discarded nodes
 // skip them entirely). The standalone version is preserved (disabled) in the
@@ -1439,7 +1439,7 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
   places in FMTX compared to RRTX! 
 
 */
-void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
+void KinodynamicANYFMTX::extend(int num_samples) {
     if (num_samples <= 0) return;
     int successfully_added = 0;
     const int max_attempts = num_samples * 20; // Keep the buffer!
@@ -1658,6 +1658,18 @@ void KinodynamicANYFMTX::addBatchOfSamplesEager(int num_samples) {
         spatial_kdtree_->buildTree();
 #endif
 
+        /*
+            Important Insight on AO with epsilon usage: as you can see the new samples is added to the tree and now is in vopen heap! we do not immediately improve the neighbors
+            which can use this! but if nothing happens and this new samples didnt get removed from the heap the neighbors would use this to connect. epsilon is not in the picture 
+            until the queue operations in plan function!
+            now if x's cost is improved little then we wouldn't cascade! 
+            so the argument that when we use epsilon we have epsilon bounded AO is incorrect because those children that we didnt improve will get better by new samples!
+            so all in all the new sample will eventually betters their immediate neighbors if partial update allows (i.e., its useful) because the new sample is in the vopen and when
+            plan function runs then immediate neighbors will get improved anyway! and only then afterward the epsilon comes into picture to decide if the immeidate neighbor should also
+            get into queue or not!
+        */
+
+
         v_open_heap_.add(node.get(), node->getLMC());
         tree_.push_back(std::move(node));
 
@@ -1854,7 +1866,7 @@ void KinodynamicANYFMTX::plan() {
     SuboptimalityMetrics dbg_metrics;
 #endif
 
-    addBatchOfSamplesEager(num_of_samples_); // Add a small batch (e.g., 10) instead of 1
+    extend(num_of_samples_); // Add a small batch (e.g., 10) instead of 1
 
     // // ← ADD THESE LINES
     // int iteration = 0;
@@ -2128,20 +2140,6 @@ void KinodynamicANYFMTX::plan() {
 
                                 
                 //////////////////////////////BELLMAN/////////////////////////////////
-                // for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
-                //     if (y->in_queue_) { // We only consider parents that are in V_open.
-                //         auto traj_xy = edge_info_xy.cached_trajectory;
-                //         if (traj_xy->is_valid) {
-                //             // double cost_via_y = y->getLMC() + traj_xy->cost;
-                //             double cost_via_y = y->getLMC() + edge_info_xy.distance;;
-                //             if (cost_via_y < min_cost_for_x) {
-                //                 min_cost_for_x = cost_via_y;
-                //                 best_parent_for_x = y;
-                //                 best_traj_for_x = traj_xy;
-                //             }
-                //         }
-                //     }
-                // }
 
                 // // Faster version of bellman
                 for (auto& [y, edge_info_xy] : x->forwardNeighbors()) {
@@ -2166,40 +2164,6 @@ void KinodynamicANYFMTX::plan() {
                 /////////////////////////////////////////////////////////////////////////////
 
 
-
-//                 // if (best_parent_for_x != nullptr && min_cost_for_x < (x->getLMC())) { // Depend on min_cost_for_x initialization!
-//                 if (best_parent_for_x != nullptr ) { 
-
-
-//                     bool obstacle_free = true;
-//                     if (best_parent_for_x != x->getParent()) {
-// #if USE_THREAT_SET_STRATEGY
-//                         if (!x->threats.empty()){
-//                             for (const Obstacle* ob_ptr : x->threats) {
-//                                 last_replan_metrics_.obstacle_checks++;
-//                                 if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*best_traj_for_x, *ob_ptr)) {
-//                                     obstacle_free = false;
-//                                     break;
-//                                 }
-//                             }
-//                         } else {
-//                             // Safe by default.
-//                             obstacle_free = true;
-//                         }
-// #else
-//                         // Use previous_obstacles_ so the brute-force mode actually sees the tubes!
-//                         for (const auto& [name, ob] : previous_obstacles_) {
-//                             last_replan_metrics_.obstacle_checks++;
-//                             collision_checked_++;
-//                             if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(*best_traj_for_x, ob)) {
-//                                 obstacle_free = false;
-//                                 break;
-//                             }
-//                         }
-
-
-// #endif
-//                     }
 
                 if (best_parent_for_x != nullptr ) { 
 
@@ -2304,16 +2268,7 @@ void KinodynamicANYFMTX::plan() {
         }
         v_open_heap_.pop();
 
-        // // ← ADD THIS: Log if this iteration was expensive
-        // if (neighbors_this_iteration > 50 || cone_pruned_this_iteration > 100) {
-        //     std::cout << "  [Iter " << iteration 
-        //               << "] z=" << zIndex
-        //               << " | neighbors=" << neighbors_this_iteration
-        //               << " | cone_pruned=" << cone_pruned_this_iteration 
-        //               << " | heap_size=" << v_open_heap_.getHeap().size() << "\n";
-        // }
-        // // ← END ADD
-
+      
 
         // visualizeTree();
         // std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -2322,30 +2277,6 @@ void KinodynamicANYFMTX::plan() {
     } 
     
 
-    // // ← ADD THIS BLOCK
-    // if (just_updated_) {
-    //     std::cout << "--- PLAN SUMMARY ---\n";
-    //     std::cout << "  Total iterations: " << iteration << "\n";
-    //     std::cout << "  Total neighbors considered: " << total_neighbors_considered << "\n";
-    //     std::cout << "  Total cone-pruned: " << total_cone_pruned << "\n";
-    //     std::cout << "  Final heap size: " << v_open_heap_.getHeap().size() << "\n";
-    //     just_updated_ = false;
-    // }
-    // // ← END ADD
-
-
-    // // Print at end of plan
-    // if(just_updated_){
-    //     std::cout << "ADD OBS -- checked: " << col_stats_.add_checked 
-    //             << " , ignored: " << col_stats_.add_ignored << "\n";
-    //     std::cout << "PLAN    -- checked: " << col_stats_.plan_checked 
-    //             << " , ignored: " << col_stats_.plan_ignored << "\n";
-        
-    //     just_updated_ = false;
-    // }
-
-
-    // std::cout<<"COL:" <<collision_checked_<<"\n";
 #if DEBUG 
     runFMT(dbg_metrics); 
     printDebugSummary(dbg_metrics);
@@ -4307,7 +4238,7 @@ void KinodynamicANYFMTX::removeStaticObstacle(const Obstacle& ob) {
 
 
 
-void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
+void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state, bool anchor_was_reached = false) {
     robot_continuous_state_ = robot_state;
     double robot_sim_time = robot_continuous_state_(robot_continuous_state_.size() - 1);
 
@@ -4324,6 +4255,41 @@ void KinodynamicANYFMTX::setRobotState(const Eigen::VectorXd& robot_state) {
     } else if (kd_dim == 5) {
         query_point = robot_continuous_state_; 
     }
+
+
+    if (!is_geometric_mode_) {
+        // Phase 1: If anchor reached, try using cached parent trajectory
+        if (anchor_was_reached  // <-- replace time_diff < 1e-2
+            && robot_node_ 
+            && robot_node_->getParent() != nullptr 
+            && robot_node_->getLMC() != std::numeric_limits<double>::infinity()) 
+        {
+            FMTNode* next_anchor = robot_node_->getParent();
+            auto cached_traj_ptr = robot_node_->getParentTrajectory();
+            
+            if (cached_traj_ptr && cached_traj_ptr->is_valid) {
+                Trajectory cached_traj = *cached_traj_ptr;
+                
+                bool safe = true;
+                for (const auto& [name, ob] : previous_obstacles_) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(cached_traj, ob)) {
+                        safe = false; break;
+                    }
+                }
+                
+                if (safe) {
+                    robot_node_ = next_anchor;
+                    current_bridge_trajectory_ = cached_traj;
+                    bridge_cost_ = cached_traj.cost;
+                    robot_current_time_to_goal_ = cached_traj.time_duration + next_anchor->getTimeToGoal();
+                    last_replan_metrics_.path_cost = bridge_cost_ + next_anchor->getLMC();
+                    return;
+                }
+            }
+        }
+    }
+
+
 
     FMTNode* best_candidate_node = nullptr;
     Trajectory best_candidate_bridge;
@@ -4534,35 +4500,68 @@ bool KinodynamicANYFMTX::hasReachedAnchor(const Eigen::VectorXd& current_sim_sta
 
 
 
-
-std::vector<Eigen::VectorXd> KinodynamicANYFMTX::getLivePathPositions(const Eigen::VectorXd& current_state) const
+std::vector<Eigen::VectorXd> KinodynamicANYFMTX::getLivePathPositions(
+    const Eigen::VectorXd& current_state) const
 {
     if (!robot_node_ || robot_node_->getLMC() == std::numeric_limits<double>::infinity()) {
-        return {}; 
+        return {};
     }
 
-    // 1. Create a temporary, real-time bridge from the robot to the anchor
-    Trajectory live_bridge = statespace_->steer(current_state, robot_node_->getStateValue());
-    
-    if (!live_bridge.is_valid || live_bridge.path_points.empty()) {
-        // If the live steer fails (e.g. numerical issue very close to the node),
-        // fallback to the cached path
-        return getPathPositions(); 
+    std::vector<Eigen::VectorXd> final_path;
+
+    // --- 1) Remaining bridge: trim cached trajectory, do not re-steer ---
+    const Trajectory& bridge = current_bridge_trajectory_;
+    if (bridge.is_valid && bridge.path_points.size() >= 2) {
+        // Prefer time (last dim) if present; else nearest (x,y)
+        const int t_idx = static_cast<int>(current_state.size()) - 1;
+        const bool use_time = (current_state.size() >= 3);
+
+        size_t start_i = 0;
+        double best = std::numeric_limits<double>::infinity();
+
+        for (size_t i = 0; i < bridge.path_points.size(); ++i) {
+            double d;
+            if (use_time && bridge.path_points[i].size() == current_state.size()) {
+                // remaining-time / absolute-time consistency: match last component
+                d = std::abs(bridge.path_points[i](t_idx) - current_state(t_idx));
+            } else {
+                d = (bridge.path_points[i].head<2>() - current_state.head<2>()).squaredNorm();
+            }
+            if (d < best) {
+                best = d;
+                start_i = i;
+            }
+        }
+
+        // Path should start at the robot (smooth tip of the gradient)
+        final_path.push_back(current_state);
+        for (size_t i = start_i; i < bridge.path_points.size(); ++i) {
+            // skip duplicate of current if very close
+            if (i == start_i &&
+                (bridge.path_points[i].head<2>() - current_state.head<2>()).norm() < 1e-3) {
+                continue;
+            }
+            final_path.push_back(bridge.path_points[i]);
+        }
+    } else {
+        // No cached bridge: optional steer, else empty
+        Trajectory live = statespace_->steer(current_state, robot_node_->getStateValue());
+        if (!live.is_valid || live.path_points.empty()) {
+            return getPathPositions();  // last resort only
+        }
+        final_path = live.path_points;
     }
 
-    // 2. Start the path with the live bridge
-    std::vector<Eigen::VectorXd> final_executable_path = live_bridge.path_points;
-
-    // 3. Traverse the rest of the tree from the anchor node
+    // --- 2) Rest of tree from anchor (unchanged) ---
     FMTNode* child = robot_node_;
     FMTNode* parent = child->getParent();
 
     while (parent) {
         auto cached_traj = child->getParentTrajectory();
-        if (cached_traj->is_valid && cached_traj->path_points.size() > 1) {
-            final_executable_path.insert(final_executable_path.end(),
-                                         cached_traj->path_points.begin() + 1,
-                                         cached_traj->path_points.end());
+        if (cached_traj && cached_traj->is_valid && cached_traj->path_points.size() > 1) {
+            final_path.insert(final_path.end(),
+                              cached_traj->path_points.begin() + 1,
+                              cached_traj->path_points.end());
         } else {
             break;
         }
@@ -4570,8 +4569,47 @@ std::vector<Eigen::VectorXd> KinodynamicANYFMTX::getLivePathPositions(const Eige
         parent = child->getParent();
     }
 
-    return final_executable_path;
+    return final_path;
 }
+
+
+// std::vector<Eigen::VectorXd> KinodynamicANYFMTX::getLivePathPositions(const Eigen::VectorXd& current_state) const
+// {
+//     if (!robot_node_ || robot_node_->getLMC() == std::numeric_limits<double>::infinity()) {
+//         return {}; 
+//     }
+
+//     // 1. Create a temporary, real-time bridge from the robot to the anchor
+//     Trajectory live_bridge = statespace_->steer(current_state, robot_node_->getStateValue());
+    
+//     if (!live_bridge.is_valid || live_bridge.path_points.empty()) {
+//         // If the live steer fails (e.g. numerical issue very close to the node),
+//         // fallback to the cached path
+//         return getPathPositions(); 
+//     }
+
+//     // 2. Start the path with the live bridge
+//     std::vector<Eigen::VectorXd> final_executable_path = live_bridge.path_points;
+
+//     // 3. Traverse the rest of the tree from the anchor node
+//     FMTNode* child = robot_node_;
+//     FMTNode* parent = child->getParent();
+
+//     while (parent) {
+//         auto cached_traj = child->getParentTrajectory();
+//         if (cached_traj->is_valid && cached_traj->path_points.size() > 1) {
+//             final_executable_path.insert(final_executable_path.end(),
+//                                          cached_traj->path_points.begin() + 1,
+//                                          cached_traj->path_points.end());
+//         } else {
+//             break;
+//         }
+//         child = parent;
+//         parent = child->getParent();
+//     }
+
+//     return final_executable_path;
+// }
 
 bool KinodynamicANYFMTX::hasShortcut(const Eigen::VectorXd& robot_state, double threshold) {
     if (!robot_node_ || robot_node_->getLMC() == std::numeric_limits<double>::infinity()) {

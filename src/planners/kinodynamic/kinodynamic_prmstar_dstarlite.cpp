@@ -2628,7 +2628,7 @@ bool KinodynamicPRMStarDStarLite::hasShortcut(const Eigen::VectorXd& robot_state
     return false;
 }
 
-void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_state) {
+void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_state, bool anchor_was_reached = false) {
     robot_continuous_state_ = robot_state;
 
     double robot_time_to_go = 0.0;
@@ -2649,6 +2649,44 @@ void KinodynamicPRMStarDStarLite::setRobotState(const Eigen::VectorXd& robot_sta
     } else if (kd_dim_ == 5) {
         query_point = robot_continuous_state_; 
     }
+
+
+    if (!is_geometric_mode_) {
+        // Phase 1: If anchor reached, try using cached parent trajectory
+        if (anchor_was_reached  // <-- replace time_diff check
+            && start_node_ 
+            && start_node_->getParent() != nullptr 
+            && start_node_->rhs != std::numeric_limits<double>::infinity()) 
+        {
+            DStarLiteNode* next_anchor = start_node_->getParent();
+            auto it = start_node_->forward_neighbors_.find(next_anchor);
+            
+            if (it != start_node_->forward_neighbors_.end()) {
+                Trajectory cached_traj = *(it->second.cached_trajectory);
+                
+                bool safe = true;
+                for (const auto& ob : obs_checker_->getObstacles()) {
+                    if (!obs_checker_->isTrajectorySafeAgainstSingleObstacle(cached_traj, ob)) {
+                        safe = false; break;
+                    }
+                }
+                
+                if (safe) {
+                    km_ += heuristic(start_node_, next_anchor);
+                    start_node_ = next_anchor;
+                    current_bridge_trajectory_ = cached_traj;
+                    bridge_cost_ = cached_traj.cost;
+                    last_replan_metrics_.path_cost = bridge_cost_ + start_node_->rhs;
+                    
+
+                    return;
+                }
+            }
+        }
+    }
+    
+
+
 
     DStarLiteNode* best_connected_node = nullptr;
     Trajectory best_connected_bridge;

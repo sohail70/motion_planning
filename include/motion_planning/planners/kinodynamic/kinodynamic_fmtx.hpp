@@ -29,7 +29,7 @@ class KinodynamicFMTX : public Planner {
             return robot_node_;
         }
 
-        void setRobotState(const Eigen::VectorXd& robot_state);
+        void setRobotState(const Eigen::VectorXd& robot_state, bool anchor_was_reached);
         void setCurrentRobotTime(double robot_time) override;  // feeds the time-cone prune
         void near(int node_index);
         void visualizeTree();

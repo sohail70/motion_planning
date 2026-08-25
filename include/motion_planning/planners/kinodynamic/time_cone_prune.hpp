@@ -105,7 +105,7 @@ It should be redundant under your invariant, but it makes the assumption explici
 */
 
 #ifndef ENABLE_TIME_CONE_PRUNE
-#define ENABLE_TIME_CONE_PRUNE 1
+#define ENABLE_TIME_CONE_PRUNE 0
 #endif
 
 // Predicate: is `node` outside the robot's remaining reachable cone (budget `t_budget`)?

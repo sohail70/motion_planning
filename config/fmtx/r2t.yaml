@@ -25,7 +25,7 @@ planner_params:
   partial_update: true
   kd_dim: 3 # 3 for R2T
   is_geometric_mode: false
-  num_pillar_nodes: 100
+  num_pillar_nodes: 0
   goal_radius: 0.5
 
 
@@ -33,7 +33,7 @@ manager_params:
   vis_frequency_hz: 30
 
 gazebo_params:
-  sdf_path: "../sims/dynamic_world_straight_box_circle_20_r2t.sdf"
+  sdf_path: "../sims/dynamic_world_straight_box_circle_10_r2t.sdf"
   # sdf_path: "../sims/static_dynamic_world_straight_box_circle_5.sdf"
   # sdf_path: "../sims/static_world_straight_box_circle_10.sdf"
   inflation: 1.0

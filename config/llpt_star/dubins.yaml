@@ -7,7 +7,7 @@ experiment:
 simulation:
   time_budget: 100.0
   slice_time: 0.02
-  seed: 43
+  seed: 78
 
 robot:
   start_state: [48.0, 48.0, -0.785] # x, y, theta, time_budget
@@ -21,7 +21,7 @@ robot:
   min_turning_radius: 2.0
 
 planner_params:
-  num_of_samples: 1
+  num_of_samples: 2
   factor: 3.0
   delta: 30.0
   kdtree_type: "NanoFlann"

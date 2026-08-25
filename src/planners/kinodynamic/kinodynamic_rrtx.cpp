@@ -2540,7 +2540,7 @@ bool KinodynamicRRTX::hasCycleInParentGraph(std::string& report) {
 
 
 
-void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state) {
+void KinodynamicRRTX::setRobotState(const Eigen::VectorXd& robot_state, bool anchor_was_reached = false) {
     robot_continuous_state_ = robot_state;
     double robot_time_to_go = robot_continuous_state_(robot_continuous_state_.size() - 1);
 

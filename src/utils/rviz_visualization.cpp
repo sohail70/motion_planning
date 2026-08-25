@@ -2167,7 +2167,7 @@ void RVizVisualization::publishObstacleFrame(
             m.pose.position.x = pos[i].x();
             m.pose.position.y = pos[i].y();
             m.pose.position.z = 0.9;
-            m.scale.z = 3.0;
+            m.scale.z = 4.5;
             m.color.r = color[0]; m.color.g = color[1]; m.color.b = color[2]; m.color.a = color[3];
             std::ostringstream ss;
             ss << std::fixed << std::setprecision(1) << vel[i].norm();
@@ -2188,7 +2188,7 @@ void RVizVisualization::publishObstacleFrame(
     std::vector<Eigen::Vector2d> safe_vel_val_scaled;
     safe_vel_val_scaled.reserve(safe_vel_val.size());
     for (const auto& v : safe_vel_val) {
-        safe_vel_val_scaled.push_back(v * 0.5);   // 0.3 scale factor
+        safe_vel_val_scaled.push_back(v * 1.0);   // 0.3 scale factor
     }
 
     add_arrows(safe_vel_pos, safe_vel_val_scaled, {0.65f, 0.15f, 0.1f}, "obs_vel_safe"); 
@@ -2307,10 +2307,10 @@ void RVizVisualization::publishObstacleFrame(
 
     // CLEAN DASHBOARD BARS
     if (!robot_bar_values.empty()) {
-        const double dash_y        = 52.0;   // well above your world
+        const double dash_y        = 53.0;   // well above your world
         const double dash_z        = 1.5;    // floating
-        const double bar_length    = 20.0;    // full length in metres
-        const double bar_height    = 3.0;
+        const double bar_length    = 25.0;    // full length in metres
+        const double bar_height    = 5.0;
         const double bar_gap       = 30.0;    // horizontal spacing between bars
         const double total_width   = robot_bar_values.size() * bar_length +
                                     (robot_bar_values.size()-1) * bar_gap;
@@ -2410,7 +2410,7 @@ void RVizVisualization::publishObstacleFrame(
                 title_m.pose.position.x = title_x;
                 title_m.pose.position.y = dash_y;                      // vertically aligned with the bar
                 title_m.pose.position.z = dash_z + 0.1;
-                title_m.scale.z = 2.5;                                 // font height
+                title_m.scale.z = 4.5;                                 // font height
                 title_m.color.r = 0.0f; title_m.color.g = 0.0f; title_m.color.b = 0.0f; title_m.color.a = 1.0f;
                 title_m.text = title;
                 frame_array.markers.push_back(title_m);
@@ -2419,7 +2419,7 @@ void RVizVisualization::publishObstacleFrame(
             // --- 5. Numeric label (black, fixed at the centre of the bar) ---
             {
                 double label_x = bar_center_x;          // horizontally centred
-                double label_y = dash_y;                // same vertical position
+                double label_y = dash_y-0.25;                // same vertical position
                 std::ostringstream oss;
                 oss << std::fixed << std::setprecision(2) << value;
 
@@ -2433,7 +2433,7 @@ void RVizVisualization::publishObstacleFrame(
                 num_m.pose.position.x = label_x;
                 num_m.pose.position.y = label_y;
                 num_m.pose.position.z = dash_z + 0.1;   // slightly above the bar surface
-                num_m.scale.z = 2.0;
+                num_m.scale.z = 4.0;
                 num_m.color.r = 0.0f; num_m.color.g = 0.0f; num_m.color.b = 0.0f; num_m.color.a = 1.0f;
                 num_m.text = oss.str();
                 frame_array.markers.push_back(num_m);
