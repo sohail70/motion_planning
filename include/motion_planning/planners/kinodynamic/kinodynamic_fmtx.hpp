@@ -6,7 +6,8 @@
 #include "motion_planning/ds/fmt_node.hpp"
 #include "motion_planning/utils/visualization.hpp"
 #include "motion_planning/ds/priority_queue.hpp"
-#include "motion_planning/state_space/min_snap_statespace.hpp" // TODO: put the steer with initial in state space virtual method!
+// Legacy minimum-snap state space is not part of the unified runner.
+// #include "motion_planning/state_space/min_snap_statespace.hpp"
 
 
 // --- Custom Colored Logging Macros ---

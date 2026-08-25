@@ -26,8 +26,8 @@ find_package(tinyxml2 REQUIRED)
 
 find_package(Eigen3 REQUIRED)
 find_package(nanoflann REQUIRED)
-find_package(qpOASES REQUIRED)
-find_package(absl REQUIRED)
+# Legacy minimum-snap support (not used by the unified runner):
+# find_package(qpOASES REQUIRED)
 # find_package(OpenMP REQUIRED)
 
 find_package(yaml-cpp REQUIRED)
@@ -126,7 +126,7 @@ add_library(motion_planning
     src/state_space/dubins_statespace.cpp
     src/state_space/dubins_time_statespace.cpp
     src/state_space/thruster_statespace.cpp
-    src/state_space/min_snap_statespace.cpp
+    # src/state_space/min_snap_statespace.cpp
     src/ds/fmt_node.cpp
     src/ds/ifmt_node.cpp
     src/ds/bit_node.cpp
@@ -139,7 +139,7 @@ add_library(motion_planning
 
 target_precompile_headers(motion_planning PRIVATE include/motion_planning/pch.hpp)
 target_include_directories(motion_planning PUBLIC include) 
-target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann visualization qpOASES absl::node_hash_map tinyxml2)
+target_link_libraries(motion_planning PUBLIC Eigen3::Eigen nanoflann::nanoflann visualization tinyxml2)
 if(OpenMP_CXX_FOUND)
   target_compile_options(motion_planning PUBLIC "${OpenMP_CXX_FLAGS}")
   target_link_libraries(motion_planning PUBLIC OpenMP::OpenMP_CXX)
