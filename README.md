@@ -52,7 +52,7 @@ environments are under [`sims/`](sims/).
 - CMake 3.10 or newer
 - ROS 2 Jazzy
 - `ament_cmake`
-- `rclcpp`, `visualization_msgs`, and `tf2_ros`
+- `rclcpp`, `visualization_msgs`
 - Eigen3
 - nanoflann
 - yaml-cpp
