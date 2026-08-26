@@ -86,17 +86,6 @@ To select another planner or state space, pass a different YAML configuration:
 ./main ../config/prmstar_dstarlite/r2.yaml
 ```
 
-## Repository layout
-
-| Path | Description |
-| --- | --- |
-| [`include/motion_planning/`](include/motion_planning/) | Public headers and planner interfaces |
-| [`src/`](src/) | Planner, state-space, and utility implementations |
-| [`test/unified/main.cpp`](test/unified/main.cpp) | Unified experiment runner |
-| [`config/`](config/) | Planner and state-space configurations |
-| [`sims/`](sims/) | Static and dynamic obstacle environments |
-| [`scripts/`](scripts/) | Experiment and plotting utilities |
-
 ## Citation
 
 If you use this repository in academic work, please cite:
