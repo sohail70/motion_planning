@@ -36,11 +36,11 @@ densification for motion replanning in changing environments.
 The unified experimental runner includes the principal dynamic replanners used
 in the paper:
 
-- D-FMT<sup>*</sup>
+- D-FMT<sup>\*</sup>
 - FMT<sup>X</sup>
-- D<sup>*</sup> Lite on PRM<sup>*</sup>
+- D<sup>\*</sup> Lite on PRM<sup>\*</sup>
 - RRT<sup>X</sup>
-- LLPT<sup>*</sup>
+- LLPT<sup>\*</sup>
 
 Experiment configurations cover geometric, R2T, Dubins, and Thruster state
 spaces. Planner configurations are under [`config/`](config/), and obstacle
