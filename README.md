@@ -9,7 +9,15 @@ obstacle motion, and RViz visualization.
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <p align="center">
-  <img src="./Geometric_S10000_C1_5_I0.gif" alt="Dynamic motion replanning visualization" width="80%">
+  <img src="./Geometric_S10000_C1_5_I0.gif" alt="Dynamic motion replanning visualization" width="60%">
+</p>
+
+## Video Demonstrations
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=HMxyYnfQoOE&list=PLIZXjL-DM2LQ&pp=sAgC">
+    <strong>▶ Watch the FMTX Dynamic Replanning Demonstrations on YouTube</strong>
+  </a>
 </p>
 
 ## Paper
